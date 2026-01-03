@@ -110,7 +110,7 @@ public class Eth69ProtocolHandler(
         };
 
         Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
-        HeadNumber = status.LatestBlock;
+        HeadNumber = checked((ulong)status.LatestBlock);
         HeadHash = status.LatestBlockHash;
         ProtocolInitialized?.Invoke(this, eventArgs);
     }
@@ -134,7 +134,7 @@ public class Eth69ProtocolHandler(
         }
 
         _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
-        HeadNumber = blockRangeUpdate.LatestBlock;
+        HeadNumber = checked((ulong)blockRangeUpdate.LatestBlock);
         HeadHash = blockRangeUpdate.LatestBlockHash;
     }
 
@@ -153,7 +153,7 @@ public class Eth69ProtocolHandler(
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
             EarliestBlock = SyncServer.LowestBlock,
-            LatestBlock = head.Number,
+            LatestBlock = checked((long)head.Number),
             LatestBlockHash = head.Hash!
         };
 
@@ -173,8 +173,8 @@ public class Eth69ProtocolHandler(
 
         BlockRangeUpdateMessage msg = new()
         {
-            EarliestBlock = earliest.Number,
-            LatestBlock = latest.Number,
+            EarliestBlock = checked((long)earliest.Number),
+            LatestBlock = checked((long)latest.Number),
             LatestBlockHash = latest.Hash
         };
 

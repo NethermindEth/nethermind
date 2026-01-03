@@ -24,7 +24,7 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
 
     public Snapshot? GetSnapshotByGapNumber(ulong gapNumber)
     {
-        var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
+        var gapBlockHeader = blockTree.FindHeader(gapNumber) as XdcBlockHeader;
 
         if (gapBlockHeader is null)
             return null;
@@ -48,10 +48,14 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
         return snapshot;
     }
 
-    public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    public Snapshot? GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec)
     {
-        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
-        return GetSnapshotByGapNumber((ulong)gapBlockNum);
+        ulong epochLength = (ulong)spec.EpochLength;
+        ulong gap = (ulong)spec.Gap;
+
+        ulong epochStart = blockNumber - (blockNumber % epochLength);
+        ulong gapBlockNum = epochStart > gap ? epochStart - gap : 0UL;
+        return GetSnapshotByGapNumber(gapBlockNum);
     }
 
     public void StoreSnapshot(Snapshot snapshot)
@@ -66,7 +70,7 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
         snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
     }
 
-    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
+    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(ulong blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         int maxMasternodes = spec.MaxMasternodes;
         var previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
@@ -76,7 +80,7 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
 
         var candidates = previousSnapshot.NextEpochCandidates;
 
-        if (blockNumber == spec.SwitchBlock + 1)
+        if (blockNumber == spec.SwitchBlock + 1UL)
         {
             if (candidates.Length > maxMasternodes)
             {

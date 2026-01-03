@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            long blockToWaitFor = 0;
+            ulong blockToWaitFor = 0;
             await WaitForMainChainChange((e) =>
             {
                 if (e.Blocks.Count == 0) return false;
@@ -157,13 +157,14 @@ namespace Nethermind.Blockchain.FullPruning
 
             await WaitForMainChainChange((e) =>
             {
-                if (_blockTree.BestPersistedState >= blockToWaitFor) return true;
+                ulong? bestPersistedState = _blockTree.BestPersistedState;
+                if (bestPersistedState.HasValue && bestPersistedState.Value >= blockToWaitFor) return true;
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {blockToWaitFor} in order to not lose any cached state.");
                 return false;
             }, cancellationToken);
 
-            long stateToCopy = _blockTree.BestPersistedState.Value;
-            long blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
+            ulong stateToCopy = _blockTree.BestPersistedState!.Value;
+            ulong blockToPruneAfter = stateToCopy + checked((ulong)_pruningConfig.PruningBoundary);
 
             await WaitForMainChainChange((e) =>
             {

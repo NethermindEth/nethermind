@@ -24,7 +24,7 @@ namespace Nethermind.AuRa.Test.Transactions
             IStateReader stateReader = Substitute.For<IStateReader>();
 
             BlockHeader parent = Build.A.BlockHeader.TestObject;
-            long gasLimit = long.MaxValue;
+            ulong gasLimit = ulong.MaxValue;
             Transaction poolTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
             innerSource.GetTransactions(parent, gasLimit).Returns(new[] { poolTx, generatedTx });

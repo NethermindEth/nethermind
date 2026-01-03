@@ -99,7 +99,7 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Roundtrip_with_eip658()
     {
-        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(MainnetSpecProvider.ConstantinopleFixBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
+        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(checked((long)MainnetSpecProvider.ConstantinopleFixBlockNumber)).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
         Test(data);
     }
 

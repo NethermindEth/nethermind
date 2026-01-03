@@ -113,7 +113,7 @@ public class Context
     public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToTypedScriptArray();
     public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToTypedScriptArray();
     public ITypedArray<byte>? input => _inputConverted ??= Input.ToArray().ToTypedScriptArray();
-    public long gas { get; set; }
+    public ulong gas { get; set; }
     public long gasUsed { get; set; }
     public IJavaScriptObject gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
     public IJavaScriptObject value => _valueConverted ??= Value.ToBigInteger();

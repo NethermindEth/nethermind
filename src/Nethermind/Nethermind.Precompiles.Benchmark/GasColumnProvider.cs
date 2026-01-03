@@ -35,7 +35,7 @@ public class GasColumnProvider : IColumnProvider
         public abstract string ColumnName { get; }
         public abstract string Legend { get; }
 
-        protected static (long? gas, Statistics? stats) GetBenchmarkData(Summary summary, BenchmarkCase benchmarkCase)
+        protected static (ulong? gas, Statistics? stats) GetBenchmarkData(Summary summary, BenchmarkCase benchmarkCase)
         {
             BenchmarkDotNet.Parameters.ParameterInstance? inputParam = benchmarkCase.Parameters.Items.FirstOrDefault(p => p.Name == "Input");
             var gas = ((PrecompileBenchmarkBase.Param)inputParam!.Value).Gas(Cancun.Instance);
@@ -43,7 +43,7 @@ public class GasColumnProvider : IColumnProvider
             return (gas, stats);
         }
 
-        protected static double CalculateMGasThroughput(long gas, double nanoseconds)
+        protected static double CalculateMGasThroughput(ulong gas, double nanoseconds)
         {
             double opThroughput = 1_000_000_000.0 / nanoseconds;
             return gas * opThroughput / 1_000_000.0;
@@ -67,7 +67,7 @@ public class GasColumnProvider : IColumnProvider
 
         public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
         {
-            (long? gas, Statistics? _) = GetBenchmarkData(summary, benchmarkCase);
+            (ulong? gas, Statistics? _) = GetBenchmarkData(summary, benchmarkCase);
             return gas?.ToString() ?? "N/A";
         }
     }

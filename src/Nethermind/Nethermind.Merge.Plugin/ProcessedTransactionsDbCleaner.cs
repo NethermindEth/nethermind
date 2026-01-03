@@ -30,9 +30,13 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock && CleaningTask.IsCompleted)
+        if (e.FinalizedBlocks.Count > 0 && CleaningTask.IsCompleted)
         {
-            CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
+            long finalizedBlockNumber = checked((long)e.FinalizedBlocks[0].Number);
+            if (finalizedBlockNumber > _lastFinalizedBlock)
+            {
+                CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(finalizedBlockNumber));
+            }
         }
     }
 

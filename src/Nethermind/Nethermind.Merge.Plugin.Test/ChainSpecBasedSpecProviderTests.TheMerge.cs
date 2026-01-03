@@ -17,12 +17,12 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     [Test]
     public void Correctly_read_merge_block_number()
     {
-        long terminalBlockNumber = 100;
+        ulong terminalBlockNumber = 100ul;
         ChainSpec chainSpec = new()
         {
             Parameters = new ChainParameters
             {
-                TerminalPoWBlockNumber = terminalBlockNumber
+                TerminalPoWBlockNumber = checked((long)terminalBlockNumber)
             },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
@@ -66,8 +66,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     [Test]
     public void Changing_spec_provider_in_dynamic_merge_transition()
     {
-        long expectedTerminalPoWBlock = 100;
-        long newMergeBlock = 50;
+        ulong expectedTerminalPoWBlock = 100ul;
+        ulong newMergeBlock = 50ul;
 
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
@@ -76,7 +76,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(expectedTerminalPoWBlock + 1));
 
-        provider.UpdateMergeTransitionInfo(newMergeBlock);
+        provider.UpdateMergeTransitionInfo(checked((ulong)newMergeBlock));
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(newMergeBlock));
     }
 }

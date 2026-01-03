@@ -26,13 +26,13 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
         => ThrowInvalidOperationException();
 
     public override void ReportOperationError(EvmExceptionType error)
         => ThrowInvalidOperationException();
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
         => ThrowInvalidOperationException();
 
     public override void SetOperationMemorySize(ulong newSize)
@@ -80,16 +80,16 @@ public class NullTxTracer : TxTracer
     public override void ReportStorageRead(in StorageCell storageCell)
         => ThrowInvalidOperationException();
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         => ThrowInvalidOperationException();
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
         => ThrowInvalidOperationException();
 
     public override void ReportActionError(EvmExceptionType exceptionType)
         => ThrowInvalidOperationException();
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => ThrowInvalidOperationException();
     public override void ReportBlockHash(Hash256 blockHash)
         => ThrowInvalidOperationException();

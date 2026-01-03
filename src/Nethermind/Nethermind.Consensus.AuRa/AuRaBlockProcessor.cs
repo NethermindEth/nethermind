@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa
 
         private void RewriteContracts(Block block, IReleaseSpec spec)
         {
-            bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
+            bool wereChanges = _contractRewriter?.RewriteContracts(checked((long)block.Number), _stateProvider, spec) ?? false;
             BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
             if (parent is not null)
             {
@@ -126,7 +126,7 @@ namespace Nethermind.Consensus.AuRa
         private void ValidateGasLimit(Block block)
         {
             BlockHeader parentHeader = GetParentHeader(block);
-            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out long? expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, checked((long)block.GasLimit), out long? expectedGasLimit) == false)
             {
                 string reason = $"Invalid gas limit, expected value from contract {expectedGasLimit}, but found {block.GasLimit}";
                 if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");

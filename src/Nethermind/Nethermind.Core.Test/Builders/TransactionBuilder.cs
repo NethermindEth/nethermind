@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new T
             {
                 GasPrice = 1,
-                GasLimit = Transaction.BaseTxGasCost,
+                GasLimit = checked((ulong)Transaction.BaseTxGasCost),
                 To = Address.Zero,
                 Nonce = 0,
                 Value = 1,
@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
 
         public TransactionBuilder<T> WithNonce(UInt256 nonce)
         {
-            TestObjectInternal.Nonce = nonce;
+            TestObjectInternal.Nonce = checked(nonce.ToUInt64(null));
             return this;
         }
 
@@ -80,7 +80,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithGasLimit(long gasLimit)
+        public TransactionBuilder<T> WithGasLimit(long gasLimit) => WithGasLimit(checked((ulong)gasLimit));
+
+        public TransactionBuilder<T> WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;

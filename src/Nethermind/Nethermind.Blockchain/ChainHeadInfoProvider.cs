@@ -42,9 +42,9 @@ namespace Nethermind.Blockchain
 
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        public long HeadNumber { get; private set; }
+        public ulong HeadNumber { get; private set; }
 
-        public long? BlockGasLimit { get; internal set; }
+        public ulong? BlockGasLimit { get; internal set; }
 
         public UInt256 CurrentBaseFee { get; private set; }
 

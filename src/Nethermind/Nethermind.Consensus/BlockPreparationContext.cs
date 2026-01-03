@@ -11,9 +11,9 @@ namespace Nethermind.Consensus
     {
         public UInt256 BaseFee { get; }
 
-        public long BlockNumber { get; }
+        public ulong BlockNumber { get; }
 
-        public BlockPreparationContext(in UInt256 baseFee, long blockNumber)
+        public BlockPreparationContext(in UInt256 baseFee, ulong blockNumber)
         {
             BaseFee = baseFee;
             BlockNumber = blockNumber;

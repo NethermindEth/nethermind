@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                        BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                        BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-                Block? block = _blockTree.FindBlock(blockHash, options, blockNumber);
+                Block? block = _blockTree.FindBlock(blockHash, options, checked((ulong)blockNumber));
                 return block is null ? null : SaveHistorySearchInfo(block);
             }
 
@@ -122,14 +122,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 double blobGasUsedRatio = CalculateBlobGasUsedRatio(b, out UInt256 feePerBlobGas);
 
                 return new(
-                    b.Number,
+                    checked((long)b.Number),
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
-                    b.GasUsed,
+                    checked((long)b.GasUsed),
                     b.Transactions.Length,
                     GetRewardsInBlock(b));
             }
@@ -144,8 +144,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return historyInfo;
         }
 
-        private bool ShouldCache(Block block) =>
-            _blockTree.Head is null || block.Number >= _blockTree.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache;
+        private bool ShouldCache(Block block)
+        {
+            ulong headNumber = _blockTree.Head?.Number ?? 0;
+            ulong maxDistance = (ulong)_oldestBlockDistanceFromHeadAllowedInCache;
+            return _blockTree.Head is null || headNumber <= maxDistance || block.Number >= headNumber - maxDistance;
+        }
 
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
             int blockCount,
@@ -209,7 +213,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private void TryRunCleanup()
         {
-            long headNumber = _blockTree.Head?.Number ?? 0;
+            long headNumber = _blockTree.Head is null ? 0 : checked((long)_blockTree.Head.Number);
             long lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
             if (lastCleanupHeadBlockNumber != headNumber
                 && _feeHistoryCache.Count > 2 * MaxBlockCount // let's let the cache grow a bit and do less cleanup
@@ -249,7 +253,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 long previousGasUsedTotal = 0;
                 foreach (TxReceipt receipt in txReceipts)
                 {
-                    long gasUsedTotal = receipt.GasUsedTotal;
+                    long gasUsedTotal = checked((long)receipt.GasUsedTotal);
                     yield return gasUsedTotal - previousGasUsedTotal;
                     previousGasUsedTotal = gasUsedTotal;
                 }
@@ -261,7 +265,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
-                : txs.Select(static tx => tx.GasLimit));
+                : txs.Select(static tx => checked((long)tx.GasLimit)));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
             Span<long> gasUsedSpan = gasUsed.AsSpan();

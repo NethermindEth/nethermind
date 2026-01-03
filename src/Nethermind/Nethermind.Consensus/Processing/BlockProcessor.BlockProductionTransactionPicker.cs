@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
+                long gasRemaining = checked((long)block.Header.GasLimit) - checked((long)block.GasUsed);
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(
                         // If smallest tx is too large, stop picking
-                        currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
+                        currentTx.GasLimit == checked((ulong)GasCostOf.Transaction) ? TxAction.Stop : TxAction.Skip,
                         "Too large for CL");
                 }
 
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (currentTx.GasLimit > gasRemaining)
+                if (currentTx.GasLimit > checked((ulong)gasRemaining))
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
                 }
@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
-                if (expectedNonce != currentTx.Nonce)
+                if ((ulong)expectedNonce != currentTx.Nonce)
                 {
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }

@@ -135,14 +135,14 @@ namespace Ethereum.Test.Base
                     unclesHash: Keccak.OfAnEmptySequenceRlp,
                     beneficiary: test.CurrentCoinbase,
                     difficulty: test.CurrentDifficulty,
-                    number: test.CurrentNumber - 1,
+                    number: checked(test.CurrentNumber - 1),
                     gasLimit: test.CurrentGasLimit,
                     timestamp: test.CurrentTimestamp,
                     extraData: []
                 )
                 {
-                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
+                    BlobGasUsed = checked(test.ParentBlobGasUsed.Value.ToUInt64(null)),
+                    ExcessBlobGas = checked(test.ParentExcessBlobGas.Value.ToUInt64(null)),
                 };
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }

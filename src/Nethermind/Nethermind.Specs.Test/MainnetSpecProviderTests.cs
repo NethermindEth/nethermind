@@ -13,9 +13,9 @@ namespace Nethermind.Specs.Test
     {
         private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 
-        [TestCase(12_243_999, false)]
-        [TestCase(12_244_000, true)]
-        public void Berlin_eips(long blockNumber, bool isEnabled)
+        [TestCase(12_243_999UL, false)]
+        [TestCase(12_244_000UL, true)]
+        public void Berlin_eips(ulong blockNumber, bool isEnabled)
         {
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2537Enabled.Should().Be(false);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
@@ -23,9 +23,9 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
 
-        [TestCase(12_964_999, false)]
-        [TestCase(12_965_000, true)]
-        public void London_eips(long blockNumber, bool isEnabled)
+        [TestCase(12_964_999UL, false)]
+        [TestCase(12_965_000UL, true)]
+        public void London_eips(ulong blockNumber, bool isEnabled)
         {
             if (isEnabled)
                 _specProvider.GetSpec((ForkActivation)blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
@@ -40,7 +40,7 @@ namespace Nethermind.Specs.Test
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
-        public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        public void Cancun_eips(ulong blockNumber, ulong timestamp, bool isEnabled)
         {
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled.Should().Be(isEnabled);
@@ -58,7 +58,7 @@ namespace Nethermind.Specs.Test
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, true)]
-        public void Prague_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        public void Prague_eips(ulong blockNumber, ulong timestamp, bool isEnabled)
         {
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip2935Enabled.Should().Be(isEnabled);
             if (isEnabled)
@@ -75,7 +75,7 @@ namespace Nethermind.Specs.Test
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, false)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.OsakaBlockTimestamp, true)]
-        public void Osaka_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        public void Osaka_eips(ulong blockNumber, ulong timestamp, bool isEnabled)
         {
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7594Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7823Enabled.Should().Be(isEnabled);
@@ -90,7 +90,7 @@ namespace Nethermind.Specs.Test
         [Test]
         public void Dao_block_number_is_correct()
         {
-            _specProvider.DaoBlockNumber.Should().Be(1920000L);
+            _specProvider.DaoBlockNumber.Should().Be(1920000UL);
         }
     }
 }

@@ -56,9 +56,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksHeadersFinished => !FastSyncEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
-        private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? _syncConfig.StateMinDistanceFromHead;
+        private ulong FastSyncCatchUpHeightDelta => checked((ulong)(_syncConfig.FastSyncCatchUpHeightDelta ?? _syncConfig.StateMinDistanceFromHead));
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
-        private long? LastBlockThatEnabledFullSync { get; set; }
+        private ulong? LastBlockThatEnabledFullSync { get; set; }
         private int TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private readonly CancellationTokenSource _cancellation = new();
@@ -148,7 +148,7 @@ namespace Nethermind.Synchronization.ParallelSync
             else
             {
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
-                (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
+                (UInt256? peerDifficulty, ulong? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
                 if (peerBlock is null or 0)
                 {
@@ -291,9 +291,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
-            long bestBlock = Math.Max(best.Processed, LastBlockThatEnabledFullSync ?? 0);
+            ulong lastFullSyncBlock = LastBlockThatEnabledFullSync ?? 0;
+            ulong bestBlock = best.Processed >= lastFullSyncBlock ? best.Processed : lastFullSyncBlock;
             bool hasEverBeenInFullSync = bestBlock > 0 && best.State > 0;
-            long heightDelta = best.TargetBlock - bestBlock;
+
+            ulong heightDelta = best.TargetBlock > bestBlock ? best.TargetBlock - bestBlock : 0;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
 
@@ -395,11 +397,13 @@ namespace Nethermind.Synchronization.ParallelSync
             // and we need to sync away from it.
             // Note: its ok if target block height is not accurate as long as full sync downloader does not stop
             //  earlier than this condition below which would cause a hang.
-            bool notReachedFullSyncTransition = best.Header < best.TargetBlock - TotalSyncLag;
+            bool notReachedFullSyncTransition = best.TargetBlock > best.Header
+                && (best.TargetBlock - best.Header) > (ulong)TotalSyncLag;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
 
-            bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
+            bool longRangeCatchUp = best.TargetBlock > best.State
+                && (best.TargetBlock - best.State) >= FastSyncCatchUpHeightDelta;
             bool stateNotDownloadedYet = !best.StateDownloaded;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
@@ -583,9 +587,14 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasAnyPostPivotPeer = best.AnyPostPivotPeerKnown;
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
-            bool stickyStateNodes = best.TargetBlock - best.Header < (_syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta);
 
-            bool longRangeCatchUp = best.TargetBlock - best.State >= FastSyncCatchUpHeightDelta;
+            // Guard unsigned subtraction: peers/pivot updates can temporarily make TargetBlock < Header.
+            // Wraparound here would break mode selection (e.g., sticky state nodes / catch-up calculations).
+            ulong headGap = best.TargetBlock > best.Header ? best.TargetBlock - best.Header : 0;
+            bool stickyStateNodes = headGap < (ulong)(_syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta);
+
+            bool longRangeCatchUp = best.TargetBlock > best.State
+                && (best.TargetBlock - best.State) >= FastSyncCatchUpHeightDelta;
             bool stateNotDownloadedYet = !best.StateDownloaded;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
@@ -637,7 +646,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInSnapRangesPhase(Snapshot best)
         {
             bool isInStateSync = best.IsInStateSync;
-            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= TotalSyncLag;
+            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= (ulong)TotalSyncLag;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
 
             if (_logger.IsTrace)
@@ -657,15 +666,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyDesiredPeerKnown(Snapshot best) => _betterPeerStrategy.IsDesiredPeer(best.Peer, (best.ChainDifficulty, best.Header));
 
-        private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
+        private (UInt256? maxPeerDifficulty, ulong? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
-            long? number = 0;
+            ulong? number = 0;
 
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
-                long currentMaxNumber = number ?? 0;
+                ulong currentMaxNumber = number ?? 0;
                 bool isNewPeerBetterThanCurrentMax = _betterPeerStrategy.Compare((currentMax, currentMaxNumber), peer.SyncPeer) < 0;
 
                 if (isNewPeerBetterThanCurrentMax)
@@ -678,7 +687,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         // during the beacon header sync our realTotalDifficulty could be 0. We're using peer.TotalDifficulty in this case
                         realTotalDifficulty = realTotalDifficulty == 0 ? peerTD : realTotalDifficulty;
 
-                        var isRealPeerBetterThanCurrentMax = _betterPeerStrategy.Compare(((currentMax, currentMaxNumber)), (realTotalDifficulty, peer.HeadNumber)) < 0;
+                        var isRealPeerBetterThanCurrentMax = _betterPeerStrategy.Compare((currentMax, currentMaxNumber), (realTotalDifficulty, peer.HeadNumber)) < 0;
 
                         if (isRealPeerBetterThanCurrentMax)
                         {
@@ -699,7 +708,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose() => _cancellation.Dispose();
 
-        private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
+        private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, ulong peerBlock, bool inBeaconControl)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -723,31 +732,26 @@ namespace Nethermind.Synchronization.ParallelSync
             return best;
         }
 
-        private Snapshot TakeSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
+        private Snapshot TakeSnapshot(in UInt256? peerDifficulty, ulong peerBlock, bool inBeaconControl)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
-            long processed = _syncProgressResolver.FindBestProcessedBlock();
-            long state = _syncProgressResolver.FindBestFullState();
-            long block = _syncProgressResolver.FindBestFullBlock();
-            long header = _syncProgressResolver.FindBestHeader();
-            long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
+            ulong processed = _syncProgressResolver.FindBestProcessedBlock();
+            ulong state = _syncProgressResolver.FindBestFullState();
+            ulong block = _syncProgressResolver.FindBestFullBlock();
+            ulong header = _syncProgressResolver.FindBestHeader();
+            ulong targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() is { } beaconTarget
+                ? checked((ulong)beaconTarget)
+                : peerBlock;
             UInt256 chainDifficulty = _syncProgressResolver.ChainDifficulty;
 
-            return new(processed, state, block, header, chainDifficulty, Math.Max(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock, _syncProgressResolver.SyncPivot.BlockNumber);
+            return new(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl, targetBlock, _syncProgressResolver.SyncPivot.BlockNumber);
         }
 
         private static bool IsSnapshotInvalid(Snapshot best)
         {
-            return // none of these values should ever be negative
-                best.Block < 0
-                || best.Header < 0
-                || best.State < 0
-                || best.Processed < 0
-                || best.Peer.Block < 0
-                || best.TargetBlock < 0
-                // best header is at least equal to the best full block
-                || best.Block > best.Header
+            return // best header is at least equal to the best full block
+                best.Block > best.Header
                 // we cannot download state for an unknown header
                 || best.State > best.Header
                 // we can only process blocks for which we have full body
@@ -781,16 +785,16 @@ namespace Nethermind.Synchronization.ParallelSync
         private ref struct Snapshot
         {
             public Snapshot(
-                long processed,
-                long state,
-                long block,
-                long header,
+                ulong processed,
+                ulong state,
+                ulong block,
+                ulong header,
                 UInt256 chainDifficulty,
-                long peerBlock,
+                ulong peerBlock,
                 in UInt256? peerDifficulty,
                 bool isInBeaconControl,
-                long targetBlock,
-                long pivotNumber
+                ulong targetBlock,
+                ulong pivotNumber
             )
             {
                 Processed = processed;
@@ -827,28 +831,28 @@ namespace Nethermind.Synchronization.ParallelSync
             /// <summary>
             /// Best block that has been processed
             /// </summary>
-            public long Processed { get; }
+            public ulong Processed { get; }
 
             /// <summary>
             /// Best full block state in the state trie (may not be processed if we just finished state trie download)
             /// </summary>
-            public long State { get; }
+            public ulong State { get; }
 
             /// <summary>
             /// Best block body
             /// </summary>
-            public long Block { get; }
+            public ulong Block { get; }
 
             /// <summary>
             /// Best block header - may be missing body if we just insert headers
             /// </summary>
-            public long Header { get; }
+            public ulong Header { get; }
 
             /// <summary>
             /// The best block that we want to go to. best.Peer.Block for PoW, beaconSync.ProcessDestination for PoS,
             /// which is the NewPayload/FCU block.
             /// </summary>
-            public long TargetBlock { get; }
+            public ulong TargetBlock { get; }
 
             /// <summary>
             /// Current difficulty of the chain
@@ -858,9 +862,9 @@ namespace Nethermind.Synchronization.ParallelSync
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
             /// </summary>
-            public (UInt256? TotalDifficulty, long Block) Peer { get; }
+            public (UInt256? TotalDifficulty, ulong Block) Peer { get; }
 
-            public long PivotNumber { get; }
+            public ulong PivotNumber { get; }
 
         }
     }

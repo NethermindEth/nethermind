@@ -69,7 +69,7 @@ public class ChainSpecBasedSpecProviderTests
         testProvider.TerminalTotalDifficulty = 0;
         testProvider.GenesisSpec = expectedSpec;
 
-        CompareSpecs(testProvider, provider, (blockNumber, timestamp));
+        CompareSpecs(testProvider, provider, new ForkActivation(checked((ulong)blockNumber), timestamp));
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
     }
@@ -126,7 +126,7 @@ public class ChainSpecBasedSpecProviderTests
         expectedSpec.DifficultyBombDelay = 0;
         List<ForkActivation> forkActivationsToTest =
         [
-            (blockNumber, timestamp),
+            new ForkActivation(checked((ulong)blockNumber), timestamp),
         ];
 
         foreach (ForkActivation activation in forkActivationsToTest)
@@ -148,11 +148,11 @@ public class ChainSpecBasedSpecProviderTests
     {
         get
         {
-            yield return new TestCaseData((ForkActivation)(2, 0)) { TestName = "First" };
-            yield return new TestCaseData((ForkActivation)(120_000_000, 0)) { TestName = "Block number" };
-            yield return new TestCaseData((ForkActivation)(1735372, 3)) { TestName = "Low timestamp" };
-            yield return new TestCaseData((ForkActivation)(1735372, 1677557088)) { TestName = "1677557088" };
-            yield return new TestCaseData((ForkActivation)(1735372, 1677557087)) { TestName = "1677557087" };
+            yield return new TestCaseData(new ForkActivation(2UL, 0UL)) { TestName = "First" };
+            yield return new TestCaseData(new ForkActivation(120_000_000UL, 0UL)) { TestName = "Block number" };
+            yield return new TestCaseData(new ForkActivation(1_735_372UL, 3UL)) { TestName = "Low timestamp" };
+            yield return new TestCaseData(new ForkActivation(1_735_372UL, 1_677_557_088UL)) { TestName = "1677557088" };
+            yield return new TestCaseData(new ForkActivation(1_735_372UL, 1_677_557_087UL)) { TestName = "1677557087" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp)) { TestName = "First Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 1000)) { TestName = "Cancun" };
@@ -627,7 +627,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
         IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
-        long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = newSpecProvider.DaoBlockNumber;
 
         bool isMainnet = daoBlockNumber is not null;
         if (isMainnet)

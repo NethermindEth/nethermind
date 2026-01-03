@@ -133,8 +133,8 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
 
-        private long? _overriddenEip1559TransitionBlock;
-        public long Eip1559TransitionBlock
+        private ulong? _overriddenEip1559TransitionBlock;
+        public ulong Eip1559TransitionBlock
         {
             get => _overriddenEip1559TransitionBlock ?? spec.Eip1559TransitionBlock;
             set => _overriddenEip1559TransitionBlock = value;

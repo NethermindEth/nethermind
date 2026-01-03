@@ -21,13 +21,13 @@ public sealed class CumulativeTotalDifficultyStrategy : ITotalDifficultyStrategy
 
 public sealed class FixedTotalDifficultyStrategy(
     ITotalDifficultyStrategy strategy,
-    long fixesBlockNumber,
+    ulong fixesBlockNumber,
     UInt256 toTotalDifficulty
 ) : ITotalDifficultyStrategy
 {
     public UInt256 ParentTotalDifficulty(BlockHeader header)
     {
-        return header.Number > 0 && header.Number - 1 == fixesBlockNumber
+        return header.Number != 0 && header.Number - 1 == fixesBlockNumber
             ? toTotalDifficulty
             : strategy.ParentTotalDifficulty(header);
     }

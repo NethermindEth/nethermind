@@ -13,16 +13,16 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
 {
-    protected abstract long? LowestInsertedNumber { get; }
+    protected abstract ulong? LowestInsertedNumber { get; }
     protected abstract int BarrierWhenStartedMetadataDbKey { get; }
     protected abstract long SyncConfigBarrierCalc { get; }
     protected abstract Func<bool> HasPivot { get; }
 
     protected readonly ISpecProvider _specProvider;
     protected readonly ILogger _logger;
-    protected long _barrier;
-    protected long _pivotNumber;
-    protected long? _barrierWhenStarted;
+    protected ulong _barrier;
+    protected ulong _pivotNumber;
+    protected ulong? _barrierWhenStarted;
 
     protected readonly IDb _metadataDb;
 
@@ -37,12 +37,12 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
     {
         if (!HasPivot())
         {
-            _barrierWhenStarted = SyncConfigBarrierCalc;
+            _barrierWhenStarted = checked((ulong)SyncConfigBarrierCalc);
             _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         }
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            _barrierWhenStarted = _metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            _barrierWhenStarted = _metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
         }
         else
         {

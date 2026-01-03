@@ -195,7 +195,7 @@ public class ShutterTxLoader(
         return tx;
     }
 
-    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         lock (_events)
         {
@@ -240,7 +240,7 @@ public class ShutterTxLoader(
         };
     }
 
-    private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
+    private void LoadFromScanningLogs(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         _txPointer = txPointer;
 

@@ -18,7 +18,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
 {
     private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
-    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
+    private readonly Dictionary<Hash256AsKey, ulong> _blockNumberDict = new();
 
     public void Insert(BlockHeader header)
     {
@@ -34,7 +34,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         blockNumber ??= GetBlockNumber(blockHash);
 
@@ -63,10 +63,10 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         _blockNumberDict.Remove(blockHash);
     }
 
-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => _blockNumberDict[blockHash] = blockNumber;
+    public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber) => _blockNumberDict[blockHash] = blockNumber;
 
-    public long? GetBlockNumber(Hash256 blockHash) =>
+    public ulong? GetBlockNumber(Hash256 blockHash) =>
         _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
 
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => Get(blockHash, true, blockNumber);
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null) => Get(blockHash, true, blockNumber);
 }

@@ -51,11 +51,11 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
-    public static long GasUsed { get; set; }
+    public static ulong GasUsed { get; set; }
 
     [GaugeMetric]
     [Description("Gas Limit for processed blocks")]
-    public static long GasLimit { get; set; }
+    public static ulong GasLimit { get; set; }
 
     [GaugeMetric]
     [Description("Total difficulty on the chain")]

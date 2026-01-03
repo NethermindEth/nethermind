@@ -47,7 +47,7 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task FeeCollector_should_collect_burned_fees_when_eip1559_and_fee_collector_are_set()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3_000_000UL;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .WithFeeCollector(TestItem.AddressE)
@@ -64,7 +64,7 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task FeeCollector_should_not_collect_burned_fees_when_eip1559_is_not_set()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3_000_000UL;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
@@ -80,7 +80,7 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task FeeCollector_should_not_collect_burned_fees_when_transaction_is_free()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3_000_000UL;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .WithFeeCollector(TestItem.AddressE)

@@ -503,7 +503,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (!readonlyChain)
         {
-            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
+            Metrics.BestKnownBlockNumber = checked((long)_blockTree.BestKnownNumber);
         }
 
         return lastProcessed;

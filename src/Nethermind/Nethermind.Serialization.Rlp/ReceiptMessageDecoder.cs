@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using System.Numerics;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -48,16 +49,26 @@ namespace Nethermind.Serialization.Rlp
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+                {
+                    BigInteger big = ctx.DecodeUBigInt();
+                    if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                    txReceipt.GasUsedTotal = (ulong)big;
+                }
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
-                txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+                BigInteger big = firstItem.ToUnsignedBigInteger();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
             }
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+                {
+                    BigInteger big = ctx.DecodeUBigInt();
+                    if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                    txReceipt.GasUsedTotal = (ulong)big;
+                }
             }
 
             txReceipt.Bloom = ctx.DecodeBloom();

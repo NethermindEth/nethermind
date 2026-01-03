@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using System.Numerics;
 
 namespace Nethermind.Optimism;
 
@@ -32,16 +33,26 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            {
+                BigInteger big = rlpStream.DecodeUBigInt();
+                if (big > ulong.MaxValue) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
+            }
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            BigInteger big = firstItem.ToUnsignedBigInteger();
+            if (big > ulong.MaxValue) throw new OverflowException("GasUsedTotal overflow");
+            txReceipt.GasUsedTotal = (ulong)big;
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            {
+                BigInteger big = rlpStream.DecodeUBigInt();
+                if (big > ulong.MaxValue) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
+            }
         }
 
         txReceipt.Bloom = rlpStream.DecodeBloom();

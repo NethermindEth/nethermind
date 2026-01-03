@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Transactions
             _txSource = txSource;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {

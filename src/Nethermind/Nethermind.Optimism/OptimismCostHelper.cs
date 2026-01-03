@@ -103,7 +103,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         }
     }
 
-    public UInt256 ComputeOperatorCost(long gas, BlockHeader header, IWorldState worldState)
+    public UInt256 ComputeOperatorCost(ulong gas, BlockHeader header, IWorldState worldState)
     {
         if (!opSpecHelper.IsIsthmus(header))
             return UInt256.Zero;

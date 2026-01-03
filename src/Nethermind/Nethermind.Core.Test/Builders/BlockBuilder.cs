@@ -31,6 +31,11 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithNumber(long number)
         {
+            return WithNumber(checked((ulong)number));
+        }
+
+        public BlockBuilder WithNumber(ulong number)
+        {
             TestObjectInternal.Header.Number = number;
             return this;
         }
@@ -49,9 +54,11 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithGasLimit(long gasLimit)
         {
-            TestObjectInternal.Header.GasLimit = gasLimit;
+            TestObjectInternal.Header.GasLimit = checked((ulong)gasLimit);
             return this;
         }
+
+        public BlockBuilder WithGasLimit(ulong gasLimit) => WithGasLimit(checked((long)gasLimit));
 
         public BlockBuilder WithTimestamp(ulong timestamp)
         {
@@ -264,7 +271,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithGasUsed(long gasUsed)
         {
-            TestObjectInternal.Header.GasUsed = gasUsed;
+            TestObjectInternal.Header.GasUsed = checked((ulong)gasUsed);
             return this;
         }
 

@@ -45,8 +45,8 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
         private Hash256? _terminalBlockHash;
 
-        private long? _terminalBlockNumber;
-        private long? _firstPoSBlockNumber;
+        private ulong? _terminalBlockNumber;
+        private ulong? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
         private Hash256 _finalizedBlockHash = Keccak.Zero;
         private bool _terminalBlockExplicitSpecified;
@@ -132,7 +132,7 @@ namespace Nethermind.Merge.Plugin
 
             _terminalBlockNumber = header.Number;
             _terminalBlockHash = header.Hash;
-            _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalBlockNumber.Value).Bytes);
+            _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(checked((long)_terminalBlockNumber.Value)).Bytes);
             _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
             _firstPoSBlockNumber = header.Number + 1;
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
@@ -237,10 +237,18 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadTerminalBlock()
         {
-            _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                   _specProvider.MergeBlockNumber?.BlockNumber - 1;
+            ulong? configuredTerminalBlockNumber = _mergeConfig.TerminalBlockNumber is null
+                ? null
+                : checked((ulong)_mergeConfig.TerminalBlockNumber.Value);
 
-            _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
+            ulong? mergeBlockNumber = _specProvider.MergeBlockNumber?.BlockNumber;
+            ulong? derivedTerminalBlockNumber = mergeBlockNumber is null
+                ? null
+                : (mergeBlockNumber.Value > 0 ? mergeBlockNumber.Value - 1 : 0);
+
+            _terminalBlockNumber = configuredTerminalBlockNumber ?? derivedTerminalBlockNumber;
+
+            _terminalBlockExplicitSpecified = configuredTerminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
@@ -251,7 +259,7 @@ namespace Nethermind.Merge.Plugin
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 
-        private long? LoadTerminalBlockNumberFromDb()
+        private ulong? LoadTerminalBlockNumberFromDb()
         {
             try
             {
@@ -259,7 +267,8 @@ namespace Nethermind.Merge.Plugin
                 {
                     byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
                     RlpStream stream = new(hashFromDb!);
-                    return stream.DecodeLong();
+                    long decoded = stream.DecodeLong();
+                    return decoded < 0 ? null : checked((ulong)decoded);
                 }
             }
             catch (RlpException)

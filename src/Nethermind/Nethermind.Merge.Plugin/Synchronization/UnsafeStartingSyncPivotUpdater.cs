@@ -29,7 +29,7 @@ public class UnsafeStartingSyncPivotUpdater(
     : StartingSyncPivotUpdater(blockTree, syncModeSelector, syncPeerPool, syncConfig,
         blockCacheService, beaconSyncStrategy, logManager)
 {
-    protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    protected override async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
         Hash256? headBlockHash = _beaconSyncStrategy.GetHeadBlockHash();
@@ -37,13 +37,13 @@ public class UnsafeStartingSyncPivotUpdater(
         if (headBlockHash is not null && headBlockHash != Keccak.Zero)
         {
             const string head = "head";
-            long? headBlockNumber = TryGetBlockNumberFromBlockCache(headBlockHash, head)
-                                    ?? await TryGetFromPeers(headBlockHash, cancellationToken, head)
-                                    ?? 0;
+            ulong? headBlockNumber = TryGetBlockNumberFromBlockCache(headBlockHash, head)
+                                     ?? await TryGetFromPeers(headBlockHash, cancellationToken, head)
+                                     ?? 0;
 
-            if (headBlockNumber > Reorganization.MaxDepth)
+            if (headBlockNumber > (ulong)Reorganization.MaxDepth)
             {
-                long potentialPivotBlockNumber = headBlockNumber.Value - Reorganization.MaxDepth;
+                ulong potentialPivotBlockNumber = headBlockNumber.Value - (ulong)Reorganization.MaxDepth;
 
                 Hash256? potentialPivotBlockHash =
                     TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockNumber)
@@ -60,14 +60,14 @@ public class UnsafeStartingSyncPivotUpdater(
         return null;
     }
 
-    private Task<BlockHeader?> TryGetFromPeers(long blockNumber, CancellationToken cancellationToken) =>
+    private Task<BlockHeader?> TryGetFromPeers(ulong blockNumber, CancellationToken cancellationToken) =>
         TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
         {
             using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
             return x?.Count == 1 ? x[0] : null;
         });
 
-    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(long potentialPivotBlockNumber)
+    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(ulong potentialPivotBlockNumber)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in block cache");
 

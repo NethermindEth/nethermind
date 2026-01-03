@@ -31,16 +31,13 @@ namespace Nethermind.AuRa.Test
         public void GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, long blockNumber, long? expected)
         {
             IBlockGasLimitContract blockGasLimitContract1 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract1.ActivationBlock.Returns(3);
-            blockGasLimitContract1.Activation.Returns(3);
+            blockGasLimitContract1.Activation.Returns(3ul);
             blockGasLimitContract1.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(1000u);
             IBlockGasLimitContract blockGasLimitContract2 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract2.ActivationBlock.Returns(5);
-            blockGasLimitContract2.Activation.Returns(5);
+            blockGasLimitContract2.Activation.Returns(5ul);
             blockGasLimitContract2.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(3000000u);
             IBlockGasLimitContract blockGasLimitContract3 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract3.ActivationBlock.Returns(10);
-            blockGasLimitContract3.Activation.Returns(10);
+            blockGasLimitContract3.Activation.Returns(10ul);
             blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new AbiException(string.Empty));
 
             BlocksConfig config = new() { TargetBlockGasLimit = 4000000 };

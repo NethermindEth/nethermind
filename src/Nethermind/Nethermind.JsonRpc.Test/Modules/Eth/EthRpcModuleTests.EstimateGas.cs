@@ -113,10 +113,10 @@ public partial class EthRpcModuleTests
         Assert.That(gasUsedEstimate, Is.EqualTo((double)gasUsedAccessList).Within(1.5).Percent);
     }
 
-    [TestCase(true, 0xeee7, 0xf71b)]
-    [TestCase(false, 0xeee7, 0xee83)]
-    public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList,
-        long gasPriceWithAccessList)
+    [TestCase(true, 0xeee7UL, 0xf71bUL)]
+    [TestCase(false, 0xeee7UL, 0xee83UL)]
+    public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, ulong gasPriceWithoutAccessList,
+        ulong gasPriceWithAccessList)
     {
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
             .Build(new TestSpecProvider(Berlin.Instance));

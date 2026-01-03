@@ -378,11 +378,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        private void HintNewBlock(Hash256 blockHash, long number)
+        private void HintNewBlock(Hash256 blockHash, ulong number)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
 
-            NewBlockHashesMessage msg = new((blockHash, number));
+            NewBlockHashesMessage msg = new((blockHash, checked((long)number)));
             Send(msg);
         }
 

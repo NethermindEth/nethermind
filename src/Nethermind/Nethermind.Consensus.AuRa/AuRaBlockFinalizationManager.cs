@@ -59,16 +59,30 @@ namespace Nethermind.Consensus.AuRa
         private void Initialize()
         {
             var hasHead = _blockTree.Head is not null;
-            var level = hasHead ? _blockTree.Head.Number + 1 : 0;
-            ChainLevelInfo chainLevel;
-            do
-            {
-                level--;
-                chainLevel = _chainLevelInfoRepository.LoadLevel(level);
-            }
-            while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
-            LastFinalizedBlockLevel = level;
+            // Use unsigned arithmetic for block numbers to avoid converting negative values
+            // to ulong (which throws) when walking levels backwards.
+            ulong levelU = hasHead ? _blockTree.Head.Number + 1UL : 0UL;
+            ChainLevelInfo chainLevel = null;
+
+            while (true)
+            {
+                if (levelU == 0)
+                {
+                    chainLevel = _chainLevelInfoRepository.LoadLevel(0UL);
+                    break;
+                }
+
+                levelU--;
+                chainLevel = _chainLevelInfoRepository.LoadLevel(levelU);
+
+                if (chainLevel?.MainChainBlock?.IsFinalized == true)
+                {
+                    break;
+                }
+            }
+
+            LastFinalizedBlockLevel = checked((long)levelU);
 
             // This is needed if processing was stopped between processing last block and running finalization logic
             if (hasHead)
@@ -92,7 +106,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 using var batch = _chainLevelInfoRepository.StartBatch();
                 // need to un-finalize blocks
-                var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
+                var minSealersForFinalization = GetMinSealersForFinalization(checked((long)header.Number));
                 for (int i = 1; i < minSealersForFinalization; i++)
                 {
                     header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -124,19 +138,20 @@ namespace Nethermind.Consensus.AuRa
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(static b => b.Hash))}].");
 
-                LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
+                LastFinalizedBlockLevel = checked((long)finalizedBlocks[^1].Number);
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
             }
         }
 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
-            if (block.Number == _twoThirdsMajorityTransition)
+            long blockNumber = checked((long)block.Number);
+            if (blockNumber == _twoThirdsMajorityTransition)
             {
                 if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
             }
 
-            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
+            var minSealersForFinalization = GetMinSealersForFinalization(blockNumber);
             var originalBlock = block;
 
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
@@ -192,7 +207,7 @@ namespace Nethermind.Consensus.AuRa
                             finalizedBlocks.Add(block);
                             if (ancestorsNotYetRemoved)
                             {
-                                _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
+                                _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(checked((long)block.Number));
                                 ancestorsNotYetRemoved = false;
                             }
                         }
@@ -277,13 +292,13 @@ namespace Nethermind.Consensus.AuRa
         {
             var block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
-            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
+            var minSealersForFinalization = GetMinSealersForFinalization(checked((long)block.Number));
             while (block.Number > 0)
             {
                 validators.Add(block.Beneficiary);
                 if (validators.Count >= minSealersForFinalization)
                 {
-                    return block.Number;
+                    return checked((long)block.Number);
                 }
 
                 block = _blockTree.FindParentHeader(block, BlockTreeLookupOptions.None);
@@ -294,7 +309,8 @@ namespace Nethermind.Consensus.AuRa
 
         public long? GetFinalizationLevel(long level)
         {
-            BlockHeader? block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
+            ulong levelUlong = checked((ulong)level);
+            BlockHeader? block = _blockTree.FindHeader(levelUlong, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
             var minSealersForFinalization = GetMinSealersForFinalization(level);
 
@@ -303,8 +319,8 @@ namespace Nethermind.Consensus.AuRa
             {
                 // in that case check if it has enough blocks to best known to be finalized
                 // as everything before pivot should be finalized
-                long blocksAfter = _blockTree.BestKnownNumber - level + 1;
-                if (blocksAfter >= minSealersForFinalization)
+                ulong blocksAfter = _blockTree.BestKnownNumber - levelUlong + 1;
+                if (blocksAfter >= (ulong)minSealersForFinalization)
                 {
                     return level + minSealersForFinalization - 1;
                 }
@@ -315,7 +331,7 @@ namespace Nethermind.Consensus.AuRa
                 validators.Add(block.Beneficiary);
                 if (validators.Count >= minSealersForFinalization)
                 {
-                    return block.Number;
+                    return checked((long)block.Number);
                 }
 
                 block = _blockTree.FindHeader(block.Number + 1, BlockTreeLookupOptions.None);
@@ -376,10 +392,11 @@ namespace Nethermind.Consensus.AuRa
 
             public void RemoveAncestors(long blockNumber)
             {
+                ulong blockNumberUlong = checked((ulong)blockNumber);
                 for (int i = _blocks.Count - 1; i >= 0; i--)
                 {
                     var item = _blocks[i];
-                    if (item.Number <= blockNumber)
+                    if (item.Number <= blockNumberUlong)
                     {
                         _blocks.RemoveFromBack();
                         var setCount = _validatorCount[item.Beneficiary];

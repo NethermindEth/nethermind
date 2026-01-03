@@ -90,8 +90,8 @@ namespace Nethermind.Evm.Test
                 _ => byteCode,
             };
             _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
-            long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
+            ulong blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1UL;
+            (Block block, Transaction transaction) = PrepareTx(new ForkActivation(blockNumber), 100000, createContract);
 
             transaction.GasPrice = 20.GWei();
             transaction.To = null;

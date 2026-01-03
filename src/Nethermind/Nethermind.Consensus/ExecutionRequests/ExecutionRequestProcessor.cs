@@ -25,7 +25,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private const long GasLimit = 30_000_000L;
+    private const long SystemCallGasLimit = 30_000_000L;
 
     private readonly ITransactionProcessor _transactionProcessor;
 
@@ -35,7 +35,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         Data = Array.Empty<byte>(),
         To = Eip7002Constants.WithdrawalRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
-        GasLimit = GasLimit,
+        GasLimit = SystemCallGasLimit,
         GasPrice = UInt256.Zero,
     };
 
@@ -45,7 +45,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         Data = Array.Empty<byte>(),
         To = Eip7251Constants.ConsolidationRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
-        GasLimit = GasLimit,
+        GasLimit = SystemCallGasLimit,
         GasPrice = UInt256.Zero,
     };
 

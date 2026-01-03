@@ -51,7 +51,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!_blocks.TryGetValue(currentHash, out currentNode))
                 {
-                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - i);
+                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - (ulong)i);
                     if (currentHeader is null)
                     {
                         break;
@@ -81,7 +81,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         if (needToAddAny && !cancellationToken.IsCancellationRequested)
         {
             (CacheNode Node, bool NeedToAdd) parentNode = blocks[^1];
-            InterlockedEx.Min(ref _minBlock, parentNode.Node.Number);
+            InterlockedEx.Min(ref _minBlock, checked((long)parentNode.Node.Number));
             for (int i = blocks.Count - 2; i >= 0 && !cancellationToken.IsCancellationRequested; i--)
             {
                 if (parentNode.NeedToAdd)
@@ -178,7 +178,10 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     {
                         try
                         {
-                            PruneBefore(blockHeader.Number - MaxDepth * 2);
+                            ulong pruneBefore = blockHeader.Number > (ulong)(MaxDepth * 2)
+                                ? blockHeader.Number - (ulong)(MaxDepth * 2)
+                                : 0;
+                            PruneBefore(checked((long)pruneBefore));
                         }
                         catch (Exception e)
                         {
@@ -189,7 +192,12 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        bool ShouldPrune() => _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
+        bool ShouldPrune()
+        {
+            long minBlock = _minBlock;
+            ulong minBlockNumber = minBlock > 0 ? (ulong)minBlock : 0;
+            return minBlockNumber + (ulong)(MaxDepth * 4) < blockHeader.Number && _pruningTask.IsCompleted;
+        }
     }
 
     public int PruneBefore(long blockNumber)
@@ -262,7 +270,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private class CacheNode(BlockHeader blockHeader, CacheNode? parent = null)
     {
         public Hash256 Hash { get; } = blockHeader.Hash!;
-        public long Number { get; } = blockHeader.Number;
+        public long Number { get; } = checked((long)blockHeader.Number);
         public Hash256 ParentHash { get; } = blockHeader.ParentHash!;
         public CacheNode? Parent { get; set; } = parent;
     }

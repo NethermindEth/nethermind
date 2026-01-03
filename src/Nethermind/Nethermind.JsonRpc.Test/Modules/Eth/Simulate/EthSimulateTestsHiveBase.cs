@@ -146,7 +146,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
-        var blockParameter = new BlockParameter(blockNumber);
+        var blockParameter = new BlockParameter(checked((ulong)blockNumber));
         var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;
         var simulated = chain.EthRpcModule.eth_simulateV1(payload, blockParameter).Data[0];
 

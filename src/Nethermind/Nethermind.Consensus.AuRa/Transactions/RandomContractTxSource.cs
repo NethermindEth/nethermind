@@ -50,9 +50,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
-            if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
+            ulong nextBlockNumber = parent.Number + 1;
+            if (_contracts.TryGetForBlock(nextBlockNumber, out var contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
                 if (tx is not null)

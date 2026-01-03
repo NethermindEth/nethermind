@@ -375,7 +375,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
-        long? gasAvailable_pre_MSTORE = null;
+        ulong? gasAvailable_pre_MSTORE = null;
         while (vmThread.IsAlive)
         {
             if (tracer.CanReadState)
@@ -384,7 +384,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
                 else
                 {
-                    long gasAvailable_post_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
+                    ulong gasAvailable_post_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
                     Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                 }
                 tracer.MoveNext();

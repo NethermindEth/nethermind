@@ -111,9 +111,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             testGasPriceOracle.GetGasPriceEstimate();
 
-            foreach (long receivedBlockNumber in Enumerable.Range(0, blockNumber + 1))
+            foreach (ulong receivedBlockNumber in Enumerable.Range(0, blockNumber + 1).Select(static x => (ulong)x))
             {
-                blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == receivedBlockNumber));
+                blockFinder.Received(1).FindBlock(Arg.Is<ulong>(l => l == receivedBlockNumber));
             }
         }
 
@@ -124,10 +124,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block blockWithTwoTx = Build.A.Block.WithTransactions(tx, tx).TestObject;
             for (int i = 0; i <= maxBlock; i++)
             {
-                blockFinder.FindBlock(i).Returns(blockWithTwoTx);
+                blockFinder.FindBlock((ulong)i).Returns(blockWithTwoTx);
             }
 
-            blockFinder.Head.Returns(Build.A.Block.WithNumber(maxBlock).TestObject);
+            blockFinder.Head.Returns(Build.A.Block.WithNumber((ulong)maxBlock).TestObject);
 
             return blockFinder;
         }
@@ -144,12 +144,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             testGasPriceOracle.GetGasPriceEstimate();
 
-            foreach (long receivedBlockNumber in Enumerable.Range(3, 5))
+            foreach (ulong receivedBlockNumber in Enumerable.Range(3, 5).Select(static x => (ulong)x))
             {
-                blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == receivedBlockNumber));
+                blockFinder.Received(1).FindBlock(Arg.Is<ulong>(l => l == receivedBlockNumber));
             }
 
-            blockFinder.DidNotReceive().FindBlock(Arg.Is<long>(l => l <= 2));
+            blockFinder.DidNotReceive().FindBlock(Arg.Is<ulong>(l => l <= 2ul));
         }
 
         private IBlockFinder GetBlockFinderForLastFiveBlocksWithThreeTxAndFirstFourWithOne()
@@ -160,14 +160,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block blockWithThreeTx = Build.A.Block.WithTransactions(Enumerable.Repeat(tx, 3).ToArray()).TestObject;
             for (int i = 0; i < 4; i++)
             {
-                blockFinder.FindBlock(i).Returns(blockWithOneTx);
+                blockFinder.FindBlock((ulong)i).Returns(blockWithOneTx);
             }
             for (int i = 4; i <= 8; i++)
             {
-                blockFinder.FindBlock(i).Returns(blockWithThreeTx);
+                blockFinder.FindBlock((ulong)i).Returns(blockWithThreeTx);
             }
 
-            blockFinder.Head.Returns(Build.A.Block.WithNumber(8).TestObject);
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(8ul).TestObject);
 
             return blockFinder;
         }

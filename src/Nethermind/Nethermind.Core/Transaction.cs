@@ -21,7 +21,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        public static ReadOnlySpan<byte> EofMagic => [0xEF, 0x00];
+        private static readonly byte[] _eofMagic = new byte[] { 0xEF, 0x00 };
+        public static ReadOnlySpan<byte> EofMagic => _eofMagic;
         public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
 
@@ -44,7 +45,7 @@ namespace Nethermind.Core
         public bool IsOPSystemTransaction { get; set; }
 
         private UInt256 _gasPrice;
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
         public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
@@ -54,10 +55,10 @@ namespace Nethermind.Core
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
-        public long GasLimit { get; set; }
-        private long _spentGas;
+        public ulong GasLimit { get; set; }
+        private ulong _spentGas;
         [JsonIgnore]
-        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        public ulong SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -173,6 +174,12 @@ namespace Nethermind.Core
         }
 
         public UInt256 Timestamp { get; set; }
+
+        public ulong GasLimitAsULong => GasLimit;
+        public ulong SpentGasAsULong => SpentGas;
+
+        public long GasLimitAsLong => checked((long)GasLimit);
+        public long SpentGasAsLong => checked((long)SpentGas);
 
         public int DataLength => Data.Length;
 

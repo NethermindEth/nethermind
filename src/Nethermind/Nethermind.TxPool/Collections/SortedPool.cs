@@ -154,7 +154,7 @@ namespace Nethermind.TxPool.Collections
             using var lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(group);
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : [];
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : Array.Empty<TValue>();
         }
 
         /// <summary>

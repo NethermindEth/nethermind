@@ -34,8 +34,8 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            long blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 100000, code);
+            ulong blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1UL;
+            (Block block, Transaction transaction) = PrepareTx(new ForkActivation(blockNumber, 0), 100000, code);
             block.Header.BaseFeePerGas = (UInt256)baseFee;
             if (send1559Tx)
             {

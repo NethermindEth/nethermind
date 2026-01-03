@@ -8,8 +8,8 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncBatch : FastBlocksBatch
     {
-        public long StartNumber { get; set; }
-        public long EndNumber => StartNumber + RequestSize - 1;
+        public ulong StartNumber { get; set; }
+        public ulong EndNumber => RequestSize == 0 ? StartNumber : StartNumber + (ulong)RequestSize - 1;
         public int RequestSize { get; set; }
         public long ResponseSizeEstimate { get; private set; }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return $"HEADERS {details} [{(Prioritized ? "HIGH" : "LOW")}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
         }
 
-        public override long? MinNumber => EndNumber;
+        public override ulong? MinNumber => EndNumber;
 
         public override void Dispose()
         {

@@ -25,6 +25,6 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Secp256r1Precompile++;
-        return Secp256r1.VerifySignature(inputData) ? ValidResult : [];
+        return Secp256r1.VerifySignature(inputData) ? ValidResult : Array.Empty<byte>();
     }
 }

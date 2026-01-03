@@ -32,12 +32,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed class RewardContract : CallableContract, IRewardContract
     {
-        public long Activation { get; }
+        public ulong Activation { get; }
 
         public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock)
             : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
-            Activation = transitionBlock;
+            ArgumentOutOfRangeException.ThrowIfNegative(transitionBlock);
+            Activation = checked((ulong)transitionBlock);
         }
 
         /// <summary>

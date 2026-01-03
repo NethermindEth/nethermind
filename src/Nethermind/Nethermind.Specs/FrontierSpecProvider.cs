@@ -12,10 +12,10 @@ namespace Nethermind.Specs
     {
         private ForkActivation? _theMergeBlock = null;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = (ForkActivation)blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber.Value;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -27,13 +27,13 @@ namespace Nethermind.Specs
 
         IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => Frontier.Instance;
 
-        public long? DaoBlockNumber { get; } = null;
+        public ulong? DaoBlockNumber { get; } = null;
         public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;
         public static Hash256 GenesisHash => KnownHashes.MainnetGenesis;
-        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
+        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0UL };
 
         private FrontierSpecProvider()
         {

@@ -7,7 +7,7 @@ namespace Nethermind.Core.Specs;
 
 public class SpecProviderDecorator(ISpecProvider baseSpecProvider) : ISpecProvider
 {
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) => baseSpecProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) => baseSpecProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
     public ForkActivation? MergeBlockNumber => baseSpecProvider.MergeBlockNumber;
 
@@ -17,7 +17,7 @@ public class SpecProviderDecorator(ISpecProvider baseSpecProvider) : ISpecProvid
 
     public IReleaseSpec GenesisSpec => baseSpecProvider.GenesisSpec;
 
-    public long? DaoBlockNumber => baseSpecProvider.DaoBlockNumber;
+    public ulong? DaoBlockNumber => baseSpecProvider.DaoBlockNumber;
 
     public ulong? BeaconChainGenesisTimestamp => baseSpecProvider.BeaconChainGenesisTimestamp;
 

@@ -15,6 +15,26 @@ namespace Nethermind.Serialization.Json
 
     public class ULongConverter : JsonConverter<ulong>
     {
+        public static ulong FromString(string s)
+        {
+            if (s is null)
+            {
+                throw new JsonException("null cannot be assigned to ulong");
+            }
+
+            if (s == "0x0")
+            {
+                return 0uL;
+            }
+
+            if (s.StartsWith("0x"))
+            {
+                return ulong.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            }
+
+            return ulong.Parse(s, NumberStyles.Integer, CultureInfo.InvariantCulture);
+        }
+
         public static ulong FromString(ReadOnlySpan<byte> s)
         {
             if (s.Length == 0)

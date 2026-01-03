@@ -16,9 +16,9 @@ namespace Nethermind.TxPool
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        long HeadNumber { get; }
+        ulong HeadNumber { get; }
 
-        long? BlockGasLimit { get; }
+        ulong? BlockGasLimit { get; }
 
         UInt256 CurrentBaseFee { get; }
 

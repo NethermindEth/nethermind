@@ -37,11 +37,18 @@ internal class ProposedBlockTests
         }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        ulong gapNumber = 0ul;
+        if (switchInfo.EpochSwitchBlockInfo.BlockNumber != 0)
+        {
+            ulong epochLength = checked((ulong)spec.EpochLength);
+            ulong gap = checked((ulong)spec.Gap);
+            ulong epochStart = switchInfo.EpochSwitchBlockInfo.BlockNumber - (switchInfo.EpochSwitchBlockInfo.BlockNumber % epochLength);
+            gapNumber = epochStart > gap ? epochStart - gap : 0ul;
+        }
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
         foreach (var key in masternodes.Skip(1))
         {
-            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            var vote = XdcTestHelper.BuildSignedVote(votingBlock, gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
 
@@ -111,11 +118,18 @@ internal class ProposedBlockTests
         }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        ulong gapNumber = 0ul;
+        if (switchInfo.EpochSwitchBlockInfo.BlockNumber != 0)
+        {
+            ulong epochLength = checked((ulong)spec.EpochLength);
+            ulong gap = checked((ulong)spec.Gap);
+            ulong epochStart = switchInfo.EpochSwitchBlockInfo.BlockNumber - (switchInfo.EpochSwitchBlockInfo.BlockNumber % epochLength);
+            gapNumber = epochStart > gap ? epochStart - gap : 0ul;
+        }
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (var key in masternodes.Skip(1))
         {
-            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            var vote = XdcTestHelper.BuildSignedVote(votingBlock, gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
 
@@ -159,9 +173,9 @@ internal class ProposedBlockTests
         for (int i = 1; i <= count; i++)
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2);
+            blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + (ulong)i);
+            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + (ulong)i);
+            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2ul);
         }
     }
 
@@ -186,11 +200,18 @@ internal class ProposedBlockTests
         }
 
         BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        ulong gapNumber = 0ul;
+        if (switchInfo.EpochSwitchBlockInfo.BlockNumber != 0)
+        {
+            ulong epochLength = checked((ulong)spec.EpochLength);
+            ulong gap = checked((ulong)spec.Gap);
+            ulong epochStart = switchInfo.EpochSwitchBlockInfo.BlockNumber - (switchInfo.EpochSwitchBlockInfo.BlockNumber % epochLength);
+            gapNumber = epochStart > gap ? epochStart - gap : 0ul;
+        }
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (var key in masternodes.Skip(1))
         {
-            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            var vote = XdcTestHelper.BuildSignedVote(votingBlock, gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
 

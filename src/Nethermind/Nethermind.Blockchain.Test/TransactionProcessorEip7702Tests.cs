@@ -329,7 +329,7 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.InsertCode(codeSource, executionErrorCode, Prague.Instance);
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
 
-        const long gasLimit = 10_000_000;
+        const ulong gasLimit = 10_000_000;
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(codeSource)
@@ -783,7 +783,7 @@ internal class TransactionProcessorEip7702Tests
         };
     }
     [TestCaseSource(nameof(AccountAccessGasCases))]
-    public void Execute_DifferentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
+    public void Execute_DifferentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, ulong gasLimit, bool shouldRunOutOfGas)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -947,7 +947,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
-        _stateProvider.CommitTree(block.Number);
+        _stateProvider.CommitTree(checked((long)block.Number));
 
         byte[]? actual = _stateProvider.GetCode(authority.Address);
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.True);

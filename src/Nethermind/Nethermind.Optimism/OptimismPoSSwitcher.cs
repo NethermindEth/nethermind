@@ -6,10 +6,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Optimism;
 
-public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNumber) : IPoSSwitcher
+public class OptimismPoSSwitcher(ISpecProvider specProvider, ulong bedrockBlockNumber) : IPoSSwitcher
 {
     public OptimismPoSSwitcher(ISpecProvider specProvider, OptimismChainSpecEngineParameters optimismChainSpecEngineParameters)
-        : this(specProvider, optimismChainSpecEngineParameters.BedrockBlockNumber!.Value)
+        : this(specProvider, checked((ulong)optimismChainSpecEngineParameters.BedrockBlockNumber!.Value))
     {
     }
 
@@ -29,7 +29,8 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 
     public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
     {
-        return (header.Number == bedrockBlockNumber - 1, header.IsPostMerge = header.Number >= bedrockBlockNumber);
+        bool isTerminal = bedrockBlockNumber > 0 && header.Number == bedrockBlockNumber - 1;
+        return (isTerminal, header.IsPostMerge = header.Number >= bedrockBlockNumber);
     }
 
     public bool HasEverReachedTerminalBlock() => true;

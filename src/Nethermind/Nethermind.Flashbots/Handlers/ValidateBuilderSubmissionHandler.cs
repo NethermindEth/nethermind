@@ -127,7 +127,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (message.GasUsed != block.GasUsed)
+        if (message.GasUsed != checked((long)block.GasUsed))
         {
             error = $"Gas used mismatch. Expected {message.GasUsed} but got {block.GasUsed}";
             return false;
@@ -294,7 +294,13 @@ public class ValidateSubmissionHandler
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
-        if (calculatedGasLimit != block.Header.GasLimit)
+        if (block.Header.GasLimit > long.MaxValue)
+        {
+            error = $"Gas limit mismatch. Expected {calculatedGasLimit} but got {block.Header.GasLimit}";
+            return false;
+        }
+
+        if (calculatedGasLimit != (long)block.Header.GasLimit)
         {
             error = $"Gas limit mismatch. Expected {calculatedGasLimit} but got {block.Header.GasLimit}";
             return false;
@@ -305,15 +311,15 @@ public class ValidateSubmissionHandler
 
     private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
     {
-        long parentGasLimit = parentHeader.GasLimit;
+        long parentGasLimit = checked((long)parentHeader.GasLimit);
         long gasLimit = parentGasLimit;
 
         long? targetGasLimit = desiredGasLimit;
-        long newBlockNumber = parentHeader.Number + 1;
+        ulong newBlockNumber = parentHeader.Number + 1;
 
         if (targetGasLimit is not null)
         {
-            long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
+            long maxGasLimitDifference = Math.Max(0L, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
             gasLimit = targetGasLimit.Value > parentGasLimit
                 ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
                 : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);

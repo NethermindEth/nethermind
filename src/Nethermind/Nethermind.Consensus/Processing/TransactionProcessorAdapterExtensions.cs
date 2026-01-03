@@ -19,7 +19,7 @@ internal static class TransactionProcessorAdapterExtensions
     {
         if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser)
         {
-            currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
+            currentTx.Nonce = (ulong)stateProvider.GetNonce(currentTx.SenderAddress!);
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);

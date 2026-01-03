@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test
     {
         private bool _setAuthor;
 
-        protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0)
+        protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, ulong blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0)
         {
             Block block = base.BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
             if (_setAuthor) block.Header.Author = TestItem.AddressC;

@@ -28,11 +28,11 @@ public class BlockHeaderTests
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020000").ToUInt256(),
             ExtraData = [],
-            GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
-            GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
+            GasLimit = (ulong)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
+            GasUsed = (ulong)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
             MixHash = new Hash256(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b")),
             Nonce = (ulong)Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger(),
-            Number = (long)Bytes.FromHexString("0x01").ToUInt256(),
+            Number = (ulong)Bytes.FromHexString("0x01").ToUnsignedBigInteger(),
             ParentHash = new Hash256(Bytes.FromHexString("0x5a39ed1020c04d4d84539975b893a4e7c53eab6c2965db8bc3468093a31bc5ae")),
             ReceiptsRoot = new Hash256(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2")),
             StateRoot = new Hash256(Bytes.FromHexString("0x5c2e5a51a79da58791cdfe572bcfa3dfe9c860bf7fad7d9738a1aace56ef9332")),
@@ -54,11 +54,11 @@ public class BlockHeaderTests
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020080").ToUInt256(),
             ExtraData = [],
-            GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
-            GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
+            GasLimit = (ulong)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
+            GasUsed = (ulong)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
             MixHash = new Hash256(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149")),
             Nonce = (ulong)Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger(),
-            Number = (long)Bytes.FromHexString("0x03").ToUInt256(),
+            Number = (ulong)Bytes.FromHexString("0x03").ToUnsignedBigInteger(),
             ParentHash = new Hash256(Bytes.FromHexString("0xde1457da701ef916533750d46c124e9ae50b974410bd590fbcf4c935a4d19465")),
             ReceiptsRoot = new Hash256(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2")),
             StateRoot = new Hash256(Bytes.FromHexString("0xfb4084a7f8b57e370fefe24a3da3aaea6c4dd8b6f6251916c32440336035160b")),
@@ -118,9 +118,9 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
+        blockHeader.GasLimit = checked((ulong)(gasTarget * Eip1559Constants.DefaultElasticityMultiplier));
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
-        blockHeader.GasUsed = gasUsed;
+        blockHeader.GasUsed = checked((ulong)gasUsed);
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
@@ -148,9 +148,9 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier;
+        blockHeader.GasLimit = checked((ulong)(testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier));
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
-        blockHeader.GasUsed = testCase.Info.ParentGasUsed;
+        blockHeader.GasUsed = checked((ulong)testCase.Info.ParentGasUsed);
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)testCase.Info.ExpectedBaseFee), testCase.Description);
     }

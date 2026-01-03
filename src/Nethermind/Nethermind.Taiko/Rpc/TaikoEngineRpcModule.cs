@@ -145,7 +145,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 beneficiary,
                 UInt256.Zero,
                 head!.Number + 1,
-                (long)blockMaxGasLimit,
+            blockMaxGasLimit,
                 head.Timestamp + 1,
                 [])
         {
@@ -168,7 +168,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         void CommitAndDisposeBatch(Batch batch)
         {
             Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => TransactionForRpc.FromTransaction(tx)).ToArray(),
-                                            (ulong)blockHeader.GasUsed,
+                                            blockHeader.GasUsed,
                                             batch.GetCompressedTxsLength()));
             blockHeader.GasUsed = 0;
             batch.Dispose();
@@ -212,7 +212,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     }
 
                     // For Surge, filter out any transaction with very high gas limit
-                    if (surgeConfig.MaxGasLimitRatio > 0 && tx.GasLimit > tx.SpentGas * surgeConfig.MaxGasLimitRatio)
+                    if (surgeConfig.MaxGasLimitRatio > 0 && tx.GasLimit > tx.SpentGas * (ulong)surgeConfig.MaxGasLimitRatio)
                     {
                         worldState.Restore(snapshot);
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;

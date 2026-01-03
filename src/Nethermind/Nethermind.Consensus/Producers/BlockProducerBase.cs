@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.Producers
             else
             {
                 bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
-                if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                if (dontSeal || Sealer.CanSeal(checked((long)(parentHeader.Number + 1)), parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                     return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
@@ -217,7 +217,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
+                checked((ulong)(payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent))),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {

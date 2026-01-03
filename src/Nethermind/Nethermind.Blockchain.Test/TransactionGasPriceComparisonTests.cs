@@ -52,7 +52,7 @@ public class TransactionComparisonTests
         long eip1559Transition = 5;
         TestingContext context = new TestingContext(true, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)headBaseFee)
-            .WithHeadBlockNumber(headBlockNumber);
+            .WithHeadBlockNumber(checked((ulong)headBlockNumber));
         IComparer<Transaction> comparer = context.DefaultComparer;
         AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
     }
@@ -96,7 +96,7 @@ public class TransactionComparisonTests
         long eip1559Transition = 5;
         TestingContext context = new TestingContext(true, eip1559Transition)
             .WithHeadBaseFeeNumber((UInt256)headBaseFee)
-            .WithHeadBlockNumber(headBlockNumber);
+            .WithHeadBlockNumber(checked((ulong)headBlockNumber));
         IComparer<Transaction> comparer = context.DefaultComparer;
         Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
     }
@@ -131,7 +131,7 @@ public class TransactionComparisonTests
     {
         long eip1559Transition = 5;
         TestingContext context = new(true, eip1559Transition);
-        IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
+        IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, checked((ulong)headBlockNumber)));
         Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
     }
 
@@ -151,16 +151,17 @@ public class TransactionComparisonTests
     {
         private readonly IBlockTree _blockTree;
         private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private long _blockNumber;
+        private ulong _blockNumber;
         private UInt256 _baseFee;
 
         public TestingContext(bool isEip1559Enabled = false, long eip1559TransitionBlock = 0)
         {
             ReleaseSpec releaseSpec = new();
-            ReleaseSpec eip1559ReleaseSpec = new() { IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = eip1559TransitionBlock };
+            ulong transitionBlockNumber = eip1559TransitionBlock > 0 ? checked((ulong)eip1559TransitionBlock) : 0;
+            ReleaseSpec eip1559ReleaseSpec = new() { IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = transitionBlockNumber };
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Is<ForkActivation>(x => x.BlockNumber >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
-            specProvider.GetSpec(Arg.Is<ForkActivation>(x => x.BlockNumber < eip1559TransitionBlock)).Returns(releaseSpec);
+            specProvider.GetSpec(Arg.Is<ForkActivation>(x => x.BlockNumber >= transitionBlockNumber)).Returns(eip1559ReleaseSpec);
+            specProvider.GetSpec(Arg.Is<ForkActivation>(x => x.BlockNumber < transitionBlockNumber)).Returns(releaseSpec);
             _blockTree = Substitute.For<IBlockTree>();
             UpdateBlockTreeHead();
             _transactionComparerProvider =
@@ -174,7 +175,7 @@ public class TransactionComparisonTests
             return _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
         }
 
-        public TestingContext WithHeadBlockNumber(long headBlockNumber)
+        public TestingContext WithHeadBlockNumber(ulong headBlockNumber)
         {
             _blockNumber = headBlockNumber;
             UpdateBlockTreeHead();

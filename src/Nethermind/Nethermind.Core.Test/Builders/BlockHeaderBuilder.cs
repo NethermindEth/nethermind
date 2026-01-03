@@ -127,23 +127,40 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithNumber(long blockNumber)
     {
+        return WithNumber(checked((ulong)blockNumber));
+    }
+
+    public BlockHeaderBuilder WithNumber(ulong blockNumber)
+    {
         TestObjectInternal.Number = blockNumber;
         return this;
     }
 
     public BlockHeaderBuilder WithTotalDifficulty(long totalDifficulty)
     {
-        TestObjectInternal.TotalDifficulty = (ulong)totalDifficulty;
+        TestObjectInternal.TotalDifficulty = checked((ulong)totalDifficulty);
         return this;
     }
 
     public BlockHeaderBuilder WithGasLimit(long gasLimit)
+    {
+        TestObjectInternal.GasLimit = checked((ulong)gasLimit);
+        return this;
+    }
+
+    public BlockHeaderBuilder WithGasLimit(ulong gasLimit)
     {
         TestObjectInternal.GasLimit = gasLimit;
         return this;
     }
 
     public BlockHeaderBuilder WithGasUsed(long gasUsed)
+    {
+        TestObjectInternal.GasUsed = checked((ulong)gasUsed);
+        return this;
+    }
+
+    public BlockHeaderBuilder WithGasUsed(ulong gasUsed)
     {
         TestObjectInternal.GasUsed = gasUsed;
         return this;

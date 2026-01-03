@@ -14,12 +14,12 @@ namespace Nethermind.Blockchain;
 public class BlockTreeSuggestPacer : IDisposable
 {
     private TaskCompletionSource? _dbBatchProcessed;
-    private long _blockNumberReachedToUnlock = 0;
-    private readonly long _stopBatchSize;
-    private readonly long _resumeBatchSize;
+    private ulong _blockNumberReachedToUnlock = 0;
+    private readonly ulong _stopBatchSize;
+    private readonly ulong _resumeBatchSize;
     private readonly IBlockTree _blockTree;
 
-    public BlockTreeSuggestPacer(IBlockTree blockTree, long stopBatchSize = 4096, long resumeBatchSize = 2048)
+    public BlockTreeSuggestPacer(IBlockTree blockTree, ulong stopBatchSize = 4096, ulong resumeBatchSize = 2048)
     {
         blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         _blockTree = blockTree;
@@ -37,10 +37,10 @@ public class BlockTreeSuggestPacer : IDisposable
         completionSource.SetResult();
     }
 
-    public async Task WaitForQueue(long currentBlockNumber, CancellationToken token)
+    public async Task WaitForQueue(ulong currentBlockNumber, CancellationToken token)
     {
-        long currentHeadNumber = _blockTree.Head?.Number ?? 0;
-        if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed is null)
+        ulong currentHeadNumber = _blockTree.Head?.Number ?? 0;
+        if (currentBlockNumber > currentHeadNumber + _stopBatchSize && _dbBatchProcessed is null)
         {
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
             TaskCompletionSource completionSource = new TaskCompletionSource();

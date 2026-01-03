@@ -314,7 +314,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     private static string Run(byte[] input)
     {
         long blocknr = 12965000;
-        long gas = 34218;
+        ulong gas = 34218;
         ulong ts = 123456;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
@@ -408,7 +408,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
     }
 
@@ -416,7 +416,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
     }
 
@@ -488,12 +488,12 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         throw new NotSupportedException();
     }
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         throw new NotSupportedException();
     }
@@ -503,12 +503,12 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotSupportedException();
     }
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
     {
         throw new NotSupportedException();
     }
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         throw new NotSupportedException();
     }

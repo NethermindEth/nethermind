@@ -141,9 +141,9 @@ namespace Nethermind.Synchronization.Test
                 DownloadReceiptsInFastSync = true,
                 PivotNumber = 1,
             };
-            blockTree.SyncPivot.Returns((1, Hash256.Zero));
+            blockTree.SyncPivot.Returns((1ul, Hash256.Zero));
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1ul).WithStateRoot(TestItem.KeccakA).TestObject);
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
             Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.False);

@@ -1011,7 +1011,7 @@ public partial class EthRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
 
-        int blockNumber = 1;
+        ulong blockNumber = 1;
         ulong timestamp = 10;
         Block genesis = Build.A.Block.Genesis
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
@@ -1269,14 +1269,14 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase(null)]
-    [TestCase(0)]
+    [TestCase(0L)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
     {
         LegacyTransactionForRpc rpcTx = new LegacyTransactionForRpc();
 
         rpcTx.EnsureDefaults(gasCap);
 
-        Assert.That(rpcTx.Gas, Is.EqualTo(long.MaxValue), "Gas must be set to max if gasCap is null or 0");
+        Assert.That(rpcTx.Gas, Is.EqualTo(ulong.MaxValue), "Gas must be set to max if gasCap is null or 0");
     }
 
     [Test]
@@ -1294,14 +1294,14 @@ public partial class EthRpcModuleTests
     [TestCase(0)]
     public static void ToTransactionWithDefaults_and_EnsureDefaults_same_GasLimit(long? gasCap)
     {
-        long toTransactionWitDefaultsGasLimit;
+        ulong toTransactionWitDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             Transaction tx = rpcTx.ToTransaction();
             toTransactionWitDefaultsGasLimit = tx.GasLimit;
         }
 
-        long ensureDefaultsGasLimit;
+        ulong ensureDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             rpcTx.EnsureDefaults(gasCap);

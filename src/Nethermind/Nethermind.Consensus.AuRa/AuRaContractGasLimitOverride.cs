@@ -55,14 +55,26 @@ namespace Nethermind.Consensus.AuRa
                 return gasLimit;
             }
 
-            if (_contracts.TryGetForBlock(parentHeader.Number + 1, out IBlockGasLimitContract contract))
+            ulong nextBlockNumber = parentHeader.Number + 1;
+            // Select the last contract whose Activation <= nextBlockNumber.
+            IBlockGasLimitContract contract = null;
+            for (int i = _contracts.Count - 1; i >= 0; i--)
+            {
+                var c = _contracts[i];
+                if (c.Activation <= nextBlockNumber)
+                {
+                    contract = c;
+                    break;
+                }
+            }
+            if (contract is not null)
             {
                 UInt256? contractLimit = GetContractGasLimit(parentHeader, contract);
                 gasLimit = contractLimit.HasValue ? (long)contractLimit.Value : (long?)null;
                 _cache.GasLimitCache.Set(parentHeader.Hash, gasLimit);
                 if (gasLimit.HasValue)
                 {
-                    if (gasLimit.Value != parentHeader.GasLimit)
+                    if (gasLimit.Value != checked((long)parentHeader.GasLimit))
                     {
                         if (_logger.IsInfo)
                             _logger.Info($"Block gas limit was changed from {parentHeader.GasLimit} to {gasLimit.Value}.");

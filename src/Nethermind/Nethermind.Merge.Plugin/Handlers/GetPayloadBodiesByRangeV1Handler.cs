@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -62,15 +63,21 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
 
     private IEnumerable<ExecutionPayloadBodyV1Result?> GetRequests(long start, long count)
     {
-        var headNumber = _blockTree.Head?.Number ?? 0;
+        ulong headNumber = _blockTree.Head?.Number ?? 0;
 
-        for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
+        ulong startNumber = checked((ulong)start);
+        ulong lastNumber = checked((ulong)(start + count - 1));
+        ulong endNumber = Math.Min(lastNumber, headNumber);
+
+        if (startNumber > endNumber)
         {
-            var block = _blockTree.FindBlock(i);
-
-            yield return (block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals));
+            yield break;
         }
 
-        yield break;
+        for (ulong i = startNumber; i <= endNumber; i++)
+        {
+            Block? block = _blockTree.FindBlock(i);
+            yield return block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
+        }
     }
 }

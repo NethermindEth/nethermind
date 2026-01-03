@@ -21,7 +21,7 @@ public class ExitOnBlockNumberHandler
 
         blockTree.BlockAddedToMain += (sender, args) =>
         {
-            if (args.Block.Number >= initConfigExitOnBlockNumber)
+            if (initConfigExitOnBlockNumber >= 0 && args.Block.Number >= (ulong)initConfigExitOnBlockNumber)
             {
                 logger.Info($"Block {args.Block.Number} reached. Exiting.");
                 processExitSource.Exit(0);

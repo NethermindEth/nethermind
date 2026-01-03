@@ -45,7 +45,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         }
     }
 
-    private void Delete(long blockNumber, Hash256 blockHash)
+    private void Delete(ulong blockNumber, Hash256 blockHash)
     {
         blockDb.Delete(blockNumber, blockHash);
     }

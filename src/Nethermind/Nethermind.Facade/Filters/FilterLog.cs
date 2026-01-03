@@ -22,7 +22,7 @@ namespace Nethermind.Facade.Filters
         public FilterLog(long logIndex, TxReceipt txReceipt, LogEntry logEntry, ulong blockTimestamp, bool removed = false)
             : this(
                 logIndex,
-                txReceipt.BlockNumber,
+                checked((long)txReceipt.BlockNumber),
                 blockTimestamp,
                 txReceipt.BlockHash,
                 txReceipt.Index,

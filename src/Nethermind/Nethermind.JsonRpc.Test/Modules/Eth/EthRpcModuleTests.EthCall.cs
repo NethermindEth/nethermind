@@ -561,7 +561,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         BlobTransactionForRpc transaction = new(Build.A.Transaction
             .WithGasLimit(100000)
-            .WithBlobVersionedHashes(isNull ? null : [])
+            .WithBlobVersionedHashes(isNull ? null : Array.Empty<byte[]>())
             .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
@@ -578,7 +578,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         BlobTransactionForRpc transaction = new(Build.A.Transaction
             .WithGasLimit(100000)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes(new byte[][] { Array.Empty<byte>() })
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
         transaction.MaxFeePerBlobGas = 0;

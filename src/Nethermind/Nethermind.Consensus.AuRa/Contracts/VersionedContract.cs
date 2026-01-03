@@ -25,7 +25,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             _versions = versions ?? throw new ArgumentNullException(nameof(versions));
             _versionSelectorContract = versions.Values.Last();
-            Activation = activation;
+            ArgumentOutOfRangeException.ThrowIfNegative(activation);
+            Activation = checked((ulong)activation);
             _versionsCache = cache ?? throw new ArgumentNullException(nameof(cache));
             _logger = logManager.GetClassLogger();
         }
@@ -54,6 +55,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
 
-        public long Activation { get; }
+        public ulong Activation { get; }
     }
 }

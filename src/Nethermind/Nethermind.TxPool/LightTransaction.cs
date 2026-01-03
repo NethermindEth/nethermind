@@ -35,10 +35,10 @@ public class LightTransaction : Transaction
     public LightTransaction(
         UInt256 timestamp,
         Address sender,
-        UInt256 nonce,
+        ulong nonce,
         Hash256 hash,
         UInt256 value,
-        long gasLimit,
+        ulong gasLimit,
         UInt256 gasPrice,
         UInt256 maxFeePerGas,
         UInt256 maxFeePerBlobGas,

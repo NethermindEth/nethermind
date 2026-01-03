@@ -14,11 +14,11 @@ namespace Nethermind.Blockchain.Spec
     {
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        private long _lastHeader = -1;
+        private ulong? _lastHeader;
         private IReleaseSpec? _headerSpec;
         private readonly Lock _lock = new();
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Spec
 
         IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
-        public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
+        public ulong? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
         public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
 
@@ -46,12 +46,12 @@ namespace Nethermind.Blockchain.Spec
         public IReleaseSpec GetCurrentHeadSpec()
         {
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
-            long headerNumber = header?.Number ?? 0;
+            ulong headerNumber = header?.Number ?? 0;
 
             // we are fine with potential concurrency issue here, that the spec will change
             // between this if and getting actual header spec
             // this is used only in tx pool and this is not a problem there
-            if (headerNumber == _lastHeader)
+            if (_lastHeader.HasValue && headerNumber == _lastHeader.Value)
             {
                 IReleaseSpec releaseSpec = _headerSpec;
                 if (releaseSpec is not null)

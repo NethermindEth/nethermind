@@ -95,9 +95,15 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
-    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    public new XdcBlockHeaderBuilder WithNumber(ulong blockNumber)
     {
         TestObjectInternal.Number = blockNumber;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        TestObjectInternal.Number = checked((ulong)blockNumber);
         return this;
     }
 

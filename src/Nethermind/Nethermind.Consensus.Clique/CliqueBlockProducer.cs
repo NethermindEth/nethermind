@@ -404,9 +404,10 @@ public class CliqueBlockProducer : IBlockProducer
             return null;
         }
 
-        if (!_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+        ulong nextBlockNumber = checked(parentHeader.Number + 1);
+        if (!_sealer.CanSeal(checked((long)nextBlockNumber), parentHeader.Hash))
         {
-            if (_logger.IsTrace) _logger.Trace($"Not allowed to sign block ({parentHeader.Number + 1})");
+            if (_logger.IsTrace) _logger.Trace($"Not allowed to sign block ({nextBlockNumber})");
             _recentNotAllowedParent = parentHeader.Hash;
             return null;
         }
@@ -422,15 +423,15 @@ public class CliqueBlockProducer : IBlockProducer
             Address.Zero,
             1,
             parentHeader.Number + 1,
-            _gasLimitCalculator.GetGasLimit(parentHeader),
+            checked((ulong)_gasLimitCalculator.GetGasLimit(parentHeader)),
             timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
             []);
 
         // If the block isn't a checkpoint, cast a random vote (good enough for now)
-        long number = header.Number;
+        long number = checked((long)header.Number);
         // Assemble the voting snapshot to check which votes make sense
         Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, parentHeader.Hash);
-        bool isEpochBlock = (ulong)number % 30000 == 0;
+        bool isEpochBlock = header.Number % 30000UL == 0;
         if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on

@@ -259,7 +259,7 @@ public class DataFeed
                 Contexts = peer.AllocatedContexts,
                 ClientType = peer.PeerClientType,
                 Version = peer.SyncPeer.ProtocolVersion,
-                Head = peer.HeadNumber
+                Head = checked((long)peer.HeadNumber)
             })];
 
         return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
@@ -345,18 +345,18 @@ public class DataFeed
                 {
                     Head = new BlockForWeb
                     {
-                        ExtraData = head.ExtraData ?? [],
+                        ExtraData = head.ExtraData ?? Array.Empty<byte>(),
                         GasLimit = head.GasLimit,
                         GasUsed = head.GasUsed,
                         Hash = head.Hash ?? Hash256.Zero,
                         Beneficiary = head.Beneficiary ?? Address.Zero,
-                        Number = head.Number,
+                        Number = checked((long)head.Number),
                         Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
                         Timestamp = head.Timestamp,
                         BaseFeePerGas = head.BaseFeePerGas,
                         BlobGasUsed = head.BlobGasUsed ?? 0,
                         ExcessBlobGas = head.ExcessBlobGas ?? 0,
-                        Tx = [.. head.Transactions.Select(t => new TransactionForWeb
+                        Tx = head.Transactions.Select(t => new TransactionForWeb
                         {
                             Hash = t.Hash,
                             From = t.SenderAddress,
@@ -370,26 +370,26 @@ public class DataFeed
                             Value = t.Value,
                             DataLength = t.DataLength,
                             Blobs = t.BlobVersionedHashes?.Length ?? 0,
-                            Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
-                        })],
-                        Receipts = [.. receipts.Select(r => new ReceiptForWeb
+                            Method = t.DataLength >= 4 ? t.Data.Span[..4].ToArray() : Array.Empty<byte>()
+                        }).ToArray(),
+                        Receipts = receipts.Select(r => new ReceiptForWeb
                         {
                             GasUsed = r.GasUsed,
                             EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
                             ContractAddress = r.ContractAddress,
-                            Logs = [.. r.Logs.Select(l => new LogEntryForWeb
+                            Logs = r.Logs.Select(l => new LogEntryForWeb
                             {
                                 Address = l.Address,
                                 Data = l.Data,
                                 Topics = l.Topics
-                            })],
+                            }).ToArray(),
                             Status = r.Status,
                             BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
                             BlobGasUsed = r.BlobGasUsed ?? 0,
-                        })]
+                        }).ToArray()
                     },
-                    Safe = choice.Safe,
-                    Finalized = choice.Finalized
+                    Safe = checked((long)choice.Safe),
+                    Finalized = checked((long)choice.Finalized)
                 },
                 EthereumJsonSerializer.JsonOptions
              )
@@ -406,8 +406,8 @@ public class DataFeed
     private class BlockForWeb
     {
         public byte[] ExtraData { get; set; }
-        public long GasLimit { get; set; }
-        public long GasUsed { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong GasUsed { get; set; }
         public Hash256 Hash { get; set; }
         public Address Beneficiary { get; set; }
         public long Number { get; set; }
@@ -422,7 +422,7 @@ public class DataFeed
     }
     private class ReceiptForWeb
     {
-        public long GasUsed { get; set; }
+        public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
         public LogEntryForWeb[] Logs { get; set; }
@@ -445,8 +445,8 @@ public class DataFeed
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 GasPrice { get; set; }
-        public long GasLimit { get; set; }
-        public UInt256 Nonce { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 Value { get; set; }
         public int DataLength { get; set; }
         public int Blobs { get; set; }

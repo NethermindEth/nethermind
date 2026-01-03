@@ -12,10 +12,10 @@ namespace Nethermind.Specs
     {
         private ForkActivation? _theMergeBlock = null;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = (ForkActivation)blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber.Value;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -28,15 +28,16 @@ namespace Nethermind.Specs
         IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
             forkActivation.BlockNumber switch
             {
-                < 494000 => Frontier.Instance,
-                < 1885000 => Homestead.Instance,
+                < 494_000UL => Frontier.Instance,
+                < 1_885_000UL => Homestead.Instance,
                 _ => SpuriousDragon.Instance
             };
-        public long? DaoBlockNumber => null;
+
+        public ulong? DaoBlockNumber => null;
         public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => BlockchainIds.Morden;
         public ulong ChainId => NetworkId;
-        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
+        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0UL };
     }
 }

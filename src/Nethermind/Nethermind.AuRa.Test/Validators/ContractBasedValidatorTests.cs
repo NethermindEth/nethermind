@@ -507,7 +507,7 @@ public class ContractBasedValidatorTests
             else
                 hashSeeds[blockNumber] = 0;
 
-            _block.Header.Number = blockNumber;
+            _block.Header.Number = checked((ulong)blockNumber);
             _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
             _block.Header.AuRaStep = blockNumber;
             _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
@@ -593,8 +593,8 @@ public class ContractBasedValidatorTests
         PendingValidators pendingValidators = null;
         if (expectedBlockValidators.HasValue)
         {
-            Block block = GetAllBlocks(blockTree).First(b => b.Number == expectedBlockValidators.Value);
-            pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
+            Block block = GetAllBlocks(blockTree).First(b => b.Number == checked((ulong)expectedBlockValidators.Value));
+            pendingValidators = new PendingValidators(checked((long)block.Number), block.Hash, new[] { TestItem.Addresses[checked((int)(block.Number * 10))] });
         }
 
         _validatorStore.PendingValidators.Should().BeEquivalentTo(pendingValidators);
@@ -692,7 +692,7 @@ public class ContractBasedValidatorTests
 
         public TxReceipt[] GetReceipts(ValidatorContract validatorContract, Block block, Address contractAddress, IAbiEncoder encoder, Func<Address[], byte[]> dataFunc)
         {
-            Address[] validators = Current.Validators?.FirstOrDefault(v => v.InitializeBlock == block.Number)?.Addresses;
+            Address[] validators = Current.Validators?.FirstOrDefault(v => checked((ulong)v.InitializeBlock) == block.Number)?.Addresses;
             if (validators is null)
             {
                 return [];

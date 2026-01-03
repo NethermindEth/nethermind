@@ -71,7 +71,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         if (CurrentTraceEntry is not null)
         {
@@ -80,7 +80,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
 
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
-        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.Gas = checked((long)gas);
         CurrentTraceEntry.Opcode = opcode.GetName();
         CurrentTraceEntry.ProgramCounter = pc;
         // skip codeSection
@@ -94,11 +94,11 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
             CurrentTraceEntry.Error = GetErrorDescription(error);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
-            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - checked((long)gas);
             _gasCostAlreadySetForCurrentOp = true;
         }
     }

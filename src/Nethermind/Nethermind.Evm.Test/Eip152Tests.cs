@@ -11,22 +11,20 @@ namespace Nethermind.Evm.Test;
 public class Eip152Tests : VirtualMachineTestsBase
 {
     private const int InputLength = 213;
-    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
-
-    private int _blockNumberAdjustment;
+    private ulong _blockNumber = MainnetSpecProvider.IstanbulBlockNumber;
+    protected override ulong BlockNumber => _blockNumber;
 
     [TearDown]
     public override void TearDown()
     {
         base.TearDown();
-
-        _blockNumberAdjustment = 0;
+        _blockNumber = MainnetSpecProvider.IstanbulBlockNumber;
     }
 
     [Test]
     public void before_istanbul()
     {
-        _blockNumberAdjustment = -1;
+        _blockNumber = MainnetSpecProvider.IstanbulBlockNumber - 1UL;
         Address precompileAddress = Blake2FPrecompile.Address;
         Assert.That(Spec.IsPrecompile(precompileAddress), Is.False);
     }

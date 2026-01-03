@@ -14,9 +14,9 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
-        private long _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+        private ulong _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
 
-        protected override long BlockNumber => _blockNumber;
+        protected override ulong BlockNumber => _blockNumber;
 
         [SetUp]
         public override void Setup()
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
         [Test(Description = "Deposit OutOfGas before EIP-2")]
         public void Regression_mainnet_226522()
         {
-            _blockNumber = 1;
+            _blockNumber = 1UL;
             Address deployed = ContractAddress.From(TestItem.AddressC, 0);
             StorageCell storageCell = new(deployed, 1);
 

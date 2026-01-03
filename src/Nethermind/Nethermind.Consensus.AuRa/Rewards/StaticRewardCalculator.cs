@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Rewards;
@@ -47,15 +48,17 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         private class BlockRewardInfo : IActivatedAt
         {
-            public long BlockNumber { get; }
+            public ulong BlockNumber { get; }
             public UInt256 Reward { get; }
 
             public BlockRewardInfo(long blockNumber, in UInt256 reward)
             {
-                BlockNumber = blockNumber;
+                ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
+                BlockNumber = checked((ulong)blockNumber);
                 Reward = reward;
             }
-            long IActivatedAt<long>.Activation => BlockNumber;
+
+            ulong IActivatedAt<ulong>.Activation => BlockNumber;
         }
     }
 }
