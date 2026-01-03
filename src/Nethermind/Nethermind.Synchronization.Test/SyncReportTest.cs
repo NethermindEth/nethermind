@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
-                PivotNumber = "100",
+                PivotNumber = 100,
             };
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
-                PivotNumber = "100",
+                PivotNumber = 100,
             };
             if (setBarriers)
             {
