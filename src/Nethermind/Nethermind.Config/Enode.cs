@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
@@ -8,7 +8,6 @@ using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Config
 {
@@ -108,5 +107,7 @@ namespace Nethermind.Config
             : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
+
+        internal static bool IsEnode(string node) => node.StartsWith("enode://", StringComparison.OrdinalIgnoreCase);
     }
 }

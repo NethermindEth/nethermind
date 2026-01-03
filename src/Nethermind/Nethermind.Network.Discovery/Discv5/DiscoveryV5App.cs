@@ -46,7 +46,6 @@ public class DiscoveryV5App : IDiscoveryApp
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
         IIPResolver? ipResolver,
         INetworkConfig networkConfig,
-        IDiscoveryConfig discoveryConfig,
         [KeyFilter(DbNames.DiscoveryV5Nodes)] IDb discoveryDb,
         [KeyFilter(DbNames.DiscoveryNodes)] IDb? legacyDiscoveryDb,
         ILogManager logManager)
@@ -67,7 +66,7 @@ public class DiscoveryV5App : IDiscoveryApp
             SessionKeys = new SessionKeys(privateKey.KeyBytes),
         };
 
-        string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
+        string[] bootstrapNodes = [.. (networkConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
 
         IServiceCollection services = new ServiceCollection()
            .AddSingleton<ILoggerFactory, NullLoggerFactory>()
