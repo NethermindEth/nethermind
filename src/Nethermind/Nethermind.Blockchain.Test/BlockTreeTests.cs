@@ -254,10 +254,10 @@ public class BlockTreeTests
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
         Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 1");
+        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
         Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
-        Assert.That(blockInfosDb.Get(2), Is.Null, "level 1");
+        Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
     }
