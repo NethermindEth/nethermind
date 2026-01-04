@@ -95,13 +95,17 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Invalid;
         }
 
-        if (parentBeaconBlockRoot is null)
+        // Use parentBeaconBlockRoot parameter if provided, otherwise fall back to executionPayload.ParentBeaconBlockRoot
+        // This handles cases where op-node sends valid requests with parentBeaconBlockRoot in the payload itself
+        Hash256? finalParentBeaconBlockRoot = parentBeaconBlockRoot ?? executionPayload.ParentBeaconBlockRoot;
+
+        if (finalParentBeaconBlockRoot is null)
         {
             error = "Parent beacon block root must be set";
             return ValidationResult.Fail;
         }
 
-        executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        executionPayload.ParentBeaconBlockRoot = finalParentBeaconBlockRoot;
 
         error = null;
         return ValidationResult.Success;
