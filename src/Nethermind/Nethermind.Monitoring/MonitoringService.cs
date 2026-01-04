@@ -8,12 +8,12 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
-using Nethermind.Core.ServiceStopper;
+using System.Threading;
 using Prometheus;
 
 namespace Nethermind.Monitoring;
 
-public class MonitoringService : IMonitoringService, IStoppableService
+public class MonitoringService : IMonitoringService, IAsyncDisposable
 {
     private readonly IMetricsController _metricsController;
     private readonly ILogger _logger;
@@ -25,9 +25,18 @@ public class MonitoringService : IMonitoringService, IStoppableService
     private readonly bool _pushEnabled;
     private readonly string _pushGatewayUrl;
     private readonly int _intervalSeconds;
+    private readonly CancellationTokenSource _timerCancellationSource;
 
-    public MonitoringService(IMetricsController metricsController, IMetricsConfig metricsConfig, ILogManager logManager)
+    private Task _monitoringTimerTask = Task.CompletedTask;
+    private int _isDisposed = 0;
+
+    public MonitoringService(
+        IMetricsController metricsController,
+        IMetricsConfig metricsConfig,
+        ILogManager logManager
+    )
     {
+        _timerCancellationSource = new CancellationTokenSource();
         _metricsController = metricsController ?? throw new ArgumentNullException(nameof(metricsController));
 
         string exposeHost = metricsConfig.ExposeHost;
@@ -85,7 +94,17 @@ public class MonitoringService : IMonitoringService, IStoppableService
             new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
         }
 
-        _metricsController.StartUpdating();
+        _monitoringTimerTask = Task.Run(async () =>
+        {
+            try
+            {
+                await _metricsController.RunTimer(_timerCancellationSource.Token);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Monitoring timer failed: {ex}");
+            }
+        });
 
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         return Task.CompletedTask;
@@ -94,13 +113,6 @@ public class MonitoringService : IMonitoringService, IStoppableService
     public void AddMetricsUpdateAction(Action callback)
     {
         _metricsController.AddMetricsUpdateAction(callback);
-    }
-
-    public Task StopAsync()
-    {
-        _metricsController.StopUpdating();
-
-        return Task.CompletedTask;
     }
 
     public string Description => "Monitoring service";
@@ -120,5 +132,13 @@ public class MonitoringService : IMonitoringService, IStoppableService
         public string Job { get; } = job;
         public string Instance { get; } = instance;
         public string Group { get; } = group;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0) return;
+        await _timerCancellationSource.CancelAsync();
+        await _monitoringTimerTask;
+        _timerCancellationSource.Dispose();
     }
 }
