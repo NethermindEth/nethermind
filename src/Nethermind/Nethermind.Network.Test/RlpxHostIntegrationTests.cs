@@ -28,6 +28,7 @@ public class RlpxHostIntegrationTests
             ProcessingThreadCount = 1,
             P2PPort = GetAvailablePort(),
             FilterPeersByRecentIp = true,
+            FilterPeersBySameSubnet = false,
             MaxActivePeers = 50
         };
 
@@ -60,6 +61,7 @@ public class RlpxHostIntegrationTests
             ProcessingThreadCount = 1,
             P2PPort = GetAvailablePort(),
             FilterPeersByRecentIp = true,
+            FilterPeersBySameSubnet = false,
             MaxActivePeers = 50
         };
 
