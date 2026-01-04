@@ -55,7 +55,11 @@ public class DiscoveryManager : IDiscoveryManager
         _createNodeLifecycleManager = GetLifecycleManagerFunc(isPersisted: false);
         _createNodeLifecycleManagerPersisted = GetLifecycleManagerFunc(isPersisted: true);
         _currentIp = IPAddress.TryParse(networkConfig?.ExternalIp ?? networkConfig?.LocalIp, out IPAddress? currentIp) ? currentIp : null;
-        _nodesFilter = (networkConfig?.FilterDiscoveryNodesByRecentIp ?? true) ? new((networkConfig?.MaxActivePeers * 4) ?? 200, !networkConfig?.FilterDiscoveryNodesBySameSubnet ?? false) : null;
+        bool enableSubnetBucketing = networkConfig?.FilterDiscoveryNodesBySameSubnet ?? true;
+        bool exactMatchOnly = !enableSubnetBucketing;
+        _nodesFilter = (networkConfig?.FilterDiscoveryNodesByRecentIp ?? true)
+            ? new((networkConfig?.MaxActivePeers * 4) ?? 200, exactMatchOnly)
+            : null;
     }
 
     public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
