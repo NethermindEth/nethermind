@@ -100,7 +100,7 @@ namespace Nethermind.Network.Rlpx
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
             _currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? currentIp) ? currentIp : null;
-            _nodeFilter = (networkConfig?.FilterPeersByRecentIp ?? true) ? new NodeFilter((networkConfig?.MaxActivePeers * 4) ?? 200, !networkConfig?.FilterDiscoveryNodesBySameSubnet ?? false) : null;
+            _nodeFilter = (networkConfig?.FilterPeersByRecentIp ?? true) ? new NodeFilter((networkConfig?.MaxActivePeers * 4) ?? 200, !networkConfig?.FilterPeersBySameSubnet) : null;
         }
 
         public bool ShouldContact(IPAddress ip) => _nodeFilter?.Set(ip, _currentIp) ?? true;
