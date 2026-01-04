@@ -21,6 +21,12 @@ public interface IDiscoveryManager : IDiscoveryMsgListener
 
     IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
     IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
+
+    /// <summary>
+    /// Determines whether the discovery manager should initiate contact with a node at the specified IP address.
+    /// </summary>
+    /// <param name="address">The IP address of the node to evaluate for contact.</param>
+    /// <returns><see langword="true"/> if the node at the given address should be contacted; otherwise, <see langword="false"/>.</returns>
     bool ShouldContact(IPAddress address);
     NodeRecord SelfNodeRecord { get; }
 }
