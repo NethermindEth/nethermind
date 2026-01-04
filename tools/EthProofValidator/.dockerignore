@@ -1,0 +1,41 @@
+# Ignore build and output directories
+bin/
+obj/
+out/
+build/
+
+# Ignore IDE-specific files and directories
+.vscode/
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Ignore source control specific files
+.git/
+
+# Ignore Rust build artifacts
+native-zk-verifier/target/
+
+# Ignore test directories and files
+test/
+
+# Ignore temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+*.*~
+
+# Ignore package manager files (if any)
+packages/
+*.nupkg
+
+# Ignore macOS specific files
+.DS_Store
+
+# Ignore Linux specific files
+*.pyc
+

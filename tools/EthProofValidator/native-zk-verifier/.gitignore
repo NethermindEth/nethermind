@@ -1,0 +1,27 @@
+# Rust build artifacts
+debug/
+target/
+Cargo.lock
+
+# WASM-specific build outputs
+verifier/pkg/
+pkg/
+pkg-node/
+pkg-web/
+dist/
+build/
+
+# Node.js dependencies (if using npm/yarn for frontend)
+example/eth_wasm/node_modules/
+example/wasm_example/node_modules/
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment files
+.env
+.env.local
+
+# OS-specific files
+.DS_Store
+Thumbs.db
