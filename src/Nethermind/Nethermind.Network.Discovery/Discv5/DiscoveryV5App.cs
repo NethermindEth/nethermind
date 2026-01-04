@@ -1,10 +1,6 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
-using System.Net;
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Channels;
 using Lantern.Discv5.Enr;
@@ -27,7 +23,11 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
-using Nethermind.Core.Extensions;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading.Channels;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -36,18 +36,20 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
     private readonly IDb _discoveryDb;
-    private readonly IDb? _legacyDiscoveryDb;
+    private readonly IDb _legacyDiscoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
+    private readonly EnrFactory _enrFactory;
 
     public DiscoveryV5App(
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
         IIPResolver? ipResolver,
         INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
         [KeyFilter(DbNames.DiscoveryV5Nodes)] IDb discoveryDb,
-        [KeyFilter(DbNames.DiscoveryNodes)] IDb? legacyDiscoveryDb,
+        [KeyFilter(DbNames.DiscoveryNodes)] IDb legacyDiscoveryDb,
         ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
@@ -73,17 +75,15 @@ public class DiscoveryV5App : IDiscoveryApp
            .AddSingleton(_sessionOptions.Verifier)
            .AddSingleton(_sessionOptions.Signer);
 
-        EnrFactory enrFactory = new(new EnrEntryRegistry());
+        _enrFactory = new EnrFactory(new EnrEntryRegistry());
 
-        (List<byte[]> v5StoredRecords, List<byte[]> legacyStoredRecords) = LoadStoredEnrs(enrFactory, identityVerifier);
+        List<byte[]> storedEnrBytes = LoadStoredEnrs(_enrFactory, identityVerifier);
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
-                .Select(e => new Enode(e))
-                .Select(GetEnr),
-            .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
-            .. DecodeEnrs(v5StoredRecords, enrFactory, identityVerifier),
-            .. DecodeEnrs(legacyStoredRecords, enrFactory, identityVerifier)
+            .. bootstrapNodes.Where(e => e.StartsWith("enode:")).Select(e => ToEnr(new Enode(e))),
+            .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(ToEnr),
+            .. (discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : []),
+            .. storedEnrBytes.Select(ToEnr),
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
@@ -115,6 +115,30 @@ public class DiscoveryV5App : IDiscoveryApp
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
     }
+    private static string[] GetDefaultDiscv5Bootnodes() =>
+        JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
+
+    private Lantern.Discv5.Enr.Enr ToEnr(string enrString) => _enrFactory.CreateFromString(enrString, _sessionOptions.Verifier!);
+
+    private Lantern.Discv5.Enr.Enr ToEnr(byte[] enrBytes) => _enrFactory.CreateFromBytes(enrBytes, _sessionOptions.Verifier!);
+
+    private Lantern.Discv5.Enr.Enr ToEnr(Enode node) => new EnrBuilder()
+    .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
+    .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+    .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
+    .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
+    .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
+    .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
+    .Build();
+
+    private Lantern.Discv5.Enr.Enr ToEnr(Node node) => new EnrBuilder()
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
+        .Build();
 
     private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
     {
@@ -163,80 +187,52 @@ public class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
-        .Build();
-
-    private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
-        .Build();
-
-    private static bool TryDecodeEnr(byte[] enrBytes, EnrFactory enrFactory, IdentityVerifierV4 verifier, [NotNullWhen(true)] out IEnr? enr)
+    private List<byte[]> LoadStoredEnrs(EnrFactory enrFactory, IdentityVerifierV4 identityVerifier)
     {
+        List<byte[]> enrs = [.. _discoveryDb.GetAllValues()];
+
+        if (enrs.Count is not 0)
+        {
+            return enrs;
+        }
+
+        IWriteBatch? migrateBatch = null;
+        IWriteBatch? deleteBatch = null;
+
         try
         {
-            enr = enrFactory.CreateFromBytes(enrBytes, verifier);
-            return true;
-        }
-        catch
-        {
-            enr = null;
-            return false;
-        }
-    }
-
-    private (List<byte[]> v5Records, List<byte[]> legacyRecords) LoadStoredEnrs(EnrFactory enrFactory, IdentityVerifierV4 identityVerifier)
-    {
-        List<byte[]> v5StoredRecords = _discoveryDb.GetAllValues().ToList();
-        List<byte[]> legacyStoredRecords = _legacyDiscoveryDb?.GetAllValues().ToList() ?? [];
-
-        // If migrating from legacy discv4 store, copy once into the discv5 store (non-destructive for v4).
-        if (v5StoredRecords.Count == 0 && legacyStoredRecords.Count > 0)
-        {
-            IWriteBatch? migrateBatch = null;
-            try
+            foreach (KeyValuePair<byte[], byte[]?> kv in _legacyDiscoveryDb.GetAll())
             {
-                foreach (byte[] record in legacyStoredRecords)
+                if (kv.Value is null)
                 {
-                    if (TryDecodeEnr(record, enrFactory, identityVerifier, out IEnr? enr))
-                    {
-                        migrateBatch ??= _discoveryDb.StartWriteBatch();
-                        migrateBatch[enr.NodeId] = record;
-                        v5StoredRecords.Add(record);
-                    }
+                    continue;
                 }
-            }
-            finally
-            {
-                migrateBatch?.Dispose();
+
+                try
+                {
+                    Lantern.Discv5.Enr.Enr enr = ToEnr(kv.Value);
+
+                    if (enrs.Count == 0)
+                    {
+                        migrateBatch = _discoveryDb.StartWriteBatch();
+                        deleteBatch = _legacyDiscoveryDb.StartWriteBatch();
+
+                        enrs.Add(kv.Value);
+                    }
+
+                    migrateBatch![enr.NodeId] = kv.Value;
+                    deleteBatch![kv.Key] = null;
+                }
+                catch { }
             }
         }
-
-        return (v5StoredRecords, legacyStoredRecords);
-    }
-
-    private IEnumerable<Lantern.Discv5.Enr.Enr> DecodeEnrs(IEnumerable<byte[]> enrBytes, EnrFactory enrFactory, IdentityVerifierV4 verifier)
-    {
-        foreach (byte[] record in enrBytes)
+        finally
         {
-            if (!TryDecodeEnr(record, enrFactory, verifier, out IEnr? enr))
-            {
-                if (_logger.IsDebug) _logger.Warn($"Unable to decode enr: {record.ToHexString()}");
-                continue;
-            }
-
-            yield return (Lantern.Discv5.Enr.Enr)enr;
+            migrateBatch?.Dispose();
+            deleteBatch?.Dispose();
         }
+
+        return enrs;
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
@@ -395,6 +391,6 @@ public class DiscoveryV5App : IDiscoveryApp
     public void AddNodeToDiscovery(Node node)
     {
         IRoutingTable routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
-        routingTable.UpdateFromEnr(GetEnr(node));
+        routingTable.UpdateFromEnr(ToEnr(node));
     }
 }
