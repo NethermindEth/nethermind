@@ -203,11 +203,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
-            
+
             // Enable snap serving so the server can serve snap sync requests
             ISyncConfig syncConfig = cfg.GetConfig<ISyncConfig>();
             syncConfig.SnapServingEnabled = true;
-            
+
             return Task.CompletedTask;
         });
 
