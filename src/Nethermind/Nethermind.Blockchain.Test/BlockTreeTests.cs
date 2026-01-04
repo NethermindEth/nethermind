@@ -1050,10 +1050,6 @@ public class BlockTreeTests
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
         Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1b");
-        Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2b");
-        Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3b");
-
         repository.LoadLevel(1)!.BlockInfos.Length.Should().Be(1);
         repository.LoadLevel(2)!.BlockInfos.Length.Should().Be(1);
         repository.LoadLevel(3)!.BlockInfos.Length.Should().Be(1);
