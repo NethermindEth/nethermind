@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Find;
 
+// TODO!: tests for enumerator disposal
 public class LogIndexFilterVisitorTests
 {
     [TestCase(

@@ -20,7 +20,6 @@ namespace Nethermind.Db.LogIndex
 {
     // TODO: test on big-endian system?
     // TODO!: use uint for block number
-    // TODO!: remove or simplify non-enumerator read methods
     public partial class LogIndexStorage : ILogIndexStorage
     {
         private static class SpecialKey
@@ -461,99 +460,40 @@ namespace Nethermind.Db.LogIndex
         public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
             GetBlockNumbersFor(index, topic.Bytes.ToArray(), from, to);
 
+        private static readonly byte[] _test = Convert.FromHexString("09be10a669b16c115e1860cb0016d5530cd8e20a618830c56d323feb86da1359");
+
         private List<int> GetBlockNumbersFor(int? topicIndex, byte[] key, int from, int to)
         {
             // TODO: use ArrayPoolList?
             var timestamp = Stopwatch.GetTimestamp();
-            var result = new List<int>(Math.Max(1, _compressionDistance));
+            var result = new List<int>();
 
-            IterateBlockNumbersFor(topicIndex, key, from, to, view =>
-            {
-                var value = view.CurrentValue.ToArray(); // TODO: remove ToArray
-                foreach (var block in EnumerateBlockNumbers(value, from))
-                {
-                    if (block > to)
-                        return false;
+            if (topicIndex == 2 && key.SequenceEqual(_test) && from == 249 && to == 750)
+                GC.KeepAlive(key);
 
-                    result.Add(block);
-                }
-
-                return true;
-            });
+            using IEnumerator<int> enumerator = GetBlockNumbersEnumerator(topicIndex, key, from, to);
+            while (enumerator.MoveNext())
+                result.Add(enumerator.Current);
 
             if (_logger.IsTrace)
-                _logger.Trace($"{nameof(IterateBlockNumbersFor)}({topicIndex}, {Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+                _logger.Trace($"{nameof(GetBlockNumbersFor)}({topicIndex}, {Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
 
             return result;
         }
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to)
-        {
-            IDb db = GetDb(null);
-            ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
-                ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
+        public IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to) =>
+            GetBlockNumbersEnumerator(null, address.Bytes, from, to);
 
-            return new LogIndexEnumerator(this, sortedDb, address.Bytes, from, to);
-        }
+        public IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to) =>
+            GetBlockNumbersEnumerator(index, topic.BytesToArray(), from, to);
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to)
+        public IEnumerator<int> GetBlockNumbersEnumerator(int? index, byte[] key, int from, int to)
         {
             IDb db = GetDb(index);
             ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
                 ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
 
-            return new LogIndexEnumerator(this, sortedDb, topic.BytesToArray(), from, to);
-        }
-
-        private void IterateBlockNumbersFor(
-            int? topicIndex, byte[] key, int from, int to,
-            Func<ISortedView, bool> callback
-        )
-        {
-            // Adjust parameters to avoid composing invalid lookup keys
-            if (from < 0) from = 0;
-            if (to < from) return;
-
-            IDb db = GetDb(topicIndex);
-            ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
-                ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
-
-            ReadOnlySpan<byte> startKey = CreateDbKey(key, from, stackalloc byte[MaxDbKeyLength]);
-            ReadOnlySpan<byte> fromKey = CreateDbKey(key, SpecialPostfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
-            ReadOnlySpan<byte> toKey = CreateDbKey(key, SpecialPostfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
-
-            using ISortedView view = sortedDb.GetViewBetween(fromKey, toKey);
-
-            var isValid = view.StartBefore(startKey) || view.MoveNext();
-
-            while (isValid)
-            {
-                if (!callback(view))
-                    return;
-
-                isValid = view.MoveNext() && view.CurrentKey.StartsWith(key);
-            }
-        }
-
-        private IEnumerable<int> EnumerateBlockNumbers(byte[] data, int from)
-        {
-            if (data.Length == 0)
-                yield break;
-
-            var blockNums = data.Length == 0 || !IsCompressed(data, out _)
-                ? ReadBlockNums(data)
-                : DecompressDbValue(data);
-
-            ReverseBlocksIfNeeded(blockNums);
-
-            int startIndex = BinarySearch(blockNums, from);
-            if (startIndex < 0)
-            {
-                startIndex = ~startIndex;
-            }
-
-            for (int i = startIndex; i < blockNums.Length; i++)
-                yield return blockNums[i];
+            return new LogIndexEnumerator(this, sortedDb, key, from, to);
         }
 
         // TODO: optimize
@@ -917,6 +857,7 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
+        // TODO: use MemoryMarshal?
         private static int[] ReadBlockNums(ReadOnlySpan<byte> source)
         {
             if (source.Length % 4 != 0)
