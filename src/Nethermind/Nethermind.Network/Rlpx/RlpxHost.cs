@@ -6,7 +6,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
@@ -47,7 +46,8 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
-
+        private readonly IPAddress? _currentIp;
+        private readonly NodeFilter? _nodeFilter;
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
 
@@ -99,7 +99,11 @@ namespace Nethermind.Network.Rlpx
             _channelFactory = channelFactory;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
+            _currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? currentIp) ? currentIp : null;
+            _nodeFilter = (networkConfig?.FilterPeersByRecentIp ?? true) ? new NodeFilter((networkConfig?.MaxActivePeers * 4) ?? 200, !networkConfig?.FilterDiscoveryNodesBySameSubnet ?? false) : null;
         }
+
+        public bool ShouldContact(IPAddress ip) => _nodeFilter?.Set(ip, _currentIp) ?? true;
 
         public async Task Init()
         {
@@ -244,8 +248,11 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
+            _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
             _sessionMonitor.AddSession(session);
             session.Disconnected += SessionOnPeerDisconnected;
+            session.MsgReceived += SessionOnActive;
+            session.MsgDelivered += SessionOnActive;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
@@ -268,10 +275,15 @@ namespace Nethermind.Network.Rlpx
             });
         }
 
+        private void SessionOnActive(object? sender, PeerEventArgs e)
+            => _nodeFilter?.Set(e.Node.Address.Address, _currentIp);
+
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             ISession session = (Session)sender;
             session.Disconnected -= SessionOnPeerDisconnected;
+            session.MsgReceived -= SessionOnActive;
+            session.MsgDelivered -= SessionOnActive;
             session.Dispose();
         }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -20,6 +21,6 @@ public interface IDiscoveryManager : IDiscoveryMsgListener
 
     IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
     IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
-    NodeFilter NodesFilter { get; }
+    bool ShouldContact(IPAddress address);
     NodeRecord SelfNodeRecord { get; }
 }

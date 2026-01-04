@@ -86,7 +86,7 @@ public class NodeLifecycleManagerTests
         _discoveryManager.MsgSender = udpClient;
 
         _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
-        _discoveryManagerMock.NodesFilter.Returns(new NodeFilter(16));
+        _discoveryManagerMock.ShouldContact(Arg.Any<IPAddress>()).Returns(true);
     }
 
     [Test]

@@ -212,7 +212,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 // Ignore self
                 continue;
             }
-            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            else if (!_discoveryManager.ShouldContact(node.Address.Address))
             {
                 // Already seen this node ip recently
                 continue;

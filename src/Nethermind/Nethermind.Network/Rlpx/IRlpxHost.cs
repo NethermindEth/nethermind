@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
@@ -15,6 +16,7 @@ namespace Nethermind.Network.Rlpx
         Task Shutdown();
         PublicKey LocalNodeId { get; }
         int LocalPort { get; }
+        bool ShouldContact(IPAddress ip);
 
         event EventHandler<SessionEventArgs> SessionCreated;
 

@@ -110,4 +110,16 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "true", Description = "Enable Enr discovery", HiddenFromDocs = true)]
     bool EnableEnrDiscovery { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Reject peers whose IP key was seen recently (time-windowed), using the peer IP filter.")]
+    bool FilterPeersByRecentIp { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "When filtering by recent IP, bucket peers by subnet (eg IPv4 /24, IPv6 /64) so multiple IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
+    bool FilterPeersBySameSubnet { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Reject peers whose IP key was seen recently (time-windowed), using the peer IP filter.")]
+    bool FilterDiscoveryNodesByRecentIp { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "When filtering by recent IP, bucket peers by subnet (eg IPv4 /24, IPv6 /64) so multiple IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
+    bool FilterDiscoveryNodesBySameSubnet { get; set; }
 }
