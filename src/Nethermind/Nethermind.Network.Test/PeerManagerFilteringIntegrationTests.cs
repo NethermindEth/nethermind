@@ -52,14 +52,14 @@ public class PeerManagerFilteringIntegrationTests
         // Simulate a call pattern - in real usage, PeerManager calls ShouldContact before ConnectAsync
         var testIp = IPAddress.Parse("203.0.113.1");
         var testNode = new Node(Core.Test.Builders.TestItem.PublicKeyA, testIp.ToString(), 30303);
-        
+
         trackingMock.ShouldContact(testIp);
         trackingMock.ConnectAsync(testNode);
 
         // Verify the mock tracked the calls in order
         trackingMock.CallsToShouldContact.Should().HaveCount(1, "ShouldContact should be tracked");
         trackingMock.CallsToConnectAsync.Should().HaveCount(1, "ConnectAsync should be tracked");
-        
+
         // The key assertion: in the actual PeerManager code (line 228), ShouldContact is called
         // before attempting connection. The mock demonstrates the integration exists.
         trackingMock.CallsToShouldContact.First().Should().Be(testIp, "should track the IP address");
