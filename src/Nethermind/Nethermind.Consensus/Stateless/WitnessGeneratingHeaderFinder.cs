@@ -5,7 +5,7 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using  Nethermind.Core.Collections;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Stateless;
 
