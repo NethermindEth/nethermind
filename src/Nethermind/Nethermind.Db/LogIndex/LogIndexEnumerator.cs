@@ -14,7 +14,7 @@ public partial class LogIndexStorage
     // TODO: use ArrayPool for current value
     public sealed class LogIndexEnumerator : IEnumerator<int>
     {
-        private const int CompletedIndex = -1;
+        private const int CompletedIndex = int.MinValue;
 
         private readonly LogIndexStorage _storage;
         private readonly byte[] _key;
@@ -39,14 +39,17 @@ public partial class LogIndexStorage
             _view = db.GetViewBetween(fromKey, toKey);
         }
 
-        private bool TryInitView()
+        private bool TryStart()
         {
             ReadOnlySpan<byte> startKey = CreateDbKey(_key, _from, stackalloc byte[MaxDbKeyLength]);
+
             if (!_view.StartBefore(startKey) && !_view.MoveNext())
                 return false;
 
-            // The first value can be empty, in such a case - move once more
-            return !_view.CurrentValue.IsEmpty || _view.MoveNext();
+            SetValue();
+            _index = FindStartIndex();
+
+            return true;
         }
 
         public bool MoveNext()
@@ -54,28 +57,50 @@ public partial class LogIndexStorage
             if (_index == CompletedIndex)
                 return false;
 
-            bool viewMoved, success;
-w
-            if (_value is null) // Initialize view
-                success = viewMoved = TryInitView();
-            else if (_index++ < _value.Length - 1) // Increment position
-                (success, viewMoved) = (true, false);
-            else // Move view
-                success = viewMoved = _view.MoveNext();
+            // Try to initialize if needed
+            if (_value is null)
+            {
+                if (!TryStart())
+                {
+                    _index = CompletedIndex;
+                    return false;
+                }
 
-            if (viewMoved)
-                success = SetNewValueAndIndex();
+                // Shift the view until we can start at `from`
+                while (Current < _from && _view.MoveNext())
+                {
+                    SetValue();
+                    _index = FindStartIndex();
+                }
 
-            if (success) // Verify we are still withing range
-                success = Current <= _to;
+                // If failed to find a matching segment
+                if (Current < _from || Current > _to)
+                {
+                    _index = CompletedIndex;
+                    return false;
+                }
 
-            if (!success)
-                _index = CompletedIndex; // Mark as completed
+                return true;
+            }
 
-            return success;
+            _index++;
+
+            // Shift the view until we can continue
+            while (_index >= _value!.Length && _view.MoveNext())
+            {
+                SetValue();
+                _index = 0;
+            }
+
+            // If failed to find a matching segment
+            if (Current < _from || Current > _to)
+            {
+                _index = CompletedIndex;
+                return false;
+            }
+
+            return true;
         }
-
-        private static readonly byte[] _test = Convert.FromHexString("09be10a669b16c115e1860cb0016d5530cd8e20a618830c56d323feb86da1359");
 
         // private bool MoveViewWhileValid()
         // {
@@ -126,24 +151,19 @@ w
         //         return false;
         // }
 
-        private bool SetNewValueAndIndex()
+        private void SetValue()
         {
-            if (_view.CurrentValue.Length == 0)
-                return false;
-
             _value = IsCompressed(_view.CurrentValue, out _)
                 ? _storage.DecompressDbValue(_view.CurrentValue)
                 : ReadBlockNums(_view.CurrentValue);
 
-            // if (Math.Max(_value[0], _value[^1]) < _from)
-            //     return false;
-
             ReverseBlocksIfNeeded(_value);
+        }
 
-            _index = BinarySearch(_value, _from);
-
-            if (_index < 0) _index = ~_index;
-            return _index < _value.Length;
+        private int FindStartIndex()
+        {
+            var index = BinarySearch(_value, _from);
+            return index >= 0 ? index : ~index;
         }
 
         public void Reset() => throw new NotSupportedException($"{nameof(LogIndexEnumerator)} can not be reset.");

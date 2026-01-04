@@ -460,16 +460,11 @@ namespace Nethermind.Db.LogIndex
         public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
             GetBlockNumbersFor(index, topic.Bytes.ToArray(), from, to);
 
-        private static readonly byte[] _test = Convert.FromHexString("09be10a669b16c115e1860cb0016d5530cd8e20a618830c56d323feb86da1359");
-
         private List<int> GetBlockNumbersFor(int? topicIndex, byte[] key, int from, int to)
         {
             // TODO: use ArrayPoolList?
             var timestamp = Stopwatch.GetTimestamp();
             var result = new List<int>();
-
-            if (topicIndex == 2 && key.SequenceEqual(_test) && from == 249 && to == 750)
-                GC.KeepAlive(key);
 
             using IEnumerator<int> enumerator = GetBlockNumbersEnumerator(topicIndex, key, from, to);
             while (enumerator.MoveNext())
@@ -839,6 +834,12 @@ namespace Nethermind.Db.LogIndex
 
         private static bool IsCompressed(ReadOnlySpan<byte> source, out int len)
         {
+            if (source.Length == 0)
+            {
+                len = 0;
+                return false;
+            }
+
             len = ReadCompressionMarker(source);
             return len > 0;
         }
@@ -860,6 +861,9 @@ namespace Nethermind.Db.LogIndex
         // TODO: use MemoryMarshal?
         private static int[] ReadBlockNums(ReadOnlySpan<byte> source)
         {
+            if (source.Length == 0)
+                return [];
+
             if (source.Length % 4 != 0)
                 throw new LogIndexStateException("Invalid length for array of block numbers.");
 
