@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -435,17 +435,5 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
     }
 
     private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
-    {
-        if (chainSpecJson.Nodes is null)
-        {
-            chainSpec.Bootnodes = [];
-            return;
-        }
-
-        chainSpec.Bootnodes = new NetworkNode[chainSpecJson.Nodes.Length];
-        for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
-        {
-            chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i]);
-        }
-    }
+        => chainSpec.Bootnodes = string.Join(",", chainSpecJson.Nodes);
 }
