@@ -254,6 +254,9 @@ namespace Nethermind.Network.Rlpx
             session.Disconnected += SessionOnPeerDisconnected;
             session.MsgReceived += SessionOnActive;
             session.MsgDelivered += SessionOnActive;
+            session.Initialized += SessionOnInitialized;
+            session.HandshakeComplete += SessionOnInitialized;
+            session.Disconnecting += SessionOnDisconnect;
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
@@ -276,15 +279,35 @@ namespace Nethermind.Network.Rlpx
             });
         }
 
+        private void SessionOnInitialized(object? sender, EventArgs e)
+        {
+            if (sender is ISession session)
+            {
+                _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
+            }
+        }
+
+        private void SessionOnDisconnect(object? sender, DisconnectEventArgs e)
+        {
+            if (sender is ISession session)
+            {
+                _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
+            }
+        }
+
         private void SessionOnActive(object? sender, PeerEventArgs e)
             => _nodeFilter?.Set(e.Node.Address.Address, _currentIp);
 
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             ISession session = (Session)sender;
+            _nodeFilter?.Set(session.Node.Address.Address, _currentIp);
             session.Disconnected -= SessionOnPeerDisconnected;
             session.MsgReceived -= SessionOnActive;
             session.MsgDelivered -= SessionOnActive;
+            session.Initialized -= SessionOnInitialized;
+            session.HandshakeComplete -= SessionOnInitialized;
+            session.Disconnecting -= SessionOnDisconnect;
             session.Dispose();
         }
 
