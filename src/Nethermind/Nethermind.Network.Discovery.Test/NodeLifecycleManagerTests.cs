@@ -178,6 +178,14 @@ public class NodeLifecycleManagerTests
 
         await nodeManager.SendFindNode([]);
 
+        // Configure mock to track IPs and allow only first occurrence
+        HashSet<IPAddress> seenIps = [];
+        _discoveryManagerMock.ShouldContact(Arg.Any<IPAddress>()).Returns(callInfo =>
+        {
+            IPAddress ip = callInfo.Arg<IPAddress>();
+            return seenIps.Add(ip);
+        });
+
         Node[] firstNodes = TestItem.PublicKeys
             .Take(12)
             .Select(createNode)
