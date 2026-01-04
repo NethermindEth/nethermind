@@ -214,6 +214,11 @@ namespace Nethermind.Core
               : sizeCalculator.GetLength(this, false);
         }
 
+        /// <summary>
+        /// Calculated Intrinsic Gas
+        /// </summary>
+        public (long StandardGas, long FloorGas)? CachedIntrinsicGas { get; set; }
+
         public string ToShortString()
         {
             string gasPriceString =
@@ -306,6 +311,7 @@ namespace Nethermind.Core
                 obj.PoolIndex = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
+                obj.CachedIntrinsicGas = default;
 
                 return true;
             }

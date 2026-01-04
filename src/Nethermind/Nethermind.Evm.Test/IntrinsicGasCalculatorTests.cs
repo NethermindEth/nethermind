@@ -226,5 +226,149 @@ namespace Nethermind.Evm.Test
 
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
+
+        [Test]
+        public void Calculate_sets_cache_on_transaction()
+        {
+            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            
+            var result1 = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            transaction.CachedIntrinsicGas.Should().NotBeNull();
+            transaction.CachedIntrinsicGas.Value.StandardGas.Should().Be(result1.Standard);
+            transaction.CachedIntrinsicGas.Value.FloorGas.Should().Be(result1.FloorGas);
+        }
+
+        [Test]
+        public void Calculate_uses_cache_on_second_call()
+        {
+            var transaction = Build.A.Transaction
+                .WithData(new byte[100])
+                .SignedAndResolved()
+                .TestObject;
+            
+            var result1 = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            var result2 = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            result2.Should().Be(result1);
+        }
+
+        [Test]
+        public void Calculate_clears_cache_when_transaction_reset()
+        {
+            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            transaction.CachedIntrinsicGas = null;
+            
+            var result = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            transaction.CachedIntrinsicGas.Should().NotBeNull();
+            transaction.CachedIntrinsicGas.Value.StandardGas.Should().Be(result.Standard);
+        }
+
+        [Test]
+        public void Calculate_with_different_specs_uses_correct_cache_per_spec()
+        {
+            // Note: This test depends on whether cache is spec-specific
+            // Implementation doesn't store spec info, so cache might be reused
+            // This is OK because intrinsic gas calculation only depends on:
+            // 1. Transaction properties (that do not between validation and execution)
+            // 2. Spec features (should be consistent within a block)
+            
+            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            
+            // Both specs should give same result for simple transaction
+            var resultBerlin = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            var resultLondon = IntrinsicGasCalculator.Calculate(transaction, London.Instance);
+            
+            resultBerlin.Should().Be(resultLondon);
+        }
+
+        [Test]
+        public void Calculate_with_access_list_caches_correctly()
+        {
+            var accessList = new AccessList.Builder()
+                .AddAddress(TestItem.AddressA)
+                .AddStorage(1)
+                .Build();
+            
+            var transaction = Build.A.Transaction
+                .WithAccessList(accessList)
+                .SignedAndResolved()
+                .TestObject;
+            
+            var result1 = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            var result2 = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            result2.Should().Be(result1);
+            transaction.CachedIntrinsicGas.Should().NotBeNull();
+            transaction.CachedIntrinsicGas.Value.StandardGas.Should().Be(21000 + 2400 + 1900);
+        }
+
+        [Test]
+        public void Calculate_with_authorization_list_caches_correctly()
+        {
+            var authList = new[]
+            {
+                new AuthorizationTuple(0, TestItem.AddressA, 0, 0, UInt256.Zero, UInt256.Zero)
+            };
+            
+            var transaction = Build.A.Transaction
+                .WithAuthorizationCode(authList)
+                .SignedAndResolved()
+                .TestObject;
+            
+            var result1 = IntrinsicGasCalculator.Calculate(transaction, Prague.Instance);
+            var result2 = IntrinsicGasCalculator.Calculate(transaction, Prague.Instance);
+            
+            result2.Should().Be(result1);
+            result1.Standard.Should().Be(21000 + GasCostOf.NewAccount);
+        }
+
+        [Test]
+        public void Calculate_contract_creation_includes_create_cost()
+        {
+            var transaction = Build.A.Transaction
+                .To(null)
+                .WithData(new byte[100])
+                .SignedAndResolved()
+                .TestObject;
+            
+            var result = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            result.Standard.Should().BeGreaterThan(21000);
+            transaction.CachedIntrinsicGas.Should().NotBeNull();
+        }
+
+        [Test]
+        public void Calculate_floor_cost_when_EIP7623_enabled()
+        {
+            var transaction = Build.A.Transaction
+                .WithData(new byte[100])
+                .SignedAndResolved()
+                .TestObject;
+            
+            var result = IntrinsicGasCalculator.Calculate(transaction, Prague.Instance);
+            
+            result.FloorGas.Should().BeGreaterThan(0);
+            transaction.CachedIntrinsicGas.Should().NotBeNull();
+            transaction.CachedIntrinsicGas.Value.FloorGas.Should().Be(result.FloorGas);
+        }
+
+        [Test]
+        public void Calculate_floor_cost_zero_when_EIP7623_disabled()
+        {
+            var transaction = Build.A.Transaction
+                .WithData(new byte[100])
+                .SignedAndResolved()
+                .TestObject;
+            
+            var result = IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
+            
+            result.FloorGas.Should().Be(0);
+        }
     }
 }

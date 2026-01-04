@@ -225,7 +225,8 @@ namespace Nethermind.TxPool.Test
             {
                 blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
                     .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                    .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                    .Excluding(static t => t.PoolIndex) // ...as well as PoolIndex
+                    .Excluding(static t => t.CachedIntrinsicGas));    
             }
         }
 
@@ -390,8 +391,9 @@ namespace Nethermind.TxPool.Test
             blobTxReturned.Should().BeEquivalentTo(oldTx);
             blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress!, oldTx.Timestamp, out Transaction blobTxFromDb).Should().BeTrue();
             blobTxFromDb.Should().BeEquivalentTo(oldTx, static options => options
-                .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                .Excluding(static t => t.GasBottleneck)
+                .Excluding(static t => t.PoolIndex)
+                .Excluding(static t => t.CachedIntrinsicGas));
 
             _txPool.SubmitTx(newTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
@@ -400,8 +402,9 @@ namespace Nethermind.TxPool.Test
             blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress, oldTx.Timestamp, out blobTxFromDb).Should().BeFalse();
             blobTxStorage.TryGet(newTx.Hash, newTx.SenderAddress!, newTx.Timestamp, out blobTxFromDb).Should().BeTrue();
             blobTxFromDb.Should().BeEquivalentTo(newTx, static options => options
-                .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                .Excluding(static t => t.GasBottleneck)
+                .Excluding(static t => t.PoolIndex)
+                .Excluding(static t => t.CachedIntrinsicGas));
         }
 
         [Test]
@@ -462,7 +465,9 @@ namespace Nethermind.TxPool.Test
                 _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
                 returned.GasBottleneck.Should().Be(UInt256.Zero);
                 returned.Should().BeEquivalentTo(isPersistentStorage ? new LightTransaction(tx) : tx,
-                    static options => options.Excluding(static t => t.GasBottleneck));
+                    static options => options
+                        .Excluding(static t => t.GasBottleneck)
+                        .Excluding(static t => t.CachedIntrinsicGas));
                 returned.Should().NotBeEquivalentTo(isPersistentStorage ? tx : new LightTransaction(tx));
             }
             else
@@ -675,9 +680,10 @@ namespace Nethermind.TxPool.Test
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().BeTrue();
             returnedTxs.Length.Should().Be(txs.Length);
             returnedTxs.Should().BeEquivalentTo(txs, static options => options
-                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(static t => t.PoolIndex)        // ...as well as PoolIndex
-                .Excluding(static t => t.SenderAddress));  // sender is recovered later, it is not returned from db
+                .Excluding(static t => t.GasBottleneck)
+                .Excluding(static t => t.PoolIndex)
+                .Excluding(static t => t.SenderAddress)
+                .Excluding(static t => t.CachedIntrinsicGas));
 
             blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
@@ -727,22 +733,24 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _).Should().BeFalse();
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] blockBTxs).Should().BeTrue();
             txsB.Should().BeEquivalentTo(blockBTxs, static options => options
-                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(static t => t.PoolIndex)        // ...as well as PoolIndex
-                .Excluding(static t => t.SenderAddress));  // sender is recovered later, it is not returned from db
+                .Excluding(static t => t.GasBottleneck)
+                .Excluding(static t => t.PoolIndex)
+                .Excluding(static t => t.SenderAddress)
+                .Excluding(static t => t.CachedIntrinsicGas));
 
-            // blob txs from reorganized blockA should be readded to blob pool
             _txPool.GetPendingBlobTransactionsCount().Should().Be(txsA.Length);
             _txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out Transaction tx1).Should().BeTrue();
             _txPool.TryGetPendingBlobTransaction(txsA[1].Hash!, out Transaction tx2).Should().BeTrue();
 
             tx1.Should().BeEquivalentTo(txsA[0], static options => options
-                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
+                .Excluding(static t => t.GasBottleneck)
+                .Excluding(static t => t.PoolIndex)
+                .Excluding(static t => t.CachedIntrinsicGas));
 
             tx2.Should().BeEquivalentTo(txsA[1], static options => options
-                .Excluding(static t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
-                .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
+                .Excluding(static t => t.GasBottleneck)
+                .Excluding(static t => t.PoolIndex)
+                .Excluding(static t => t.CachedIntrinsicGas));
         }
 
         [Test]
@@ -924,8 +932,9 @@ namespace Nethermind.TxPool.Test
                 if (isPersistentStorage)
                 {
                     blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
-                        .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                        .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                        .Excluding(static t => t.GasBottleneck)
+                        .Excluding(static t => t.PoolIndex)
+                        .Excluding(static t => t.CachedIntrinsicGas));
                 }
             }
         }
@@ -975,8 +984,9 @@ namespace Nethermind.TxPool.Test
                 if (isPersistentStorage)
                 {
                     blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, static options => options
-                        .Excluding(static t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                        .Excluding(static t => t.PoolIndex));   // ...as well as PoolIndex
+                        .Excluding(static t => t.GasBottleneck)
+                        .Excluding(static t => t.PoolIndex)
+                        .Excluding(static t => t.CachedIntrinsicGas));
                 }
             }
         }

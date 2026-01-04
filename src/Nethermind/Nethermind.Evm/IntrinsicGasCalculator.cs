@@ -33,32 +33,69 @@ public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
     public static explicit operator long(EthereumIntrinsicGas gas) => gas.MinimalGas;
 }
 
+/// <summary>
+/// Calculates intrinsic gas for transactions with caching calculations.
+/// Caches Standard and FloorGas values to eliminate recalculations on cache hits.
+/// </summary>
 public static class IntrinsicGasCalculator
 {
     /// <summary>
-    /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
+    /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum
+    /// Common calculation logic for Ethereum intrinsic gas
+    /// Eth policy - Standard gas only as it stands
     /// </summary>
-    public static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    internal static long CalculateStandardGas(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        TGasPolicy standard = TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
-        long floorCost = CalculateFloorCost(transaction, releaseSpec);
-        TGasPolicy floorGas = TGasPolicy.FromLong(floorCost);
-        return new IntrinsicGas<TGasPolicy>(standard, floorGas);
-    }
-
-    /// <summary>
-    /// Non-generic backward-compatible Calculate method.
-    /// </summary>
-    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long intrinsicGas = GasCostOf.Transaction
+        return GasCostOf.Transaction
                + DataCost(transaction, releaseSpec)
                + CreateCost(transaction, releaseSpec)
                + AccessListCost(transaction, releaseSpec)
                + AuthorizationListCost(transaction, releaseSpec);
-        long floorGas = CalculateFloorCost(transaction, releaseSpec);
-        return new EthereumIntrinsicGas(intrinsicGas, floorGas);
+    }
+
+    /// <summary>
+    /// Calculates intrinsic gas with TGasPolicy type.
+    /// Uses cached values if available to skip recalculation
+    /// When no cache exists, calculates and caches StandardGas and FloorGas.
+    /// </summary>
+    public static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        if (transaction.CachedIntrinsicGas.HasValue)
+        {
+            var (StandardGas, FloorGas) = transaction.CachedIntrinsicGas.Value;
+            
+            TGasPolicy cachedStandardGasPolicy = TGasPolicy.FromLong(StandardGas);
+            TGasPolicy cachedFloorGasPolicy = TGasPolicy.FromLong(FloorGas);
+            
+            return new IntrinsicGas<TGasPolicy>(cachedStandardGasPolicy, cachedFloorGasPolicy);
+        }
+
+        long calculatedStandardGas = CalculateStandardGas(transaction, releaseSpec);
+        long calculatedFloorGas = CalculateFloorCost(transaction, releaseSpec);
+
+        TGasPolicy standardGasPolicy = TGasPolicy.FromLong(calculatedStandardGas);
+        TGasPolicy floorGasPolicy = TGasPolicy.FromLong(calculatedFloorGas);
+                
+        transaction.CachedIntrinsicGas = (calculatedStandardGas, calculatedFloorGas);
+        
+        return new IntrinsicGas<TGasPolicy>(standardGasPolicy, floorGasPolicy);
+    }
+
+    /// <summary>
+    /// Non-generic backward-compatible Calculate method.
+    /// Calculates and caches StandardGas and FloorGas values.
+    /// </summary>
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        long StandardGas = CalculateStandardGas(transaction, releaseSpec);
+        long FloorGas = CalculateFloorCost(transaction, releaseSpec);
+        
+        var result = new EthereumIntrinsicGas(StandardGas, FloorGas);
+        
+        transaction.CachedIntrinsicGas = (StandardGas, FloorGas);
+
+        return result;
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
