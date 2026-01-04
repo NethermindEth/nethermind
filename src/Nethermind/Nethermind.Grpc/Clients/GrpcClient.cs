@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
@@ -14,7 +15,7 @@ namespace Nethermind.Grpc.Clients
     {
         private readonly int _reconnectionInterval;
         private int _retry;
-        private bool _connected;
+        private volatile bool _connected;
         private readonly ILogger _logger;
         private Channel _channel;
         private NethermindService.NethermindServiceClient _client;
@@ -61,8 +62,21 @@ namespace Nethermind.Grpc.Clients
             _channel = new Channel(_address, ChannelCredentials.Insecure);
             await _channel.ConnectAsync();
             _client = new NethermindService.NethermindServiceClient(_channel);
+
+            const int connectionTimeoutSeconds = 30;
+            Stopwatch stopwatch = Stopwatch.StartNew();
             while (_channel.State != ChannelState.Ready)
             {
+                if (_channel.State == ChannelState.Shutdown)
+                {
+                    throw new InvalidOperationException($"gRPC channel to '{_address}' was shut down before becoming ready.");
+                }
+
+                if (stopwatch.Elapsed.TotalSeconds > connectionTimeoutSeconds)
+                {
+                    throw new TimeoutException($"gRPC connection to '{_address}' timed out after {connectionTimeoutSeconds} seconds. Current state: {_channel.State}");
+                }
+
                 await Task.Delay(_reconnectionInterval);
             }
 
