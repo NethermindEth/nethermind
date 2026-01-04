@@ -176,6 +176,9 @@ public class EthereumRunnerTests
             return;
         }
 
+        if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
+        if (testCase.file.Contains("radius_testnet-sepolia.json")) Assert.Ignore("sequencer url not specified");
+
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
