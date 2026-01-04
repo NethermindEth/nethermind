@@ -219,7 +219,7 @@ public class ProtocolsManagerTests
             msg.NetworkId = TestBlockchainIds.NetworkId;
             msg.GenesisHash = _blockTree.Genesis.Hash;
             msg.BestHash = _blockTree.Genesis.Hash;
-            msg.ProtocolVersion = 66;
+            msg.ProtocolVersion = 68;
             msg.ForkId = new ForkId(0, 0);
 
             return ReceiveStatus(msg);
@@ -239,7 +239,7 @@ public class ProtocolsManagerTests
             INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
             Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
             Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
-            Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(66));
+            Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
             Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
             return this;
         }
@@ -265,7 +265,7 @@ public class ProtocolsManagerTests
         public Context ReceiveHello(byte p2pVersion = 5)
         {
             using HelloMessage msg = new();
-            msg.Capabilities = new ArrayPoolList<Capability>(1) { new("eth", 66) };
+            msg.Capabilities = new ArrayPoolList<Capability>(1) { new("eth", 68) };
             msg.NodeId = TestItem.PublicKeyB;
             msg.ClientId = "other client v1";
             msg.P2PVersion = p2pVersion;
@@ -309,7 +309,7 @@ public class ProtocolsManagerTests
             msg.NetworkId = networkId;
             msg.GenesisHash = TestItem.KeccakA;
             msg.BestHash = TestItem.KeccakA;
-            msg.ProtocolVersion = 66;
+            msg.ProtocolVersion = 68;
 
             return ReceiveStatus(msg);
         }
@@ -321,7 +321,7 @@ public class ProtocolsManagerTests
             msg.NetworkId = TestBlockchainIds.NetworkId;
             msg.GenesisHash = TestItem.KeccakB;
             msg.BestHash = TestItem.KeccakB;
-            msg.ProtocolVersion = 66;
+            msg.ProtocolVersion = 68;
 
             return ReceiveStatus(msg);
         }
@@ -474,7 +474,7 @@ public class ProtocolsManagerTests
     }
 
     [Test]
-    public void Initialized_with_eth66_only()
+    public void Initialized_with_eth68_only()
     {
         When
             .CreateIncomingSession()
@@ -482,7 +482,7 @@ public class ProtocolsManagerTests
             .Handshake()
             .Init()
             .VerifyInitialized()
-            .ReceiveHelloEth(66)
+            .ReceiveHelloEth(68)
             .VerifyInitialized();
     }
 
@@ -494,6 +494,6 @@ public class ProtocolsManagerTests
             .ActivateChannel()
             .Handshake()
             .Init()
-            .VerifyProtocolVersion(Protocol.Eth, 68);
+            .VerifyProtocolVersion(Protocol.Eth, 69);
     }
 }

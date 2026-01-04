@@ -81,7 +81,7 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
         {
             Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
             {
-                EthDetails = "eth66",
+                EthDetails = "eth68",
             };
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
             mockMutator?.Invoke(mock);
@@ -298,7 +298,7 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
             _codeDb = codeDb;
             _executorResultFunction = executorResultFunction;
 
-            Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
+            Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth68" };
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
             IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
