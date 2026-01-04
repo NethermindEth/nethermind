@@ -494,6 +494,6 @@ public class ProtocolsManagerTests
             .ActivateChannel()
             .Handshake()
             .Init()
-            .VerifyProtocolVersion(Protocol.Eth, 69);
+            .VerifyProtocolVersion(Protocol.Eth, 68);
     }
 }
