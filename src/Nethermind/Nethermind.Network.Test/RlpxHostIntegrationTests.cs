@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -11,7 +10,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 

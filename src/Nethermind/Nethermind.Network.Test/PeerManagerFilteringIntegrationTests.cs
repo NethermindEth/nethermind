@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Config;
@@ -33,7 +30,7 @@ public class PeerManagerFilteringIntegrationTests
         // We use a mock that tracks the order of calls
 
         var trackingMock = new CallOrderTrackingMock();
-        
+
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         INodeStatsManager stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
         INetworkStorage storage = new InMemoryStorage();
@@ -82,7 +79,7 @@ public class PeerManagerFilteringIntegrationTests
             lock (_nodes) return _nodes.ToArray();
         }
 
-        public int PersistedNodesCount =>  _nodes.Count;
+        public int PersistedNodesCount => _nodes.Count;
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
         {
