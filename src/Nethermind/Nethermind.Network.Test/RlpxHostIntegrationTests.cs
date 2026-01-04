@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -20,7 +21,7 @@ namespace Nethermind.Network.Test;
 public class RlpxHostIntegrationTests
 {
     [Test]
-    public void ShouldContact_WithFilteringEnabled_BlocksSameIpWithinTimeout()
+    public async Task ShouldContact_WithFilteringEnabled_BlocksSameIpWithinTimeout()
     {
         NetworkConfig networkConfig = new()
         {
@@ -39,13 +40,20 @@ public class RlpxHostIntegrationTests
             networkConfig,
             LimboLogs.Instance);
 
-        IPAddress ip = IPAddress.Parse("203.0.113.1");
-        host.ShouldContact(ip).Should().BeTrue("first attempt should be accepted");
-        host.ShouldContact(ip).Should().BeFalse("second attempt within timeout should be rejected");
+        try
+        {
+            IPAddress ip = IPAddress.Parse("203.0.113.1");
+            host.ShouldContact(ip).Should().BeTrue("first attempt should be accepted");
+            host.ShouldContact(ip).Should().BeFalse("second attempt within timeout should be rejected");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
     }
 
     [Test]
-    public void ShouldContact_WithFilteringEnabled_AllowsDifferentIps()
+    public async Task ShouldContact_WithFilteringEnabled_AllowsDifferentIps()
     {
         NetworkConfig networkConfig = new()
         {
@@ -64,15 +72,22 @@ public class RlpxHostIntegrationTests
             networkConfig,
             LimboLogs.Instance);
 
-        IPAddress ip1 = IPAddress.Parse("203.0.113.1");
-        IPAddress ip2 = IPAddress.Parse("198.51.100.1");
+        try
+        {
+            IPAddress ip1 = IPAddress.Parse("203.0.113.1");
+            IPAddress ip2 = IPAddress.Parse("198.51.100.1");
 
-        host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
-        host.ShouldContact(ip2).Should().BeTrue("different IP should be accepted");
+            host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
+            host.ShouldContact(ip2).Should().BeTrue("different IP should be accepted");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
     }
 
     [Test]
-    public void ShouldContact_WithFilteringEnabled_BlocksSameSubnet()
+    public async Task ShouldContact_WithFilteringEnabled_BlocksSameSubnet()
     {
         NetworkConfig networkConfig = new()
         {
@@ -92,15 +107,22 @@ public class RlpxHostIntegrationTests
             networkConfig,
             LimboLogs.Instance);
 
-        IPAddress ip1 = IPAddress.Parse("203.0.113.1");
-        IPAddress ip2 = IPAddress.Parse("203.0.113.50"); // Same /24 subnet
+        try
+        {
+            IPAddress ip1 = IPAddress.Parse("203.0.113.1");
+            IPAddress ip2 = IPAddress.Parse("203.0.113.50"); // Same /24 subnet
 
-        host.ShouldContact(ip1).Should().BeTrue("first IP in subnet should be accepted");
-        host.ShouldContact(ip2).Should().BeFalse("second IP in same subnet should be rejected");
+            host.ShouldContact(ip1).Should().BeTrue("first IP in subnet should be accepted");
+            host.ShouldContact(ip2).Should().BeFalse("second IP in same subnet should be rejected");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
     }
 
     [Test]
-    public void ShouldContact_WithFilteringDisabled_AlwaysReturnsTrue()
+    public async Task ShouldContact_WithFilteringDisabled_AlwaysReturnsTrue()
     {
         NetworkConfig networkConfig = new()
         {
@@ -119,13 +141,20 @@ public class RlpxHostIntegrationTests
             networkConfig,
             LimboLogs.Instance);
 
-        IPAddress ip = IPAddress.Parse("203.0.113.1");
-        host.ShouldContact(ip).Should().BeTrue("filtering disabled, first attempt should be accepted");
-        host.ShouldContact(ip).Should().BeTrue("filtering disabled, second attempt should still be accepted");
+        try
+        {
+            IPAddress ip = IPAddress.Parse("203.0.113.1");
+            host.ShouldContact(ip).Should().BeTrue("filtering disabled, first attempt should be accepted");
+            host.ShouldContact(ip).Should().BeTrue("filtering disabled, second attempt should still be accepted");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
     }
 
     [Test]
-    public void ShouldContact_WithExternalIp_UsesItForFiltering()
+    public async Task ShouldContact_WithExternalIp_UsesItForFiltering()
     {
         NetworkConfig networkConfig = new()
         {
@@ -146,17 +175,24 @@ public class RlpxHostIntegrationTests
             networkConfig,
             LimboLogs.Instance);
 
-        // IP in same subnet as private external IP
-        IPAddress ip1 = IPAddress.Parse("192.168.1.10");
-        IPAddress ip2 = IPAddress.Parse("192.168.1.20");
+        try
+        {
+            // IP in same subnet as private external IP
+            IPAddress ip1 = IPAddress.Parse("192.168.1.10");
+            IPAddress ip2 = IPAddress.Parse("192.168.1.20");
 
-        // When current IP is private and remote is in same subnet, should use exact matching
-        host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
-        host.ShouldContact(ip2).Should().BeTrue("different IP in same local subnet should be accepted (exact match)");
+            // When current IP is private and remote is in same subnet, should use exact matching
+            host.ShouldContact(ip1).Should().BeTrue("first IP should be accepted");
+            host.ShouldContact(ip2).Should().BeTrue("different IP in same local subnet should be accepted (exact match)");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
     }
 
     [Test]
-    public void ShouldContact_WithPrivateRemoteIp_UsesExactMatching()
+    public async Task ShouldContact_WithPrivateRemoteIp_UsesExactMatching()
     {
         NetworkConfig networkConfig = new()
         {
@@ -177,12 +213,19 @@ public class RlpxHostIntegrationTests
             networkConfig,
             LimboLogs.Instance);
 
-        // Private IPs should use exact matching
-        IPAddress ip1 = IPAddress.Parse("192.168.1.1");
-        IPAddress ip2 = IPAddress.Parse("192.168.1.2");
+        try
+        {
+            // Private IPs should use exact matching
+            IPAddress ip1 = IPAddress.Parse("192.168.1.1");
+            IPAddress ip2 = IPAddress.Parse("192.168.1.2");
 
-        host.ShouldContact(ip1).Should().BeTrue("first private IP should be accepted");
-        host.ShouldContact(ip2).Should().BeTrue("different private IP should be accepted (exact match)");
+            host.ShouldContact(ip1).Should().BeTrue("first private IP should be accepted");
+            host.ShouldContact(ip2).Should().BeTrue("different private IP should be accepted (exact match)");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
     }
 
     private static int GetAvailablePort()
