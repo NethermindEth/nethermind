@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -36,8 +38,11 @@ using ValidationCompletion = TaskCompletionSource<(NewPayloadHandler.ValidationR
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
 /// Shanghai</a> specification.
 /// </summary>
-public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IDisposable
+public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, INewPayloadEventSource, IDisposable
 {
+    /// <inheritdoc />
+    public event EventHandler<NewPayloadProcessedEventArgs>? NewPayloadProcessed;
+
     private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockTree _blockTree;
@@ -242,7 +247,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
+        Stopwatch stopwatch = Stopwatch.StartNew();
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
+        stopwatch.Stop();
 
         if (result == ValidationResult.Invalid)
         {
@@ -256,6 +263,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
             return NewPayloadV1Result.Syncing;
         }
+
+        // Emit event for ethstats reporting
+        NewPayloadProcessed?.Invoke(this, new NewPayloadProcessedEventArgs(block.Hash!, block.Number, stopwatch.Elapsed));
 
         if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
