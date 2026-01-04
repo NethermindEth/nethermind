@@ -72,9 +72,9 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
         }
 
         byte[] result = new byte[32];
-        KeccakHash.ComputeHashBytesToSpan(publicKey.Slice(1, 64), result);
-
         ref byte refResult = ref MemoryMarshal.GetArrayDataReference(result);
+
+        KeccakCache.ComputeTo(publicKey.Slice(1, 64), out Unsafe.As<byte, ValueHash256>(ref refResult));
 
         // Clear first 12 bytes, as address is last 20 bytes of the hash
         Unsafe.InitBlockUnaligned(ref refResult, 0, 12);
