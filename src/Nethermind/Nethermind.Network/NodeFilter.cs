@@ -101,7 +101,7 @@ public class NodeFilter(int size, bool exactMatchOnly)
     /// apply NodeFilter-oriented heuristics (treat local ranges as exact; optionally treat same-local-subnet peers as exact).
     /// </remarks>
     [StructLayout(LayoutKind.Explicit)]
-    private readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
+    internal readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
     {
         // For IPv6: _hi/_lo are the masked 128-bit network prefix (big-endian).
         // For IPv4: _hi holds the masked v4 in the low 32 bits (big-endian), _lo is 0.
@@ -268,10 +268,6 @@ public class NodeFilter(int size, bool exactMatchOnly)
             byte family = ReadAddress(ip, out uint v4, out ulong hi, out ulong lo);
             return IsLoopbackOrPrivateOrLinkLocal(family, v4, hi, lo);
         }
-
-        // -----------------
-        // Implementation
-        // -----------------
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static IpSubnetKey CreateExactFromParsed(byte family, uint v4, ulong hi, ulong lo)
