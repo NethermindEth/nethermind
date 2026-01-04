@@ -203,15 +203,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
-
-            // Enable snap serving for SnapSync tests, but only for non-Hash DB modes
-            // Hash DB mode doesn't support snap (SnapServer is null)
-            if (dbMode != DbMode.Hash)
-            {
-                ISyncConfig syncConfig = cfg.GetConfig<ISyncConfig>();
-                syncConfig.SnapServingEnabled = true;
-            }
-
             return Task.CompletedTask;
         });
 

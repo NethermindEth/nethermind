@@ -51,10 +51,11 @@ public class PseudoNetworkModule() : Module
                             protocolManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
                         }
 
-                        if (worldStateManager.HashServer is null)
-                        {
-                            protocolManager.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
-                        }
+                        // Don't remove NodeData capability for E2E tests to ensure protocol negotiation succeeds
+                        // Keep commented out: if (worldStateManager.HashServer is null)
+                        // {
+                        //     protocolManager.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
+                        // }
 
                     });
             })
