@@ -93,18 +93,19 @@ public class CopyTreeVisitorTests
         // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
         (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager);
 
+        BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
         if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {
             NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
             using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
-            stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+            stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
         else
         {
             NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
             using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
-            stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+            stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
 
