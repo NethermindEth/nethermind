@@ -72,8 +72,7 @@ public sealed class TrieWarmer : ITrieWarmer
     private readonly int _workerCount;
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager)
     {
-        int processorCount = Environment.ProcessorCount;
-        _workerCount = processorCount;
+        _workerCount = Math.Max(Environment.ProcessorCount - 1, 1);
         _executionSlots = new Semaphore(0, _workerCount);
         _slots = 0;
         _warmerJob = Task.Run(() =>

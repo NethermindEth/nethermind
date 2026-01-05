@@ -371,7 +371,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode, bool reRegisterNodeInTrieStore)
         {
             byte[]? array = null;
             try
@@ -387,7 +387,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode);
+                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode, reRegisterNodeInTrieStore);
             }
             catch (TrieException e)
             {
@@ -920,7 +920,7 @@ namespace Nethermind.Trie
         }
 
         // Dedicated warm up code
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode, bool reRegisterNodeInTrieStore)
         {
             int originalPathLength = path.Length;
 
@@ -934,7 +934,7 @@ namespace Nethermind.Trie
                         return;
                     }
 
-                    if (node.IsSealed && node.Keccak is not null) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
+                    if (reRegisterNodeInTrieStore && node.IsSealed && node.Keccak is not null) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     node.ResolveNode(TrieStore, path);
 
                     if (node.IsLeaf || node.IsExtension)

@@ -50,7 +50,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     // tasks within the trie warmers's ring buffer.
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
-    private bool _isCommitting = false;
+    internal bool _pausePrewarmer = false;
     private readonly ResourcePool _resourcePool;
     private readonly string _isPrewarmerLabel;
 
@@ -144,7 +144,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void WarmUpOutOfScope(Address address, UInt256? slot)
     {
-        if (_isCommitting) return;
+        if (_pausePrewarmer) return;
         if (_isDisposed) return;
         if (slot is null)
         {
@@ -162,6 +162,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         if (_hintSequenceId != sequenceId) return false;
+        if (_pausePrewarmer) return false;
 
         try
         {
@@ -169,7 +170,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
                 // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, false);
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, true, true);
             }
         }
         catch (AbstractMinimalTrieStore.UnsupportedOperationException)
@@ -218,7 +219,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void Commit(long blockNumber)
     {
-        _isCommitting = true;
+        _pausePrewarmer = true;
         StateId newStateId = new StateId(blockNumber, RootHash);
         if (!_isReadOnly)
         {
@@ -266,7 +267,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         }
 
         _currentStateId = newStateId;
-        _isCommitting = false;
+        _pausePrewarmer = false;
     }
 
     private class WriteBatch(

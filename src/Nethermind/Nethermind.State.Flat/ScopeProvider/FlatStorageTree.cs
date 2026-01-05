@@ -125,6 +125,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     public bool WarUpStorageTrie(UInt256 index, int sequenceId)
     {
         if (_scope.HintSequenceId != sequenceId) return false;
+        if (_scope._pausePrewarmer) return false;
 
         if (_bundle.ShouldPrewarm(_address, index))
         {
@@ -132,7 +133,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
             // this is just to warm up the nodes.
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan, true);
+            _warmupStorageTree.WarmUpPath(key.BytesAsSpan, false, true);
             return true;
         }
 
