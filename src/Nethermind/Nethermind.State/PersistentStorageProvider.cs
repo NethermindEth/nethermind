@@ -171,12 +171,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             _committedThisRound.Add(change.StorageCell);
-
-            if (change.ChangeType == ChangeType.Destroy)
-            {
-                continue;
-            }
-
             int forAssertion = _intraBlockCache[change.StorageCell].Pop();
             if (forAssertion != currentPosition - i)
             {
