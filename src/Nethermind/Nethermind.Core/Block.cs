@@ -32,7 +32,8 @@ public class Block
         BlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), blockAccessList);
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        BlockAccessList = blockAccessList;
     }
 
     public Block(BlockHeader header) : this(
@@ -40,8 +41,7 @@ public class Block
         new(
             null,
             null,
-            header.WithdrawalsRoot is null ? null : [],
-            header.BlockAccessListHash is null ? null : new())
+            header.WithdrawalsRoot is null ? null : [])
     )
     { }
 
@@ -120,7 +120,9 @@ public class Block
 
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
     public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
-    public BlockAccessList? BlockAccessList => Body.BlockAccessList; // do not add setter here
+
+    [JsonIgnore]
+    public BlockAccessList? BlockAccessList { get; set; }
 
     // for debugging by rpc
     [JsonIgnore]
