@@ -132,7 +132,7 @@ public class TdxServiceTests
         attestation.Signature.Should().HaveCount(Signature.Size);
         attestation.BlockHash.Should().Be(block.Hash!);
         attestation.StateRoot.Should().Be(TestItem.KeccakA);
-        attestation.Header.Should().Be(block.Header);
+        attestation.Header.Hash.Should().Be(block.Hash!);
     }
 
     [Test]

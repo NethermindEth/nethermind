@@ -135,7 +135,7 @@ public class TdxService : ITdxService
             Signature = GetSignatureBytes(signature),
             BlockHash = blockHeader.Hash,
             StateRoot = blockHeader.StateRoot,
-            Header = blockHeader
+            Header = new BlockHeaderForRpc(blockHeader)
         };
     }
 

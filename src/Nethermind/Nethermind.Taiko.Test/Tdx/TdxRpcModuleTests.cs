@@ -143,7 +143,7 @@ public class TdxRpcModuleTests
             Signature = new byte[Signature.Size],
             BlockHash = header.Hash!,
             StateRoot = header.StateRoot!,
-            Header = header
+            Header = new BlockHeaderForRpc(header)
         };
         _tdxService.AttestBlockHeader(header).Returns(attestation);
 
@@ -151,7 +151,7 @@ public class TdxRpcModuleTests
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
-        result.Data!.Header.Should().Be(header);
+        result.Data!.Header.Hash.Should().Be(header.Hash!);
     }
 
     [Test]

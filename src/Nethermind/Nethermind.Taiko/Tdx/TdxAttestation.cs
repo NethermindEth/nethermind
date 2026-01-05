@@ -25,7 +25,7 @@ public class BlockHeaderTdxAttestation
     public required byte[] Signature { get; init; }
     public required Hash256 BlockHash { get; init; }
     public required Hash256 StateRoot { get; init; }
-    public required BlockHeader Header { get; init; }
+    public required BlockHeaderForRpc Header { get; init; }
 }
 
 /// <summary>
