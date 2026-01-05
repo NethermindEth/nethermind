@@ -18,9 +18,5 @@ namespace Nethermind.Blockchain.Filters.Topics
         public abstract bool Matches(ref BloomStructRef bloom);
 
         public abstract bool AcceptsAnyBlock { get; }
-
-        public abstract IEnumerable<Hash256> Topics { get; }
-
-        public abstract List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic);
     }
 }

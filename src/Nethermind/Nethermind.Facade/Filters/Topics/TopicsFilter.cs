@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -19,10 +18,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public abstract bool AcceptsAnyBlock { get; }
 
-        public abstract IEnumerable<Hash256> Topics { get; }
-
-        public abstract IReadOnlyList<TopicExpression> Expressions { get; }
-
-        public abstract List<int> FilterBlockNumbers(IDictionary<Hash256, List<int>>[] byTopic);
+        public abstract IEnumerable<TopicExpression> Expressions { get; }
     }
 }

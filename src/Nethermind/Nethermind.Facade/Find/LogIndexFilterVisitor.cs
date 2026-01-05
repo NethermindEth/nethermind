@@ -12,7 +12,6 @@ using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Facade.Find;
 
-// TODO: remove new unused fields from Filter/Expression classes
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {
     public sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
@@ -154,11 +153,10 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
     {
         IEnumerator<int> result = null;
 
-        for (var topicIndex = 0; topicIndex < topicsFilter.Expressions.Count; topicIndex++)
+        var topicIndex = 0;
+        foreach (TopicExpression expression in topicsFilter.Expressions)
         {
-            TopicExpression expression = topicsFilter.Expressions[topicIndex];
-
-            if (Visit(topicIndex, expression) is not { } next)
+            if (Visit(topicIndex++, expression) is not { } next)
                 continue;
 
             result = result is null ? next : new IntersectEnumerator(result, next);
@@ -169,9 +167,9 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
     private IEnumerator<int>? Visit(int topicIndex, TopicExpression expression) => expression switch
     {
-        AnyTopic anyTopic => null,
+        AnyTopic => null,
         OrExpression orExpression => Visit(topicIndex, orExpression),
-        SpecificTopic specificTopic => Visit(topicIndex, specificTopic),
+        SpecificTopic specificTopic => Visit(topicIndex, specificTopic.Topic),
         _ => throw new ArgumentOutOfRangeException($"Unknown topic expression type: {expression.GetType().Name}.")
     };
 
@@ -179,23 +177,12 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
     {
         IEnumerator<int>? result = null;
 
-        foreach (Hash256 topic in orExpression.Topics)
+        foreach (TopicExpression expression in orExpression.SubExpressions)
         {
-            IEnumerator<int> next = Visit(topicIndex, topic);
+            if (Visit(topicIndex, expression) is not { } next)
+                continue;
+
             result = result is null ? next : new UnionEnumerator(result, next);
-        }
-
-        return result;
-    }
-
-    private IEnumerator<int>? Visit(int topicIndex, SpecificTopic specificTopic)
-    {
-        IEnumerator<int>? result = null;
-
-        foreach (Hash256 topic in specificTopic.Topics)
-        {
-            IEnumerator<int> next = Visit(topicIndex, topic);
-            result = result is null ? next : new IntersectEnumerator(result, next);
         }
 
         return result;

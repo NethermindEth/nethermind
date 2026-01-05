@@ -13,6 +13,8 @@ namespace Nethermind.Blockchain.Filters.Topics
     {
         private readonly TopicExpression[] _subexpressions;
 
+        public IEnumerable<TopicExpression> SubExpressions => _subexpressions;
+
         public OrExpression(params TopicExpression[] subexpressions)
         {
             _subexpressions = subexpressions;
@@ -71,22 +73,6 @@ namespace Nethermind.Blockchain.Filters.Topics
         }
 
         public override bool AcceptsAnyBlock => _subexpressions.Any(e => e.AcceptsAnyBlock);
-
-        public override IEnumerable<Hash256> Topics => _subexpressions.SelectMany(e => e.Topics);
-
-        public override List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic)
-        {
-            List<int>? result = null;
-            foreach (TopicExpression subexpression in _subexpressions)
-            {
-                if (result == null)
-                    result = subexpression.FilterBlockNumbers(byTopic);
-                else if (subexpression.FilterBlockNumbers(byTopic) is { } next)
-                    result = AscListHelper.Union(result, next);
-            }
-
-            return result ?? [];
-        }
 
         public override bool Equals(object? obj)
         {

@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Filters.Topics
     {
         private readonly TopicExpression[] _expressions;
 
-        public override IReadOnlyList<TopicExpression> Expressions => _expressions.AsReadOnly();
+        public override IEnumerable<TopicExpression> Expressions => _expressions;
 
         public AnyTopicsFilter(params TopicExpression[] expressions)
         {
@@ -99,23 +99,5 @@ namespace Nethermind.Blockchain.Filters.Topics
         }
 
         public override bool AcceptsAnyBlock => _expressions.Length == 0 || _expressions.Any(e => e.AcceptsAnyBlock);
-
-        public override IEnumerable<Hash256> Topics => _expressions.SelectMany(e => e.Topics);
-
-        public override List<int> FilterBlockNumbers(IDictionary<Hash256, List<int>>[] byTopic)
-        {
-            List<int>? result = null;
-            for (var i = 0; i < _expressions.Length; i++)
-            {
-                TopicExpression expression = _expressions[i];
-
-                if (result == null)
-                    result = expression.FilterBlockNumbers(byTopic[i]);
-                else if (expression.FilterBlockNumbers(byTopic[i]) is { } next)
-                    result = AscListHelper.Union(result, next);
-            }
-
-            return result ?? [];
-        }
     }
 }
