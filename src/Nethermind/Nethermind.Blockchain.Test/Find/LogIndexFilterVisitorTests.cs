@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -27,7 +27,7 @@ public class LogIndexFilterVisitorTests
         public List<int> this[int topicIndex, Hash256 hash] => Topic[topicIndex][hash];
     }
 
-    public class EnumeratorWrapper(int[] array): IEnumerator<int>
+    public class EnumeratorWrapper(int[] array) : IEnumerator<int>
     {
         private readonly IEnumerator<int> _enumerator = array.Cast<int>().GetEnumerator();
         public bool MoveNext() => _enumerator.MoveNext();
@@ -358,7 +358,7 @@ public class LogIndexFilterVisitorTests
     }
 
     private static void VerifyEnumerator<T>(int[] s1, int[] s2, int[] ex)
-        where T: IEnumerator<int>
+        where T : IEnumerator<int>
     {
         using var enumerator = (T)Activator.CreateInstance(
             typeof(T),
@@ -371,7 +371,7 @@ public class LogIndexFilterVisitorTests
 
     private static IEnumerable<int> EnumerateOnce(IEnumerator<int> enumerator)
     {
-        while(enumerator.MoveNext())
+        while (enumerator.MoveNext())
             yield return enumerator.Current;
     }
 

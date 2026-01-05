@@ -13,7 +13,7 @@ using Nethermind.Db.LogIndex;
 namespace Nethermind.Facade.Find;
 
 // TODO: remove new unused fields from Filter/Expression classes
-public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock): IEnumerable<int>
+public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {
     public sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
     {
@@ -88,7 +88,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
             var (c1, c2) = (e1.Current, e2.Current);
             switch (c1.CompareTo(c2))
             {
-                case <0:
+                case < 0:
                     Current = c1;
                     _has1 = e1.MoveNext();
                     return true;
@@ -212,6 +212,6 @@ public static class LogIndexFilterVisitorExtensions
 {
     public static IEnumerable<int> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
     {
-        return new LogIndexFilterVisitor(storage, filter, (int) fromBlock, (int) toBlock);
+        return new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock);
     }
 }
