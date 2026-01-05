@@ -120,7 +120,6 @@ namespace Nethermind.Db.LogIndex
         private readonly ILogger _logger;
 
         private readonly int _maxReorgDepth;
-        private readonly int _compressionDistance;
 
         private readonly Dictionary<LogIndexColumns, MergeOperator> _mergeOperators;
         private readonly ICompressor _compressor;
@@ -166,7 +165,6 @@ namespace Nethermind.Db.LogIndex
                 Enabled = config.Enabled;
 
                 _maxReorgDepth = config.MaxReorgDepth;
-                _compressionDistance = config.CompressionDistance;
 
                 _logger = logManager.GetClassLogger<LogIndexStorage>();
 
@@ -816,12 +814,6 @@ namespace Nethermind.Db.LogIndex
             return index < 0 ? ~index : index;
         }
 
-        private ReadOnlySpan<int> Decompress(ReadOnlySpan<byte> data, Span<int> decompressedBlockNumbers)
-        {
-            _ = _compressionAlgorithm.Decompress(data, (nuint)decompressedBlockNumbers.Length, decompressedBlockNumbers);
-            return decompressedBlockNumbers;
-        }
-
         private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
             ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
@@ -858,20 +850,24 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        // TODO: use MemoryMarshal?
-        private static int[] ReadBlockNums(ReadOnlySpan<byte> source)
+        private static void ReadBlockNums(ReadOnlySpan<byte> source, Span<int> buffer)
         {
-            if (source.Length == 0)
-                return [];
-
-            if (source.Length % 4 != 0)
+            if (source.Length % BlockNumSize != 0)
                 throw new LogIndexStateException("Invalid length for array of block numbers.");
 
-            var result = new int[source.Length / BlockNumSize];
-            for (var i = 0; i < source.Length; i += BlockNumSize)
-                result[i / BlockNumSize] = GetValBlockNum(source[i..]);
+            if (buffer.Length < source.Length / BlockNumSize)
+                throw new ArgumentException($"Buffer is too small to hold {source.Length / BlockNumSize} block numbers.", nameof(buffer));
 
-            return result;
+            if (BitConverter.IsLittleEndian)
+            {
+                ReadOnlySpan<int> sourceInt = MemoryMarshal.Cast<byte, int>(source);
+                sourceInt.CopyTo(buffer);
+            }
+            else
+            {
+                for (var i = 0; i < source.Length; i += BlockNumSize)
+                    buffer[i / BlockNumSize] = GetValBlockNum(source[i..]);
+            }
         }
 
         private static byte[] CreateDbValue(IReadOnlyList<int> blockNums)
@@ -906,17 +902,15 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private int[] DecompressDbValue(ReadOnlySpan<byte> data)
+        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
 
-            // TODO: reuse buffer
-            Span<int> buffer = new int[len + 1]; // +1 fixes TurboPFor reading outside of array bounds
-            buffer = buffer[..^1];
+            if (buffer.Length < len)
+                throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            var result = Decompress(data[BlockNumSize..], buffer);
-            return result.ToArray();
+            _ = _compressionAlgorithm.Decompress(data[BlockNumSize..], (nuint)len, buffer);
         }
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
