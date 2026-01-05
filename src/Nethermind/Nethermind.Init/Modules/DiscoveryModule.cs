@@ -81,7 +81,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                     discoveryConfig.Bootnodes = string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
                 }
 
-                if (networkConfig.DiscoveryDns == null)
+                if (networkConfig.DiscoveryDns is null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
