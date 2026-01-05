@@ -58,11 +58,13 @@ public interface IFlatDbConfig: IConfig
 
     [ConfigItem(Description = "Use flat bloom", DefaultValue = "false")]
     bool EnableFlatBloom { get; set; }
+
+    [ConfigItem(Description = "Warmup key by key", DefaultValue = "false")]
+    bool WarmUpPersistence { get; set; }
 }
 
 public enum FlatLayout
 {
-    FlatSeparateTopStorage,
     Flat,
     FlatInTrie,
     PreimageFlat,
@@ -90,4 +92,5 @@ public class FlatDbConfig: IFlatDbConfig
     public bool GeneratePreimage { get; set; } = false;
     public int MaxPruningBoundary { get; set; } = 1024;
     public bool EnableFlatBloom { get; set; } = false;
+    public bool WarmUpPersistence { get; set; } = false;
 }

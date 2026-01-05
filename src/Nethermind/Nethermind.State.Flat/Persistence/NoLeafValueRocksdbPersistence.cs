@@ -121,6 +121,11 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         );
     }
 
+    public bool WarmUpWhole(CancellationToken cancellation)
+    {
+        return true;
+    }
+
     private struct TrieWriter(
         ISortedKeyValueStore storageNodesSnap,
         IWriteOnlyKeyValueStore stateTopNodes,

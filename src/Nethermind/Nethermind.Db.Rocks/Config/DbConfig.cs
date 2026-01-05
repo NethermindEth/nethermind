@@ -342,6 +342,7 @@ public class DbConfig : IDbConfig
         "max_write_batch_group_size_bytes=4000000;" +
 
         "memtable=skiplist;" +
+        "uncache_aggressiveness=1000;" + // This is still experimental for now though
         "min_write_buffer_number_to_merge=2;" +
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
@@ -452,6 +453,8 @@ public class DbConfig : IDbConfig
 
         // Back to 16
         "block_based_table_factory.block_restart_interval=8;" +
+
+        "uncache_aggressiveness=1000;" + // This is still experimental for now though
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.

@@ -102,8 +102,8 @@ public class Importer(
             {
                 try
                 {
-                    await IngestLogicFlatLMDB(from, flatChannel.Reader);
-                    // await IngestLogicFlat(from, flatChannel.Reader);
+                    // await IngestLogicFlatLMDB(from, flatChannel.Reader);
+                    await IngestLogicFlat(from, flatChannel.Reader);
                 }
                 catch (Exception e)
                 {

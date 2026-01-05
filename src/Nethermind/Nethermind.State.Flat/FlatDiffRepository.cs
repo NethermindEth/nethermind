@@ -67,8 +67,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         bool VerifyWithTrie = false,
         bool ReadWithTrie = false,
         bool InlineCompaction = false,
-        bool DisableTrieWarmer = false
-    )
+        bool DisableTrieWarmer = false,
+        bool WarmUpPersistence = false)
     {
     }
 
@@ -86,6 +86,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _inlineCompaction = config.InlineCompaction;
         _resourcePool = resourcePool;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
+
+        if (config.WarmUpPersistence)
+        {
+            persistedPersistence.WarmUpWhole(processExitSource.Token);
+        }
 
         _persistenceManager = new PersistenceManager(
             this,

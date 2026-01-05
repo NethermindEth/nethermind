@@ -78,16 +78,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 ForcedPruningBoundary = config.MaxPruningBoundary,
                 TrieCacheMemoryTarget = config.TrieCacheMemoryTarget,
                 InlineCompaction = config.InlineCompaction,
+                WarmUpPersistence = config.WarmUpPersistence,
                 DisableTrieWarmer = config.DisableTrieWarmer
             })
 
             .AddSingleton<IPersistence, IFlatDbConfig, IComponentContext>((flatDbConfig, ctx) =>
             {
-                if (
-                    flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage
-                    || flatDbConfig.Layout == FlatLayout.Flat
+                if (flatDbConfig.Layout == FlatLayout.Flat
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
-                )
+                   )
                 {
                     return ctx.Resolve<RocksdbPersistence>();
                 }
@@ -188,7 +187,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             _logger = logManager.GetClassLogger<FlatBlockCacheAdjuster>();
             _rocksDbConfigFactory = rocksDbConfigFactory;
             _flatDbConfig = flatDbConfig;
-            _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget), 0);
+            Console.Error.WriteLine($"Budget is {flatDbConfig.BlockCacheSizeBudget:N0}");
+            _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr((ulong)flatDbConfig.BlockCacheSizeBudget), 0);
 
             FlatDbColumns[] columns;
 
