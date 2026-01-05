@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Debugger;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm.Test;
 
@@ -380,10 +381,10 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = tracer.CurrentState.GasAvailable;
+                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
                 else
                 {
-                    long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
+                    long gasAvailable_post_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
                     Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                 }
                 tracer.MoveNext();

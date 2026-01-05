@@ -75,7 +75,7 @@ namespace Nethermind.Abi
             return encodedParts;
         }
 
-        internal static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
+        public static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
         {
             (Array array, int position) = DecodeSequence(typeof(object), length, types, data, packed, startPosition);
             return ((object[])array, position);

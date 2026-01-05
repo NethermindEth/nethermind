@@ -18,6 +18,6 @@ public class SurgeConfig : ISurgeConfig
     public int SharingPercentage { get; set; } = 75;
     public int BoostBaseFeePercentage { get; set; } = 5;
     public int GasPriceRefreshTimeoutSeconds { get; set; } = 12;
-
+    public int MaxGasLimitRatio { get; set; } = 0;
     public bool TdxEnabled { get; set; } = false;
 }

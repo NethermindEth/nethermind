@@ -24,6 +24,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
+    IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
@@ -129,9 +130,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetNonce(Address address, in UInt256 nonce);
 
     /* snapshots */
-
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
-
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 
     /// <summary>
