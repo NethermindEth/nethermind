@@ -144,7 +144,7 @@ public class LogIndexBuilderTests
 
         Block head = _blockTree.Head!;
         _blockTree.SyncPivot = (head.Number, head.Hash);
-        _syncConfig.PivotNumber = _blockTree.SyncPivot.BlockNumber.ToString();
+        _syncConfig.PivotNumber = _blockTree.SyncPivot.BlockNumber;
 
         _receiptStorage
             .Get(Arg.Any<Block>())
