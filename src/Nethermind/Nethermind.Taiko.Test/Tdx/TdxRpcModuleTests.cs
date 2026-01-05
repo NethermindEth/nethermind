@@ -135,14 +135,15 @@ public class TdxRpcModuleTests
         _config.TdxEnabled.Returns(true);
         _tdxService.IsBootstrapped.Returns(true);
 
-        BlockHeader header = Build.A.BlockHeader.TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
         _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
         var attestation = new BlockHeaderTdxAttestation
         {
             Signature = new byte[Signature.Size],
             BlockHash = header.Hash!,
-            HeaderRlp = new byte[200]
+            StateRoot = header.StateRoot!,
+            Header = header
         };
         _tdxService.AttestBlockHeader(header).Returns(attestation);
 
@@ -150,7 +151,7 @@ public class TdxRpcModuleTests
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
-        result.Data!.HeaderRlp.Should().NotBeEmpty();
+        result.Data!.Header.Should().Be(header);
     }
 
     [Test]

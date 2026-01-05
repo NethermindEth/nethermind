@@ -116,19 +116,26 @@ public class TdxService : ITdxService
         if (!IsBootstrapped)
             throw new TdxException("TDX service not bootstrapped");
 
-        // Get the RLP encoded block header and re-compute the hash
-        byte[] headerRlp = Rlp.Encode(blockHeader).Bytes;
-
         blockHeader.Hash ??= blockHeader.CalculateHash();
 
-        // Sign the RLP hash
-        Signature signature = _ecdsa.Sign(_privateKey!, blockHeader.Hash);
+        if (blockHeader.StateRoot is null)
+            throw new TdxException("Block header state root is null");
+
+        // Concatenate blockHash and stateRoot, then hash for signing
+        byte[] dataToHash = new byte[64];
+        blockHeader.Hash.Bytes.CopyTo(dataToHash.AsSpan(0, 32));
+        blockHeader.StateRoot.Bytes.CopyTo(dataToHash.AsSpan(32, 32));
+        Hash256 signedHash = Keccak.Compute(dataToHash);
+
+        // Create a signature on both block hash and state root
+        Signature signature = _ecdsa.Sign(_privateKey!, signedHash);
 
         return new BlockHeaderTdxAttestation
         {
             Signature = GetSignatureBytes(signature),
             BlockHash = blockHeader.Hash,
-            HeaderRlp = headerRlp
+            StateRoot = blockHeader.StateRoot,
+            Header = blockHeader
         };
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Taiko.Tdx;
@@ -16,13 +17,15 @@ public class BlockHashTdxAttestation
 }
 
 /// <summary>
-/// TDX attestation result containing proof, the attested block hash and RLP header.
+/// TDX attestation result containing proof, the attested block hash, state root and header.
+/// Signature is over keccak(<blockHash><stateRoot>).
 /// </summary>
 public class BlockHeaderTdxAttestation
 {
     public required byte[] Signature { get; init; }
     public required Hash256 BlockHash { get; init; }
-    public required byte[] HeaderRlp { get; init; }
+    public required Hash256 StateRoot { get; init; }
+    public required BlockHeader Header { get; init; }
 }
 
 /// <summary>
