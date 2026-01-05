@@ -157,11 +157,11 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target, vm.TxExecutionContext.BlockAccessIndex))
         {
             gasExtra += GasCostOf.NewAccount;
         }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target, vm.TxExecutionContext.BlockAccessIndex))
         {
             gasExtra += GasCostOf.NewAccount;
         }

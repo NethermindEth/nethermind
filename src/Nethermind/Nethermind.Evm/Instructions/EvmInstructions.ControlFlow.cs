@@ -230,19 +230,19 @@ internal static partial class EvmInstructions
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
-        UInt256 result = state.GetBalance(executingAccount);
+        UInt256 result = state.GetBalance(executingAccount, vm.TxExecutionContext.BlockAccessIndex);
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // For certain specs, charge gas if transferring to a dead account.
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
+        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor, vm.TxExecutionContext.BlockAccessIndex))
         {
             if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 
         // If account creation rules apply, ensure gas is charged for new accounts.
-        bool inheritorAccountExists = state.AccountExists(inheritor);
+        bool inheritorAccountExists = state.AccountExists(inheritor, vm.TxExecutionContext.BlockAccessIndex);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
             if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
@@ -253,7 +253,7 @@ internal static partial class EvmInstructions
         if (!inheritorAccountExists)
         {
             // should only be recorded if result != 0 ?
-            state.CreateAccount(inheritor, result);
+            state.CreateAccount(inheritor, result, blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
         }
         else if (!inheritor.Equals(executingAccount))
         {
