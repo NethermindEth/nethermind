@@ -214,10 +214,46 @@ namespace Nethermind.Core
               : sizeCalculator.GetLength(this, false);
         }
 
+        private long _cachedStandardGas;
+        private long _cachedFloorGas;
+        private bool _hasCachedIntrinsicGas;
+        
         /// <summary>
-        /// Calculated Intrinsic Gas
+        /// Returns true if intrinsic gas values are already cached, and assign them to arguments
+        /// Using a flag and primitive types rather than a Tuple/Struct to avoid significant heap pressure
         /// </summary>
-        public (long StandardGas, long FloorGas)? CachedIntrinsicGas { get; set; }
+        public bool TryGetCachedIntrinsicGas(out long standard, out long floorGas)
+        {
+            if (_hasCachedIntrinsicGas)
+            {
+                standard = _cachedStandardGas;
+                floorGas = _cachedFloorGas;
+                return true;
+            }
+            standard = default;
+            floorGas = default;
+            return false;
+        }
+        
+        /// <summary>
+        /// Sets intrinsic gas values are cached, and assign them to arguments
+        /// </summary>
+        public void SetCachedIntrinsicGas(long standard, long floorGas)
+        {
+            _cachedStandardGas = standard;
+            _cachedFloorGas = floorGas;
+            _hasCachedIntrinsicGas = true;
+        }
+        
+        /// <summary>
+        /// Clears cached intrinsic gas flag
+        /// </summary>
+        public void ClearCachedIntrinsicGas()
+        {
+            _cachedStandardGas = default;
+            _cachedFloorGas = default;
+            _hasCachedIntrinsicGas = false;
+        }
 
         public string ToShortString()
         {
@@ -311,8 +347,9 @@ namespace Nethermind.Core
                 obj.PoolIndex = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
-                obj.CachedIntrinsicGas = default;
-
+                obj._cachedStandardGas = default;
+                obj._cachedFloorGas = default;
+                obj._hasCachedIntrinsicGas = default;
                 return true;
             }
         }
@@ -343,6 +380,9 @@ namespace Nethermind.Core
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
+            tx._cachedStandardGas = _cachedStandardGas;
+            tx._cachedFloorGas = _cachedFloorGas;
+            tx._hasCachedIntrinsicGas = _hasCachedIntrinsicGas;
         }
 
         public virtual ProofVersion? GetProofVersion() =>

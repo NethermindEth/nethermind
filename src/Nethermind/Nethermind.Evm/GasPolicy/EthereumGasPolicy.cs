@@ -171,7 +171,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
-        long gas = IntrinsicGasCalculator.CalculateStandardGas(tx, spec);
+        long gas = GasCostOf.Transaction
+            + DataCost(tx, spec)
+            + CreateCost(tx, spec)
+            + IntrinsicGasCalculator.AccessListCost(tx, spec)
+            + AuthorizationListCost(tx, spec);
         return new() { Value = gas };
     }
 

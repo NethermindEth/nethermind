@@ -34,50 +34,33 @@ public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
 }
 
 /// <summary>
-/// Calculates intrinsic gas for transactions with caching calculations.
-/// Caches Standard and FloorGas values to eliminate recalculations on cache hits.
+/// Calculates intrinsic gas for transactions
+/// Caches standard and floor gas values to eliminate recalculations on cache hits.
 /// </summary>
 public static class IntrinsicGasCalculator
-{
-    /// <summary>
-    /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum
-    /// Common calculation logic for Ethereum intrinsic gas
-    /// Eth policy - Standard gas only as it stands
-    /// </summary>
-    internal static long CalculateStandardGas(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        return GasCostOf.Transaction
-               + DataCost(transaction, releaseSpec)
-               + CreateCost(transaction, releaseSpec)
-               + AccessListCost(transaction, releaseSpec)
-               + AuthorizationListCost(transaction, releaseSpec);
-    }
-
+{  
     /// <summary>
     /// Calculates intrinsic gas with TGasPolicy type.
-    /// Uses cached values if available to skip recalculation
-    /// When no cache exists, calculates and caches StandardGas and FloorGas.
+    /// Uses cached value on tx if available to skip recalculation.
+    /// When no cache exists, calculates and caches standard and floor gas.
     /// </summary>
     public static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        if (transaction.CachedIntrinsicGas.HasValue)
+        if (transaction.TryGetCachedIntrinsicGas(out long cachedStandard, out long cachedFloorGas))
         {
-            var (StandardGas, FloorGas) = transaction.CachedIntrinsicGas.Value;
-            
-            TGasPolicy cachedStandardGasPolicy = TGasPolicy.FromLong(StandardGas);
-            TGasPolicy cachedFloorGasPolicy = TGasPolicy.FromLong(FloorGas);
+            TGasPolicy cachedStandardGasPolicy = TGasPolicy.FromLong(cachedStandard);
+            TGasPolicy cachedFloorGasPolicy = TGasPolicy.FromLong(cachedFloorGas);
             
             return new IntrinsicGas<TGasPolicy>(cachedStandardGasPolicy, cachedFloorGasPolicy);
         }
 
-        long calculatedStandardGas = CalculateStandardGas(transaction, releaseSpec);
+        TGasPolicy standardGasPolicy = TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
+        long standardGas = TGasPolicy.GetRemainingGas(in standardGasPolicy);
         long calculatedFloorGas = CalculateFloorCost(transaction, releaseSpec);
-
-        TGasPolicy standardGasPolicy = TGasPolicy.FromLong(calculatedStandardGas);
         TGasPolicy floorGasPolicy = TGasPolicy.FromLong(calculatedFloorGas);
-                
-        transaction.CachedIntrinsicGas = (calculatedStandardGas, calculatedFloorGas);
+
+        transaction.SetCachedIntrinsicGas(standardGas, calculatedFloorGas);
         
         return new IntrinsicGas<TGasPolicy>(standardGasPolicy, floorGasPolicy);
     }
@@ -88,14 +71,18 @@ public static class IntrinsicGasCalculator
     /// </summary>
     public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long StandardGas = CalculateStandardGas(transaction, releaseSpec);
-        long FloorGas = CalculateFloorCost(transaction, releaseSpec);
+        if (transaction.TryGetCachedIntrinsicGas(out long cachedStandard, out long cachedFloorGas))
+        {
+            return new EthereumIntrinsicGas(cachedStandard, cachedFloorGas);
+        }
         
-        var result = new EthereumIntrinsicGas(StandardGas, FloorGas);
+        var standardGasPolicy = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
+        long standard = standardGasPolicy.Value;
+        long floorGas = CalculateFloorCost(transaction, releaseSpec);
         
-        transaction.CachedIntrinsicGas = (StandardGas, FloorGas);
-
-        return result;
+        transaction.SetCachedIntrinsicGas(standard, floorGas);
+        
+        return new EthereumIntrinsicGas(standard, floorGas);
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
