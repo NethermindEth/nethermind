@@ -37,8 +37,9 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly Logging.ILogger _logger;
     private readonly IDb _discoveryDb;
     private readonly IDb _legacyDiscoveryDb;
+    private readonly ILogManager _logManager;
     private readonly CancellationTokenSource _appShutdownSource = new();
-    private readonly DiscoveryReport? _discoveryReport;
+    private DiscoveryV5Report? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
     private readonly EnrFactory _enrFactory;
@@ -57,7 +58,7 @@ public class DiscoveryV5App : IDiscoveryApp
         _logger = logManager.GetClassLogger();
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
-
+        _logManager = logManager;
         IdentityVerifierV4 identityVerifier = new();
 
         PrivateKey privateKey = nodeKey.Unprotect();
@@ -113,7 +114,6 @@ public class DiscoveryV5App : IDiscoveryApp
         _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
 
         _serviceProvider = discv5Builder.GetServiceProvider();
-        _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
     }
     private static string[] GetDefaultDiscv5Bootnodes() =>
         JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
@@ -123,13 +123,13 @@ public class DiscoveryV5App : IDiscoveryApp
     private Lantern.Discv5.Enr.Enr ToEnr(byte[] enrBytes) => _enrFactory.CreateFromBytes(enrBytes, _sessionOptions.Verifier!);
 
     private Lantern.Discv5.Enr.Enr ToEnr(Enode node) => new EnrBuilder()
-    .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
-    .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-    .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
-    .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
-    .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
-    .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
-    .Build();
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
+        .Build();
 
     private Lantern.Discv5.Enr.Enr ToEnr(Node node) => new EnrBuilder()
         .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
@@ -247,7 +247,10 @@ public class DiscoveryV5App : IDiscoveryApp
     public async Task StartAsync()
     {
         await _discv5Protocol.InitAsync();
+
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
+
+        _discoveryReport = new DiscoveryV5Report(_discv5Protocol, _logManager, _appShutdownSource.Token);
     }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)

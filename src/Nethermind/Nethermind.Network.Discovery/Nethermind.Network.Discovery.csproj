@@ -7,9 +7,6 @@
 
   <ItemGroup>
     <None Remove="Discv5\discv5-bootnodes.json" />
-  </ItemGroup>
-
-  <ItemGroup>
     <EmbeddedResource Include="Discv5\discv5-bootnodes.json" />
   </ItemGroup>
 
