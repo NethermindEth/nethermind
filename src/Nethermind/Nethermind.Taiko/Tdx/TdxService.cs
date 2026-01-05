@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Taiko.Tdx;
 
 /// <summary>
-/// Service for generating TDX attestations.
+/// Service for TDX signing operations.
 /// </summary>
 public class TdxService : ITdxService
 {
@@ -93,25 +93,7 @@ public class TdxService : ITdxService
         return _guestInfo;
     }
 
-    public BlockHashTdxAttestation AttestBlockHash(Hash256 blockHash)
-    {
-        if (!IsBootstrapped)
-            throw new TdxException("TDX service not bootstrapped");
-
-        if (blockHash is null)
-            throw new TdxException("Block hash is null");
-
-        // Sign the header hash
-        Signature signature = _ecdsa.Sign(_privateKey!, blockHash.ValueHash256);
-
-        return new BlockHashTdxAttestation
-        {
-            Signature = GetSignatureBytes(signature),
-            BlockHash = blockHash
-        };
-    }
-
-    public BlockHeaderTdxAttestation AttestBlockHeader(BlockHeader blockHeader)
+    public TdxBlockHeaderSignature SignBlockHeader(BlockHeader blockHeader)
     {
         if (!IsBootstrapped)
             throw new TdxException("TDX service not bootstrapped");
@@ -127,10 +109,9 @@ public class TdxService : ITdxService
         blockHeader.StateRoot.Bytes.CopyTo(dataToHash.AsSpan(32, 32));
         Hash256 signedHash = Keccak.Compute(dataToHash);
 
-        // Create a signature on both block hash and state root
         Signature signature = _ecdsa.Sign(_privateKey!, signedHash);
 
-        return new BlockHeaderTdxAttestation
+        return new TdxBlockHeaderSignature
         {
             Signature = GetSignatureBytes(signature),
             BlockHash = blockHeader.Hash,
@@ -243,6 +224,5 @@ internal sealed class NullTdxService : ITdxService
     public bool IsBootstrapped => false;
     public TdxGuestInfo? GetGuestInfo() => null;
     public TdxGuestInfo Bootstrap() => throw new TdxException("TDX is not enabled");
-    public BlockHashTdxAttestation AttestBlockHash(Hash256 blockHash) => throw new TdxException("TDX is not enabled");
-    public BlockHeaderTdxAttestation AttestBlockHeader(BlockHeader blockHeader) => throw new TdxException("TDX is not enabled");
+    public TdxBlockHeaderSignature SignBlockHeader(BlockHeader blockHeader) => throw new TdxException("TDX is not enabled");
 }

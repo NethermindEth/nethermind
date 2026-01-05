@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -27,14 +26,8 @@ public interface ITdxService
     TdxGuestInfo? GetGuestInfo();
 
     /// <summary>
-    /// Generate a TDX attestation for a block hash.
+    /// Generate a TDX signature for the given block header.
     /// </summary>
-    /// <param name="blockHash">The block hash to attest.</param>
-    BlockHashTdxAttestation AttestBlockHash(Hash256 blockHash);
-
-    /// <summary>
-    /// Generate a TDX attestation for a block header.
-    /// </summary>
-    /// <param name="blockHeader">The block header to attest.</param>
-    BlockHeaderTdxAttestation AttestBlockHeader(BlockHeader blockHeader);
+    /// <param name="blockHeader">The block header to sign.</param>
+    TdxBlockHeaderSignature SignBlockHeader(BlockHeader blockHeader);
 }

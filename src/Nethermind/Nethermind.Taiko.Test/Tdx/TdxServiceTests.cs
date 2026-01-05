@@ -90,17 +90,17 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void AttestBlockHash_throws_when_not_bootstrapped()
+    public void SignBlockHeader_throws_when_not_bootstrapped()
     {
-        Block block = Build.A.Block.TestObject;
+        Block block = Build.A.Block.WithStateRoot(TestItem.KeccakA).TestObject;
 
-        Action act = () => _service.AttestBlockHash(block.Header.Hash!);
+        Action act = () => _service.SignBlockHeader(block.Header);
 
         act.Should().Throw<TdxException>().WithMessage("*not bootstrapped*");
     }
 
     [Test]
-    public void AttestBlockHash_generates_valid_attestation()
+    public void SignBlockHeader_generates_valid_signature()
     {
         _service.Bootstrap();
         Block block = Build.A.Block
@@ -109,67 +109,13 @@ public class TdxServiceTests
             .WithParent(Build.A.BlockHeader.TestObject)
             .TestObject;
 
-        BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
+        TdxBlockHeaderSignature signature = _service.SignBlockHeader(block.Header);
 
-        attestation.Should().NotBeNull();
-        attestation.Signature.Should().HaveCount(Signature.Size);
-        attestation.BlockHash.Should().Be(block.Hash!);
-    }
-
-    [Test]
-    public void AttestBlockHeader_generates_valid_attestation()
-    {
-        _service.Bootstrap();
-        Block block = Build.A.Block
-            .WithNumber(100)
-            .WithStateRoot(TestItem.KeccakA)
-            .WithParent(Build.A.BlockHeader.TestObject)
-            .TestObject;
-
-        BlockHeaderTdxAttestation attestation = _service.AttestBlockHeader(block.Header);
-
-        attestation.Should().NotBeNull();
-        attestation.Signature.Should().HaveCount(Signature.Size);
-        attestation.BlockHash.Should().Be(block.Hash!);
-        attestation.StateRoot.Should().Be(TestItem.KeccakA);
-        attestation.Header.Hash.Should().Be(block.Hash!);
-    }
-
-    [Test]
-    public void AttestBlockHash_proof_contains_valid_signature()
-    {
-        _service.Bootstrap();
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-
-        BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
-
-        attestation.Signature.Should().HaveCount(Signature.Size);
-    }
-
-    [Test]
-    public void AttestBlockHash_different_blocks_produce_different_hashes()
-    {
-        _service.Bootstrap();
-
-        Block block1 = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject;
-
-        BlockHashTdxAttestation attestation1 = _service.AttestBlockHash(block1.Header.Hash!);
-        BlockHashTdxAttestation attestation2 = _service.AttestBlockHash(block2.Header.Hash!);
-
-        attestation1.BlockHash.Should().NotBe(attestation2.BlockHash);
-    }
-
-    [Test]
-    public void AttestBlockHash_same_block_produces_same_hash()
-    {
-        _service.Bootstrap();
-        Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
-
-        BlockHashTdxAttestation attestation1 = _service.AttestBlockHash(block.Header.Hash!);
-        BlockHashTdxAttestation attestation2 = _service.AttestBlockHash(block.Header.Hash!);
-
-        attestation1.BlockHash.Should().Be(attestation2.BlockHash);
+        signature.Should().NotBeNull();
+        signature.Signature.Should().HaveCount(Signature.Size);
+        signature.BlockHash.Should().Be(block.Hash!);
+        signature.StateRoot.Should().Be(TestItem.KeccakA);
+        signature.Header.Hash.Should().Be(block.Hash!);
     }
 
     [Test]
@@ -189,11 +135,11 @@ public class TdxServiceTests
     public void Signature_v_value_is_27_or_28()
     {
         _service.Bootstrap();
-        Block block = Build.A.Block.WithNumber(1).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
 
-        BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
+        TdxBlockHeaderSignature signature = _service.SignBlockHeader(block.Header);
 
-        byte v = attestation.Signature[Signature.Size - 1];
+        byte v = signature.Signature[Signature.Size - 1];
         v.Should().BeOneOf((byte)27, (byte)28);
     }
 
@@ -210,16 +156,16 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void New_service_attest_uses_persisted_keys()
+    public void New_service_sign_uses_persisted_keys()
     {
         _service.Bootstrap();
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        BlockHashTdxAttestation attestation1 = _service.AttestBlockHash(block.Header.Hash!);
+        Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
+        TdxBlockHeaderSignature signature1 = _service.SignBlockHeader(block.Header);
 
         var newService = new TdxService(_config, _client, LimboLogs.Instance);
         newService.Bootstrap();
-        BlockHashTdxAttestation attestation2 = newService.AttestBlockHash(block.Header.Hash!);
+        TdxBlockHeaderSignature signature2 = newService.SignBlockHeader(block.Header);
 
-        attestation2.Signature.Should().BeEquivalentTo(attestation1.Signature);
+        signature2.Signature.Should().BeEquivalentTo(signature1.Signature);
     }
 }

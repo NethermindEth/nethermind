@@ -23,47 +23,25 @@ public class TdxRpcModule(
 
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public Task<ResultWrapper<BlockHashTdxAttestation>> taiko_getBlockHashTdxAttestation(BlockParameter blockParameter)
+    public Task<ResultWrapper<TdxBlockHeaderSignature>> taiko_tdxSignBlockHeader(BlockParameter blockParameter)
     {
         string? availabilityError = VerifyTdxAvailability();
         if (availabilityError is not null)
-            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Fail(availabilityError));
+            return Task.FromResult(ResultWrapper<TdxBlockHeaderSignature>.Fail(availabilityError));
 
         BlockHeader? blockHeader = FindBlockHeader(blockParameter);
         if (blockHeader is null)
-            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Fail("Block not found"));
+            return Task.FromResult(ResultWrapper<TdxBlockHeaderSignature>.Fail("Block not found"));
 
         try
         {
-            BlockHashTdxAttestation attestation = tdxService.AttestBlockHash(blockHeader.Hash!);
-            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Success(attestation));
+            TdxBlockHeaderSignature signature = tdxService.SignBlockHeader(blockHeader);
+            return Task.FromResult(ResultWrapper<TdxBlockHeaderSignature>.Success(signature));
         }
         catch (Exception ex)
         {
-            _logger.Error($"Failed to generate TDX attestation: {ex.Message}", ex);
-            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Fail($"Attestation failed: {ex.Message}"));
-        }
-    }
-
-    public Task<ResultWrapper<BlockHeaderTdxAttestation>> taiko_getBlockHeaderTdxAttestation(BlockParameter blockParameter)
-    {
-        string? availabilityError = VerifyTdxAvailability();
-        if (availabilityError is not null)
-            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Fail(availabilityError));
-
-        BlockHeader? blockHeader = FindBlockHeader(blockParameter);
-        if (blockHeader is null)
-            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Fail("Block not found"));
-
-        try
-        {
-            BlockHeaderTdxAttestation attestation = tdxService.AttestBlockHeader(blockHeader);
-            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Success(attestation));
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Failed to generate TDX attestation: {ex.Message}", ex);
-            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Fail($"Attestation failed: {ex.Message}"));
+            _logger.Error($"Failed to sign block header: {ex.Message}", ex);
+            return Task.FromResult(ResultWrapper<TdxBlockHeaderSignature>.Fail($"Signing failed: {ex.Message}"));
         }
     }
 

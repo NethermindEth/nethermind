@@ -12,16 +12,10 @@ namespace Nethermind.Taiko.Tdx;
 public interface ITdxRpcModule : IRpcModule
 {
     [JsonRpcMethod(
-        Description = "Returns block hash TDX attestation for the specified block.",
+        Description = "Returns TDX signed block header for the specified block.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<BlockHashTdxAttestation>> taiko_getBlockHashTdxAttestation(BlockParameter blockParameter);
-
-    [JsonRpcMethod(
-        Description = "Returns block header TDX attestation for the specified block.",
-        IsSharable = true,
-        IsImplemented = true)]
-    Task<ResultWrapper<BlockHeaderTdxAttestation>> taiko_getBlockHeaderTdxAttestation(BlockParameter blockParameter);
+    Task<ResultWrapper<TdxBlockHeaderSignature>> taiko_tdxSignBlockHeader(BlockParameter blockParameter);
 
     [JsonRpcMethod(
         Description = "Returns the TDX guest information for instance registration.",
