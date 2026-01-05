@@ -10,6 +10,8 @@ namespace Nethermind.Blockchain.Filters.Topics
     {
         public static readonly AnyTopic Instance = new();
 
+        public override bool AcceptsAnyBlock => true;
+
         private AnyTopic() { }
 
         public override bool Accepts(Hash256 topic) => true;
@@ -17,8 +19,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Matches(Bloom bloom) => true;
         public override bool Matches(ref BloomStructRef bloom) => true;
-
-        public override bool AcceptsAnyBlock => true;
 
         public override string ToString() => "null";
     }

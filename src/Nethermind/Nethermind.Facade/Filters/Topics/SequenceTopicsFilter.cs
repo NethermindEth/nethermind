@@ -10,18 +10,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class SequenceTopicsFilter : TopicsFilter, IEquatable<SequenceTopicsFilter>
+    public class SequenceTopicsFilter(params TopicExpression[] expressions)
+        : TopicsFilter, IEquatable<SequenceTopicsFilter>
     {
         public static readonly SequenceTopicsFilter AnyTopic = new();
 
-        private readonly TopicExpression[] _expressions;
+        private readonly TopicExpression[] _expressions = expressions;
 
         public override IEnumerable<TopicExpression> Expressions => _expressions;
-
-        public SequenceTopicsFilter(params TopicExpression[] expressions)
-        {
-            _expressions = expressions;
-        }
+        public override bool AcceptsAnyBlock => _expressions.Length == 0 || _expressions.All(static e => e.AcceptsAnyBlock);
 
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
@@ -101,8 +98,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return result;
         }
-
-        public override bool AcceptsAnyBlock => _expressions.Length == 0 || _expressions.All(e => e.AcceptsAnyBlock);
 
         public bool Equals(SequenceTopicsFilter other) => _expressions.SequenceEqual(other._expressions);
 

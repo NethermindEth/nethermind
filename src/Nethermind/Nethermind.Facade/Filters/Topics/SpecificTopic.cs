@@ -12,6 +12,7 @@ namespace Nethermind.Blockchain.Filters.Topics
         private Bloom.BloomExtract _bloomExtract;
 
         public Hash256 Topic => _topic;
+        public override bool AcceptsAnyBlock => false;
 
         public SpecificTopic(Hash256 topic)
         {
@@ -38,8 +39,6 @@ namespace Nethermind.Blockchain.Filters.Topics
         public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
 
         public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(BloomExtract);
-
-        public override bool AcceptsAnyBlock => false;
 
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);
 
