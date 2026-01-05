@@ -347,6 +347,11 @@ public class LogFinderTests
         }
     }
 
+    [TestCase("Empty index",
+        1, 2,
+        null, null,
+        null, null
+    )]
     [TestCase("No intersection, left",
         1, 2,
         4, 6,
@@ -404,7 +409,7 @@ public class LogFinderTests
     )]
     public void queries_intersected_range_from_log_index(string name,
         int from, int to,
-        int indexFrom, int indexTo,
+        int? indexFrom, int? indexTo,
         int? exFrom, int? exTo
     )
     {
@@ -413,7 +418,8 @@ public class LogFinderTests
         _logIndexStorage.Enabled.Returns(true);
         _logIndexStorage.GetMinBlockNumber().Returns(indexFrom);
         _logIndexStorage.GetMaxBlockNumber().Returns(indexTo);
-        _logIndexStorage.GetBlockNumbersFor(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>()).Returns([]);
+        _logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
 
         Address address = TestItem.AddressA;
         BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
@@ -430,9 +436,9 @@ public class LogFinderTests
         _ = _logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
 
         if (exTo is not null && exFrom is not null)
-            _logIndexStorage.Received(1).GetBlockNumbersFor(address, exFrom.Value, exTo.Value);
+            _logIndexStorage.Received(1).GetEnumerator(address, exFrom.Value, exTo.Value);
         else
-            _logIndexStorage.DidNotReceiveWithAnyArgs().GetBlockNumbersFor(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+            _logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
