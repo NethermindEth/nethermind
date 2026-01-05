@@ -17,6 +17,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public class GasPriceOracle : IGasPriceOracle
     {
+        private static readonly IComparer<UInt256> UInt256Comparer = Comparer<UInt256>.Default;
+
         protected readonly IBlockFinder _blockFinder;
         protected readonly ILogger _logger;
         protected readonly UInt256 _minGasPrice;
@@ -167,7 +169,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         /// Selects the kth smallest element (0-based) in-place using a Quickselect-style partitioning algorithm.
         /// This mutates the input list order.
         /// </summary>
-        private static UInt256 SelectKthSmallestInPlace(List<UInt256> list, int k)
+        internal static UInt256 SelectKthSmallestInPlace(List<UInt256> list, int k)
         {
             if ((uint)k >= (uint)list.Count)
             {
@@ -176,7 +178,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             int left = 0;
             int right = list.Count - 1;
-            IComparer<UInt256> comparer = Comparer<UInt256>.Default;
 
             while (true)
             {
@@ -187,7 +188,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 // Deterministic pivot for stable perf/repro (median-of-range).
                 int pivotIndex = left + ((right - left) >> 1);
-                pivotIndex = Partition(list, left, right, pivotIndex, comparer);
+                pivotIndex = Partition(list, left, right, pivotIndex, UInt256Comparer);
 
                 if (k == pivotIndex)
                 {

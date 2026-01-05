@@ -24,6 +24,66 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class GasPriceOracleTests
     {
+        [TestCaseSource(nameof(SelectKthSmallestInPlace_Cases))]
+        public void SelectKthSmallestInPlace_ReturnsCorrectKthElement(uint[] values, int k)
+        {
+            List<UInt256> list = values.Select(static v => (UInt256)v).ToList();
+            UInt256 expected = values.OrderBy(static v => v).Select(static v => (UInt256)v).ElementAt(k);
+
+            UInt256 result = GasPriceOracle.SelectKthSmallestInPlace(list, k);
+
+            result.Should().Be(expected);
+            list.Should().HaveCount(values.Length);
+            list.Should().BeEquivalentTo(values.Select(static v => (UInt256)v)); // ensures mutation doesn't lose/duplicate items
+        }
+
+        [TestCaseSource(nameof(SelectKthSmallestInPlace_InvalidKCases))]
+        public void SelectKthSmallestInPlace_InvalidK_Throws(uint[] values, int k)
+        {
+            List<UInt256> list = values.Select(static v => (UInt256)v).ToList();
+
+            Action act = () => GasPriceOracle.SelectKthSmallestInPlace(list, k);
+
+            act.Should().Throw<ArgumentOutOfRangeException>();
+        }
+
+        private static IEnumerable<TestCaseData> SelectKthSmallestInPlace_Cases()
+        {
+            // single element
+            yield return new TestCaseData(new uint[] { 7 }, 0).SetName("SelectKthSmallestInPlace_SingleElement_k0");
+
+            // two elements
+            yield return new TestCaseData(new uint[] { 2, 1 }, 0).SetName("SelectKthSmallestInPlace_TwoElements_k0");
+            yield return new TestCaseData(new uint[] { 2, 1 }, 1).SetName("SelectKthSmallestInPlace_TwoElements_kLast");
+
+            // already sorted
+            yield return new TestCaseData(new uint[] { 1, 2, 3, 4, 5 }, 0).SetName("SelectKthSmallestInPlace_Sorted_k0");
+            yield return new TestCaseData(new uint[] { 1, 2, 3, 4, 5 }, 4).SetName("SelectKthSmallestInPlace_Sorted_kLast");
+            yield return new TestCaseData(new uint[] { 1, 2, 3, 4, 5 }, 2).SetName("SelectKthSmallestInPlace_Sorted_kMid");
+
+            // reverse sorted (forces lots of swaps)
+            yield return new TestCaseData(new uint[] { 5, 4, 3, 2, 1 }, 0).SetName("SelectKthSmallestInPlace_Reverse_k0");
+            yield return new TestCaseData(new uint[] { 5, 4, 3, 2, 1 }, 4).SetName("SelectKthSmallestInPlace_Reverse_kLast");
+            yield return new TestCaseData(new uint[] { 5, 4, 3, 2, 1 }, 2).SetName("SelectKthSmallestInPlace_Reverse_kMid");
+
+            // duplicates (partition uses < pivot, so equal elements are a good edge case)
+            yield return new TestCaseData(new uint[] { 7, 7, 7, 7 }, 0).SetName("SelectKthSmallestInPlace_AllEqual_k0");
+            yield return new TestCaseData(new uint[] { 7, 7, 7, 7 }, 3).SetName("SelectKthSmallestInPlace_AllEqual_kLast");
+            yield return new TestCaseData(new uint[] { 5, 1, 5, 3, 5, 2 }, 2).SetName("SelectKthSmallestInPlace_Duplicates_kMid");
+
+            // pivot-in-the-middle style layouts (median-of-range pivot)
+            yield return new TestCaseData(new uint[] { 9, 1, 8, 2, 7, 3, 6, 4, 5 }, 4).SetName("SelectKthSmallestInPlace_ZigZag_kMid");
+            yield return new TestCaseData(new uint[] { 100, 1, 50, 2, 49, 3, 48, 4 }, 3).SetName("SelectKthSmallestInPlace_ZigZagEven_kMid");
+        }
+
+        private static IEnumerable<TestCaseData> SelectKthSmallestInPlace_InvalidKCases()
+        {
+            yield return new TestCaseData(Array.Empty<uint>(), 0).SetName("SelectKthSmallestInPlace_Empty_Throws");
+            yield return new TestCaseData(new uint[] { 1 }, -1).SetName("SelectKthSmallestInPlace_kNegative_Throws");
+            yield return new TestCaseData(new uint[] { 1 }, 1).SetName("SelectKthSmallestInPlace_kEqualsCount_Throws");
+            yield return new TestCaseData(new uint[] { 1, 2 }, 2).SetName("SelectKthSmallestInPlace_kGreaterThanLast_Throws");
+        }
+
         [Test]
         public async ValueTask GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
