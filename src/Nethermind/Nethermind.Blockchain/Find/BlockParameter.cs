@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain.Find
 
         public BlockParameter(long number)
         {
+            RequireCanonical = true;
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
         }

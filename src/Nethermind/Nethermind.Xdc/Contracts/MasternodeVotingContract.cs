@@ -7,10 +7,8 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 using System;
 
 namespace Nethermind.Xdc.Contracts;
@@ -45,6 +43,16 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
             throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
 
         return (UInt256)result[0]!;
+    }
+
+    public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
+    {
+        CallInfo callInfo = new CallInfo(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
+        object[] result = _constant.Call(callInfo);
+        if (result.Length != 1)
+            throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
+
+        return (Address)result[0]!;
     }
 
     public Address[] GetCandidates(BlockHeader blockHeader)

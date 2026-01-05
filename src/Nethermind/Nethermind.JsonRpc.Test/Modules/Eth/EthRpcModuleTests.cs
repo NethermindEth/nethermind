@@ -774,7 +774,6 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_protocol_version()
     {
-        // TODO: test case when eth/69 is added dynamically
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_protocolVersion");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x44\",\"id\":67}"));
@@ -1674,7 +1673,7 @@ public partial class EthRpcModuleTests
                     var cutBlock = blockNumber;
                     config.AncientBodiesBarrier = cutBlock;
                     config.AncientReceiptsBarrier = cutBlock;
-                    config.PivotNumber = cutBlock.ToString();
+                    config.PivotNumber = cutBlock;
                     config.SnapSync = true;
                     return config;
                 });
