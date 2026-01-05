@@ -470,10 +470,10 @@ namespace Nethermind.Db.LogIndex
             return result;
         }
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to) =>
+        public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
             GetBlockNumbersEnumerator(null, address.Bytes, from, to);
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to) =>
+        public IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to) =>
             GetBlockNumbersEnumerator(index, topic.BytesToArray(), from, to);
 
         public IEnumerator<int> GetBlockNumbersEnumerator(int? index, byte[] key, int from, int to)

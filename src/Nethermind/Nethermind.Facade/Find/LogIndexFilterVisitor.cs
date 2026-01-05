@@ -12,17 +12,7 @@ using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Facade.Find;
 
-public static class LogIndexStorageRpcExtensions
-{
-    // TODO!: inline
-    // TODO!: verify enumerator disposal when not all blocks are enumerated
-    public static IEnumerable<int> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
-    {
-        return new LogIndexFilterVisitor(storage, filter, (int) fromBlock, (int) toBlock);
-    }
-}
-
-// TODO: separate file
+// TODO: remove new unused fields from Filter/Expression classes
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock): IEnumerable<int>
 {
     public sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
@@ -141,10 +131,10 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         IEnumerator<int>? addressEnumerator = Visit(filter.AddressFilter);
         IEnumerator<int>? topicEnumerator = Visit(filter.TopicsFilter);
 
-        if (addressEnumerator is null) return topicEnumerator!;
-        if (topicEnumerator is null) return addressEnumerator!;
+        if (addressEnumerator is not null && topicEnumerator is not null)
+            return new IntersectEnumerator(addressEnumerator, topicEnumerator);
 
-        return new IntersectEnumerator(addressEnumerator, topicEnumerator);
+        return addressEnumerator ?? topicEnumerator ?? throw new InvalidOperationException("Provided filter covers whole block range.");
     }
 
     private IEnumerator<int>? Visit(AddressFilter addressFilter)
@@ -212,8 +202,16 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
     }
 
     private IEnumerator<int> Visit(Address address) =>
-        storage.GetBlockNumbersEnumerator(address, fromBlock, toBlock);
+        storage.GetEnumerator(address, fromBlock, toBlock);
 
     private IEnumerator<int> Visit(int topicIndex, Hash256 topic) =>
-        storage.GetBlockNumbersEnumerator(topicIndex, topic, fromBlock, toBlock);
+        storage.GetEnumerator(topicIndex, topic, fromBlock, toBlock);
+}
+
+public static class LogIndexFilterVisitorExtensions
+{
+    public static IEnumerable<int> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
+    {
+        return new LogIndexFilterVisitor(storage, filter, (int) fromBlock, (int) toBlock);
+    }
 }

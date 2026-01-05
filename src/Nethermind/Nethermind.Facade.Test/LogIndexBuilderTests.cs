@@ -57,10 +57,10 @@ public class LogIndexBuilderTests
         public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to) =>
+        public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
             throw new NotImplementedException();
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to) =>
+        public IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
         public string GetDbSize() => 0L.SizeToString();
