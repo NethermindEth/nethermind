@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Shutter.Config;
@@ -16,7 +17,7 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="message"></param>
     /// <param name="signature"></param>
-    bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered);
+    bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered, CancellationToken cancellationToken);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.
