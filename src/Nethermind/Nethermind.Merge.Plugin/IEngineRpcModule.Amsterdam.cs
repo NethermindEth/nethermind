@@ -23,4 +23,16 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of block access lists for the list of provided block hashes.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<byte[]?>>> engine_getBALSByHashV1(Hash256[] blockHashes);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of block access lists for the provided number range.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<byte[]>?>> engine_getBALSByRangeV1(long start, long count);
 }
