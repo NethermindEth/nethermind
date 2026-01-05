@@ -35,7 +35,7 @@ public static unsafe class KeccakCache
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
-
+    private const int CacheLineSizeBytes = 64;
     private static readonly Entry* Memory;
 
     static KeccakCache()
@@ -74,7 +74,7 @@ public static unsafe class KeccakCache
         {
             // This would be a GC hole if was managed memory, but it's native.
             // Regardless, prefetch is non-faulting so it's safe.
-            Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + 64);
+            Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + CacheLineSizeBytes);
         }
 
         // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
