@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
@@ -128,9 +129,9 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
                               }
                             """;
         var serializer = new EthereumJsonSerializer();
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+        SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
 
-        var chain = await TestRpcBlockchain
+        TestRpcBlockchain chain = await TestRpcBlockchain
             .ForTest(new TestRpcBlockchain())
             .WithBlocksConfig(new BlocksConfig
             {
@@ -146,9 +147,8 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
-        var blockParameter = new BlockParameter(blockNumber);
-        var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;
-        var simulated = chain.EthRpcModule.eth_simulateV1(payload, blockParameter).Data[0];
+        BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data;
+        SimulateBlockResult<SimulateCallResult> simulated = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data[0];
 
         simulated.ParentHash.Should().Be(parent.Hash);
         (simulated.Number - parent.Number).Should().Be(1);
