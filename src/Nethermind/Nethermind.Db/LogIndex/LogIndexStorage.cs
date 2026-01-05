@@ -18,8 +18,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.LogIndex
 {
-    // TODO: test on big-endian system?
-    // TODO!: use uint for block number
+    // TODO: test on big-endian system or optimize for little-endian
+    // TODO: use uint for block number?
     public partial class LogIndexStorage : ILogIndexStorage
     {
         private static class SpecialKey
@@ -106,14 +106,10 @@ namespace Nethermind.Db.LogIndex
         {
             get
             {
-                if (_addressDb is not null)
-                    yield return _addressDb;
+                yield return _addressDb;
 
-                foreach (IDb topicDb in _topicDbs ?? [])
-                {
-                    if (topicDb is not null)
-                        yield return topicDb;
-                }
+                foreach (IDb topicDb in _topicDbs)
+                    yield return topicDb;
             }
         }
 
@@ -678,7 +674,7 @@ namespace Nethermind.Db.LogIndex
                     timestamp = Stopwatch.GetTimestamp();
 
                     // Add addresses
-                    foreach (var (address, blockNums) in aggregate.Address)
+                    foreach ((Address address, List<int> blockNums) in aggregate.Address)
                     {
                         SaveBlockNumbersByKey(batches.Address, address.Bytes, blockNums, isBackwardSync, stats);
                     }
@@ -686,9 +682,9 @@ namespace Nethermind.Db.LogIndex
                     // Add topics
                     for (var topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
                     {
-                        var topics = aggregate.Topic[topicIndex];
+                        Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
 
-                        foreach (var (topic, blockNums) in topics)
+                        foreach ((Hash256 topic, List<int> blockNums) in topics)
                             SaveBlockNumbersByKey(batches.Topics[topicIndex], topic.Bytes, blockNums, isBackwardSync, stats);
                     }
 
@@ -792,15 +788,8 @@ namespace Nethermind.Db.LogIndex
             return buffer[..length];
         }
 
-        private static ReadOnlySpan<byte> CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> buffer, bool isBackwardSync)
-        {
-            key = WriteKey(key, buffer);
-            var postfix = isBackwardSync ? SpecialPostfix.BackwardMerge : SpecialPostfix.ForwardMerge;
-            postfix.CopyTo(buffer[key.Length..]);
-
-            var length = key.Length + postfix.Length;
-            return buffer[..length];
-        }
+        private static ReadOnlySpan<byte> CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> buffer, bool isBackwardSync) =>
+            CreateDbKey(key, isBackwardSync ? SpecialPostfix.BackwardMerge : SpecialPostfix.ForwardMerge, buffer);
 
         // RocksDB uses big-endian (lexicographic) ordering
         // +1 is needed as 0 is used for the backward-merge key
