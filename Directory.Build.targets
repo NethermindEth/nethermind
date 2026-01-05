@@ -1,0 +1,56 @@
+<Project>
+
+  <!-- Skip copying dependencies and native runtimes for library projects. -->
+  <PropertyGroup Condition="'$(OutputType)' != 'Exe' and '$(OutputType)' != 'WinExe'">
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <CopyLocalRuntimeTargetAssets>false</CopyLocalRuntimeTargetAssets>
+  </PropertyGroup>
+
+  <!-- Filter native runtimes to current OS only during local builds. -->
+  <PropertyGroup Condition="'$(CI)' != 'true'">
+    <_NethermindRuntimePrefix Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-</_NethermindRuntimePrefix>
+    <_NethermindRuntimePrefix Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux-</_NethermindRuntimePrefix>
+    <_NethermindRuntimePrefix Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx-</_NethermindRuntimePrefix>
+  </PropertyGroup>
+
+  <Target Name="_FilterRuntimeAssetsToCurrentOS"
+          AfterTargets="ResolvePackageAssets"
+          Condition="'$(NethermindCopyAllRuntimes)' != 'true' and '$(_NethermindRuntimePrefix)' != ''">
+    <ItemGroup>
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
+          Condition="($([System.String]::Copy('%(Identity)').Contains('\runtimes\')) or $([System.String]::Copy('%(Identity)').Contains('/runtimes/'))) and
+                     !$([System.String]::Copy('%(Identity)').Contains('\runtimes\$(_NethermindRuntimePrefix)')) and
+                     !$([System.String]::Copy('%(Identity)').Contains('/runtimes/$(_NethermindRuntimePrefix)'))" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+          Condition="($([System.String]::Copy('%(Identity)').Contains('\runtimes\')) or $([System.String]::Copy('%(Identity)').Contains('/runtimes/'))) and
+                     !$([System.String]::Copy('%(Identity)').Contains('\runtimes\$(_NethermindRuntimePrefix)')) and
+                     !$([System.String]::Copy('%(Identity)').Contains('/runtimes/$(_NethermindRuntimePrefix)'))" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Share native runtimes across projects during local builds with a shared location and junctions/symlinks. -->
+  <PropertyGroup Condition="'$(CI)' != 'true'">
+    <_SharedRuntimesDir>$(ArtifactsPath)\shared-runtimes\$(Configuration)\</_SharedRuntimesDir>
+  </PropertyGroup>
+
+  <Target Name="_UseSharedNativeRuntimes"
+          AfterTargets="Build"
+          Condition="'$(CI)' != 'true' and '$(_SharedRuntimesDir)' != '' and Exists('$(OutputPath)runtimes')">
+    <ItemGroup>
+      <_RuntimeFilesToShare Include="$(OutputPath)runtimes\**\*" />
+    </ItemGroup>
+
+    <!-- Copy to shared location (skips unchanged files) -->
+    <Copy SourceFiles="@(_RuntimeFilesToShare)"
+          DestinationFiles="@(_RuntimeFilesToShare->'$(_SharedRuntimesDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <!-- Replace with junction (Windows) or symlink (Linux/macOS) -->
+    <RemoveDir Directories="$(OutputPath)runtimes" />
+    <Exec Command="mklink /J &quot;$(OutputPath)runtimes&quot; &quot;$(_SharedRuntimesDir.TrimEnd('\'))&quot;"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Exec Command="ln -sfn &quot;$(_SharedRuntimesDir.TrimEnd('/'))&quot; &quot;$(OutputPath)runtimes&quot;"
+          Condition="!$([MSBuild]::IsOSPlatform('Windows'))" />
+  </Target>
+
+</Project>
