@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -26,6 +27,8 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
+    private readonly Counter.Child _storagePrewarmPaused;
+    private readonly Counter.Child _storagePrewarmWrongNum;
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
@@ -57,6 +60,9 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         _warmupStorageTree.SetRootHash(storageRoot, false);
         _warmupStorageTree.RootRef = _tree.RootRef;
 
+        var _isPrewarmerLabel = (trieCacheWarmer is NoopTrieWarmer).ToString();
+        _storagePrewarmPaused = FlatWorldStateScope._flatScopeCounter.WithLabels("storage_prewarm_paused", _isPrewarmerLabel);
+        _storagePrewarmWrongNum = FlatWorldStateScope._flatScopeCounter.WithLabels("storage_prewarm_wrong_num", _isPrewarmerLabel);
         _config = config;
     }
 
@@ -124,8 +130,16 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     // Called by trie warmer.
     public bool WarUpStorageTrie(UInt256 index, int sequenceId)
     {
-        if (_scope.HintSequenceId != sequenceId) return false;
-        if (_scope._pausePrewarmer) return false;
+        if (_scope.HintSequenceId != sequenceId)
+        {
+            _storagePrewarmWrongNum.Inc();
+            return false;
+        }
+        if (_scope._pausePrewarmer)
+        {
+            _storagePrewarmPaused.Inc();
+            return false;
+        }
 
         if (_bundle.ShouldPrewarm(_address, index))
         {

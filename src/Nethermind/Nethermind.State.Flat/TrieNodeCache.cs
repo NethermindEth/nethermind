@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -30,7 +33,7 @@ public class TrieNodeCache
     private readonly long _maxCacheMemoryThreshold;
     private readonly int _bucketSize;
     private readonly int _bucketMask; // [Optimization] For bitwise modulo
-    private readonly int _shardCount = 256;
+    private const int _shardCount = 256;
 
     private readonly ILogger _logger;
 
@@ -54,7 +57,12 @@ public class TrieNodeCache
         _logger = logManager.GetClassLogger<TrieNodeCache>();
     }
 
-    // [Optimization] Inline and remove HashCode.Combine overhead
+    internal static Histogram _times = DevMetric.Factory.CreateHistogram("trienodecache_times", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "type" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+    });
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (int, int) GetShardAndHashCode(Hash256? address, in TreePath path)
     {
@@ -101,7 +109,15 @@ public class TrieNodeCache
     {
         if (_maxCacheMemoryThreshold == 0)
         {
-            foreach (var kv in cachedResource.Nodes) kv.node.PrunePersistedRecursively(1);
+            for (int i = 0; i < _shardCount; i++)
+            {
+                var shard = cachedResource.Nodes.Shards[i];
+                for (int j = 0; j < shard.Length; j++)
+                {
+                    if (shard[j].node is not null) shard[j].node.PrunePersistedRecursively(1);
+
+                }
+            }
             foreach (var kv in snapshot.StateNodes) kv.Value.PrunePersistedRecursively(1);
             foreach (var kv in snapshot.StorageNodes) kv.Value.PrunePersistedRecursively(1);
             return;
@@ -137,29 +153,49 @@ public class TrieNodeCache
             AddToCacheWithHashCode(shardIdx, hashCode, newNode);
         }
 
-        HashSet<(int, int)> addedEntries = new HashSet<(int, int)>();
-
-        foreach (var kv in snapshot.StateNodes)
+        Task stateNodesAdd = Task.Run(() =>
         {
-            kv.Value.PrunePersistedRecursively(1);
-            AddToCache(null, kv.Key, kv.Value);
-            addedEntries.Add(GetShardAndHashCode(null, kv.Key));
-        }
+            foreach (var kv in snapshot.StateNodes)
+            {
+                kv.Value.PrunePersistedRecursively(1);
+                AddToCache(null, kv.Key, kv.Value);
+                (int, int) shardAndHashCode = GetShardAndHashCode(null, kv.Key);
+                cachedResource.Nodes.ClearCachedNode(shardAndHashCode.Item1, shardAndHashCode.Item2);
+            }
+        });
+
+        long sw = Stopwatch.GetTimestamp();
 
         foreach (var kv in snapshot.StorageNodes)
         {
             kv.Value.PrunePersistedRecursively(1);
             AddToCache(kv.Key.Item1, kv.Key.Item2, kv.Value);
-            addedEntries.Add(GetShardAndHashCode(kv.Key.Item1, kv.Key.Item2));
+            (int, int) shardAndHashCode = GetShardAndHashCode(kv.Key.Item1, kv.Key.Item2);
+            cachedResource.Nodes.ClearCachedNode(shardAndHashCode.Item1, shardAndHashCode.Item2);
         }
+        _times.WithLabels("storagenodes").Observe(Stopwatch.GetTimestamp() - sw);
 
-        // [Optimization] Use custom enumerator to avoid allocation
-        foreach (var item in cachedResource.Nodes)
+        sw = Stopwatch.GetTimestamp();
+        stateNodesAdd.Wait();
+
+        _times.WithLabels("statenodes").Observe(Stopwatch.GetTimestamp() - sw);
+        sw = Stopwatch.GetTimestamp();
+
+        Parallel.For(0, _shardCount, (i) =>
         {
-            item.node.PrunePersistedRecursively(1);
-            if (addedEntries.Contains((item.shardIdx, item.hashCode))) continue;
-            AddToCacheWithHashCode(item.shardIdx, item.hashCode, item.node);
-        }
+            var shard = cachedResource.Nodes.Shards[i];
+            for (int j = 0; j < shard.Length; j++)
+            {
+                if (shard[j].node is not null)
+                {
+                    shard[j].node.PrunePersistedRecursively(1);
+                    AddToCacheWithHashCode(i, shard[j].hashCode, shard[j].node);
+                }
+            }
+        });
+
+        _times.WithLabels("cachednodes").Observe(Stopwatch.GetTimestamp() - sw);
+        sw = Stopwatch.GetTimestamp();
 
         // Calculate total memory only once here, instead of atomically updating it 1000s of times
         long CalculateTotalMemory()
@@ -188,8 +224,11 @@ public class TrieNodeCache
             _nextShardToClear = (_nextShardToClear + 1) & 255; // Fast modulo 256
         }
 
+        sw = Stopwatch.GetTimestamp();
+
         if (wasPruned)
         {
+            _times.WithLabels("prune").Observe(Stopwatch.GetTimestamp() - sw);
             _logger.Info($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
         }
 
@@ -198,73 +237,65 @@ public class TrieNodeCache
 
     public class ChildCache
     {
-        private (int bucketIdx, int hashCode, TrieNode node)[] _cacheArray;
+        private (int hashCode, TrieNode node)[][] _shards;
         private int _count = 0; // [Optimization] Track count explicitly O(1)
         private int _mask;
+        private int _shardSize;
 
         public int Count => _count;
+        public int Capacity => _shards.Length * _shardSize;
+        public (int hashCode, TrieNode node)[][] Shards => _shards;
 
         public ChildCache(int size)
         {
-            int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)size);
-            _cacheArray = new (int, int, TrieNode)[powerOfTwoSize];
+            int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(size + _shardCount - 1) / _shardCount);
+            _shards = new (int, TrieNode)[_shardCount][];
             _mask = powerOfTwoSize - 1;
+            _shardSize = powerOfTwoSize;
+            CreateCacheArray(_shardSize);
+        }
+
+        private void CreateCacheArray(int size)
+        {
+            for (int i = 0; i < _shardCount; i++)
+            {
+                _shards[i] = new (int, TrieNode)[size];
+            }
         }
 
         public void Reset()
         {
             // [Optimization] No need to Enumerate().Count() here (which was O(N)). Use _count (O(1)).
-            if (_count / UtilRatio > _cacheArray.Length)
+            if (_count / UtilRatio > (_shards.Length * _shardSize))
             {
-                int newSize = (int)BitOperations.RoundUpToPowerOf2((uint)(_count / UtilRatio));
-                Console.Error.WriteLine($"Resize from {_cacheArray.Length} to {newSize}");
-                _cacheArray = new (int, int, TrieNode)[newSize];
-                _mask = newSize - 1;
+                int newTarget = (int)(_count / UtilRatio);
+                int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(newTarget + _shardCount - 1) / _shardCount);
+                Console.Error.WriteLine($"Resize from {_shardSize} to {powerOfTwoSize}");
+                _shardSize = powerOfTwoSize;
+                CreateCacheArray(_shardSize);
+                _mask = powerOfTwoSize - 1;
             }
             else
             {
-                Array.Clear(_cacheArray, 0, _cacheArray.Length);
+                for (int i = 0; i < _shardCount; i++)
+                {
+                    Array.Clear(_shards[i], 0, _shards[i].Length);
+                }
             }
 
             _count = 0;
         }
 
-        // [Optimization] Custom Enumerator to avoid IEnumerable allocation
-        public Enumerator GetEnumerator() => new Enumerator(_cacheArray);
-
-        public ref struct Enumerator
+        private (int, int) GetBucketIdx(Hash256? address, TreePath path)
         {
-            private readonly (int, int, TrieNode)[] _array;
-            private int _index;
-
-            public Enumerator((int, int, TrieNode)[] array)
-            {
-                _array = array;
-                _index = -1;
-            }
-
-            public bool MoveNext()
-            {
-                while (++_index < _array.Length)
-                {
-                    if (_array[_index].Item3 != null) return true;
-                }
-                return false;
-            }
-
-            public (int shardIdx, int hashCode, TrieNode node) Current => _array[_index];
-        }
-
-        private int GetBucketIdx(Hash256? address, TreePath path)
-        {
-            (int shard, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, path);
-            return hashCode & _mask; // [Optimization] Bitwise AND
+            (int shard, int hashCode) = GetShardAndHashCode(address, path);
+            return (shard, hashCode & _mask); // [Optimization] Bitwise AND
         }
 
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
-            int idx = GetBucketIdx(address, path);
-            var entry = _cacheArray[idx]; // Copy struct once
+            (int shardIdx, int idx) = GetBucketIdx(address, path);
+            var entry = _shards[shardIdx][idx]; // Copy struct once
 
             if (entry.node == null)
             {
@@ -283,12 +314,12 @@ public class TrieNodeCache
 
         public void Set(Hash256? address, in TreePath path, TrieNode node)
         {
-            (int shard, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, path);
+            (int shard, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
-            if (_cacheArray[idx].node == null) _count++; // Track count
+            if (_shards[shard][idx].node == null) _count++; // Track count
 
-            _cacheArray[idx] = (shard, hashCode, node);
+            _shards[shard][idx] = (hashCode, node);
         }
 
         public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
@@ -296,13 +327,22 @@ public class TrieNodeCache
             (int shard, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
-            ref var entry = ref _cacheArray[idx];
+            ref var entry = ref _shards[shard][idx];
             if (entry.node != null && entry.node.Keccak == trieNode.Keccak) return entry.node;
-
             if (entry.node == null) _count++; // Track count
 
-            entry = (shard, hashCode, trieNode);
+            entry = (hashCode, trieNode);
             return trieNode;
+        }
+
+        public void ClearCachedNode(int shard, int hashCode)
+        {
+            int idx = hashCode & _mask;
+            if (_shards[shard][idx].node is not null)
+            {
+                _shards[shard][idx].node.PrunePersistedRecursively(1);
+                _shards[shard][idx] = default;
+            }
         }
     }
 }

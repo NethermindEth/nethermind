@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
 
@@ -26,7 +27,8 @@ public class Snapshot(
     StateId from,
     StateId to,
     SnapshotContent content,
-    ObjectPool<SnapshotContent> pool
+    ResourcePool resourcePool,
+    IFlatDiffRepository.SnapshotBundleUsage usage
 ) : RefCountingDisposable
 {
     private Dictionary<MemoryType, long>? _memory = null; // The memory changes, so we use this as a smoewhat estimate so it make some seense
@@ -85,7 +87,7 @@ public class Snapshot(
             kv.Value.PrunePersistedRecursively(1);
         }
 
-        pool.Return(content);
+        resourcePool.ReturnSnapshotContent(usage, content);
     }
 
     public bool TryAcquire()
@@ -106,7 +108,8 @@ public record SnapshotContent(
     ConcurrentDictionary<TreePath, TrieNode> StateNodes,
 
     ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
-) {
+) : IDisposable, IResettable
+{
     public void Reset()
     {
         Accounts.NoResizeClear();
@@ -141,6 +144,10 @@ public record SnapshotContent(
               result[MemoryType.StorageNodesBytes];
 
         return result;
+    }
+
+    public void Dispose()
+    {
     }
 }
 

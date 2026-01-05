@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using DotNext.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -27,16 +28,17 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedKnownStates = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _knownStates = new();
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedKnownStates = new(new SortedSet<StateId>());
-
-    private ResourcePool _resourcePool;
+    private readonly TrieNodeCache _trieNodeCache;
+    private readonly ResourcePool _resourcePool;
 
     private readonly Task _compactorTask;
-
-    private readonly TrieNodeCache _trieNodeCache;
     private readonly Task _persistenceTask;
+    private readonly Task _populateTrieNodeCacheTask;
 
-    private Channel<(StateId, CachedResource)> _compactorJobs;
+    private Channel<StateId> _compactorJobs;
+    private Channel<CachedResource> _populateTrieNodeCacheJob;
     private Channel<StateId> _persistenceJob;
+
     private long _compactSize;
     private readonly bool _inlineCompaction;
     private ILogger _logger;
@@ -103,12 +105,14 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             logManager);
         _snapshotCompactor = new SnapshotCompactor(this, config, resourcePool, logManager);
 
-        _compactorJobs = Channel.CreateBounded<(StateId, CachedResource)>(config.MaxInFlightCompactJob);
+        _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _populateTrieNodeCacheJob = Channel.CreateBounded<CachedResource>(1);
         _persistenceJob = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _trieNodeCache = new TrieNodeCache(config.TrieCacheMemoryTarget, logManager);
 
         _compactorTask = RunCompactor(exitSource.Token);
+        _populateTrieNodeCacheTask = RunTrieCachePopulator(exitSource.Token);
         _persistenceTask = RunPersistence(exitSource.Token);
     }
 
@@ -116,9 +120,9 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     {
         try
         {
-            await foreach (var (stateId, cachedResource) in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
+            await foreach (var stateId in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                await RunCompactJob(stateId, cachedResource, cancellationToken);
+                await RunCompactJob(stateId, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -126,7 +130,21 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         }
     }
 
-    private async Task RunCompactJob(StateId stateId, CachedResource cachedResource, CancellationToken cancellationToken)
+    private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var cachedResource in _populateTrieNodeCacheJob.Reader.ReadAllAsync(cancellationToken))
+            {
+                PopulateTrieNodeCache(cachedResource);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
         try
         {
@@ -135,8 +153,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             {
                 sortedSnapshots.Add(stateId);
             }
-
-            PopulateTrieNodeCache(cachedResource);
 
             _snapshotCompactor.CompactLevel(stateId);
             if (stateId.blockNumber % _compactSize == 0)
@@ -155,6 +171,13 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             _logger.Error("Compact job failed", ex);
             throw;
         }
+    }
+
+    private async Task RunCompactJobSync(StateId stateId, CachedResource cachedResource, CancellationToken cancellationToken)
+    {
+        PopulateTrieNodeCache(cachedResource);
+
+        await RunCompactJob(stateId, cancellationToken);
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
@@ -409,16 +432,26 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         if (_inlineCompaction)
         {
-            RunCompactJob(endBlock, cachedResource, _processExitSource.Token).Wait();
+            RunCompactJobSync(endBlock, cachedResource, _processExitSource.Token).Wait();
         }
         else
         {
-            if (!_compactorJobs.Writer.TryWrite((endBlock, cachedResource)))
+            while (!_populateTrieNodeCacheJob.Writer.TryWrite(cachedResource))
             {
+                if (_processExitSource.Token.IsCancellationRequested) break; // When cancelled the queue stop
+
+                _logger.Warn("Trie node cache job stall");
+                _populateTrieNodeCacheJob.Writer.WaitToWriteAsync().Wait();
+            }
+
+            if (!_compactorJobs.Writer.TryWrite(endBlock))
+            {
+                if (_processExitSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
+
                 _flatdiffimes.WithLabels("add_snapshot", "try_write_failed").Observe(Stopwatch.GetTimestamp() - sw);
                 sw = Stopwatch.GetTimestamp();
                 _logger.Warn("Compactor job stall!");
-                _compactorJobs.Writer.WriteAsync((endBlock, cachedResource)).AsTask().Wait();
+                _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
                 _flatdiffimes.WithLabels("add_snapshot", "write_async").Observe(Stopwatch.GetTimestamp() - sw);
             }
             else
@@ -520,6 +553,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     {
         await _compactorTask;
         await _persistenceTask;
+        await _populateTrieNodeCacheTask;
         await _persistenceManager.DisposeAsync();
     }
 

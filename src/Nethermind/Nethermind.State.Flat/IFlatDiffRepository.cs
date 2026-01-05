@@ -24,6 +24,7 @@ public interface IFlatDiffRepository
     enum SnapshotBundleUsage
     {
         MainBlockProcessing,
+        PostMainBlockProcessing,
         StateReader,
         ReadOnlyProcessingEnv,
         Compactor,

@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -29,6 +30,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
         Buckets = [1]
     });
+
+    internal static Counter _flatScopeCounter = DevMetric.Factory.CreateCounter("flat_scope_counter", "aha", "type", "isPrewarmer");
 
     private Histogram.Child _storageTreeCreateTime;
 
@@ -88,6 +91,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _warmer = trieCacheWarmer;
         _isPrewarmerLabel = (_warmer is NoopTrieWarmer).ToString();
         _storageTreeCreateTime = _flatScopeTime.WithLabels("storage_create", _isPrewarmerLabel);
+        _statePrewarmPaused = _flatScopeCounter.WithLabels("state_prewarm_paused", _isPrewarmerLabel);
+        _statePrewarmWrongNum = _flatScopeCounter.WithLabels("state_prewarm_wrong_num", _isPrewarmerLabel);
         _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
         _disableLocalAddressTriewarmerQueue = true;
@@ -95,6 +100,9 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     }
 
     private bool _isDisposed = false;
+    private readonly Counter.Child _statePrewarmPaused;
+    private readonly Counter.Child _statePrewarmWrongNum;
+
     public void Dispose()
     {
         _isDisposed = true;
@@ -134,6 +142,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
+        _snapshotBundle.SetAccount(address, account);
         if (!_disableLocalAddressTriewarmerQueue) _warmer.PushAddressJob(this, address, _hintSequenceId);
     }
 
@@ -144,8 +153,9 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void WarmUpOutOfScope(Address address, UInt256? slot)
     {
-        if (_pausePrewarmer) return;
         if (_isDisposed) return;
+        if (_pausePrewarmer) return;
+
         if (slot is null)
         {
             _warmer.PushJobMulti(this, address, null, null, _hintSequenceId);
@@ -161,8 +171,16 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (_hintSequenceId != sequenceId) return false;
-        if (_pausePrewarmer) return false;
+        if (_hintSequenceId != sequenceId)
+        {
+            _statePrewarmWrongNum.Inc();
+            return false;
+        }
+        if (_pausePrewarmer)
+        {
+            _statePrewarmPaused.Inc();
+            return false;
+        }
 
         try
         {
@@ -239,12 +257,19 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
                 {
-                    commitTask.Add(Task.Factory.StartNew((ctx) =>
+                    if (_concurrencyQuota.TryRequestConcurrencyQuota())
                     {
-                        FlatStorageTree st = (FlatStorageTree)ctx!;
-                        st.CommitTree();
-                        _concurrencyQuota.ReturnConcurrencyQuota();
-                    }, storage.Value));
+                        commitTask.Add(Task.Factory.StartNew((ctx) =>
+                        {
+                            FlatStorageTree st = (FlatStorageTree)ctx!;
+                            st.CommitTree();
+                            _concurrencyQuota.ReturnConcurrencyQuota();
+                        }, storage.Value));
+                    }
+                    else
+                    {
+                        storage.Value.CommitTree();
+                    }
                 }
             }
 
@@ -276,7 +301,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         ILogger logger
     ) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly ConcurrentDictionary<AddressAsKey, Account?> _dirtyAccounts = new(Environment.ProcessorCount, estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;

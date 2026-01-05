@@ -45,7 +45,6 @@ public class SnapshotBundle : IDisposable
     private bool _isDisposed;
     private readonly ResourcePool _resourcePool;
 
-    private static Gauge _activeSnapshotBundle = DevMetric.Factory.CreateGauge("snapshot_bundle_active", "active", "usage");
     private static Counter _creeatedSnapshotBundle = DevMetric.Factory.CreateCounter("snapshot_bundle_created", "created", "usage");
     private static Counter _snapshotBundleEvents = DevMetric.Factory.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
     private Counter.Child _nodeGetChanged = null!;
@@ -115,7 +114,6 @@ public class SnapshotBundle : IDisposable
         _isPrewarmer = isPrewarmer;
         _forStateReader = usage == IFlatDiffRepository.SnapshotBundleUsage.StateReader;
         _usage = usage;
-        _activeSnapshotBundle.WithLabels(_usage.ToString()).Inc();
         _creeatedSnapshotBundle.WithLabels(_usage.ToString()).Inc();
 
         SetupMetric();
@@ -644,7 +642,8 @@ public class SnapshotBundle : IDisposable
             from: from,
             to: to,
             content: _currentPooledContent,
-            pool: _resourcePool.GetSnapshotPool(_usage));
+            resourcePool: _resourcePool,
+            usage: _usage);
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
@@ -653,6 +652,12 @@ public class SnapshotBundle : IDisposable
         if (returnSnapshot)
         {
             CachedResource cachedResource = _cachedResource;
+
+            if (_usage == IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing)
+            {
+                _usage = IFlatDiffRepository.SnapshotBundleUsage.PostMainBlockProcessing;
+            }
+
             _cachedResource = _resourcePool.GetCachedResource(_usage);
 
             // Make and apply new snapshot content.
@@ -672,7 +677,7 @@ public class SnapshotBundle : IDisposable
         {
             snapshot.Dispose(); // Revert the lease before
 
-            _cachedResource.Clear();
+            _cachedResource.Reset();
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
 
             return (null, null);
@@ -702,8 +707,6 @@ public class SnapshotBundle : IDisposable
             _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
             _resourcePool.ReturnCachedResource(_usage, _cachedResource);
         }
-
-        _activeSnapshotBundle.WithLabels(_usage.ToString()).Dec();
     }
 
     // Also called SelfDestruct

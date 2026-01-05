@@ -6,19 +6,31 @@ using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
+using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
 
-public record CachedResource(): IDisposable
+public record CachedResource(CachedResource.Size size): IDisposable, IResettable
 {
-    public BloomFilter PrewarmedAddresses = new BloomFilter(1_024, 12);
-    public TrieNodeCache.ChildCache Nodes = new TrieNodeCache.ChildCache(1000);
+    public record Size(long PrewarmedAddressSize, int NodesCacheSize)
+    {
+    }
+
+    public BloomFilter PrewarmedAddresses = new BloomFilter(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probe, which the SIMD instruction do.
+    public TrieNodeCache.ChildCache Nodes = new TrieNodeCache.ChildCache(size.NodesCacheSize);
+
+    public Size GetSize()
+    {
+        return new Size(PrewarmedAddresses.Capacity, Nodes.Capacity);
+    }
+
     public int CachedNodes => Nodes.Count;
 
-    public void Clear()
+    public void Reset()
     {
         Nodes.Reset();
 
