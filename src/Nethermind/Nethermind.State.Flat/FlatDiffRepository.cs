@@ -42,6 +42,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private ILogger _logger;
     private readonly PersistenceManager _persistenceManager;
     private readonly SnapshotCompactor _snapshotCompactor;
+    private readonly IProcessExitSource _processExitSource;
 
     internal static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
     {
@@ -85,6 +86,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
         _resourcePool = resourcePool;
+        _processExitSource = processExitSource;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
         if (config.WarmUpPersistence)
@@ -116,27 +118,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         {
             await foreach (var (stateId, cachedResource) in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                try
-                {
-                    PopulateTrieNodeCache(cachedResource);
-
-                    _snapshotCompactor.CompactLevel(stateId);
-                    if (stateId.blockNumber % _compactSize == 0)
-                    {
-                        _snapshotCount.WithLabels("snapshots").Set(_knownStates.Count);
-                        _snapshotCount.WithLabels("compacted_snapshots").Set(_compactedKnownStates.Count);
-                        await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error("Compact job failed", ex);
-                    throw;
-                }
+                await RunCompactJob(stateId, cachedResource, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -144,10 +126,35 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         }
     }
 
-    private void RunCompactJob(StateId stateId, CachedResource cachedResource)
+    private async Task RunCompactJob(StateId stateId, CachedResource cachedResource, CancellationToken cancellationToken)
     {
-        _snapshotCompactor.CompactLevel(stateId);
-        PersistIfNeeded().Wait();
+        try
+        {
+            // We do this async because of the lock
+            using (var _ = _sortedKnownStates.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
+            {
+                sortedSnapshots.Add(stateId);
+            }
+
+            PopulateTrieNodeCache(cachedResource);
+
+            _snapshotCompactor.CompactLevel(stateId);
+            if (stateId.blockNumber % _compactSize == 0)
+            {
+                _snapshotCount.WithLabels("snapshots").Set(_knownStates.Count);
+                _snapshotCount.WithLabels("compacted_snapshots").Set(_compactedKnownStates.Count);
+                await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Compact job failed", ex);
+            throw;
+        }
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
@@ -389,10 +396,12 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             return;
         }
 
-        if (_knownStates.TryAdd(endBlock, snapshot))
+        if (!_knownStates.TryAdd(endBlock, snapshot))
         {
-            using var _ = _sortedKnownStates.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
-            sortedSnapshots.Add(endBlock);
+            _logger.Warn($"State {snapshot.To} already added");
+            _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
+            snapshot.Dispose();
+            return;
         }
 
         _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
@@ -400,7 +409,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         if (_inlineCompaction)
         {
-            RunCompactJob(endBlock, cachedResource);
+            RunCompactJob(endBlock, cachedResource, _processExitSource.Token).Wait();
         }
         else
         {
