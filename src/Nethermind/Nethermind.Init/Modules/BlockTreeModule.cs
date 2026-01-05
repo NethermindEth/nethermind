@@ -34,6 +34,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
             .AddSingleton<IBlockStore, BlockStore>()
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
+            .AddSingleton<IBlockAccessListStore, IDb>(balDb => new BlockAccessListStore(balDb))
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
