@@ -7,14 +7,14 @@
   </PropertyGroup>
 
   <!-- Share native runtimes across projects during local builds with a shared location and junctions/symlinks.
-       Enable with: dotnet build -p:SlimBuild=true -->
-  <PropertyGroup Condition="'$(SlimBuild)' == 'true'">
+       Enable by setting SlimBuild to any value (e.g., -p:SlimBuild=1 or environment variable). -->
+  <PropertyGroup Condition="'$(SlimBuild)' != ''">
     <_SharedRuntimesDir>$(ArtifactsPath)\shared-runtimes\$(Configuration)\</_SharedRuntimesDir>
   </PropertyGroup>
 
   <Target Name="_UseSharedNativeRuntimes"
           AfterTargets="Build"
-          Condition="'$(SlimBuild)' == 'true' and '$(_SharedRuntimesDir)' != '' and Exists('$(OutputPath)runtimes')">
+          Condition="'$(SlimBuild)' != '' and '$(_SharedRuntimesDir)' != '' and Exists('$(OutputPath)runtimes')">
     <ItemGroup>
       <_RuntimeFilesToShare Include="$(OutputPath)runtimes\**\*" />
     </ItemGroup>
