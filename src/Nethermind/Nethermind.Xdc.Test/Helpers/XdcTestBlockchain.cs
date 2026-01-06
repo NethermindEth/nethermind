@@ -178,7 +178,6 @@ public class XdcTestBlockchain : TestBlockchain
                 new XdcTestGenesisBuilder(
                     ctx.Resolve<ISpecProvider>(),
                     ctx.Resolve<IWorldState>(),
-                    ctx.Resolve<ISnapshotManager>(),
                     ctx.Resolve<IEnumerable<IGenesisPostProcessor>>().ToArray(),
                     ctx.Resolve<Configuration>(),
                     MasterNodeCandidates

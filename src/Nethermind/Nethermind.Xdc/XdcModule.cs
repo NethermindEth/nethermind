@@ -22,10 +22,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Contracts;
-using Nethermind.Abi;
-using Nethermind.Evm.State;
-using Nethermind.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Xdc;
@@ -68,7 +64,6 @@ public class XdcModule : Module
 
             // reward handler
             .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
-            .AddSingleton<IMasternodeVotingContract, ISpecProvider, IAbiEncoder, IWorldStateManager, IReadOnlyTxProcessingEnvFactory, ILogManager>(CreateMasternodeVotingContract)
 
             // forensics handler
 
@@ -103,19 +98,4 @@ public class XdcModule : Module
     {
         return new MasternodeVotingContract(abiEncoder, specProvider.GetFinalSpec().DepositContractAddress, readOnlyTxProcessingEnv);
     }
-
-    private IMasternodeVotingContract CreateMasternodeVotingContract(
-        ISpecProvider specProvider,
-        IAbiEncoder abiEncoder,
-        IWorldStateManager worldStateManager,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        ILogManager logManager)
-    {
-        var xdcSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
-        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
-        IWorldState worldState = new WorldState(scopeProvider, logManager);
-        IReadOnlyTxProcessorSource readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
-        return new MasternodeVotingContract(worldState, abiEncoder, xdcSpec.MasternodeVotingContract, readOnlyTxProcessorSource);
-    }
-
 }

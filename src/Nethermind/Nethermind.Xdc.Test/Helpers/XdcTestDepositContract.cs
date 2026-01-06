@@ -26,4 +26,9 @@ internal class XdcTestDepositContract(CandidateContainer candidateContainer) : I
     {
         return 10_000_000.Ether();
     }
+
+    public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
+    {
+        throw new System.NotImplementedException();
+    }
 }
