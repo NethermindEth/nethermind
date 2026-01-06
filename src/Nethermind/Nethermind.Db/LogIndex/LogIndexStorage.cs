@@ -433,10 +433,8 @@ namespace Nethermind.Db.LogIndex
             return (min, max);
         }
 
-        // TODO: recheck null value handling
-        private int GetLastReorgableBlockNumber() => (_maxBlock ?? 0) - _maxReorgDepth;
+        private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
 
-        // TODO: aggressive inlining?
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
             : lastMax is null || next > lastMax;
@@ -904,7 +902,9 @@ namespace Nethermind.Db.LogIndex
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {
-            var lastCompressBlock = GetLastReorgableBlockNumber();
+            if (GetLastReorgableBlockNumber() is not { } lastCompressBlock)
+                return Span<byte>.Empty;
+
             var lastCompressIndex = LastBlockSearch(data, lastCompressBlock, false);
 
             if (lastCompressIndex < 0) lastCompressIndex = 0;

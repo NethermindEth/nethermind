@@ -10,7 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
 
-namespace Nethermind.Facade.Find;
+namespace Nethermind.Facade.Filters;
 
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {

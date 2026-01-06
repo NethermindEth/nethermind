@@ -12,11 +12,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
-using Nethermind.Facade.Find;
+using Nethermind.Facade.Filters;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Find;
+namespace Nethermind.Blockchain.Test.Filters;
 
 [Parallelizable(ParallelScope.All)]
 public class LogIndexFilterVisitorTests
