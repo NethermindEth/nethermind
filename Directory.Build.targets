@@ -39,7 +39,7 @@
   <Target Name="_UseSharedDependencyDlls"
           AfterTargets="Build"
           Condition="'$(CI)' != 'true' and '$(_SharedDepsDir)' != ''">
-    <!-- Get dependency DLLs and PDBs, excluding project's own output and runtime-specific files -->
+    <!-- Get dependency DLLs and PDBs, excluding only the current project's own output and test platform files -->
     <ItemGroup>
       <_DepsToShare Include="$(OutputPath)*.dll;$(OutputPath)*.pdb"
                     Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)$(AssemblyName).pdb;$(OutputPath)testhost.*;$(OutputPath)Microsoft.TestPlatform.*" />
@@ -57,12 +57,11 @@
           SkipUnchangedFiles="true"
           Condition="'$(_HasDepsToShare)' != '0'" />
 
-    <!-- Replace with hard links using single batch command (much faster than per-file mklink) -->
-    <Delete Files="@(_DepsToShare)" Condition="'$(_HasDepsToShare)' != '0'" />
-    <Exec Command="for %%f in (&quot;$(_SharedDepsDir)*.dll&quot; &quot;$(_SharedDepsDir)*.pdb&quot;) do @(if not exist &quot;%%~nxf&quot; mklink /H &quot;%%~nxf&quot; &quot;%%f&quot; >nul)"
+    <!-- Replace with hard links: for each file in shared dir, delete local copy and create hard link -->
+    <Exec Command="for %%f in (&quot;$(_SharedDepsDir)*.dll&quot; &quot;$(_SharedDepsDir)*.pdb&quot;) do @(if exist &quot;%%~nxf&quot; (del &quot;%%~nxf&quot; &amp;&amp; mklink /H &quot;%%~nxf&quot; &quot;%%f&quot; >nul))"
           Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(_HasDepsToShare)' != '0'"
           WorkingDirectory="$(OutputPath)" />
-    <Exec Command="for f in &quot;$(_SharedDepsDir)&quot;*.dll &quot;$(_SharedDepsDir)&quot;*.pdb; do fn=$(basename &quot;$f&quot;); [ ! -e &quot;$fn&quot; ] &amp;&amp; ln &quot;$f&quot; &quot;$fn&quot; 2>/dev/null; done; true"
+    <Exec Command="for f in &quot;$(_SharedDepsDir)&quot;*.dll &quot;$(_SharedDepsDir)&quot;*.pdb; do fn=$(basename &quot;$f&quot;); [ -e &quot;$fn&quot; ] &amp;&amp; rm &quot;$fn&quot; &amp;&amp; ln &quot;$f&quot; &quot;$fn&quot;; done; true"
           Condition="!$([MSBuild]::IsOSPlatform('Windows')) and '$(_HasDepsToShare)' != '0'"
           WorkingDirectory="$(OutputPath)" />
   </Target>
