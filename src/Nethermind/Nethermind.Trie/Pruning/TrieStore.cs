@@ -574,12 +574,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieStoreState state = CaptureCurrentState();
         if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
-            _pruningTask = Task.Run(TrySyncPrune);
+            _pruningTask = TrySyncPrune();
         }
     }
 
     private async Task TrySyncPrune()
     {
+        // Delay for 3 things:
+        // 1. Move to background thread
+        // 2. Allow kick off (block processing) some time to finish before starting to prune (prune in block gap)
+        // 3. If we are n+1 Task passing the .IsCompleted check but not going to be first to pass lock,
+        //    remain uncompleted for a time to prevent other tasks seeing .IsCompleted and also trying to queue.
         await Task.Delay(10);
 
         if (!_pruningLock.TryEnter())
@@ -626,7 +631,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 // When `_pruningLock` is held, the begin commit will check for _toBePersistedBlockNumber in order
                 // to decide which block to be used as the boundary for the commit buffer. This number was re-set
-                // to -1 in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwrise `BeginScope` will hang
+                // to -1 in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwise `BeginScope` will hang
                 // until the prune persisted node loop is completed.
                 _toBePersistedBlockNumber = LastPersistedBlockNumber;
 
