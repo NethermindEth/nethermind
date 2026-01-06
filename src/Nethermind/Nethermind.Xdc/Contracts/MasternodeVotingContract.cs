@@ -51,7 +51,8 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
     {
         CallInfo callInfo = new CallInfo(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
-        object[] result = _constant.Call(callInfo);
+        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        object[] result = constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
 
