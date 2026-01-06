@@ -64,7 +64,15 @@ internal static partial class EvmInstructions
         {
             // Use available bytes and pad left if fewer than expected.
             int usedFromCode = Math.Min(code.Length - programCounter, length);
-            stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
+            ReadOnlySpan<byte> immediateData = code.Slice(programCounter, usedFromCode);
+            if (usedFromCode == length)
+            {
+                stack.PushBytes<TTracingInst>(immediateData);
+            }
+            else
+            {
+                stack.PushBothPaddedBytes<TTracingInst>(immediateData, length);
+            }
         }
     }
 
@@ -220,7 +228,7 @@ internal static partial class EvmInstructions
             }
             else
             {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
+                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -266,7 +274,7 @@ internal static partial class EvmInstructions
             }
             else
             {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
+                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -333,7 +341,7 @@ internal static partial class EvmInstructions
             }
             else
             {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
+                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -380,7 +388,7 @@ internal static partial class EvmInstructions
             }
             else
             {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
+                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -475,7 +483,7 @@ internal static partial class EvmInstructions
             }
             else
             {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
+                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }

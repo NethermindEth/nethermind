@@ -833,7 +833,14 @@ internal static partial class EvmInstructions
             vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
-        stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
+        if (blockHash is not null)
+        {
+            stack.PushBytes<TTracingInst>(blockHash.Bytes);
+        }
+        else
+        {
+            stack.PushZero<TTracingInst>();
+        }
 
         // If block hash tracing is enabled and a valid block hash was obtained, report it.
         if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)

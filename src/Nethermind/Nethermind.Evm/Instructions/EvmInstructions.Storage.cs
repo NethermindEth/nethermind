@@ -665,7 +665,18 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result))
             goto StackUnderflow;
         // Load 32 bytes from input data, applying zero padding as needed.
-        stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
+        ReadOnlySpan<byte> span = vm.VmState.Env.InputData.Span;
+        if (!result.IsUint64 || result.u0 >= (uint)span.Length)
+        {
+            stack.PushZero<TTracingInst>();
+        }
+        else
+        {
+            int offset = (int)(uint)result.u0;
+            int available = span.Length - offset;
+            int copiedLength = available >= 32 ? 32 : available;
+            stack.PushRightPaddedBytes<TTracingInst>(span.Slice(offset, copiedLength));
+        }
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

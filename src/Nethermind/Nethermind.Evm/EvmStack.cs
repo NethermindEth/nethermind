@@ -61,23 +61,100 @@ public ref struct EvmStack
     private static Word CreateWordFromUInt64(ulong value)
         => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
 
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
-        if (value.Length != WordSize)
+        ref byte dst = ref PushBytesRef();
+        ref byte src = ref MemoryMarshal.GetReference(value);
+
+        if (value.Length == WordSize)
         {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
+            if (Vector256.IsHardwareAccelerated)
+            {
+                Unsafe.As<byte, Word>(ref dst) = Unsafe.As<byte, Word>(ref src);
+            }
+            else
+            {
+                Unsafe.As<byte, HalfWord>(ref dst) = Unsafe.ReadUnaligned<HalfWord>(ref src);
+                Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
+            }
         }
         else
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            PushBytesPartial(ref dst, ref src, (uint)value.Length);
         }
+    }
+
+    [SkipLocalsInit]
+    private static void PushBytesPartial(ref byte dst, ref byte src, nuint length)
+    {
+        nuint q = length >> 3;
+        nuint r = length & 7;
+
+        ulong partial = r == 0 ? 0UL : PackHiU64(ref src, r);
+
+        ref byte p = ref Unsafe.Add(ref src, (int)r);
+
+        Vector128<ulong> lo, hi;
+
+        if (q == 0)
+        {
+            lo = default;
+            hi = Vector128.Create(0UL, partial);
+        }
+        else if (q == 1)
+        {
+            lo = default;
+            hi = Vector128.Create(partial, Unsafe.ReadUnaligned<ulong>(ref p));
+        }
+        else if (q == 2)
+        {
+            lo = Vector128.Create(0UL, partial);
+            hi = Unsafe.ReadUnaligned<Vector128<ulong>>(ref p); // 16B load for lanes 2-3
+        }
+        else
+        {
+            // q == 3
+            lo = Vector128.Create(partial, Unsafe.ReadUnaligned<ulong>(ref p)); // lane0-1
+            hi = Unsafe.ReadUnaligned<Vector128<ulong>>(ref Unsafe.Add(ref p, 8)); // lanes 2-3
+        }
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Unsafe.As<byte, Word>(ref dst) = Vector256.Create(lo, hi).AsByte();
+        }
+        else
+        {
+            Unsafe.As<byte, HalfWord>(ref dst) = lo.AsByte();
+            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
+        }
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong PackHiU64(ref byte src, nuint r)
+    {
+        // r is 1..7. Subtract 1 to get 0..6 for contiguous jump table
+        return (r - 1) switch
+        {
+            0 => (ulong)src << 56,
+            1 => (ulong)Unsafe.ReadUnaligned<ushort>(ref src) << 48,
+            2 => ((ulong)Unsafe.ReadUnaligned<ushort>(ref src) << 40) |
+               ((ulong)Unsafe.Add(ref src, 2) << 56),
+            3 => (ulong)Unsafe.ReadUnaligned<uint>(ref src) << 32,
+            4 => ((ulong)Unsafe.ReadUnaligned<uint>(ref src) << 24) |
+               ((ulong)Unsafe.Add(ref src, 4) << 56),
+            5 => ((ulong)Unsafe.ReadUnaligned<uint>(ref src) << 16) |
+               ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, 4)) << 48),
+            _ => ((ulong)Unsafe.ReadUnaligned<uint>(ref src) << 8) |
+               ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, 4)) << 40) |
+               ((ulong)Unsafe.Add(ref src, 6) << 56),
+        };
     }
 
     public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
@@ -98,6 +175,115 @@ public ref struct EvmStack
         {
             PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
         }
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushRightPaddedBytes<TTracingInst>(scoped ReadOnlySpan<byte> span)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            ReportStackPush(span);
+
+        ref byte dst = ref PushBytesRef();
+        ref byte src = ref MemoryMarshal.GetReference(span);
+
+        if (span.Length == WordSize)
+        {
+            if (Vector256.IsHardwareAccelerated)
+            {
+                Unsafe.As<byte, Word>(ref dst) = Unsafe.As<byte, Word>(ref src);
+            }
+            else
+            {
+                Unsafe.As<byte, HalfWord>(ref dst) = Unsafe.ReadUnaligned<HalfWord>(ref src);
+                Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) =
+                    Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
+            }
+
+            return;
+        }
+
+        PushBytesPartialZeroPadded(ref dst, ref src, (nuint)span.Length);
+    }
+
+    [SkipLocalsInit]
+    private static void PushBytesPartialZeroPadded(ref byte dst, ref byte src, nuint length)
+    {
+        nuint q = length >> 3; // full 8-byte chunks: 0..3
+        nuint r = length & 7;  // remainder: 0..7
+
+        // The partial bytes (if any) live at src + 8*q
+        ref byte tail = ref Unsafe.Add(ref src, (int)(q << 3));
+        ulong partial = r == 0 ? 0UL : PackLoU64(ref tail, r);
+
+        Vector128<ulong> lo, hi;
+
+        if (q == 0)
+        {
+            // length 0..7  -> lane0 partial, rest zero
+            lo = Vector128.Create(partial, 0UL);
+            hi = default;
+        }
+        else if (q == 1)
+        {
+            // length 8..15 -> lane0 full, lane1 partial, rest zero
+            lo = Vector128.Create(Unsafe.ReadUnaligned<ulong>(ref src), partial);
+            hi = default;
+        }
+        else if (q == 2)
+        {
+            // length 16..23 -> lanes0..1 full, lane2 partial, lane3 zero
+            lo = Unsafe.ReadUnaligned<Vector128<ulong>>(ref src);
+            hi = Vector128.Create(partial, 0UL);
+        }
+        else
+        {
+            // q == 3, length 24..31 -> lanes0..2 full, lane3 partial
+            lo = Unsafe.ReadUnaligned<Vector128<ulong>>(ref src);
+            hi = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, 16)),
+                partial);
+        }
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Unsafe.As<byte, Word>(ref dst) = Vector256.Create(lo, hi).AsByte();
+        }
+        else
+        {
+            Unsafe.As<byte, HalfWord>(ref dst) = lo.AsByte();
+            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
+        }
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong PackLoU64(ref byte src, nuint r)
+    {
+        // r is 1..7. Subtract 1 to get 0..6 for contiguous jump table
+        return (r - 1) switch
+        {
+            0 => (ulong)src,
+            1 => Unsafe.ReadUnaligned<ushort>(ref src),
+            2 => (ulong)Unsafe.ReadUnaligned<ushort>(ref src) |
+               ((ulong)Unsafe.Add(ref src, 2) << 16),
+            3 => Unsafe.ReadUnaligned<uint>(ref src),
+            4 => (ulong)Unsafe.ReadUnaligned<uint>(ref src) |
+               ((ulong)Unsafe.Add(ref src, 4) << 32),
+            5 => (ulong)Unsafe.ReadUnaligned<uint>(ref src) |
+               ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, 4)) << 32),
+            _ => (ulong)Unsafe.ReadUnaligned<uint>(ref src) |
+               ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, 4)) << 32) |
+               ((ulong)Unsafe.Add(ref src, 6) << 48),
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void ReportStackPush(scoped ReadOnlySpan<byte> value)
+    {
+        ZeroPaddedSpan padded = new(value, WordSize - value.Length, PadDirection.Right);
+        _tracer.ReportStackPush(padded);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -221,23 +407,78 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
         => Push32Bytes<TTracingInst>(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushLeftPaddedBytes<TTracingInst>(ReadOnlySpan<byte> value, int paddingLength)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void PushBothPaddedBytes<TTracingInst>(ReadOnlySpan<byte> value, int paddingLength)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
-        if (value.Length != WordSize)
+        ref byte dst = ref PushBytesRef();
+        // Zeros on both sides.
+        if (Vector256.IsHardwareAccelerated)
         {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - paddingLength), value.Length));
+            Unsafe.As<byte, Word>(ref dst) = default;
         }
         else
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            Unsafe.As<byte, HalfWord>(ref dst) = default;
+            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = default;
+        }
+
+        if (paddingLength == WordSize)
+        {
+            // All padding, nothing to copy
+            return;
+        }
+
+        ref byte src = ref MemoryMarshal.GetReference(value);
+        dst = ref Unsafe.Add(ref dst, WordSize - paddingLength);
+        CopyUpTo32(ref dst, ref src, (uint)value.Length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CopyUpTo32(ref byte dest, ref byte source, uint len)
+    {
+        // Take local copy to not get weird with refs
+        ref byte dst = ref dest;
+        ref byte src = ref source;
+
+        if (len >= 16)
+        {
+            Unsafe.WriteUnaligned(ref dst, Unsafe.ReadUnaligned<HalfWord>(ref src));
+            len -= 16;
+            dst = ref Unsafe.Add(ref dst, 16);
+            src = ref Unsafe.Add(ref src, 16);
+        }
+
+        if (len >= 8)
+        {
+            Unsafe.WriteUnaligned(ref dst, Unsafe.ReadUnaligned<ulong>(ref src));
+            len -= 8;
+            dst = ref Unsafe.Add(ref dst, 8);
+            src = ref Unsafe.Add(ref src, 8);
+        }
+
+        if (len >= 4)
+        {
+            Unsafe.WriteUnaligned(ref dst, Unsafe.ReadUnaligned<uint>(ref src));
+            len -= 4;
+            dst = ref Unsafe.Add(ref dst, 4);
+            src = ref Unsafe.Add(ref src, 4);
+        }
+
+        if (len >= 2)
+        {
+            Unsafe.WriteUnaligned(ref dst, Unsafe.ReadUnaligned<ushort>(ref src));
+            len -= 2;
+            dst = ref Unsafe.Add(ref dst, 2);
+            src = ref Unsafe.Add(ref src, 2);
+        }
+
+        if (len != 0)
+        {
+            dst = src;
         }
     }
 
@@ -539,7 +780,7 @@ public ref struct EvmStack
         Head = head;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StackOverflow:
@@ -568,7 +809,7 @@ public ref struct EvmStack
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
