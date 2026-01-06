@@ -17,7 +17,12 @@ namespace Nethermind.Core.Extensions
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
         // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
         // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+        private static readonly uint s_instanceRandom =
+#if ZKVM
+            2098026241U;
+#else
+            (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+#endif
 
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
         {
