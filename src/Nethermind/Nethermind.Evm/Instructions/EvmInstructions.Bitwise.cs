@@ -111,6 +111,7 @@ internal static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
-        public static Word Operation(in Word a, in Word b) => a == b ? One : default;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Word Operation(in Word a, in Word b) => Vector256.EqualsAll(a, b) ? One : default;
     }
 }
