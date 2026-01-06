@@ -386,6 +386,8 @@ public partial class EngineModuleTests
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
+                 Substitute.For<IAsyncHandler<Hash256[], IEnumerable<byte[]?>>>(),
+                 Substitute.For<IAsyncHandler<(long, long), IEnumerable<byte[]>?>>(),
                  Substitute.For<IEngineRequestsTracker>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),

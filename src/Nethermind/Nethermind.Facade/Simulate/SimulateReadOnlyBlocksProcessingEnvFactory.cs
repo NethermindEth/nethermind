@@ -39,7 +39,11 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
         IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
-        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore);
+
+        IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
+        // need tmp?
+
+        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
         BlockTreeOverlay overrideBlockTree = new BlockTreeOverlay(baseBlockTree, tempBlockTree);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -69,7 +73,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         ISpecProvider? specProvider,
         ILogManager logManager,
         IReadOnlyDbProvider editableDbProvider,
-        SimulateDictionaryHeaderStore tmpHeaderStore)
+        SimulateDictionaryHeaderStore tmpHeaderStore,
+        IBlockAccessListStore tmpBalStore)
     {
         IBlockStore mainblockStore = new BlockStore(editableDbProvider.BlocksDb);
         const int badBlocksStored = 1;
@@ -82,6 +87,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             editableDbProvider.BlockInfosDb,
             editableDbProvider.MetadataDb,
             badBlockStore,
+            tmpBalStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             NullBloomStorage.Instance,

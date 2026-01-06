@@ -27,12 +27,13 @@ internal class XdcBlockTree : BlockTree
         [KeyFilter("blockInfos")] IDb? blockInfoDb,
         [KeyFilter("metadata")] IDb? metadataDb,
         IBadBlockStore? badBlockStore,
+        IBlockAccessListStore? balStore,
         IChainLevelInfoRepository? chainLevelInfoRepository,
         ISpecProvider? specProvider,
         IBloomStorage? bloomStorage,
         ISyncConfig? syncConfig,
         ILogManager? logManager,
-        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         _xdcConsensus = xdcConsensus;
     }

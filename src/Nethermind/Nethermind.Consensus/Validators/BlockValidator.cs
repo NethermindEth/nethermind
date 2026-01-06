@@ -484,19 +484,18 @@ public class BlockValidator(
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
-    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? blockLevelAccessListRoot)
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
     {
-        BlockBody body = block.Body;
         BlockHeader header = block.Header;
-        if (body.BlockAccessList is null)
+        if (block.BlockAccessList is null)
         {
-            blockLevelAccessListRoot = null;
+            balRoot = null;
             return header.BlockAccessListHash is null;
         }
 
-        blockLevelAccessListRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+        balRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
 
-        return blockLevelAccessListRoot == header.BlockAccessListHash;
+        return balRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";

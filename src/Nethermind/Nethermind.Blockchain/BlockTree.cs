@@ -44,6 +44,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
         private readonly IBadBlockStore _badBlockStore;
+        private readonly IBlockAccessListStore _balStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -113,6 +114,7 @@ namespace Nethermind.Blockchain
             [KeyFilter(DbNames.BlockInfos)] IDb? blockInfoDb,
             [KeyFilter(DbNames.Metadata)] IDb? metadataDb,
             IBadBlockStore? badBlockStore,
+            IBlockAccessListStore? balStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -126,6 +128,7 @@ namespace Nethermind.Blockchain
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
+            _balStore = balStore ?? throw new ArgumentNullException(nameof(balStore));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -417,6 +420,15 @@ namespace Nethermind.Blockchain
             _blockStore.Insert(block, writeFlags: blockWriteFlags);
             _headerStore.InsertBlockNumber(block.Hash, block.Number);
 
+            if (block.EncodedBlockAccessList is not null)
+            {
+                _balStore.Insert(block.Hash, block.EncodedBlockAccessList);
+            }
+            else if (block.BlockAccessList is not null)
+            {
+                _balStore.Insert(block.Hash, block.BlockAccessList.Value);
+            }
+
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
             {
@@ -483,6 +495,15 @@ namespace Nethermind.Blockchain
                 }
 
                 _blockStore.Insert(block);
+
+                if (block.EncodedBlockAccessList is not null)
+                {
+                    _balStore.Insert(block.Hash, block.EncodedBlockAccessList);
+                }
+                else if (block.BlockAccessList is not null)
+                {
+                    _balStore.Insert(block.Hash, block.BlockAccessList.Value);
+                }
             }
 
             if (!isKnown)
@@ -1681,6 +1702,7 @@ namespace Nethermind.Blockchain
                         _blockInfoDb.Delete(blockHash);
                         _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
+                        _balStore.Delete(blockHash);
                     }
                 }
             }
