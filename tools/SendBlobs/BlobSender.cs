@@ -277,8 +277,8 @@ internal class BlobSender
 
         if (defaultMaxPriorityFeePerGas is null)
         {
-            string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-            result.maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
+            string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "0x1";
+            result.maxPriorityFeePerGas = UInt256.Parse(maxPriorityFeePerGasRes);
         }
         else
         {
