@@ -508,7 +508,11 @@ internal class TrieStoreDirtyNodesCache
 
     public void CopyTo(TrieStoreDirtyNodesCache otherCache)
     {
-        foreach (var kv in AllNodes) otherCache.GetOrAdd(kv.Key, kv.Value);
+        foreach (var kv in AllNodes)
+        {
+            kv.Value.Node.PrunePersistedRecursively(1);
+            otherCache.GetOrAdd(kv.Key, kv.Value);
+        }
         Clear();
     }
 }
