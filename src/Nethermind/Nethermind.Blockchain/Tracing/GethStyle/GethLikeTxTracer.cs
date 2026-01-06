@@ -12,6 +12,8 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public abstract class GethLikeTxTracer : TxTracer
 {
+    private bool _gasCostAlreadySetForCurrentOp;
+
     protected GethLikeTxTracer(GethTraceOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -31,6 +33,30 @@ public abstract class GethLikeTxTracer : TxTracer
     public override bool IsTracingInstructions => true;
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
+
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    {
+        _gasCostAlreadySetForCurrentOp = false;
+    }
+
+    /// <summary>
+    /// Sealed implementation that ensures the gas cost guard is applied.
+    /// Subclasses should override <see cref="OnOperationRemainingGas"/> instead.
+    /// </summary>
+    public sealed override void ReportOperationRemainingGas(long gas)
+    {
+        if (_gasCostAlreadySetForCurrentOp)
+            return;
+        _gasCostAlreadySetForCurrentOp = true;
+        OnOperationRemainingGas(gas);
+    }
+
+    /// <summary>
+    /// Called exactly once per operation when the remaining gas is reported.
+    /// Override this instead of <see cref="ReportOperationRemainingGas"/>.
+    /// </summary>
+    /// <param name="gas">The remaining gas after the operation.</param>
+    protected virtual void OnOperationRemainingGas(long gas) { }
 
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
@@ -69,10 +95,11 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected TEntry? CurrentTraceEntry { get; set; }
 
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
-    private bool _gasCostAlreadySetForCurrentOp;
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
+        base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
+
         if (CurrentTraceEntry is not null)
         {
             AddTraceEntry(CurrentTraceEntry);
@@ -85,7 +112,6 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         CurrentTraceEntry.ProgramCounter = pc;
         // skip codeSection
         // skip functionDepth
-        _gasCostAlreadySetForCurrentOp = false;
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -94,13 +120,10 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
             CurrentTraceEntry.Error = GetErrorDescription(error);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    protected override void OnOperationRemainingGas(long gas)
     {
-        if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
-        {
+        if (CurrentTraceEntry is not null)
             CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
-            _gasCostAlreadySetForCurrentOp = true;
-        }
     }
 
     public override void SetOperationMemorySize(ulong newSize)

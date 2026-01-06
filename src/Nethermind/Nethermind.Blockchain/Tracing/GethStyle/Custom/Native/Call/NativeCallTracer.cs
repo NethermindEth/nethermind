@@ -122,9 +122,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         callFrame.Logs.Add(callLog);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    protected override void OnOperationRemainingGas(long gas)
     {
-        base.ReportOperationRemainingGas(gas);
         _remainingGas = gas > 0 ? gas : 0;
     }
 

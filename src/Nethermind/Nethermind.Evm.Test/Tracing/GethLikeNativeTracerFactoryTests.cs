@@ -65,4 +65,47 @@ public class GethLikeNativeTracerFactoryTests
 
         Assert.That(isNativeTracer, Is.False);
     }
+
+    [Test]
+    public void RegisterExternalTracer_NewTracer_RegistersSuccessfully()
+    {
+        const string tracerName = "testExternalTracer";
+
+        GethLikeNativeTracerFactory.RegisterExternalTracer(tracerName,
+            static (options, _, _, _) => new TestExternalTracer());
+
+        Assert.That(GethLikeNativeTracerFactory.IsNativeTracer(tracerName), Is.True);
+        GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            new GethTraceOptions { Tracer = tracerName }, _block, _tx, null!);
+        Assert.That(tracer, Is.TypeOf<TestExternalTracer>());
+    }
+
+    [Test]
+    public void RegisterExternalTracer_SameName_DoesNotThrow()
+    {
+        const string tracerName = "testIdempotentTracer";
+
+        GethLikeNativeTracerFactory.RegisterExternalTracer(tracerName,
+            static (options, _, _, _) => new TestExternalTracer());
+
+        Assert.DoesNotThrow(() => GethLikeNativeTracerFactory.RegisterExternalTracer(tracerName,
+            static (options, _, _, _) => new TestExternalTracer()));
+    }
+
+    [Test]
+    public void RegisterExternalTracer_ExistingNativeTracer_DoesNotOverwrite()
+    {
+        GethLikeNativeTracerFactory.RegisterExternalTracer(Native4ByteTracer.FourByteTracer,
+            static (options, _, _, _) => new TestExternalTracer());
+
+        GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer }, _block, _tx, null!);
+
+        Assert.That(tracer, Is.TypeOf<Native4ByteTracer>());
+    }
+
+    private sealed class TestExternalTracer : GethLikeNativeTxTracer
+    {
+        public TestExternalTracer() : base(GethTraceOptions.Default) { }
+    }
 }
