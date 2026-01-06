@@ -19,14 +19,11 @@ public class BlockAccessListStore(
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     // public const int CacheSize = 256 + 16;
 
-    private readonly BlockAccessListDecoder _balDecoder = decoder ?? new BlockAccessListDecoder();
+    private readonly BlockAccessListDecoder _balDecoder = decoder ?? new();
     // private readonly ClockCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
 
     public void Insert(Hash256 blockHash, BlockAccessList bal)
-    {
-        using NettyRlpStream newRlp = _balDecoder.EncodeToNewNettyStream(bal);
-        balDb.Set(blockHash, newRlp.AsSpan());
-    }
+        => balDb.Set(blockHash, Rlp.Encode(bal).Bytes);
 
     public void Insert(Hash256 blockHash, byte[] encodedBal)
         => balDb.Set(blockHash, encodedBal);
@@ -63,7 +60,7 @@ public class BlockAccessListStore(
     public BlockAccessList? Get(Hash256 blockHash)
     {
         byte[]? rlp = balDb.Get(blockHash);
-        return _balDecoder.Decode(rlp);
+        return rlp is null ? null : _balDecoder.Decode(rlp);
     }
 
     // public void Cache(BlockHeader header)
