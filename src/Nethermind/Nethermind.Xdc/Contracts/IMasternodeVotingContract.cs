@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Xdc.Contracts;
 using System;
 
 namespace Nethermind.Xdc.Contracts;
