@@ -50,7 +50,7 @@ public class XdcModule : Module
             .AddSingleton<IBlockTree, XdcBlockTree>()
 
             // Sys contracts
-            //TODO this might not be wired correctly 
+            //TODO this might not be wired correctly
             .AddSingleton<
                 IMasternodeVotingContract,
                 IAbiEncoder,
@@ -96,6 +96,7 @@ public class XdcModule : Module
         ISpecProvider specProvider,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv)
     {
-        return new MasternodeVotingContract(abiEncoder, specProvider.GetFinalSpec().DepositContractAddress, readOnlyTxProcessingEnv);
+        IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
+        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
 }
