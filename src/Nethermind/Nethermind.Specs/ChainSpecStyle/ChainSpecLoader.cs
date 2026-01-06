@@ -435,5 +435,5 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
     }
 
     private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
-        => chainSpec.Bootnodes = string.Join(",", chainSpecJson.Nodes);
+        => chainSpec.Bootnodes = chainSpecJson.Nodes is null ? null : string.Join(",", chainSpecJson.Nodes);
 }
