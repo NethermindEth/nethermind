@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             // we collect proofs from before execution (after learning which addresses will be touched)
             // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
-            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader.StateRoot, proofTxTracer);
+            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader, proofTxTracer);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(ITracer tracer, Hash256 stateRoot, ProofTxTracer proofTxTracer)
+        private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new();
             foreach (Address address in proofTxTracer.Accounts)
@@ -174,7 +174,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .Where(s => s.Address == address)
                     .Select(s => s.Index).ToArray());
 
-                tracer.Accept(collector, stateRoot);
+                tracer.Accept(collector, baseBlock);
                 accountProofs.Add(collector.BuildResult());
             }
 
