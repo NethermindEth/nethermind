@@ -578,8 +578,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void TrySyncPrune()
+    private async Task TrySyncPrune()
     {
+        await Task.Delay(10);
+
         if (!_pruningLock.TryEnter())
         {
             // Do not want to queue on lock behind already ongoing pruning.
