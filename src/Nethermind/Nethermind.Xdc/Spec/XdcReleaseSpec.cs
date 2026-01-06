@@ -36,8 +36,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address MasternodeVotingContract { get; set; }
     public Address BlockSignerContract { get; set; }
 
-    public Address MasternodeVotingContract { get; set; }
-
     public void ApplyV2Config(ulong round)
     {
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);
