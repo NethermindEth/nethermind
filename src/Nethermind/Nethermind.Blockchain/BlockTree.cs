@@ -495,6 +495,15 @@ namespace Nethermind.Blockchain
                 }
 
                 _blockStore.Insert(block);
+
+                if (block.EncodedBlockAccessList is not null)
+                {
+                    _balStore.Insert(block.Hash, block.EncodedBlockAccessList);
+                }
+                else if (block.BlockAccessList is not null)
+                {
+                    _balStore.Insert(block.Hash, block.BlockAccessList.Value);
+                }
             }
 
             if (!isKnown)
