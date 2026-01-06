@@ -15,7 +15,7 @@
 
   <Target Name="_FilterRuntimeAssetsToCurrentOS"
           AfterTargets="ResolvePackageAssets"
-          Condition="'$(NethermindCopyAllRuntimes)' != 'true' and '$(_NethermindRuntimePrefix)' != ''">
+          Condition="'$(CI)' != 'true' and '$(_NethermindRuntimePrefix)' != ''">
     <ItemGroup>
       <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
           Condition="($([System.String]::Copy('%(Identity)').Contains('\runtimes\')) or $([System.String]::Copy('%(Identity)').Contains('/runtimes/'))) and
