@@ -56,7 +56,7 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
         }
         catch (SocketException exception)
         {
-            if (_logger.IsError) _logger.Error("Error sending data", exception);
+            if (_logger.IsDebug) _logger.Error("Error sending data", exception);
             throw;
         }
     }
