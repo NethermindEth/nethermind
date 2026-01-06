@@ -28,7 +28,9 @@
             "limitPenaltyEpoch": 0,
             "minimumSigningTx": 0
           }
-        ]
+        ],
+        "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
+        "blockSignerContract": "0x0000000000000000000000000000000000000089"
       }
     }
   },
