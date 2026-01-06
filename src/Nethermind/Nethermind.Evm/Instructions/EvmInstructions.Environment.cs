@@ -365,6 +365,7 @@ internal static partial class EvmInstructions
     public struct OpCallDataSize<TGasPolicy> : IOpEnvUInt32<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint Operation(VmState<TGasPolicy> vmState)
             => (uint)vmState.Env.InputData.Length;
     }
@@ -375,6 +376,7 @@ internal static partial class EvmInstructions
     public struct OpCodeSize<TGasPolicy> : IOpEnvUInt32<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint Operation(VmState<TGasPolicy> vmState)
             => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
@@ -385,6 +387,7 @@ internal static partial class EvmInstructions
     public struct OpTimestamp<TGasPolicy> : IOpBlkUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.Header.Timestamp;
     }
@@ -395,6 +398,7 @@ internal static partial class EvmInstructions
     public struct OpNumber<TGasPolicy> : IOpBlkUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.Number;
     }
@@ -405,6 +409,7 @@ internal static partial class EvmInstructions
     public struct OpGasLimit<TGasPolicy> : IOpBlkUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.GasLimit;
     }
@@ -415,6 +420,7 @@ internal static partial class EvmInstructions
     public struct OpMSize<TGasPolicy> : IOpEnvUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Operation(VmState<TGasPolicy> vmState)
             => vmState.Memory.Size;
     }
@@ -425,7 +431,7 @@ internal static partial class EvmInstructions
     public struct OpBaseFee<TGasPolicy> : IOpBlkUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.BlockExecutionContext.Header.BaseFeePerGas;
     }
@@ -466,6 +472,7 @@ internal static partial class EvmInstructions
     public struct OpGasPrice<TGasPolicy> : IOpBlkUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.TxExecutionContext.GasPrice;
     }
@@ -476,6 +483,7 @@ internal static partial class EvmInstructions
     public struct OpCallValue<TGasPolicy> : IOpEnvUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly UInt256 Operation(VmState<TGasPolicy> vmState)
             => ref vmState.Env.Value;
     }
@@ -486,6 +494,7 @@ internal static partial class EvmInstructions
     public struct OpAddress<TGasPolicy> : IOpEnvAddress<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Address Operation(VmState<TGasPolicy> vmState)
             => vmState.Env.ExecutingAccount;
     }
@@ -496,6 +505,7 @@ internal static partial class EvmInstructions
     public struct OpCaller<TGasPolicy> : IOpEnvAddress<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Address Operation(VmState<TGasPolicy> vmState)
             => vmState.Env.Caller;
     }
@@ -506,6 +516,7 @@ internal static partial class EvmInstructions
     public struct OpOrigin<TGasPolicy> : IOpEnv32Bytes<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.TxExecutionContext.Origin;
     }
@@ -516,6 +527,7 @@ internal static partial class EvmInstructions
     public struct OpCoinbase<TGasPolicy> : IOpBlkAddress<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Address Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.Coinbase;
     }
@@ -526,6 +538,7 @@ internal static partial class EvmInstructions
     public struct OpChainId<TGasPolicy> : IOpEnv32Bytes<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.ChainId;
     }

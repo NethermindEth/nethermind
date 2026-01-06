@@ -104,6 +104,7 @@ internal static partial class EvmInstructions
     public struct OpCallDataCopy<TGasPolicy> : IOpCodeCopy<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm)
             => vm.VmState.Env.InputData.Span;
     }
@@ -114,6 +115,7 @@ internal static partial class EvmInstructions
     public struct OpCodeCopy<TGasPolicy> : IOpCodeCopy<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm)
             => vm.VmState.Env.CodeInfo.CodeSpan;
     }

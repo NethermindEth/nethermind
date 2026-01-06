@@ -71,7 +71,7 @@ internal static partial class EvmInstructions
         WriteUnaligned(ref bytesRef, result);
 
         return EvmExceptionType.None;
-    // Label for error handling when the stack does not have the required element.
+        // Label for error handling when the stack does not have the required element.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -82,6 +82,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(Word value) => Vector256.OnesComplement(value);
     }
 
@@ -92,7 +93,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
-        public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Word Operation(Word value) => Vector256.EqualsAll(value, default) ? OpBitwiseEq.One : default;
     }
 
     /// <summary>
@@ -103,6 +105,7 @@ internal static partial class EvmInstructions
     {
         public static long GasCost => GasCostOf.Low;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(Word value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
             : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
@@ -144,7 +147,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -189,7 +192,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
