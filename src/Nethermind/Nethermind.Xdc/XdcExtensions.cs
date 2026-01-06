@@ -25,7 +25,7 @@ public static class XdcExtensions
     }
     public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignersAddress);
+        var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);
         if(!targetIsSignContract) return false;
 
         if(currentTx.Data.Length != 68) return false;
