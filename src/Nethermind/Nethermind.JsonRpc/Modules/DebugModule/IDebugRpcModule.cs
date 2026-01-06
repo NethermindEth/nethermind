@@ -118,13 +118,13 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
+    [JsonRpcMethod(Description = "Retrieves block access list from block hash.")]
+    ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash);
+
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
-
-    [JsonRpcMethod(Description = "Retrieves block access list from block hash.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash);
 }
