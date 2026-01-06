@@ -2203,4 +2203,28 @@ public class BlockTreeTests
             }
         }
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void DeleteOldBlock_should_delete_body_but_preserve_header_and_metadata()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+
+        AddToMain(blockTree, block0);
+        AddToMain(blockTree, block1);
+
+        blockTree.FindBlock(block1.Hash, BlockTreeLookupOptions.None).Should().NotBeNull();
+        blockTree.FindHeader(block1.Hash, BlockTreeLookupOptions.None).Should().NotBeNull();
+        blockTree.FindLevel(block1.Number).Should().NotBeNull();
+
+        blockTree.DeleteOldBlock(block1.Number, block1.Hash!);
+
+        blockTree.FindBlock(block1.Hash, BlockTreeLookupOptions.None).Should().BeNull();
+        blockTree.FindHeader(block1.Hash, BlockTreeLookupOptions.None).Should().NotBeNull("header must be preserved after body pruning");
+
+        ChainLevelInfo? levelAfterDeletion = blockTree.FindLevel(block1.Number);
+        levelAfterDeletion.Should().NotBeNull("chain level info must be preserved");
+        levelAfterDeletion!.BlockInfos.Should().Contain(bi => bi.BlockHash == block1.Hash);
+    }
 }

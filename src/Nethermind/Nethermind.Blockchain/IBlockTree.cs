@@ -159,6 +159,13 @@ namespace Nethermind.Blockchain
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
+
+        /// <summary>
+        /// Deletes a block that is no longer need.
+        /// Removes the block body from the block store, headers etc remain.
+        /// </summary>
+        /// <param name="blockNumber">The number of the block to delete.</param>
+        /// <param name="blockHash">The hash of the block to delete.</param>
         void DeleteOldBlock(long blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);

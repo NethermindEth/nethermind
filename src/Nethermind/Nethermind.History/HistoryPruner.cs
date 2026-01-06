@@ -148,7 +148,7 @@ public class HistoryPruner : IHistoryPruner
                     {
                         int attempts = 0;
                         long from = _cutoffPointer.Value;
-                        using ArrayPoolListRef<Block> x = GetBlocksByNumber(from, to, b =>
+                        using ArrayPoolListRef<(long Number, Hash256 Hash, Block? Block)> x = GetBlocksByNumber(from, to, b =>
                         {
                             if (attempts >= MaxOptimisticSearchAttempts)
                             {
@@ -419,15 +419,12 @@ public class HistoryPruner : IHistoryPruner
         ulong? lastDeletedTimestamp = null;
         try
         {
-            IEnumerable<Block> blocks = _historyConfig.Pruning == PruningModes.UseAncientBarriers ?
+            IEnumerable<(long Number, Hash256 Hash, Block? Block)> blocks = _historyConfig.Pruning == PruningModes.UseAncientBarriers ?
                 GetBlocksBeforeAncientBarrier() :
                 GetBlocksBeforeTimestamp(cutoffTimestamp!.Value);
 
-            foreach (Block block in blocks)
+            foreach (var (number, hash, block) in blocks)
             {
-                long number = block.Number;
-                Hash256 hash = block.Hash!;
-
                 if (cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
@@ -451,10 +448,13 @@ public class HistoryPruner : IHistoryPruner
 
                 if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteOldBlock(number, hash);
-                _receiptStorage.RemoveReceipts(block);
+                if (block is not null)
+                {
+                    _receiptStorage.RemoveReceipts(block);
+                }
 
                 UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
-                lastDeletedTimestamp = block.Timestamp;
+                lastDeletedTimestamp = block?.Timestamp ?? lastDeletedTimestamp;
                 deletedBlocks++;
                 Metrics.BlocksPruned++;
             }
@@ -479,13 +479,13 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private IEnumerable<Block> GetBlocksBeforeAncientBarrier()
-        => GetBlocksByNumber(_deletePointer, long.Min(_ancientBarrier, _blockTree.SyncPivot.BlockNumber) - 1, (_) => false);
+    private IEnumerable<(long Number, Hash256 Hash, Block? Block)> GetBlocksBeforeAncientBarrier()
+        => GetBlocksByNumber(_deletePointer, long.Min(_ancientBarrier, _blockTree.SyncPivot.BlockNumber) - 1, (block) => false); // Predicate only runs on non-null block
 
-    private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber - 1, b => b.Timestamp >= cutoffTimestamp);
+    private IEnumerable<(long Number, Hash256 Hash, Block? Block)> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
+        => GetBlocksByNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber - 1, (block) => block.Timestamp >= cutoffTimestamp); // Predicate only runs on non-null block
 
-    private IEnumerable<Block> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
+    private IEnumerable<(long Number, Hash256 Hash, Block? Block)> GetBlocksByNumber(long from, long to, Predicate<Block> endSearch)
     {
         for (long i = from; i <= to; i++)
         {
@@ -499,19 +499,14 @@ public class HistoryPruner : IHistoryPruner
             foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
             {
                 Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, i);
-                if (block is null)
-                {
-                    continue;
-                }
-
-                // search the entire chain level before finishing
-                if (endSearch(block))
+                var item = (Number: i, Hash: blockInfo.BlockHash, Block: block);
+                if (block is not null && endSearch(block))
                 {
                     finished = true;
                 }
                 else
                 {
-                    yield return block;
+                    yield return item;
                 }
             }
 
