@@ -1306,7 +1306,7 @@ namespace Nethermind.Trie.Test.Pruning
                 // Persist sometimes
                 testPruningStrategy.ShouldPruneEnabled = i % snapshotInterval == 0;
                 testPruningStrategy.ShouldPrunePersistedEnabled = i % prunePersistedInterval == 0;
-                fullTrieStore.SyncPruneCheck();
+                fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
                 testPruningStrategy.ShouldPrunePersistedEnabled = false;
 
@@ -1393,7 +1393,7 @@ namespace Nethermind.Trie.Test.Pruning
             Task persistTask = Task.Run(() =>
             {
                 testPruningStrategy.ShouldPruneEnabled = true;
-                fullTrieStore.SyncPruneCheck();
+                fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
             });
             Thread.Sleep(100);
@@ -1425,7 +1425,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // Persisted nodes should be from block 12
             testPruningStrategy.ShouldPruneEnabled = true;
-            fullTrieStore.SyncPruneCheck();
+            fullTrieStore.SyncPruneQueue();
             testPruningStrategy.ShouldPruneEnabled = false;
             fullTrieStore.LastPersistedBlockNumber.Should().Be(12);
 
