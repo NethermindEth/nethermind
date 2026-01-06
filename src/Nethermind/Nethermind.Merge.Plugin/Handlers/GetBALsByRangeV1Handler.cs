@@ -32,7 +32,7 @@ public class GetBALsByRangeV1Handler(IBlockAccessListStore balStore, IBlockFinde
         for (int i = (int)request.Start; i < end; i++)
         {
             Hash256? blockHash = blockFinder.FindBlockHash(i);
-            byte[]? bal = blockHash is null ? null : balStore.Get(blockHash);
+            byte[]? bal = blockHash is null ? null : balStore.GetRlp(blockHash);
 
             if (bal is null)
             {

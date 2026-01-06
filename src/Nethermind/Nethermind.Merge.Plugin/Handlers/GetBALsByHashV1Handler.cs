@@ -32,7 +32,7 @@ public class GetBALsByHashV1Handler(IBlockAccessListStore balStore) : IAsyncHand
 
         foreach (Hash256 blockHash in request)
         {
-            byte[]? bal = balStore.Get(blockHash);
+            byte[]? bal = balStore.GetRlp(blockHash);
             response.Add(bal);
         }
 

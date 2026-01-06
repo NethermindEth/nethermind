@@ -11,6 +11,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -123,4 +124,7 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+
+    [JsonRpcMethod(Description = "Retrieves block access list from block hash.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash);
 }

@@ -47,7 +47,7 @@ public class BlockAccessListStore(
     //     }
     // }
 
-    public byte[]? Get(Hash256 blockHash)
+    public byte[]? GetRlp(Hash256 blockHash)
         => balDb.Get(blockHash);
     // {
     //     blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
@@ -59,6 +59,12 @@ public class BlockAccessListStore(
     //     }
     //     return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     // }
+
+    public BlockAccessList? Get(Hash256 blockHash)
+    {
+        byte[]? rlp = balDb.Get(blockHash);
+        return _balDecoder.Decode(rlp);
+    }
 
     // public void Cache(BlockHeader header)
     // {
