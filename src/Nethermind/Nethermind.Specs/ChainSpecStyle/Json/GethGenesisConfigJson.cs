@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -64,15 +65,27 @@ public class GethGenesisConfigJson
 
     public ulong? OsakaTime { get; set; }
 
+    public ulong? AmsterdamTime { get; set; }
+
+    public ulong? Bpo1Time { get; set; }
+
+    public ulong? Bpo2Time { get; set; }
+
+    public ulong? Bpo3Time { get; set; }
+
+    public ulong? Bpo4Time { get; set; }
+
+    public ulong? Bpo5Time { get; set; }
+
     /// <summary>
     /// The terminal total difficulty for the merge.
     /// This is a hex string as defined in EIP-7949.
     /// </summary>
-    public string TerminalTotalDifficulty { get; set; }
+    public UInt256? TerminalTotalDifficulty { get; set; }
 
     public bool? TerminalTotalDifficultyPassed { get; set; }
 
-    public Address DepositContractAddress { get; set; }
+    public Address? DepositContractAddress { get; set; }
 
     /// <summary>
     /// The blob schedule mapping hardforks to their EIP-4844 DAS configuration parameters.

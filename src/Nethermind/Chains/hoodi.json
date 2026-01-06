@@ -18,26 +18,25 @@
     "shanghaiTime": 0,
     "cancunTime": 0,
     "pragueTime": 1742999832,
+    "bpo1Time": 1762365720,
+    "bpo2Time": 1762955544,
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
     "osakaTime": 1761677592,
     "blobSchedule": {
       "prague": {
         "target": 6,
         "max": 9,
-        "baseFeeUpdateFraction": 5007716,
-        "timestamp": 1742999832
+        "baseFeeUpdateFraction": 5007716
       },
       "bpo1": {
         "target": 10,
         "max": 15,
-        "baseFeeUpdateFraction": 8346193,
-        "timestamp": 1762365720
+        "baseFeeUpdateFraction": 8346193
       },
       "bpo2": {
         "target": 14,
         "max": 21,
-        "baseFeeUpdateFraction": 11684671,
-        "timestamp": 1762955544
+        "baseFeeUpdateFraction": 11684671
       }
     }
   },

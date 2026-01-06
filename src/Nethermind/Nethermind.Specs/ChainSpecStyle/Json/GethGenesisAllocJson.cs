@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System.Collections.Generic;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
@@ -10,11 +11,11 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// </summary>
 public class GethGenesisAllocJson
 {
-    public string Balance { get; set; }
+    public UInt256? Balance { get; set; }
 
-    public string Nonce { get; set; }
+    public ulong? Nonce { get; set; }
 
-    public string Code { get; set; }
+    public byte[]? Code { get; set; }
 
-    public Dictionary<string, string> Storage { get; set; }
+    public Dictionary<UInt256, byte[]>? Storage { get; set; }
 }

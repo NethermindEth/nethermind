@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -13,28 +16,28 @@ public class GethGenesisJson
 {
     public GethGenesisConfigJson Config { get; set; }
 
-    public Dictionary<string, GethGenesisAllocJson> Alloc { get; set; }
+    public Dictionary<Address, GethGenesisAllocJson> Alloc { get; set; }
 
-    public string Nonce { get; set; }
+    public ulong Nonce { get; set; }
 
-    public string Timestamp { get; set; }
+    public ulong? Timestamp { get; set; }
 
-    public string ExtraData { get; set; }
+    public byte[]? ExtraData { get; set; }
 
-    public string GasLimit { get; set; }
+    public ulong? GasLimit { get; set; }
 
-    public string Difficulty { get; set; }
+    public UInt256 Difficulty { get; set; }
 
     [JsonPropertyName("mixhash")]
-    public string MixHash { get; set; }
+    public Hash256? MixHash { get; set; }
 
-    public string Coinbase { get; set; }
+    public Address? Coinbase { get; set; }
 
-    public string BaseFeePerGas { get; set; }
+    public ulong? BaseFeePerGas { get; set; }
 
-    public string ExcessBlobGas { get; set; }
+    public ulong? ExcessBlobGas { get; set; }
 
-    public string BlobGasUsed { get; set; }
+    public ulong? BlobGasUsed { get; set; }
 
-    public string ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 }
