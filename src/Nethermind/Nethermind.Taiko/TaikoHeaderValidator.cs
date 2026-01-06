@@ -143,12 +143,19 @@ public class TaikoHeaderValidator(
         {
             // If the parent block used more gas than its target, the baseFee should increase
             // max(1, parentBaseFee * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator)
-            UInt256 gasUsedDelta = (ulong)parent.GasUsed - parentAdjustedGasTarget;
-            UInt256 feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
-
-            if (feeDelta < 1)
+            UInt256 feeDelta;
+            if (parentGasTarget == 0 || baseFeeChangeDenominator.IsZero)
             {
                 feeDelta = 1;
+            }
+            else
+            {
+                UInt256 gasUsedDelta = (ulong)parent.GasUsed - parentAdjustedGasTarget;
+                feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
+                if (feeDelta < 1)
+                {
+                    feeDelta = 1;
+                }
             }
 
             baseFee = parent.BaseFeePerGas + feeDelta;
@@ -157,8 +164,16 @@ public class TaikoHeaderValidator(
         {
             // Otherwise if the parent block used less gas than its target, the baseFee should decrease
             // max(0, parentBaseFee * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator)
-            UInt256 gasUsedDelta = parentAdjustedGasTarget - (ulong)parent.GasUsed;
-            UInt256 feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
+            UInt256 feeDelta;
+            if (parentGasTarget == 0 || baseFeeChangeDenominator.IsZero)
+            {
+                feeDelta = 0;
+            }
+            else
+            {
+                UInt256 gasUsedDelta = parentAdjustedGasTarget - (ulong)parent.GasUsed;
+                feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
+            }
 
             baseFee = parent.BaseFeePerGas > feeDelta ? parent.BaseFeePerGas - feeDelta : UInt256.Zero;
         }
