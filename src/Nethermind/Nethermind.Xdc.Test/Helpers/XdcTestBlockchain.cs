@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -55,7 +56,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
-            // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
+            // The block added event is not waited by genesis, but it's needed to wait here so that `AddBlock` waits correctly.
             Task newBlockWaiter = chain.BlockTree.WaitForNewBlock(chain.CancellationToken);
             chain.MainProcessingContext.GenesisLoader.Load();
             await newBlockWaiter;
@@ -173,7 +174,16 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
             .AddSingleton<FromXdcContainer>()
-            .AddScoped<IGenesisBuilder, XdcTestGenesisBuilder>()
+            .AddScoped<IGenesisBuilder>(ctx =>
+                new XdcTestGenesisBuilder(
+                    ctx.Resolve<ISpecProvider>(),
+                    ctx.Resolve<IWorldState>(),
+                    ctx.Resolve<ISnapshotManager>(),
+                    ctx.Resolve<IEnumerable<IGenesisPostProcessor>>().ToArray(),
+                    ctx.Resolve<Configuration>(),
+                    MasterNodeCandidates
+                )
+            )
             .AddSingleton<IBlockProducer, TestXdcBlockProducer>()
             .AddSingleton((ctx) => new CandidateContainer(MasterNodeCandidates))
             .AddSingleton<ISigner>(ctx =>
@@ -185,6 +195,7 @@ public class XdcTestBlockchain : TestBlockchain
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
+            .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
@@ -218,6 +229,7 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.LimitPenaltyEpoch = 2;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
+        xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
@@ -263,6 +275,8 @@ public class XdcTestBlockchain : TestBlockchain
         ];
 
         xdcSpec.V2Configs = v2ConfigParams.ToList();
+        xdcSpec.ValidateChainId = false;
+        xdcSpec.Reward = 5000;
         return xdcSpec;
     }
 
@@ -301,7 +315,8 @@ public class XdcTestBlockchain : TestBlockchain
         ISpecProvider specProvider,
         IWorldState state,
         IGenesisPostProcessor[] postProcessors,
-        Configuration testConfiguration
+        Configuration testConfiguration,
+        List<PrivateKey> masterNodeCandidates
     ) : IGenesisBuilder
     {
         public Block Build()
@@ -309,6 +324,11 @@ public class XdcTestBlockchain : TestBlockchain
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+
+            foreach (PrivateKey candidate in masterNodeCandidates)
+            {
+                state.CreateAccount(candidate.Address, testConfiguration.AccountInitialValue);
+            }
 
             IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 
@@ -331,6 +351,11 @@ public class XdcTestBlockchain : TestBlockchain
             genesisBlock.Header.Hash = genesisBlock.Header.CalculateHash();
             return genesisBlock;
         }
+    }
+
+    private class ZeroRewardCalculator : IRewardCalculator
+    {
+        public BlockReward[] CalculateRewards(Block block) => Array.Empty<BlockReward>();
     }
 
     public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)

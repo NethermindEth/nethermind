@@ -44,16 +44,6 @@ internal class MasternodeVotingContractTests
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
 
-        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-
-        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
-
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
-
-        readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
-
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
@@ -76,7 +66,11 @@ internal class MasternodeVotingContractTests
             genesis = Build.A.XdcBlockHeader().WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        MasternodeVotingContract masterVoting = new(stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
 
         Address[] candidates = masterVoting.GetCandidates(genesis);
         candidates.Length.Should().Be(3);

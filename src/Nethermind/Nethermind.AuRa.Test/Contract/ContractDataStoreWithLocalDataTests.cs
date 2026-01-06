@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
-        public void doesnt_reload_data_from_local_when_changed_not_fired()
+        public void does_not_reload_data_from_local_when_changed_not_fired()
         {
             ILocalDataSource<IEnumerable<Address>> localDataSource = Substitute.For<ILocalDataSource<IEnumerable<Address>>>();
             Address[] expected = { TestItem.AddressA };
@@ -86,7 +86,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+                Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
             );
 
             localDataSource.Data.Returns(new[] { TestItem.AddressC, TestItem.AddressD });
@@ -95,7 +95,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+                Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
             );
         }
 

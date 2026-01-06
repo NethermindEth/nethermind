@@ -19,7 +19,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public string Enode { get; set; } = string.Empty;
 
-        [JsonConverter(typeof(PublicKeyHashedConverter))]
         public PublicKey Id { get; set; } = null!;
 
         public string? Name { get; set; }

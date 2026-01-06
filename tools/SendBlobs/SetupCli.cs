@@ -209,7 +209,7 @@ internal static class SetupCli
 
             FundsDistributor distributor = new(
                 rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            IEnumerable<string> hashes = await distributor.DitributeFunds(
+            await distributor.DitributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
                 parseResult.GetValue(maxFeeOption),
@@ -267,7 +267,7 @@ internal static class SetupCli
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            IEnumerable<string> hashes = await distributor.ReclaimFunds(
+            await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));

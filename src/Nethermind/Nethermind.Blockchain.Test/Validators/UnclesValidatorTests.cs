@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class UnclesValidatorTests
 {
-    private Block _grandgrandparent;
+    private Block _greatGrandparent;
     private Block _grandparent;
     private Block _parent;
     private Block _block;
@@ -27,9 +27,9 @@ public class UnclesValidatorTests
     public void Setup()
     {
         _blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
-        _grandgrandparent = _blockTree.FindBlock(0, BlockTreeLookupOptions.None)!;
-        _grandparent = Build.A.Block.WithParent(_grandgrandparent).TestObject;
-        _duplicateUncle = Build.A.Block.WithParent(_grandgrandparent).TestObject;
+        _greatGrandparent = _blockTree.FindBlock(0, BlockTreeLookupOptions.None)!;
+        _grandparent = Build.A.Block.WithParent(_greatGrandparent).TestObject;
+        _duplicateUncle = Build.A.Block.WithParent(_greatGrandparent).TestObject;
         _parent = Build.A.Block.WithParent(_grandparent).WithUncles(_duplicateUncle).TestObject;
         _block = Build.A.Block.WithParent(_parent).TestObject;
 
@@ -142,7 +142,7 @@ public class UnclesValidatorTests
     {
         BlockHeader[] uncles = GetValidUncles(1);
         uncles[0].Number = _grandparent.Number;
-        uncles[0].ParentHash = _grandgrandparent.Hash;
+        uncles[0].ParentHash = _greatGrandparent.Hash;
         SetupHeaderValidator(uncles);
 
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);

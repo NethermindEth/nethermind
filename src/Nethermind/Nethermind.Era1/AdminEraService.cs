@@ -66,7 +66,7 @@ public class AdminEraService : IAdminEraService
 
     private async Task StartExportTask(string destination, long from, long to)
     {
-        // Creating the task is outside the try block so that argument exception can be cought
+        // Creating the task is outside the try block so that argument exceptions can be caught
         Task task = _eraExporter.Export(
             destination,
             from,

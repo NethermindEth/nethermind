@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,12 +32,16 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance, bool takeOwnership = false) where T : class
     {
-        builder.RegisterInstance(instance)
+        IRegistrationBuilder<T, SimpleActivatorData, SingleRegistrationStyle> registrationBuilder = builder.RegisterInstance(instance)
             .As<T>()
-            .ExternallyOwned()
             .SingleInstance();
+
+        if (!takeOwnership)
+        {
+            registrationBuilder.ExternallyOwned();
+        }
 
         return builder;
     }
@@ -371,7 +375,7 @@ public static class ContainerBuilderExtensions
     }
 
     /// <summary>
-    /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
+    /// A convenient way of creating a service whose members can be configured independent of other instances of the same
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration
     /// or a graph of multiple same type. The T is expected to be of a main container of sort that contains the
     /// main service of interest.

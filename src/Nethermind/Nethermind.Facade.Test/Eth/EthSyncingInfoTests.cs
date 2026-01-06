@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -95,7 +95,7 @@ namespace Nethermind.Facade.Test.Eth
                 // AncientReceiptsBarrierCalc = Max(1, Min(Pivot, Max(BodiesBarrier, ReceiptsBarrier))) = ReceiptsBarrier = 900
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
-                PivotNumber = "1000"
+                PivotNumber = 1000
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.SyncPivot.Returns((1000, Keccak.Zero));
@@ -171,7 +171,7 @@ namespace Nethermind.Facade.Test.Eth
             {
                 FastSync = true,
                 SnapSync = true,
-                PivotNumber = "0", // Equivalent to not having a pivot
+                PivotNumber = 0, // Equivalent to not having a pivot
             };
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);

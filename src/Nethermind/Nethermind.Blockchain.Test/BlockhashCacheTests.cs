@@ -89,7 +89,7 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public void GetHash_doesnt_go_beyond_depth_256()
+    public void GetHash_does_not_go_beyond_depth_256()
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(300);
 
@@ -311,15 +311,14 @@ public class BlockhashCacheTests
         Assert.Multiple(() =>
             {
                 int compareLength = headHashes.Length - 1;
-                Assert.That(prevHashes.AsSpan(0, compareLength)
-                    .SequenceEqual(headHashes.AsSpan(1, compareLength)));
-                Assert.That(headHashes[0], Is.EqualTo(head.Hash));
+                Assert.That(prevHashes.AsSpan(0, compareLength).SequenceEqual(headHashes.AsSpan(1, compareLength)));
+                Assert.That(headHashes[0], Is.EqualTo(head.ParentHash));
             }
         );
     }
 
     [Test]
-    public async Task Doesnt_cache_cancelled_searches()
+    public async Task DoesNot_cache_cancelled_searches()
     {
         SlowHeaderStore headerStore = new(new HeaderStore(new MemDb(), new MemDb()));
         (BlockTree tree, BlockhashCache cache) = BuildTest(260, headerStore);
@@ -328,6 +327,45 @@ public class BlockhashCacheTests
         CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
         await cache.Prefetch(head, cts.Token);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
+    }
+
+    [Test]
+    public void Doesnt_cache_null_hashes()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(100);
+        BlockHeader head = tree.FindHeader(99, BlockTreeLookupOptions.None)!;
+        BlockHeader headMinus4 = tree.FindHeader(95, BlockTreeLookupOptions.None)!;
+        BlockHeader headerOnHeadMinus4 = Build.A.BlockHeader.WithParent(headMinus4).WithHash(null!).TestObject;
+        BlockHeader headerOnHead = Build.A.BlockHeader.WithParent(head).WithHash(null!).TestObject;
+        Hash256? hashOnHeadMinus8 = cache.GetHash(headerOnHeadMinus4, 4);
+        cache.GetHash(headerOnHead, 5).Should().Be(headMinus4.Hash!);
+        hashOnHeadMinus8.Should().Be(cache.GetHash(headerOnHead, 8)!);
+    }
+
+    [Test]
+    public async Task Prefetch_with_null_hash_does_not_cache([Values] bool prefetchParent)
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(10);
+
+        BlockHeader parent = tree.FindHeader(9, BlockTreeLookupOptions.None)!;
+        if (prefetchParent)
+        {
+            await cache.Prefetch(parent);
+        }
+
+        int cacheCountBefore = cache.GetStats().FlatCache;
+
+        BlockHeader production = Build.A.BlockHeader.WithParent(parent).WithNumber(10).TestObject;
+        production.Hash = null;
+        Hash256[] hashes = (await cache.Prefetch(production))!;
+
+        hashes.Should().NotBeNull();
+        hashes[0].Should().Be(parent.Hash!);
+
+        if (prefetchParent)
+        {
+            cache.GetStats().FlatCache.Should().Be(cacheCountBefore);
+        }
     }
 
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength, IHeaderStore? headerStore = null)

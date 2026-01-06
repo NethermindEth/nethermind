@@ -277,7 +277,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             },
                             "calls": [
                               {
-                                "type": "0x3",
+                                "type": "0x2",
                                 "from": "0xc000000000000000000000000000000000000000",
                                 "to": "0xc100000000000000000000000000000000000000",
                                 "gas": "0x5208",
