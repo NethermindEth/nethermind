@@ -149,6 +149,7 @@ internal static partial class EvmInstructions
         /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the left shift operation.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => result = b << (int)a.u0; // Use only the lowest limb (u0) as the shift count.
     }
@@ -165,6 +166,7 @@ internal static partial class EvmInstructions
         /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the right shift operation.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => result = b >> (int)a.u0; // Use only the lowest limb (u0) as the shift count.
     }
