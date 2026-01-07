@@ -687,8 +687,7 @@ internal static partial class EvmInstructions
         {
             // In case of failure, do not consume additional gas.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            return EvmExceptionType.None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // 9. Determine gas available for the new contract execution, applying the 63/64 rule if enabled.
@@ -703,8 +702,7 @@ internal static partial class EvmInstructions
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            return EvmExceptionType.None;
+            return stack.PushZero<TTracingInst>();
         }
         state.IncrementNonce(env.ExecutingAccount);
 
@@ -728,8 +726,7 @@ internal static partial class EvmInstructions
         if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            return EvmExceptionType.None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // If the account is marked as dead, clear its storage.

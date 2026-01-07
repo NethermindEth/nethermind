@@ -79,7 +79,7 @@ internal static partial class EvmInstructions
         public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
             where TTracingInst : struct, IFlag
         {
-            return stack.PushZeroWithResult<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
     }
 
@@ -110,7 +110,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Fallback when immediate data is incomplete.
-                return stack.PushZeroWithResult<TTracingInst>();
+                return stack.PushZero<TTracingInst>();
             }
         }
     }
@@ -201,7 +201,7 @@ internal static partial class EvmInstructions
         else
         {
             // Fallback when immediate data is incomplete.
-            result = stack.PushZeroWithResult<TTracingInst>();
+            result = stack.PushZero<TTracingInst>();
         }
         programCounter += Size;
         return result;
@@ -318,7 +318,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        return stack.PushZeroWithResult<TTracingInst>();
+        return stack.PushZero<TTracingInst>();
     }
 
     /// <summary>

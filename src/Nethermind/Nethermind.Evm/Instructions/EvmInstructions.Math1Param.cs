@@ -130,23 +130,22 @@ internal static partial class EvmInstructions
         // If the position is out-of-range, push zero.
         if (a >= BigInt32)
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
         else
         {
             int adjustedPosition = bytes.Length - 32 + (int)a;
             if (adjustedPosition < 0)
             {
-                stack.PushZero<TTracingInst>();
+                return stack.PushZero<TTracingInst>();
             }
             else
             {
                 // Push the extracted byte.
-                stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
+                return stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
             }
         }
 
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

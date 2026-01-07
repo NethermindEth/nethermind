@@ -216,7 +216,6 @@ internal static partial class EvmInstructions
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
 
             // Optionally report memory changes for refund tracing.
             if (vm.TxTracer.IsTracingRefunds)
@@ -238,7 +237,7 @@ internal static partial class EvmInstructions
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
-            return EvmExceptionType.None;
+            return stack.PushZero<TTracingInst>();
         }
 
         // Take a snapshot of the state for potential rollback.

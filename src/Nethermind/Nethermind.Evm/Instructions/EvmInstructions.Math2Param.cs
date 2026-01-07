@@ -317,7 +317,7 @@ internal static partial class EvmInstructions
 
             if (a.IsZero)
             {
-                stack.PushZero<TTracingInst>();
+                return stack.PushZero<TTracingInst>();
             }
             else if (a.IsOne)
             {
