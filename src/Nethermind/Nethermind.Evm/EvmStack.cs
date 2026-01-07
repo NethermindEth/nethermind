@@ -59,12 +59,15 @@ public ref partial struct EvmStack
     {
         // Workhorse method
         int head = Head;
-        if ((Head = head + 1) >= MaxStackSize)
+        int newhead = head + 1;
+        ref byte headRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        if (newhead >= MaxStackSize)
         {
             return ref Unsafe.NullRef<byte>();
         }
 
-        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        Head = newhead;
+        return ref headRef;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -397,25 +400,14 @@ public ref partial struct EvmStack
     public partial EvmExceptionType Push32Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAddress<TTracingInst>(Address address)
+    public EvmExceptionType PushAddress<TTracingInst>(Address address)
         where TTracingInst : struct, IFlag
         => Push20Bytes<TTracingInst>(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Push32Bytes<TTracingInst>(in Word value)
+    public EvmExceptionType Push32Bytes<TTracingInst>(in ValueHash256 hash)
         where TTracingInst : struct, IFlag
-    {
-        if (TTracingInst.IsActive)
-            _tracer.TraceWord(in value);
-
-        // Single 32-byte store
-        PushedHead() = value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Push32Bytes<TTracingInst>(in ValueHash256 hash)
-        where TTracingInst : struct, IFlag
-        => Push32Bytes<TTracingInst>(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
+        => Push32Bytes<TTracingInst>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in hash)));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int paddingLength)
@@ -517,35 +509,23 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushZero<TTracingInst>()
-        where TTracingInst : struct, IFlag
-    {
-        if (TTracingInst.IsActive)
-            _tracer.ReportStackPush(Bytes.ZeroByteSpan);
-
-        // Single 32-byte store: Zero 
-        PushedHead() = default;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public EvmExceptionType PushZeroWithResult<TTracingInst>()
+    public EvmExceptionType PushZero<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
         ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
-        if (Unsafe.IsNullRef(ref head)) goto StackOverflow;
-        // Single 32-byte store: Zero 
+        if (Unsafe.IsNullRef(ref head))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         head = default;
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackOverflow:
-        return EvmExceptionType.StackOverflow;
-
     }
 
-    public unsafe void PushUInt32<TTracingInst>(uint value)
+    public void PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
         if (BitConverter.IsLittleEndian)
@@ -560,7 +540,7 @@ public ref partial struct EvmStack
         PushedHead() = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
     }
 
-    public unsafe void PushUInt64<TTracingInst>(ulong value)
+    public void PushUInt64<TTracingInst>(ulong value)
         where TTracingInst : struct, IFlag
     {
         if (BitConverter.IsLittleEndian)

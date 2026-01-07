@@ -668,7 +668,7 @@ internal static partial class EvmInstructions
         ReadOnlySpan<byte> span = vm.VmState.Env.InputData.Span;
         if (!result.IsUint64 || result.u0 >= (uint)span.Length)
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
         else
         {

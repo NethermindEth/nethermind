@@ -66,7 +66,7 @@ internal static partial class EvmInstructions
         {
             // Pop the second operand without using its value.
             if (!stack.PopLimbo()) goto StackUnderflow;
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
         else
         {
@@ -115,7 +115,7 @@ internal static partial class EvmInstructions
             if (As<UInt256, Int256>(ref b).Sign >= 0)
             {
                 // Non-negative value: result is zero.
-                stack.PushZero<TTracingInst>();
+                return stack.PushZero<TTracingInst>();
             }
             else
             {
