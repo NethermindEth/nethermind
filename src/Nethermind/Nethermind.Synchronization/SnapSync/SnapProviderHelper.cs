@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
+            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHash.Bytes);
             TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
             TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
 
