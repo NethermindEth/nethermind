@@ -96,7 +96,7 @@ public class Snapshot(
     }
 }
 
-public record SnapshotContent(
+public sealed record SnapshotContent(
     // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
     ConcurrentDictionary<AddressAsKey, Account?> Accounts,
     ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages,

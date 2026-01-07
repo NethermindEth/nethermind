@@ -137,13 +137,6 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
 
         _slotGet.Inc();
 
-        if (selfDestructStateIdx == _snapshots.Count)
-        {
-            _nodeGetSelfDestruct.Inc();
-            value = null;
-            return true;
-        }
-
         long sw = Stopwatch.GetTimestamp();
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {

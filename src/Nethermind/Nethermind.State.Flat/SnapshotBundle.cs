@@ -501,10 +501,6 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetAccount(AddressAsKey addr, Account? account)
     {
-        if (addr == FlatWorldStateScope.DebugAddress)
-        {
-            Console.Error.WriteLine($"set to {account}");
-        }
         long sw = Stopwatch.GetTimestamp();
         _changedAccounts[addr] = account;
         _setAccountTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -607,19 +603,10 @@ public sealed class SnapshotBundle : IDisposable
         {
             // So... a clear is always sent even on new account. This makes is a minor optimization as
             // it skip persistence, but probably need to make sure it does not send it at all in the first place.
-            isNewAccount = account == null;
-            if (address == FlatWorldStateScope.DebugAddress)
-            {
-                Console.Error.WriteLine($"The clear newness is {isNewAccount}");
-            }
+            isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
         }
-        else
-        {
-            if (address == FlatWorldStateScope.DebugAddress)
-            {
-                Console.Error.WriteLine("The clear is not new");
-            }
-        }
+
+        if (!isNewAccount) Console.Error.WriteLine($"Not new self destruct {address}, acc: {account}");
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
         if (!isNewAccount)

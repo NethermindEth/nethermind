@@ -20,10 +20,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 {
-    // internal static Address DebugAddress = new Address("0x2c2b2df915e31d27e7a24c7c3cf9b114208a45e0");
-    internal static Address DebugAddress = new Address("0x6ffedc1562918c07ae49b0ba210e6d80c7d61eab");
-    internal static UInt256 DebugSlot = UInt256.Parse("0");
-
     private static Histogram _flatScopeTime = DevMetric.Factory.CreateHistogram("flat_scope_time", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "isPrewarmer" },
@@ -318,7 +314,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         public void Set(Address key, Account? account)
         {
-            if (key == DebugAddress) Console.Error.WriteLine($"Address Set {account}");
             _dirtyAccounts[key] = account;
             scope._snapshotBundle.SetAccount(key, account);
 
