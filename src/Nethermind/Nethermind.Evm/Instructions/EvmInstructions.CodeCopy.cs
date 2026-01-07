@@ -289,7 +289,7 @@ internal static partial class EvmInstructions
                 }
                 else
                 {
-                    stack.PushZero<TTracingInst>();
+                    return stack.PushZero<TTracingInst>();
                 }
                 return EvmExceptionType.None;
             }

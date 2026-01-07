@@ -175,9 +175,7 @@ internal static partial class EvmInstructions
         Address result = TOpEnv.Operation(vm.VmState);
 
         // Push the resulting bytes onto the EVM stack.
-        stack.PushAddress<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushAddress<TTracingInst>(result);
     }
 
     /// <summary>
@@ -204,9 +202,7 @@ internal static partial class EvmInstructions
         Address result = TOpEnv.Operation(vm);
 
         // Push the resulting bytes onto the EVM stack.
-        stack.PushAddress<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushAddress<TTracingInst>(result);
     }
 
     /// <summary>
@@ -354,9 +350,7 @@ internal static partial class EvmInstructions
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
-        stack.Push32Bytes<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.Push32Bytes<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -458,9 +452,8 @@ internal static partial class EvmInstructions
 
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
+        return stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
 
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     BadInstruction:
         return EvmExceptionType.BadInstruction;
@@ -639,16 +632,15 @@ internal static partial class EvmInstructions
         // For dead accounts, the specification requires pushing zero.
         if (state.IsDeadAccount(address))
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
         else
         {
             // Otherwise, push the account's code hash.
             ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
-            stack.Push32Bytes<TTracingInst>(in hash);
+            return stack.Push32Bytes<TTracingInst>(in hash);
         }
 
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -685,7 +677,7 @@ internal static partial class EvmInstructions
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
         else
         {
@@ -729,8 +721,7 @@ internal static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
-        return EvmExceptionType.None;
+        return stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
     }
 
     /// <summary>
@@ -801,7 +792,7 @@ internal static partial class EvmInstructions
         }
         else
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
 
         return EvmExceptionType.None;
@@ -848,20 +839,18 @@ internal static partial class EvmInstructions
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         if (blockHash is not null)
         {
-            stack.PushBytes<TTracingInst>(blockHash.Bytes);
+            // If block hash tracing is enabled and a valid block hash was obtained, report it.
+            if (vm.TxTracer.IsTracingBlockHash)
+            {
+                vm.TxTracer.ReportBlockHash(blockHash);
+            }
+            return stack.Push32Bytes<TTracingInst>(in blockHash.ValueHash256);
         }
         else
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
 
-        // If block hash tracing is enabled and a valid block hash was obtained, report it.
-        if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
-        {
-            vm.TxTracer.ReportBlockHash(blockHash);
-        }
-
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

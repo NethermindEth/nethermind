@@ -29,7 +29,7 @@ internal static partial class EvmInstructions
 
         if (c.IsZero)
         {
-            stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst>();
         }
         else
         {
