@@ -17,6 +17,25 @@ using Int256;
 /// </summary>
 internal static partial class EvmInstructions
 {
+    const int TStoreStackRequiredItems = 2;
+    const int TLoadStackRequiredItems = 1;
+
+    const int SStoreStackRequiredItems = 2;
+    const int SLoadStackRequiredItems = 1;
+
+    const int MStoreStackRequiredItems = 2;
+    const int MStore8StackRequiredItems = 2;
+    const int MLoadStackRequiredItems = 1;
+    const int MCopyStackRequiredItems = 3;
+
+    const int CallDataLoadStackRequiredItems = 1;
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool CheckStackUnderflow(ref EvmStack stack, int itemsNeeded)
+    {
+        return stack.Head < itemsNeeded;
+    }
 
     /// <summary>
     /// Executes the transient load (TLOAD) instruction.
@@ -34,8 +53,12 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionTLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+
         // Increment the opcode metric for TLOAD.
         Metrics.TloadOpcode++;
+
+        if(CheckStackUnderflow(ref stack, TLoadStackRequiredItems))
+            goto StackUnderflow;
 
         // Deduct the fixed gas cost for TLOAD.
         gasAvailable -= GasCostOf.TLoad;
@@ -84,6 +107,9 @@ internal static partial class EvmInstructions
     {
         // Increment the opcode metric for TSTORE.
         Metrics.TstoreOpcode++;
+
+        if(CheckStackUnderflow(ref stack, TStoreStackRequiredItems))
+            goto StackUnderflow;
 
         EvmState vmState = vm.EvmState;
 
@@ -140,6 +166,9 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, MStoreStackRequiredItems))
+            goto StackUnderflow;
+
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the memory offset; if not available, signal a stack underflow.
@@ -185,6 +214,9 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, MStore8StackRequiredItems))
+            goto StackUnderflow;
+
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
@@ -230,6 +262,9 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, MLoadStackRequiredItems))
+            goto StackUnderflow;
+
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the memory offset; if missing, signal a stack underflow.
@@ -277,6 +312,9 @@ internal static partial class EvmInstructions
     {
         // Increment the opcode metric for MCOPY.
         Metrics.MCopyOpcode++;
+
+        if (CheckStackUnderflow(ref stack, MCopyStackRequiredItems))
+            goto StackUnderflow;
 
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
@@ -331,6 +369,9 @@ internal static partial class EvmInstructions
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
+
+        if (CheckStackUnderflow(ref stack, SStoreStackRequiredItems))
+            goto StackUnderflow;
 
         EvmState vmState = vm.EvmState;
         // Disallow storage modifications in static calls.
@@ -432,6 +473,9 @@ internal static partial class EvmInstructions
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
+
+        if (CheckStackUnderflow(ref stack, SStoreStackRequiredItems))
+            goto StackUnderflow;
 
         EvmState vmState = vm.EvmState;
         // Disallow storage modifications in static calls.
@@ -601,6 +645,9 @@ internal static partial class EvmInstructions
         // Increment the SLOAD opcode metric.
         Metrics.IncrementSLoadOpcode();
 
+        if (CheckStackUnderflow(ref stack, SLoadStackRequiredItems))
+            goto StackUnderflow;
+
         // Deduct the gas cost for performing an SLOAD.
         gasAvailable -= spec.GetSLoadCost();
 
@@ -645,6 +692,9 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
+
+        if (CheckStackUnderflow(ref stack, CallDataLoadStackRequiredItems))
+            goto StackUnderflow;
 
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))

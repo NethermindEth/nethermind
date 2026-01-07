@@ -31,6 +31,14 @@ internal static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The resulting shifted value.</param>
         abstract static void Operation(in UInt256 a, in UInt256 b, out UInt256 result);
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        virtual static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 2;
+        }
     }
 
     /// <summary>
@@ -52,6 +60,8 @@ internal static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
+        if(TOpShift.CheckStackUndeflow(ref stack)) goto StackUnderflow;
+
         // Deduct gas cost specific to the shift operation.
         gasAvailable -= TOpShift.GasCost;
 

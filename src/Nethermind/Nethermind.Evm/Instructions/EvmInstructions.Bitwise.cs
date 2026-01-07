@@ -28,6 +28,11 @@ internal static partial class EvmInstructions
         /// <param name="b">The second operand vector.</param>
         /// <returns>The result of the bitwise operation.</returns>
         static abstract Word Operation(in Word a, in Word b);
+
+        static virtual bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 2;
+        }
     }
 
     /// <summary>
@@ -44,6 +49,9 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBitwise<TOpBitwise>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpBitwise : struct, IOpBitwise
     {
+        if(TOpBitwise.CheckStackUndeflow(ref stack))
+            goto StackUnderflow;
+
         // Deduct the operation's gas cost.
         gasAvailable -= TOpBitwise.GasCost;
 

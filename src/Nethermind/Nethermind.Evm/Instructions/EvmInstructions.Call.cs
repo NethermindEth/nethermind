@@ -31,6 +31,11 @@ internal static partial class EvmInstructions
         /// Returns the specific execution type of the call.
         /// </summary>
         abstract static ExecutionType ExecutionType { get; }
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        abstract static bool CheckStackUndeflow(ref EvmStack stack);
     }
 
     /// <summary>
@@ -39,6 +44,11 @@ internal static partial class EvmInstructions
     public struct OpCall : IOpCall
     {
         public static ExecutionType ExecutionType => ExecutionType.CALL;
+
+        public static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 7;
+        }
     }
 
     /// <summary>
@@ -47,6 +57,11 @@ internal static partial class EvmInstructions
     public struct OpCallCode : IOpCall
     {
         public static ExecutionType ExecutionType => ExecutionType.CALLCODE;
+
+        public static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 7;
+        }
     }
 
     /// <summary>
@@ -55,6 +70,11 @@ internal static partial class EvmInstructions
     public struct OpDelegateCall : IOpCall
     {
         public static ExecutionType ExecutionType => ExecutionType.DELEGATECALL;
+
+        public static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 6;
+        }
     }
 
     /// <summary>
@@ -64,6 +84,11 @@ internal static partial class EvmInstructions
     {
         public static bool IsStatic => true;
         public static ExecutionType ExecutionType => ExecutionType.STATICCALL;
+
+        public static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 6;
+        }
     }
 
     /// <summary>
@@ -102,6 +127,11 @@ internal static partial class EvmInstructions
 
         // Clear previous return data.
         vm.ReturnData = null;
+
+        if(TOpCall.CheckStackUndeflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
 
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;

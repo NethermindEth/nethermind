@@ -26,6 +26,15 @@ internal static partial class EvmInstructions
         /// <param name="vm">The virtual machine instance providing execution context.</param>
         /// <returns>A read-only span of bytes containing the code.</returns>
         abstract static ReadOnlySpan<byte> GetCode(VirtualMachine vm);
+
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        virtual static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     /// <summary>

@@ -31,6 +31,14 @@ internal static partial class EvmInstructions
         /// <param name="b">The second operand.</param>
         /// <param name="result">The result of the operation.</param>
         abstract static void Operation(in UInt256 a, in UInt256 b, out UInt256 result);
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        virtual static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 2;
+        }
     }
 
     /// <summary>
@@ -52,6 +60,11 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
+        if(TOpMath.CheckStackUndeflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
+
         // Deduct the gas cost for the specific math operation.
         gasAvailable -= TOpMath.GasCost;
 

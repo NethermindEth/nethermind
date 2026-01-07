@@ -30,6 +30,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type corresponding to the create operation.
         /// </summary>
         abstract static ExecutionType ExecutionType { get; }
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        abstract static bool CheckStackUndeflow(ref EvmStack stack);
     }
 
     /// <summary>
@@ -41,6 +46,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type for the CREATE opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE;
+
+        public static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     /// <summary>
@@ -52,6 +62,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type for the CREATE2 opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE2;
+
+        public static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 4;
+        }
     }
 
     /// <summary>
