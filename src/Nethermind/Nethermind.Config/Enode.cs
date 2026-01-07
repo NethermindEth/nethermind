@@ -108,6 +108,6 @@ namespace Nethermind.Config
 
         public override string ToString() => Info;
 
-        internal static bool IsEnode(string node) => node.StartsWith("enode://", StringComparison.OrdinalIgnoreCase);
+        public static bool IsEnode(string node) => node.StartsWith("enode://", StringComparison.OrdinalIgnoreCase);
     }
 }

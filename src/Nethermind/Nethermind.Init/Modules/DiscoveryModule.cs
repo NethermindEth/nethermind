@@ -85,7 +85,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
                 }
 
-                networkConfig.Bootnodes = networkConfig.Bootnodes == string.Empty ? discoveryConfig.Bootnodes : (networkConfig.Bootnodes + "," + discoveryConfig.Bootnodes);
+                networkConfig.Bootnodes = networkConfig.Bootnodes == string.Empty ? discoveryConfig.Bootnodes : string.Join(",", networkConfig.Bootnodes, discoveryConfig.Bootnodes);
 
                 return networkConfig;
             })

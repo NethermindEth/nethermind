@@ -81,7 +81,7 @@ public class DiscoveryV5App : IDiscoveryApp
         List<byte[]> storedEnrBytes = LoadStoredEnrs(_enrFactory, identityVerifier);
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(e => e.StartsWith("enode:")).Select(e => ToEnr(new Enode(e))),
+            .. bootstrapNodes.Where(Enode.IsEnode).Select(e => ToEnr(new Enode(e))),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(ToEnr),
             .. (discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : []),
             .. storedEnrBytes.Select(ToEnr),
