@@ -10,7 +10,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
 
@@ -60,7 +59,7 @@ public sealed class SnapshotBundle : IDisposable
     private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "is_prewarmer" },
-        Buckets = Histogram.PowersOfTenDividedBuckets(1, 12, 5)
+        Buckets = [1]
     });
     private Histogram.Child _findStateNode = null!;
     private Histogram.Child _findStorageNodeLoadedNodes = null!;
@@ -269,26 +268,6 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return _readOnlySnapshotBundle.TryGetSlot(address, index, selfDestructStateIdx, out value);
-    }
-
-    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
-    {
-        // Note: Hot path
-
-        // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
-        // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
-        // lower down.
-        long sw = Stopwatch.GetTimestamp();
-        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-        {
-            _changedSlots[(address, index)] = null;
-            _setSlotToZeroTime.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else
-        {
-            _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
-            _setSlotTime.Observe(Stopwatch.GetTimestamp() - sw);
-        }
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
@@ -502,6 +481,61 @@ public sealed class SnapshotBundle : IDisposable
         _setAccountTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
+    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
+    {
+        // Note: Hot path
+
+        // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
+        // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
+        // lower down.
+        long sw = Stopwatch.GetTimestamp();
+        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+        {
+            _changedSlots[(address, index)] = null;
+            _setSlotToZeroTime.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
+            _setSlotTime.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+    }
+
+    // Also called SelfDestruct
+    public void Clear(Address address, Hash256AsKey addressHash)
+    {
+        GuardDispose();
+
+        bool isNewAccount = false;
+        if (DoTryGetAccount(address, excludeChanged: true, out Account? account))
+        {
+            // So... a clear is always sent even on new account. This makes is a minor optimization as
+            // it skip persistence, but probably need to make sure it does not send it at all in the first place.
+            isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
+        }
+
+        _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
+
+        if (!isNewAccount)
+        {
+            foreach (var kv in _changedStorageNodes)
+            {
+                if (kv.Key.Item1.Value == addressHash)
+                {
+                    _changedStorageNodes.TryRemove(kv.Key, out TrieNode? _);
+                }
+            }
+
+            foreach (var kv in _changedSlots)
+            {
+                if (kv.Key.Item1.Value == address)
+                {
+                    _changedSlots.TryRemove(kv.Key, out _);
+                }
+            }
+        }
+    }
+
     public bool ShouldQueuePrewarm(Address address, UInt256? slot)
     {
         // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
@@ -587,69 +621,5 @@ public sealed class SnapshotBundle : IDisposable
         _readOnlySnapshotBundle.Dispose();
 
         _activeSnapshotBundle.Dec();
-    }
-
-    // Also called SelfDestruct
-    public void Clear(Address address, Hash256AsKey addressHash)
-    {
-        GuardDispose();
-
-        bool isNewAccount = false;
-        if (DoTryGetAccount(address, excludeChanged: true, out Account? account))
-        {
-            // So... a clear is always sent even on new account. This makes is a minor optimization as
-            // it skip persistence, but probably need to make sure it does not send it at all in the first place.
-            isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
-        }
-
-        if (!isNewAccount) Console.Error.WriteLine($"Not new self destruct {address}, acc: {account}");
-        _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
-
-        if (!isNewAccount)
-        {
-            foreach (var kv in _changedStorageNodes)
-            {
-                if (kv.Key.Item1.Value == addressHash)
-                {
-                    _changedStorageNodes.TryRemove(kv.Key, out TrieNode? _);
-                }
-            }
-
-            foreach (var kv in _changedSlots)
-            {
-                if (kv.Key.Item1.Value == address)
-                {
-                    _changedSlots.TryRemove(kv.Key, out _);
-                }
-            }
-        }
-    }
-}
-
-public struct SnapshotBundleTrieProvider(SnapshotBundle bundle, bool isTrieWarmer) : ISnapshotBundleTrieProvider
-{
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
-    {
-        return bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
-    }
-
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx)
-    {
-        return bundle.FindStorageNodeOrUnknown(address, path, hash, selfDestructKnownStateIdx, isTrieWarmer, storageInitializer: false);
-    }
-
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        return bundle.TryLoadRlp(address, path, hash, flags, isTrieWarmer);
-    }
-
-    public void SetStateNode(in TreePath path, TrieNode node)
-    {
-        bundle.SetStateNode(path, node);
-    }
-
-    public void SetStorageNode(Hash256 address, in TreePath path, TrieNode node)
-    {
-        bundle.SetStorageNode(address, path, node);
     }
 }
