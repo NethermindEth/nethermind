@@ -493,8 +493,12 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
-                _retryCache.Received(tx.Hash!);
                 return AcceptTxResult.Syncing;
+            }
+
+            if (tx.Hash is not null)
+            {
+                _retryCache.Received(tx.Hash);
             }
 
             Metrics.PendingTransactionsReceived++;
@@ -531,11 +535,6 @@ namespace Nethermind.TxPool
             finally
             {
                 _newHeadLock.ExitReadLock();
-            }
-
-            if (accepted != AcceptTxResult.Invalid)
-            {
-                _retryCache.Received(tx.Hash!);
             }
 
             if (accepted)
