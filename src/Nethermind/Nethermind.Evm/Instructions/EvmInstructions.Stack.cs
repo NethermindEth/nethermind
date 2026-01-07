@@ -22,15 +22,15 @@ internal static partial class EvmInstructions
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool CheckStackUnderflow(ref EvmStack stack, int itemsNeeded)
+    public static bool CheckStackUnderflow(ref EvmStack stack, int itemsPoppedCount)
     {
-        return stack.Head < itemsNeeded;
+        return stack.Head < itemsPoppedCount;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool CheckStackOverflow(ref EvmStack stack, int itemsNeeded)
+    public static bool CheckStackOverflow(ref EvmStack stack, int itemsPushedCount)
     {
-        return stack.Head > EvmStack.MaxStackSize;
+        return stack.Head + itemsPushedCount > EvmStack.MaxStackSize;
     }
 
 
