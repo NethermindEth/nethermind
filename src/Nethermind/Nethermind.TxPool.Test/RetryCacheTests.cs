@@ -110,6 +110,24 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task Testit()
+    {
+        Parallel.For(0, 100, (i) =>
+        {
+            Parallel.For(0, 100, (j) =>
+            {
+                ITestHandler request = Substitute.For<ITestHandler>();
+
+                _cache.Announced(i, request);
+            });
+        });
+
+        await Task.Delay(Timeout * 2, _cancellationTokenSource.Token);
+
+        Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+    }
+
+    [Test]
     public void RetryExecution_HandlesExceptions()
     {
         ITestHandler faultyRequest = Substitute.For<ITestHandler>();
