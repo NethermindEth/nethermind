@@ -182,7 +182,7 @@ Configuration uses strongly-typed interfaces inheriting from `IConfig`:
 - Use C# 13 features (latest language version)
 - All files require SPDX header:
   ```csharp
-  // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+  // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
   // SPDX-License-Identifier: LGPL-3.0-only
   ```
 
