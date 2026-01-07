@@ -416,7 +416,7 @@ public ref partial struct EvmStack
     public void Push32Bytes<TTracingInst>(in ValueHash256 hash)
         where TTracingInst : struct, IFlag
         => Push32Bytes<TTracingInst>(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
-    
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     public EvmExceptionType PushBothPaddedBytes<TTracingInst>(ref byte start, int used, int paddingLength)
         where TTracingInst : struct, IFlag
@@ -446,7 +446,7 @@ public ref partial struct EvmStack
         dst = ref Unsafe.Add(ref dst, WordSize - paddingLength);
         CopyUpTo32(ref dst, ref start, (uint)used);
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackOverflow:
         return EvmExceptionType.StackOverflow;
     }
@@ -539,7 +539,7 @@ public ref partial struct EvmStack
         // Single 32-byte store: Zero 
         head = default;
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackOverflow:
         return EvmExceptionType.StackOverflow;
 
