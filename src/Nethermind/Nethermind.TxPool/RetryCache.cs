@@ -17,6 +17,7 @@ public class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     where TResourceId : struct, IEquatable<TResourceId>
 {
     private readonly int _timeoutMs;
+    private readonly int _maxQueueSize;
 
     private readonly ConcurrentDictionary<TResourceId, PooledSet<IMessageHandler<TMessage>>> _retryRequests = new();
     private readonly ConcurrentQueue<ResourceExpiry> _expiringQueue = new();
@@ -29,11 +30,12 @@ public class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         public bool IsExpired(DateTime now) => now > ExpiresAfter;
     }
 
-    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, CancellationToken token = default)
+    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, int maxQueueSize = 4096, CancellationToken token = default)
     {
         _logger = logManager.GetClassLogger();
 
         _timeoutMs = timeoutMs;
+        _maxQueueSize = maxQueueSize;
         int checkMs = _timeoutMs / 5;
         _requestingResources = new(requestingCacheSize);
 
@@ -51,28 +53,27 @@ public class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     {
                         _expiringQueue.TryDequeue(out _);
 
-                        if (_retryRequests.TryRemove(item.ResourceId, out PooledSet<IMessageHandler<TMessage>>? requests))
+                        if (_retryRequests.TryRemove(item.ResourceId, out PooledSet<IMessageHandler<TMessage>>? r))
                         {
-                            using (requests)
+                            using PooledSet<IMessageHandler<TMessage>> requests = r;
+                            if (requests.Count > 0)
                             {
-                                if (requests.Count > 0)
-                                {
-                                    _requestingResources.Set(item.ResourceId);
-                                    if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
+                                _requestingResources.Set(item.ResourceId);
+                                if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
 
-                                    foreach (IMessageHandler<TMessage> retryHandler in requests)
+                                foreach (IMessageHandler<TMessage> retryHandler in requests)
+                                {
+                                    try
                                     {
-                                        try
-                                        {
-                                            retryHandler.HandleMessage(TMessage.New(item.ResourceId));
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
-                                        }
+                                        retryHandler.HandleMessage(TMessage.New(item.ResourceId));
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
                                     }
                                 }
                             }
+                            else if (_logger.IsTrace) _logger.Trace($"No retry requests for {item.ResourceId} after timeout");
                         }
                     }
                 }
@@ -95,25 +96,33 @@ public class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             return ResourceFetchStatus.PendingRequest;
         }
 
-        bool added = false;
+        ResourceFetchStatus result = ResourceFetchStatus.New;
 
-        _retryRequests.AddOrUpdate(resourceId, resourceId =>
+        if (_expiringQueue.Count <= _maxQueueSize)
         {
-            if (_logger.IsTrace) _logger.Trace($"Notified about {resourceId} by {retryHandler}: NEW");
+            _retryRequests.AddOrUpdate(resourceId, Add, Update);
+        }
+        else if (_retryRequests.TryGetValue(resourceId, out PooledSet<IMessageHandler<TMessage>>? requests))
+        {
+            Update(resourceId, requests);
+        }
 
-            _expiringQueue.Enqueue(new ResourceExpiry(resourceId, DateTime.UtcNow.AddMilliseconds(_timeoutMs)));
-            added = true;
+        return result;
 
+        PooledSet<IMessageHandler<TMessage>> Add(TResourceId id)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Notified about {id} by {retryHandler}: NEW");
+            _expiringQueue.Enqueue(new ResourceExpiry(id, DateTime.UtcNow.AddMilliseconds(_timeoutMs)));
             return [];
-        }, (resourceId, dict) =>
+        }
+
+        PooledSet<IMessageHandler<TMessage>> Update(TResourceId id, PooledSet<IMessageHandler<TMessage>> existing)
         {
-            if (_logger.IsTrace) _logger.Trace($"Notified about {resourceId} by {retryHandler}: UPDATE");
-
-            dict.Add(retryHandler);
-            return dict;
-        });
-
-        return added ? ResourceFetchStatus.New : ResourceFetchStatus.Enqueued;
+            if (_logger.IsTrace) _logger.Trace($"Notified about {id} by {retryHandler}: UPDATE");
+            result = ResourceFetchStatus.Enqueued;
+            existing.Add(retryHandler);
+            return existing;
+        }
     }
 
     public void Received(in TResourceId resourceId)
