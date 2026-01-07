@@ -103,7 +103,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeoutCertificate.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeoutCertificate.GapNumber);
         if (snapshot is null)
         {
             errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
@@ -195,7 +195,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     internal bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
         // Verify msg signature
