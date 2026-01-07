@@ -84,7 +84,6 @@ public class XdcModule : Module
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
-            .AddSingleton<ITransactionComparerProvider, XdcTransactionComparerProvider>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
