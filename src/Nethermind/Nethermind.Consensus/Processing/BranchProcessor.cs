@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -59,10 +58,10 @@ public class BranchProcessor(
         {
             if (baseBlock is null && suggestedBlock.IsGenesis)
             {
-                // Super special ultra mega - I dont wanna deal with this right now - special case where genesis is handled
-                // specially from outside where the state are added from `GenesisLoader` but not part of the block processor
-                // but it still pass through the blocktree suggest to blockchain processor event chain
-                // Meaning dont set state when handling genesis.
+                // Super special ultra mega – I don't want to deal with this right now – special case where genesis is handled
+                // externally, where the state is added via `GenesisLoader` but not processed by the block processor
+                // even though it still passes through the block tree suggest to blockchain processor event chain.
+                // Meaning don't set state when handling genesis.
             }
             else
             {

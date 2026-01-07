@@ -20,23 +20,27 @@ public class GCKeeper
     private readonly ILogger _logger;
     private static readonly long _defaultSize = 512.MB();
     private Task _gcScheduleTask = Task.CompletedTask;
+    private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
         _gcStrategy = gcStrategy;
         _logger = logManager.GetClassLogger<GCKeeper>();
+        _tryStartNoGCRegionFunc = TryStartNoGCRegion;
     }
 
-    public IDisposable TryStartNoGCRegion(long? size = null)
+    public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
+
+    private IDisposable TryStartNoGCRegion()
     {
-        size ??= _defaultSize;
+        long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
         if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
             {
-                if (!System.GC.TryStartNoGCRegion(size.Value, true))
+                if (!System.GC.TryStartNoGCRegion(size, disallowFullBlockingGC: true))
                 {
                     failCause = FailCause.GCFailedToStartNoGCRegion;
                 }

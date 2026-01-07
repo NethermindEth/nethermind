@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 
@@ -14,23 +15,24 @@ internal static partial class EvmInstructions
     {
         virtual static long GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
-        virtual static bool CheckStackUndeflow(ref EvmStack stack)
+        virtual static bool CheckStackUnderflow(ref EvmStack stack)
         {
             return stack.Head < 3;
         }
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        if(TOpMath.CheckStackUndeflow(ref stack))
+        if(TOpMath.CheckStackUnderflow(ref stack))
         {
             goto StackUnderflow;
         }
 
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);

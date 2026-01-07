@@ -118,7 +118,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         {
             (slot, offset) = _time.GetBuildingSlotAndOffset(_slotTimestampMs);
         }
-        catch (SlotTime.SlotCalulationException e)
+        catch (SlotTime.SlotCalculationException e)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             await BuildBlock();

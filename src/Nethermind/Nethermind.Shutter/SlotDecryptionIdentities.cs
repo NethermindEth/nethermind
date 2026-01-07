@@ -7,7 +7,7 @@ using System.Collections.Generic;
 namespace Nethermind.Shutter;
 
 [SszSerializable]
-public struct SlotDecryptionIdentites
+public struct SlotDecryptionIdentities
 {
     public ulong InstanceID { get; set; }
     public ulong Eon { get; set; }

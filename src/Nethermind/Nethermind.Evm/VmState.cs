@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -15,14 +16,15 @@ namespace Nethermind.Evm;
 /// State for EVM Calls
 /// </summary>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public sealed class EvmState : IDisposable // TODO: rename to CallState
+public class VmState<TGasPolicy> : IDisposable
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly ConcurrentQueue<EvmState> _statePool = new();
+    private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
     private static readonly StackPool _stackPool = new();
 
     /*
     Type layout for 'EvmState'
-    Size: 264 bytes. Paddings: 9 bytes (%3 of empty space)
+    Size: 176 bytes. Paddings: 5 bytes (%3 of empty space)
     |=======================================================================|
     | Object Header (8 bytes)                                               |
     |-----------------------------------------------------------------------|
@@ -66,19 +68,19 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     |-----------------------------------------------------------------------|
     | 72-103: EvmPooledMemory _memory (32 bytes)                            |
     |-----------------------------------------------------------------------|
-    | 104-223: ExecutionEnvironment _env (120 bytes)                        |
+    | 104-111: ExecutionEnvironment _env (8 bytes)                          |
     |-----------------------------------------------------------------------|
-    | 224-247: StackAccessTracker _accessTracker (24 bytes)                 |
+    | 112-143: StackAccessTracker _accessTracker (32 bytes)                 |
     |-----------------------------------------------------------------------|
-    | 248-259: Snapshot _snapshot (12 bytes)                                |
+    | 144-155: Snapshot _snapshot (12 bytes)                                |
     |-----------------------------------------------------------------------|
-    | 260-263: padding (4 bytes)                                            |
+    | 156-159: padding (4 bytes)                                            |
     |=======================================================================|
      */
 
     public byte[]? DataStack;
     public ReturnState[]? ReturnStack;
-    public long GasAvailable { get; set; }
+    public TGasPolicy Gas;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -96,27 +98,23 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
-    private ExecutionEnvironment _env;
+    private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
 
-#if DEBUG
-    private StackTrace? _creationStackTrace;
-#endif
-
     /// <summary>
-    /// Rent a top level <see cref="EvmState"/>.
+    /// Rent a top level <see cref="VmState{TGasPolicy}"/>.
     /// </summary>
-    public static EvmState RentTopLevel(
-        long gasAvailable,
+    public static VmState<TGasPolicy> RentTopLevel(
+        TGasPolicy gas,
         ExecutionType executionType,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
         in Snapshot snapshot)
     {
-        EvmState state = Rent();
+        VmState<TGasPolicy> state = Rent();
         state.Initialize(
-            gasAvailable,
+            gas,
             outputDestination: 0L,
             outputLength: 0L,
             executionType: executionType,
@@ -130,23 +128,23 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     }
 
     /// <summary>
-    /// Constructor for a frame <see cref="EvmState"/> beneath top level.
+    /// Constructor for a frame <see cref="VmState{TGasPolicy}"/> beneath top level.
     /// </summary>
-    public static EvmState RentFrame(
-        long gasAvailable,
+    public static VmState<TGasPolicy> RentFrame(
+        TGasPolicy gas,
         long outputDestination,
         long outputLength,
         ExecutionType executionType,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
         bool isTopLevel = false)
     {
-        EvmState state = Rent();
+        VmState<TGasPolicy> state = Rent();
         state.Initialize(
-            gasAvailable,
+            gas,
             outputDestination,
             outputLength,
             executionType,
@@ -159,19 +157,19 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         return state;
     }
 
-    private static EvmState Rent()
-        => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
+    private static VmState<TGasPolicy> Rent()
+        => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
 
     [SkipLocalsInit]
     private void Initialize(
-        long gasAvailable,
+        TGasPolicy gas,
         long outputDestination,
         long outputLength,
         ExecutionType executionType,
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
     {
@@ -183,7 +181,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
-        GasAvailable = gasAvailable;
+        Gas = gas;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -226,9 +224,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
-    public ref readonly ExecutionEnvironment Env => ref _env;
-    public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
-    public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
+    public ExecutionEnvironment Env => _env!;
+    public ref EvmPooledMemory Memory => ref _memory;
+    public ref readonly Snapshot Snapshot => ref _snapshot;
 
     public void Dispose()
     {
@@ -255,7 +253,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _memory.Dispose();
         _memory = default;
         _accessTracker = default;
-        _env = default;
+        if (!IsTopLevel) _env?.Dispose();
+        _env = null;
         _snapshot = default;
 
         _statePool.Enqueue(this);
@@ -266,11 +265,14 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     }
 
 #if DEBUG
-    ~EvmState()
+
+    private StackTrace? _creationStackTrace;
+
+    ~VmState()
     {
         if (!_isDisposed)
         {
-            Console.Error.WriteLine($"Warning: {nameof(EvmState)} was not disposed. Created at: {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(VmState<TGasPolicy>)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif
@@ -284,17 +286,21 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
     }
 
-    public void CommitToParent(EvmState parentState)
+    public void CommitToParent(VmState<TGasPolicy> parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
     }
-
-    public struct ReturnState
-    {
-        public int Index;
-        public int Offset;
-        public int Height;
-    }
 }
+
+/// <summary>
+/// Return state for EVM call stack management.
+/// </summary>
+public struct ReturnState
+{
+    public int Index;
+    public int Offset;
+    public int Height;
+}
+

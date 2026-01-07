@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -52,7 +53,7 @@ public class L2Api(
             EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
             GasLimit = block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
-            PrevRandao = block.MixHash,
+            PrevRandao = block.MixHash!,
             SuggestedFeeRecipient = block.Miner,
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()
@@ -133,7 +134,7 @@ public class L2Api(
         };
     }
 
-    public Task<AccountProof?> GetProof(Address accountAddress, UInt256[] storageKeys, long blockNumber)
+    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, long blockNumber)
     {
         // TODO: Retry logic
         var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));

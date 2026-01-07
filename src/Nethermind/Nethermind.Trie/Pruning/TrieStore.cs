@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning;
 
 /// <summary>
 /// Trie store helps to manage trie commits block by block.
-/// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
+/// If persistence and pruning are needed they have a chance to execute their behavior on commits.
 /// </summary>
 public sealed class TrieStore : ITrieStore, IPruningTrieStore
 {
@@ -230,6 +230,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 node = _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
             else
                 node = SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
+            node.PrunePersistedRecursively(1);
 
             IncrementCommittedNodesCount();
         }
@@ -570,40 +571,95 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public void Prune()
     {
-        var state = CaptureCurrentState();
+        TrieStoreState state = CaptureCurrentState();
         if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
-            _pruningTask = Task.Run(SyncPruneCheck);
+            _pruningTask = TrySyncPrune();
         }
     }
 
-    internal void SyncPruneCheck()
+    private async Task TrySyncPrune()
+    {
+        // Delay for 3 things:
+        // 1. Move to background thread
+        // 2. Allow kick off (block processing) some time to finish before starting to prune (prune in block gap)
+        // 3. If we are n+1 Task passing the .IsCompleted check but not going to be first to pass lock,
+        //    remain uncompleted for a time to prevent other tasks seeing .IsCompleted and also trying to queue.
+        await Task.Delay(10);
+
+        if (!_pruningLock.TryEnter())
+        {
+            // Do not want to queue on lock behind already ongoing pruning.
+            return;
+        }
+
+        try
+        {
+            SyncPruneNonLocked();
+        }
+        finally
+        {
+            _pruningLock.Exit();
+        }
+
+        TryExitCommitBufferMode();
+    }
+
+    // Testing purpose only
+    internal void SyncPruneQueue()
     {
         using (var _ = _pruningLock.EnterScope())
         {
-            if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
-            {
-                PersistAndPruneDirtyCache();
-            }
+            SyncPruneNonLocked();
+        }
 
-            if (_prunePersistedNodePortion > 0)
+        TryExitCommitBufferMode();
+    }
+
+    private void SyncPruneNonLocked()
+    {
+        Debug.Assert(_pruningLock.IsHeldByCurrentThread, "Pruning lock must be held to perform sync prune.");
+
+        if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
+        {
+            PersistAndPruneDirtyCache();
+        }
+
+        if (_prunePersistedNodePortion > 0)
+        {
+            try
             {
+                // When `_pruningLock` is held, the begin commit will check for _toBePersistedBlockNumber in order
+                // to decide which block to be used as the boundary for the commit buffer. This number was re-set
+                // to -1 in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwise `BeginScope` will hang
+                // until the prune persisted node loop is completed.
+                _toBePersistedBlockNumber = LastPersistedBlockNumber;
+
                 // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
                 // it is possible that the commit buffer once flushed will immediately trigger another prune, which
                 // mean `PrunePersistedNodes` was not able to re-trigger multiple time, which make the persisted node
                 // cache even bigger which causes longer prune which causes bigger commit buffer, etc.
                 // So we loop it here until `ShouldPrunePersistedNode` return false.
-                int maxTry = _shardedDirtyNodeCount;
-                int i = 0;
-                while (i < maxTry && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                int startingShard = _lastPrunedShardIdx;
+                while (_lastPrunedShardIdx - startingShard < _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                 {
                     PrunePersistedNodes();
-                    i++;
+                }
+
+                if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                {
+                    // A persisted nodes that was recommitted and is still within pruning boundary cannot be pruned.
+                    // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
+                    // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
+                    // the memory budget or reduce the pruning boundary.
+                    if (_logger.IsWarn) _logger.Warn($"Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary");
                 }
             }
+            finally
+            {
+                _toBePersistedBlockNumber = -1;
+            }
         }
-
-        TryExitCommitBufferMode();
     }
 
     internal void PersistAndPruneDirtyCache()
@@ -617,7 +673,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             SaveSnapshot();
 
             // Full pruning may set delete obsolete keys to false
-            PruneCache(dontRemoveNodes: !_pruningStrategy.DeleteObsoleteKeys);
+            PruneCache(doNotRemoveNodes: !_pruningStrategy.DeleteObsoleteKeys);
 
             TimeSpan sw = Stopwatch.GetElapsedTime(start);
             long ms = (long)sw.TotalMilliseconds;
@@ -652,11 +708,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // Full pruning need to visit all node, so can't delete anything.
 
             // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
-            // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
+            // For archive node, it is safe to remove canon key from cache as it will just get re-loaded.
             _deleteOldNodes &&
             finalizedBlockNumber.HasValue;
 
-        if (_logger.IsDebug) _logger.Debug($"Persisting {candidateSets.Count} commitsets. Finalized block number {finalizedBlockNumber}. Should track past keys {shouldTrackPastKey}");
+        if (_logger.IsDebug) _logger.Debug($"Persisting {candidateSets.Count} commit sets. Finalized block number {finalizedBlockNumber}. Should track past keys {shouldTrackPastKey}");
 
         if (!finalizedBlockNumber.HasValue)
         {
@@ -739,7 +795,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
                 else
                 {
-                    // This can happen if the Max-Min of the commitsetqueue is less than pruning boundary
+                    // This can happen if the Max-Min of the commit set queue is less than pruning boundary
                     if (_logger.IsDebug) _logger.Debug($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
                 }
                 return (candidateSets, null);
@@ -765,7 +821,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 // This is a hang. It should recover itself as new finalized block is set. But it will hang if we for some reason
                 // does not process in the finalized branch at all.
-                if (_logger.IsWarn) _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString()).ToArray())}");
+                if (_logger.IsWarn)
+                {
+                    using ArrayPoolListRef<string> roots = commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString());
+                    _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", roots.AsSpan())}");
+                }
                 return (candidateSets, null);
             }
 
@@ -840,7 +900,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// This is done after a `SaveSnapshot`.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    private void PruneCache(bool prunePersisted = false, bool dontRemoveNodes = false, bool forceRemovePersistedNodes = false)
+    private void PruneCache(bool prunePersisted = false, bool doNotRemoveNodes = false, bool forceRemovePersistedNodes = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Pruning nodes {DirtyMemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
@@ -858,7 +918,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
 
                 INodeStorage nodeStorage = _nodeStorage;
-                if (dontRemoveNodes) nodeStorage = null;
+                if (doNotRemoveNodes) nodeStorage = null;
 
                 dirtyNode
                     .PruneCache(
@@ -890,19 +950,19 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * _shardedDirtyNodeCount);
             shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, _shardedDirtyNodeCount));
 
-            if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
+            if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx % _shardedDirtyNodeCount}");
             long start = Stopwatch.GetTimestamp();
 
             using ArrayPoolListRef<Task> pruneTask = new(shardCountToPrune);
 
             for (int i = 0; i < shardCountToPrune; i++)
             {
-                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
+                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx % _shardedDirtyNodeCount];
                 pruneTask.Add(Task.Run(() =>
                 {
                     dirtyNode.PruneCache(prunePersisted: true);
                 }));
-                _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % _shardedDirtyNodeCount;
+                _lastPrunedShardIdx++;
             }
 
             Task.WaitAll(pruneTask.AsSpan());
@@ -1199,14 +1259,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
         using var _ = candidateSets;
-        if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
+        if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
         {
-            // No commitset to persist, likely as not enough block was processed to reached prune boundary
+            // No commit set to persist, likely as not enough block was processed to reached prune boundary
             // This happens when node is shutdown right after sync.
             // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
-            // at all. This come at a risk that this commitset is not canon though.
-            candidateSets.Add(anyCommmitSet);
-            if (_logger.IsDebug) _logger.Debug($"Force persisting commitset {anyCommmitSet} on shutdown.");
+            // at all. This come at a risk that this commit set is not canon though.
+            candidateSets.Add(anyCommitSet);
+            if (_logger.IsDebug) _logger.Debug($"Force persisting commit set {anyCommitSet} on shutdown.");
         }
 
         if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
@@ -1223,7 +1283,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (candidateSets.Count == 0)
         {
-            if (_logger.IsDebug) _logger.Debug("No commitset to persist at all.");
+            if (_logger.IsDebug) _logger.Debug("No commit set to persist at all.");
         }
         else
         {
@@ -1238,7 +1298,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         long start = Stopwatch.GetTimestamp();
         int commitSetCount = 0;
-        // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
+        // We persist all sealed commit sets causing PruneCache to almost completely clear the cache. Any new block that
         // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
         CommitSetQueue commitSetQueue = _commitSetQueue;
 
@@ -1270,7 +1330,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // All persisted node including recommitted nodes between head and reorg depth must be removed so that
         // it will be re-persisted or at least re-read in order to be cloned.
         // This should clear most nodes. For some reason, not all.
-        PruneCache(prunePersisted: true, dontRemoveNodes: true, forceRemovePersistedNodes: true);
+        PruneCache(prunePersisted: true, doNotRemoveNodes: true, forceRemovePersistedNodes: true);
         if (cancellationToken.IsCancellationRequested) return;
 
         int totalPersistedCount = 0;
@@ -1288,12 +1348,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (cancellationToken.IsCancellationRequested) return;
 
-        PruneCache(prunePersisted: true, dontRemoveNodes: true, forceRemovePersistedNodes: true);
+        PruneCache(prunePersisted: true, doNotRemoveNodes: true, forceRemovePersistedNodes: true);
 
         long nodesCount = NodesCount();
         if (nodesCount != 0)
         {
-            if (_logger.IsWarn) _logger.Warn($"{nodesCount} cache entry remains. {DirtyCachedNodesCount} dirty, total persistec count is {totalPersistedCount}.");
+            if (_logger.IsWarn) _logger.Warn($"{nodesCount} cache entry remains. {DirtyCachedNodesCount} dirty, total persisted count is {totalPersistedCount}.");
         }
 
         if (_logger.IsInfo) _logger.Info($"Clear cache took {Stopwatch.GetElapsedTime(start)}.");
