@@ -79,10 +79,8 @@ public class TaikoExtendedEthModule(
     }
 
     /// <summary>
-    /// Traverses the blockchain backwards to find the last Shasta block of the given Shasta batch ID.
+    /// Traverses the blockchain backwards to find the last Shasta block of the given batch ID.
     /// </summary>
-    /// <param name="batchId">The batch ID.</param>
-    /// <returns>The last block ID.</returns>
     private UInt256? GetLastBlockByBatchId(UInt256 batchId)
     {
         Block? currentBlock = blockFinder.Head;
@@ -96,8 +94,7 @@ public class TaikoExtendedEthModule(
                 break;
             }
 
-            UInt256? proposalId = ExtractAnchorV4ProposalId(currentBlock.Transactions[0].Data);
-
+            UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
             if (proposalId is null)
             {
                 return null;
@@ -117,30 +114,5 @@ public class TaikoExtendedEthModule(
     private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
     {
         return data.Length >= 4 && AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4]);
-    }
-
-    private static UInt256? ExtractAnchorV4ProposalId(ReadOnlyMemory<byte> data)
-    {
-        // Calldata layout: 4-byte selector + ABI-encoded arguments.
-        // The first 32 bytes hold the offset (relative to args start) where the proposal id is stored.
-        const int selectorLength = 4;
-        const int dataLength = 32;
-
-        if (data.Length <= selectorLength + dataLength)
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> args = data.Span[selectorLength..];
-        var offset = new UInt256(args[..dataLength], true);
-
-        // Check if the offset is invalid
-        if (offset > int.MaxValue || offset + dataLength > args.Length)
-        {
-            return null;
-        }
-
-        ReadOnlySpan<byte> proposalIdBytes = args.Slice((int)offset, dataLength);
-        return new UInt256(proposalIdBytes, true);
     }
 }
