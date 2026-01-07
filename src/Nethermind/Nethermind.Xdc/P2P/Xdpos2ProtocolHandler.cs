@@ -17,6 +17,7 @@ using Nethermind.TxPool;
 using System;
 
 namespace Nethermind.Xdc.P2P;
+
 internal class Xdpos2ProtocolHandler(
     ITimeoutCertificateManager timeoutCertificateManager,
     IVotesManager votesManager,
@@ -74,7 +75,7 @@ internal class Xdpos2ProtocolHandler(
                     Handle(syncInfoMsg);
                     break;
                 }
-                default:
+            default:
                 {
                     base.HandleMessage(message);
                     break;
@@ -100,7 +101,7 @@ internal class Xdpos2ProtocolHandler(
         if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
         {
             //TODO Disconnect peer?
-            if(Logger.IsDebug) Logger.Debug($"Received invalid SyncInfo from peer {Session.RemoteNodeId}: {error}");
+            if (Logger.IsDebug) Logger.Debug($"Received invalid SyncInfo from peer {Session.RemoteNodeId}: {error}");
             return;
         }
         syncInfoManager.ProcessSyncInfo(syncInfoMsg.SyncInfo);

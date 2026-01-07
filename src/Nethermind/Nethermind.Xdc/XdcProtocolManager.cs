@@ -79,7 +79,7 @@ internal class XdcProtocolManager : ProtocolsManager
                 63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _logManager, _txGossipPolicy),
                 64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                 65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                100 => new Xdpos2ProtocolHandler(timeoutCertificateManager, votesManager, syncInfoManager, session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),          
+                100 => new Xdpos2ProtocolHandler(timeoutCertificateManager, votesManager, syncInfoManager, session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                 _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
             };
             InitSyncPeerProtocol(session, ethHandler);

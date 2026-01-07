@@ -29,7 +29,7 @@ internal class SyncInfoManager(
             return false;
         }
 
-        if(qcManager.VerifyCertificate(syncInfo.HighestQuorumCert, out error) ||
+        if (qcManager.VerifyCertificate(syncInfo.HighestQuorumCert, out error) ||
             timeoutManager.VerifyTimeoutCertificate(syncInfo.HighestTimeoutCert, out error))
         {
             return false;

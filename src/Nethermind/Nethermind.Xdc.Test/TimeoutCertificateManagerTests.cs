@@ -56,7 +56,7 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IEpochSwitchManager>(),
             specProvider,
             blockTree,
-            
+
             Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
@@ -84,7 +84,7 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IEpochSwitchManager>(),
             specProvider,
             blockTree,
-            
+
             Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
@@ -206,7 +206,7 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
-            
+
             Substitute.For<ISigner>());
     }
 

@@ -73,7 +73,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
     {
         //We ignore gas limit validation for genesis block
         if (parent.Number == 0)
-            return true; 
+            return true;
         return base.ValidateGasLimitRange(header, parent, spec, ref error);
     }
 

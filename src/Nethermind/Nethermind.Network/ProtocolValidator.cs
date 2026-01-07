@@ -87,7 +87,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if(!ValidateGenesisHash(session, syncPeerArgs))
+            if (!ValidateGenesisHash(session, syncPeerArgs))
             {
                 return false;
             }

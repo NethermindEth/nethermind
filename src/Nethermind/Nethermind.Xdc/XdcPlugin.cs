@@ -33,7 +33,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     }
 
     public Task InitNetworkProtocol()
-    {    
+    {
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 64));
