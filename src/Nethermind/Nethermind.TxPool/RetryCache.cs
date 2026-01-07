@@ -97,7 +97,7 @@ public class RetryCache<TMessage, TResourceId> : IDisposable
         }, token);
     }
 
-    public AnnounceResult Announced(TResourceId resourceId, IMessageHandler<TMessage> retryHandler)
+    public AnnounceResult Announced(in TResourceId resourceId, IMessageHandler<TMessage> retryHandler)
     {
         if (_token.IsCancellationRequested)
         {
@@ -143,7 +143,7 @@ public class RetryCache<TMessage, TResourceId> : IDisposable
         return AnnounceResult.New;
     }
 
-    public void Received(TResourceId resourceId)
+    public void Received(in TResourceId resourceId)
     {
         if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
 
