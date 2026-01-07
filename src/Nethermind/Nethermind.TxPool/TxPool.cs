@@ -404,7 +404,7 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                bool isKnown = _hashCache.Get(txHash);
+                bool isKnown = IsKnown(txHash);
                 if (!isKnown)
                 {
                     discoveredForHashCache++;
@@ -440,6 +440,8 @@ namespace Nethermind.TxPool
                 Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempoool;
             }
         }
+
+        public bool IsKnown(Hash256 txHash) => _hashCache.Get(txHash);
 
         private bool RemoveIncludedTransaction(Transaction tx)
         {
