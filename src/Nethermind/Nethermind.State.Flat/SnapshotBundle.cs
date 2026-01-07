@@ -510,19 +510,12 @@ public sealed class SnapshotBundle : IDisposable
         _setAccountTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
-    public bool ShouldPrewarm(Address address, UInt256? slot)
+    public bool ShouldQueuePrewarm(Address address, UInt256? slot)
     {
-        long sw = Stopwatch.GetTimestamp();
-        bool res = _cachedResource.ShouldPrewarm(address, slot);
-        if (res)
-        {
-            _shouldPrewarmHit.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else
-        {
-            _shouldPrewarmMiss.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        return res;
+        // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
+        // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
+        // as most of the slot should already be queued by prewarmer.
+        return _cachedResource.ShouldPrewarm(address, slot);
     }
 
     public (Snapshot?, CachedResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)

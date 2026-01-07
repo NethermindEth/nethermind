@@ -145,12 +145,18 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.SetAccount(address, account);
-        if (!_disableLocalAddressTriewarmerQueue) _warmer.PushAddressJob(this, address, _hintSequenceId);
+        if (!_disableLocalAddressTriewarmerQueue)
+        {
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId);
+        }
     }
 
     public void HintSet(Address address)
     {
-        if (!_disableLocalAddressTriewarmerQueue) _warmer.PushAddressJob(this, address, _hintSequenceId);
+        if (!_disableLocalAddressTriewarmerQueue)
+        {
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId);
+        }
     }
 
     public void WarmUpOutOfScope(Address address, UInt256? slot)
@@ -160,7 +166,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         if (slot is null)
         {
-            _warmer.PushJobMulti(this, address, null, null, _hintSequenceId);
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushJobMulti(this, address, null, null, _hintSequenceId);
         }
         else
         {
@@ -186,12 +192,9 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         try
         {
-            if (_snapshotBundle.ShouldPrewarm(address, null))
-            {
-                // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
-                // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, true, true);
-            }
+            // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
+            // this is just for warming up
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, true, true);
         }
         catch (AbstractMinimalTrieStore.UnsupportedOperationException)
         {

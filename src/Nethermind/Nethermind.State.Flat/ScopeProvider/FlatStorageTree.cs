@@ -122,12 +122,18 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     private void WarmUpSlot(UInt256 index)
     {
         if (_scope._disableLocalSlotTriewarmerQueue) return;
-        _trieCacheWarmer.PushSlotJob(this, _address, index, _scope.HintSequenceId);
+        if (_bundle.ShouldQueuePrewarm(_address, index))
+        {
+            _trieCacheWarmer.PushSlotJob(this, _address, index, _scope.HintSequenceId);
+        }
     }
 
     public void QueueOutOfScopeWarmup(UInt256 index)
     {
-        _trieCacheWarmer.PushJobMulti(_scope, _address, this, index, _scope.HintSequenceId);
+        if (_bundle.ShouldQueuePrewarm(_address, index))
+        {
+            _trieCacheWarmer.PushJobMulti(_scope, _address, this, index, _scope.HintSequenceId);
+        }
     }
 
     // Called by trie warmer.
@@ -144,17 +150,12 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
             return false;
         }
 
-        if (_bundle.ShouldPrewarm(_address, index))
-        {
-            // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-            // this is just to warm up the nodes.
-            ValueHash256 key = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan, false, true);
-            return true;
-        }
-
-        return false;
+        // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+        // this is just to warm up the nodes.
+        ValueHash256 key = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
+        _warmupStorageTree.WarmUpPath(key.BytesAsSpan, false, true);
+        return true;
     }
 
     private bool TryGet(in UInt256 index, out byte[]? value)
