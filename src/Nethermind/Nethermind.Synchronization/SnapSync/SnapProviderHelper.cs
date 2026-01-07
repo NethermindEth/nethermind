@@ -201,7 +201,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             ArgumentNullException.ThrowIfNull(tree);
 
-            ValueHash256 effectiveStartingHAsh = startingHash ?? ValueKeccak.Zero;
+            ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
             List<(TrieNode, TreePath)> sortedBoundaryList = new();
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
