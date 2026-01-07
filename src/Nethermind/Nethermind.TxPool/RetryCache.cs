@@ -101,14 +101,14 @@ public class RetryCache<TMessage, TResourceId> : IDisposable
     {
         if (_token.IsCancellationRequested)
         {
-            return AnnounceResult.New;
+            return AnnounceResult.RequestRequired;
         }
 
         if (_expiringQueue.Count > _expiringQueueLimit)
         {
             if (_logger.IsDebug) _logger.Warn($"{nameof(TResourceId)} retry queue is full");
 
-            return AnnounceResult.New;
+            return AnnounceResult.RequestRequired;
         }
 
         if (!_requestingResources.Contains(resourceId))
@@ -135,12 +135,12 @@ public class RetryCache<TMessage, TResourceId> : IDisposable
                 return requests;
             });
 
-            return added ? AnnounceResult.New : AnnounceResult.Enqueued;
+            return added ? AnnounceResult.RequestRequired : AnnounceResult.Delayed;
         }
 
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}, but a retry is in progress already, immediately firing");
 
-        return AnnounceResult.New;
+        return AnnounceResult.RequestRequired;
     }
 
     public void Received(in TResourceId resourceId)
@@ -172,14 +172,14 @@ public class RetryCache<TMessage, TResourceId> : IDisposable
 
 public enum AnnounceResult
 {
-    New,
-    Enqueued,
-    PendingRequest
+    RequestRequired,
+    Delayed
 }
 
 internal class ConcurrentBagPolicy<TItem> : IPooledObjectPolicy<ConcurrentHashSet<TItem>>
 {
     public ConcurrentHashSet<TItem> Create() => [];
+
     public bool Return(ConcurrentHashSet<TItem> obj)
     {
         obj.Clear();
