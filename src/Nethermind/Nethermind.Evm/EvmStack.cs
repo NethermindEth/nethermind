@@ -46,12 +46,15 @@ public ref partial struct EvmStack
     {
         // Workhorse method
         int head = Head;
-        if ((Head = head + 1) >= MaxStackSize)
+        int newhead = head + 1;
+        ref byte headRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        if (newhead >= MaxStackSize)
         {
             ThrowEvmStackOverflowException();
         }
 
-        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        Head = newhead;
+        return ref headRef;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -721,7 +724,7 @@ public ref partial struct EvmStack
         return _bytes.Slice(head * WordSize, WordSize);
     }
 
-    public Address? PopAddress() => Head-- == 0 ? null : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+    public Address? PopAddress() => Head-- != 0 ? new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray()) : null;
 
     public bool PopAddress(out Address address)
     {
