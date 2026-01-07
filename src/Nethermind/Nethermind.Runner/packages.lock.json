@@ -1156,7 +1156,7 @@
       "nethermind.txpool": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "[1.0.82, )",
+          "Collections.Pooled": "(, )",
           "ConcurrentHashSet": "[1.3.0, )",
           "Nethermind.Config": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
@@ -1240,12 +1240,6 @@
         "requested": "[2.1.5.1544, )",
         "resolved": "2.1.5.1544",
         "contentHash": "xKg/UV2QpE7A2Oe8Ipry2BLRxDSM0sRsKL5INwGkrNmrRkZbdVCjfbSg7Nubvtw2/c7OTGHeMh4gg35rd9MqOA=="
-      },
-      "Collections.Pooled": {
-        "type": "CentralTransitive",
-        "requested": "[1.0.82, )",
-        "resolved": "1.0.82",
-        "contentHash": "o14V0k8bg+EPMwaVJcFbLNrkyDPaqNx6fWTTjJLgVWJLu939kVIAAWKaV5lCwZ7LM/tv59igi65rVWRyjILc0Q=="
       },
       "CommunityToolkit.HighPerformance": {
         "type": "CentralTransitive",

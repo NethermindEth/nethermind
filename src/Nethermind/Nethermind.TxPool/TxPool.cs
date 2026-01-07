@@ -968,7 +968,7 @@ namespace Nethermind.TxPool
             _headBlocksChannel.Writer.Complete();
             _transactions.Removed -= OnRemovedTx;
 
-            _retryCache.Dispose();
+            await _retryCache.DisposeAsync();
             await _headProcessing;
         }
 

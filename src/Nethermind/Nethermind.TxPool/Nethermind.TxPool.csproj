@@ -6,7 +6,6 @@
 
   <ItemGroup>
     <PackageReference Include="NonBlocking" />
-    <PackageReference Include="Collections.Pooled" />
     <PackageReference Include="ConcurrentHashSet" />
   </ItemGroup>
 
