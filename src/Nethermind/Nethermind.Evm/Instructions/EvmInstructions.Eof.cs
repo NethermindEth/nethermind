@@ -29,6 +29,7 @@ internal static partial class EvmInstructions
         virtual static bool IsStatic => false;
         // Specifies the execution type of the call.
         abstract static ExecutionType ExecutionType { get; }
+        abstract static bool CheckStackUnderflow(ref EvmStack stack);
     }
 
     /// <summary>
@@ -37,6 +38,11 @@ internal static partial class EvmInstructions
     public struct OpEofCall : IOpEofCall
     {
         public static ExecutionType ExecutionType => ExecutionType.EOFCALL;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 4;
+        }
     }
 
     /// <summary>
@@ -45,6 +51,11 @@ internal static partial class EvmInstructions
     public struct OpEofDelegateCall : IOpEofCall
     {
         public static ExecutionType ExecutionType => ExecutionType.EOFDELEGATECALL;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     /// <summary>
@@ -54,6 +65,11 @@ internal static partial class EvmInstructions
     {
         public static bool IsStatic => true;
         public static ExecutionType ExecutionType => ExecutionType.EOFSTATICCALL;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     /// <summary>
@@ -72,6 +88,8 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         // Deduct base gas cost for this instruction.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
 
@@ -99,13 +117,11 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, 3)) goto StackUnderflow;
         // Pop the required parameters: destination memory offset, source offset in return data, and number of bytes to copy.
-        if (!stack.PopUInt256(out UInt256 destOffset) ||
-            !stack.PopUInt256(out UInt256 sourceOffset) ||
-            !stack.PopUInt256(out UInt256 size))
-        {
-            goto StackUnderflow;
-        }
+        stack.PopUInt256(out UInt256 destOffset);
+        stack.PopUInt256(out UInt256 sourceOffset);
+        stack.PopUInt256(out UInt256 size);
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
@@ -161,11 +177,13 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+
         ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         // Ensure the instruction is only valid for non-legacy (EOF) code.
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
+        if (CheckStackUnderflow(ref stack, 1)) return EvmExceptionType.StackUnderflow;
         // Deduct gas required for data loading.
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataLoad))
             goto OutOfGas;
@@ -193,9 +211,12 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+
         ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
+
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataLoadN))
             goto OutOfGas;
@@ -255,13 +276,12 @@ internal static partial class EvmInstructions
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
+        if (CheckStackUnderflow(ref stack, 3)) goto StackUnderflow;
+
         // Pop destination memory offset, data section offset, and size.
-        if (!stack.PopUInt256(out UInt256 memOffset) ||
-            !stack.PopUInt256(out UInt256 offset) ||
-            !stack.PopUInt256(out UInt256 size))
-        {
-            goto StackUnderflow;
-        }
+        stack.PopUInt256(out UInt256 memOffset);
+        stack.PopUInt256(out UInt256 offset);
+        stack.PopUInt256(out UInt256 size);
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataCopy + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas))
@@ -539,12 +559,14 @@ internal static partial class EvmInstructions
 
         // Read the immediate operand.
         int imm = codeInfo.CodeSection.Span[programCounter];
-        // Duplicate the (imm+1)th stack element.
-        EvmExceptionType result = stack.Dup<TTracingInst>(imm + 1);
 
+        if(CheckStackUnderflow(ref stack, imm + 1)) return EvmExceptionType.StackUnderflow;
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        // Duplicate the (imm+1)th stack element.
+        stack.Dup<TTracingInst>(imm + 1);
         programCounter += 1;
 
-        return result;
+        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -570,11 +592,14 @@ internal static partial class EvmInstructions
 
         // Immediate operand determines the swap index.
         int n = 1 + (int)codeInfo.CodeSection.Span[programCounter];
-        EvmExceptionType result = stack.Swap<TTracingInst>(n + 1);
+
+        if (CheckStackUnderflow(ref stack, n + 1)) return EvmExceptionType.StackUnderflow;
+
+        stack.Swap<TTracingInst>(n + 1);
 
         programCounter += 1;
 
-        return result;
+        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -640,6 +665,8 @@ internal static partial class EvmInstructions
         if (vm.VmState.IsStatic)
             goto StaticCallViolation;
 
+        if(CheckStackUnderflow(ref stack, 4)) return EvmExceptionType.StackUnderflow;
+
         // Cast the current code info to EOF-specific container type.
         EofCodeInfo container = env.CodeInfo as EofCodeInfo;
         ExecutionType currentContext = ExecutionType.EOFCREATE;
@@ -653,13 +680,10 @@ internal static partial class EvmInstructions
         int initContainerIndex = codeSection[programCounter++];
 
         // 3. Pop contract creation parameters from the stack.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopWord256(out Span<byte> salt) ||
-            !stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataSize))
-        {
-            goto OutOfGas;
-        }
+        stack.PopUInt256(out UInt256 value);
+        stack.PopWord256(out Span<byte> salt);
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataSize);
 
         // 4. Charge for memory expansion for the input data.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataSize, vm.VmState))
@@ -795,6 +819,8 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.ReturnCode))
             goto OutOfGas;
 
+        if(CheckStackUnderflow(ref stack, 2)) return EvmExceptionType.StackUnderflow;
+
         IReleaseSpec spec = vm.Spec;
         EofCodeInfo codeInfo = (EofCodeInfo)vm.VmState.Env.CodeInfo;
 
@@ -847,10 +873,11 @@ internal static partial class EvmInstructions
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             goto BadInstruction;
 
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        if (!stack.PopUInt256(out UInt256 offset))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 offset);
 
         ZeroPaddedSpan slice = vm.ReturnDataBuffer.Span.SliceWithZeroPadding(offset, 32);
         stack.PushBytes<TTracingInst>(slice);
@@ -893,13 +920,13 @@ internal static partial class EvmInstructions
         if (env.CodeInfo.Version == 0)
             goto BadInstruction;
 
-        // 1. Pop the target address (as 32 bytes) and memory offsets/length for the call data.
-        if (!stack.PopWord256(out Span<byte> targetBytes) ||
-            !stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength))
-        {
+        if(TOpEofCall.CheckStackUnderflow(ref stack))
             goto StackUnderflow;
-        }
+
+        // 1. Pop the target address (as 32 bytes) and memory offsets/length for the call data.
+        stack.PopWord256(out Span<byte> targetBytes);
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataLength);
 
         UInt256 transferValue;
         UInt256 callValue;
@@ -914,13 +941,9 @@ internal static partial class EvmInstructions
             transferValue = UInt256.Zero;
             callValue = env.Value;
         }
-        else if (stack.PopUInt256(out transferValue))
-        {
+        else {
+            stack.PopUInt256(out transferValue);
             callValue = transferValue;
-        }
-        else
-        {
-            goto StackUnderflow;
         }
 
         // 3. For non-static calls, ensure that a non-zero transfer value is not used in a static context.
