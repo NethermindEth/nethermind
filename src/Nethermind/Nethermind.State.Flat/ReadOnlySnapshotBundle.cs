@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -18,9 +19,10 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// A bundle of <see cref="Snapshot"/> and a layer of write buffer backed by a <see cref="SnapshotContent"/>.
 /// </summary>
-public sealed class ReadOnlySnapshotBundle : IDisposable, ISnapshotBundleTrieProvider
+public sealed class ReadOnlySnapshotBundle : RefCountingDisposable, ISnapshotBundleTrieProvider
 {
     public int SnapshotCount => _snapshots.Count;
+    public int LeaseCount => (int)base._leases.Value;
 
     internal ArrayPoolList<Snapshot> _snapshots;
     private readonly IPersistence.IPersistenceReader _persistenceReader;
@@ -88,11 +90,7 @@ public sealed class ReadOnlySnapshotBundle : IDisposable, ISnapshotBundleTriePro
 
     public bool TryGetAccount(Address address, out Account? acc)
     {
-        if (_isDisposed)
-        {
-            acc = null;
-            return false;
-        }
+        GuardDispose();
 
         _accountGet.Inc();
 
@@ -137,11 +135,7 @@ public sealed class ReadOnlySnapshotBundle : IDisposable, ISnapshotBundleTriePro
 
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[]? value)
     {
-        if (_isDisposed)
-        {
-            value = null;
-            return false;
-        }
+        GuardDispose();
 
         _slotGet.Inc();
 
@@ -203,11 +197,7 @@ public sealed class ReadOnlySnapshotBundle : IDisposable, ISnapshotBundleTriePro
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_isDisposed)
-        {
-            node = null;
-            return false;
-        }
+        GuardDispose();
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -258,7 +248,8 @@ public sealed class ReadOnlySnapshotBundle : IDisposable, ISnapshotBundleTriePro
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
     {
-        if (_isDisposed) return null;
+        GuardDispose();
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = Stopwatch.GetTimestamp();
         var res = _persistenceReader.TryLoadRlp(address, path, flags);
@@ -297,17 +288,26 @@ public sealed class ReadOnlySnapshotBundle : IDisposable, ISnapshotBundleTriePro
         throw new InvalidOperationException("Cannot set new node in a readonly snapshot bundle");
     }
 
-    public void Dispose()
+    private void GuardDispose()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (_isDisposed) throw new ObjectDisposedException($"{nameof(ReadOnlySnapshotBundle)} is disposed");
+    }
+
+    public bool TryLease()
+    {
+        return base.TryAcquireLease();
+    }
+
+    protected override void CleanUp()
+    {
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+
         foreach (Snapshot snapshot in _snapshots)
         {
             snapshot.Dispose();
         }
 
         // Null them in case unexpected mutation from trie warmer
-        _snapshots = null!;
         _persistenceReader.Dispose();
     }
 }

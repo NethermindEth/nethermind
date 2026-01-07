@@ -44,7 +44,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
     private bool _isDisposed;
     private readonly ResourcePool _resourcePool;
 
-    private static Counter _creeatedSnapshotBundle = DevMetric.Factory.CreateCounter("snapshot_bundle_created", "created", "usage");
+    private static Gauge _activeSnapshotBundle = DevMetric.Factory.CreateGauge("snapshot_bundle_active", "event");
     private static Counter _snapshotBundleEvents = DevMetric.Factory.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
     private Counter.Child _nodeGetChanged = null!;
     private Counter.Child _nodeGetSnapshots = null!;
@@ -104,14 +104,14 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
         _resourcePool = resourcePool;
         _isPrewarmer = isPrewarmer;
         _usage = usage;
-        _creeatedSnapshotBundle.WithLabels(_usage.ToString()).Inc();
-
         SetupMetric();
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _cachedResource = resourcePool.GetCachedResource(usage);
 
         ExpandCurrentPooledContent();
+
+        _activeSnapshotBundle.Inc();
     }
 
     private void ExpandCurrentPooledContent()
@@ -173,11 +173,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
 
     private bool DoTryGetAccount(Address address, bool excludeChanged, out Account? acc)
     {
-        if (_isDisposed)
-        {
-            acc = null;
-            return false;
-        }
+        GuardDispose();
 
         _accountGet.Inc();
 
@@ -220,11 +216,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
 
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[]? value)
     {
-        if (_isDisposed)
-        {
-            value = null;
-            return false;
-        }
+        GuardDispose();
 
         _slotGet.Inc();
 
@@ -353,11 +345,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_isDisposed)
-        {
-            node = null;
-            return false;
-        }
+        GuardDispose();
 
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
@@ -410,10 +398,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
 
     private TrieNode DoFindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer)
     {
-        if (_isDisposed)
-        {
-            return new TrieNode(NodeType.Unknown, hash);
-        }
+        GuardDispose();
 
         TrieNode? node;
         long sw = Stopwatch.GetTimestamp();
@@ -490,7 +475,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
     {
-        if (_isDisposed) return null;
+        GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadRlp(address, path, hash, flags, isTrieWarmer);
     }
@@ -498,7 +483,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {
-        if (_isDisposed) return;
+        GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         long sw = Stopwatch.GetTimestamp();
@@ -510,7 +495,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
     // This is called only during trie commit
     public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
     {
-        if (_isDisposed) return;
+        GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         long sw = Stopwatch.GetTimestamp();
@@ -595,9 +580,15 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
         }
     }
 
+    private void GuardDispose()
+    {
+        if (_isDisposed) throw new InvalidOperationException($"{nameof(SnapshotBundle)} disposed");
+    }
+
     public void Dispose()
     {
-        if (_isDisposed) return;
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+
         _isDisposed = true;
         foreach (Snapshot snapshot in _snapshots)
         {
@@ -614,11 +605,15 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
         _resourcePool.ReturnCachedResource(_usage, _cachedResource);
         _readOnlySnapshotBundle.Dispose();
+
+        _activeSnapshotBundle.Dec();
     }
 
     // Also called SelfDestruct
     public void Clear(Address address, Hash256AsKey addressHash)
     {
+        GuardDispose();
+
         bool isNewAccount = false;
         if (DoTryGetAccount(address, excludeChanged: true, out Account? account))
         {

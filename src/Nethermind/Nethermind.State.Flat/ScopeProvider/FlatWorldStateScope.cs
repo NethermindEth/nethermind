@@ -289,6 +289,11 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 _flatDiffRepository.AddSnapshot(newSnapshot!, cachedResource!);
             }
+            else
+            {
+                newSnapshot?.Dispose();
+                cachedResource?.Dispose();
+            }
         }
 
         _currentStateId = newStateId;

@@ -31,6 +31,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private readonly TrieNodeCache _trieNodeCache;
     private readonly ResourcePool _resourcePool;
 
+    private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
+
     private readonly Task _compactorTask;
     private readonly Task _persistenceTask;
     private readonly Task _populateTrieNodeCacheTask;
@@ -160,6 +162,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 _snapshotCount.WithLabels("snapshots").Set(_knownStates.Count);
                 _snapshotCount.WithLabels("compacted_snapshots").Set(_compactedKnownStates.Count);
                 await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
+            }
+
+            if (_readonlySnapshotBundleCache.TryRemove(stateId, out ReadOnlySnapshotBundle? bundle))
+            {
+                bundle.Dispose();
             }
         }
         catch (OperationCanceledException)
@@ -317,6 +324,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             return new ReadOnlySnapshotBundle(new ArrayPoolList<Snapshot>(0), new NoopPersistenceReader());
         }
 
+        if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease())
+        {
+            return bundle;
+        }
+
         StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
 
         StateId current = baseBlock;
@@ -371,6 +383,13 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             snapshots,
             persistenceReader);
         _flatdiffimes.WithLabels("gather_readonly_cache", "done").Observe(Stopwatch.GetTimestamp() - sw);
+
+        res.TryLease();
+        if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
+        {
+            res.Dispose();
+        }
+
         return res;
     }
 
@@ -492,7 +511,28 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private async Task PersistIfNeeded()
     {
-        await NotifyWhenSlow("add to bigcache", () => _persistenceManager.AddToPersistence());
+        await NotifyWhenSlow("add to bigcache", () =>
+        {
+            _persistenceManager.AddToPersistence();
+            ClearReadOnlyBundleCache();
+        });
+    }
+
+    private void ClearReadOnlyBundleCache()
+    {
+        using ArrayPoolListRef<StateId> states = new ArrayPoolListRef<StateId>();
+        foreach (var kv in _readonlySnapshotBundleCache)
+        {
+            states.Add(kv.Key);
+        }
+
+        foreach (var stateId in states)
+        {
+            if (_readonlySnapshotBundleCache.TryRemove(stateId, out ReadOnlySnapshotBundle? bundle))
+            {
+                bundle.Dispose();
+            }
+        }
     }
 
     public void RemoveAndReleaseCompactedKnownState(StateId stateId)
