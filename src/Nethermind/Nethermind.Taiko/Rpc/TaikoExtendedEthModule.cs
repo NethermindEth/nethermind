@@ -81,6 +81,7 @@ public class TaikoExtendedEthModule(
     /// <summary>
     /// Traverses the blockchain backwards to find the last Shasta block of the given batch ID.
     /// </summary>
+    /// <param name="batchId">The Shasta batch identifier for which to find the last corresponding block.</param>
     private UInt256? GetLastBlockByBatchId(UInt256 batchId)
     {
         Block? currentBlock = blockFinder.Head;
