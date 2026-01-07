@@ -8,12 +8,12 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
 using static Unsafe;
 
 internal static partial class EvmInstructions
@@ -59,21 +59,8 @@ internal static partial class EvmInstructions
         /// <param name="programCounter">The program counter.</param>
         /// <param name="code">The code segment containing the immediate data.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        virtual static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
-            where TTracingInst : struct, IFlag
-        {
-            // Use available bytes and pad left if fewer than expected.
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            ReadOnlySpan<byte> immediateData = code.Slice(programCounter, usedFromCode);
-            if (usedFromCode == length)
-            {
-                stack.PushBytes<TTracingInst>(immediateData);
-            }
-            else
-            {
-                stack.PushBothPaddedBytes<TTracingInst>(immediateData, length);
-            }
-        }
+        abstract static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag;
     }
 
     // Some push operations override the default Push method to handle fixed-size optimizations.
@@ -81,7 +68,20 @@ internal static partial class EvmInstructions
     /// <summary>
     /// 0 item operations.
     /// </summary>
-    public struct Op0 : IOpCount { public static int Count => 0; }
+    public struct Op0 : IOpCount
+    {
+        public static int Count => 0;
+
+        /// <summary>
+        /// Push operation for zero
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
+        {
+            return stack.PushZeroWithResult<TTracingInst>();
+        }
+    }
 
     /// <summary>
     /// 1 item operations.
@@ -96,7 +96,7 @@ internal static partial class EvmInstructions
         /// If exactly one byte is available, it is pushed; otherwise, zero is pushed.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
             where TTracingInst : struct, IFlag
         {
             // Determine how many bytes can be used from the code.
@@ -105,12 +105,12 @@ internal static partial class EvmInstructions
             {
                 // Directly push the single byte.
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
+                return stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
             }
             else
             {
                 // Fallback when immediate data is incomplete.
-                stack.PushZero<TTracingInst>();
+                return stack.PushZeroWithResult<TTracingInst>();
             }
         }
     }
@@ -118,7 +118,17 @@ internal static partial class EvmInstructions
     /// <summary>
     /// 2 item operations.
     /// </summary>
-    public struct Op2 : IOpCount { public static int Count => 2; }
+    public struct Op2 : IOpCount
+    {
+        public static int Count => 2;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
+        {
+            throw new NotSupportedException($"Use the {nameof(InstructionPush2)} opcode instead");
+        }
+    }
 
     /// <summary>
     /// Push operation for two bytes.
@@ -175,23 +185,26 @@ internal static partial class EvmInstructions
 
             goto Success;
         }
-        else if (remainingCode >= Size)
+
+        ref byte start = ref Add(ref bytes, programCounter);
+        EvmExceptionType result;
+        if (remainingCode >= Size)
         {
             // Optimized push for exactly two bytes.
-            stack.Push2Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
+            result = stack.Push2Bytes<TTracingInst>(ref start);
         }
         else if (remainingCode == Op1.Count)
         {
             // Directly push the single byte.
-            stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
+            result = stack.PushByte<TTracingInst>(start);
         }
         else
         {
             // Fallback when immediate data is incomplete.
-            stack.PushZero<TTracingInst>();
+            result = stack.PushZeroWithResult<TTracingInst>();
         }
-
         programCounter += Size;
+        return result;
     Success:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -201,292 +214,95 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    /// <summary>
-    /// 3 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op3 : IOpCount { public static int Count => 3; }
+    [GenerateStackOpcode(3)]
+    public partial struct Op3 : IOpCount;
 
-    /// <summary>
-    /// 4 item operations.
-    /// </summary>
-    public struct Op4 : IOpCount
-    {
-        const int Size = sizeof(uint);
-        public static int Count => Size;
+    [GenerateStackOpcode(4)]
+    public partial struct Op4 : IOpCount;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
-            where TTracingInst : struct, IFlag
-        {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                // Direct push of a 4-byte value.
-                stack.Push4Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
-        }
-    }
+    [GenerateStackOpcode(5)]
+    public partial struct Op5 : IOpCount;
 
-    /// <summary>
-    /// 5 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op5 : IOpCount { public static int Count => 5; }
+    [GenerateStackOpcode(6)]
+    public partial struct Op6 : IOpCount;
 
-    /// <summary>
-    /// 6 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op6 : IOpCount { public static int Count => 6; }
+    [GenerateStackOpcode(7)]
+    public partial struct Op7 : IOpCount;
 
-    /// <summary>
-    /// 7 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op7 : IOpCount { public static int Count => 7; }
+    [GenerateStackOpcode(8)]
+    public partial struct Op8 : IOpCount;
 
-    /// <summary>
-    /// 8 item operations.
-    /// </summary>
-    public struct Op8 : IOpCount
-    {
-        const int Size = sizeof(ulong);
-        public static int Count => Size;
+    [GenerateStackOpcode(9)]
+    public partial struct Op9 : IOpCount;
 
-        /// <summary>
-        /// Push operation for eight bytes.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
-            where TTracingInst : struct, IFlag
-        {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push8Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
-        }
-    }
+    [GenerateStackOpcode(10)]
+    public partial struct Op10 : IOpCount;
 
-    /// <summary>
-    /// 9 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op9 : IOpCount { public static int Count => 9; }
+    [GenerateStackOpcode(11)]
+    public partial struct Op11 : IOpCount;
 
-    /// <summary>
-    /// 10 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op10 : IOpCount { public static int Count => 10; }
+    [GenerateStackOpcode(12)]
+    public partial struct Op12 : IOpCount;
 
-    /// <summary>
-    /// 11 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op11 : IOpCount { public static int Count => 11; }
+    [GenerateStackOpcode(13)]
+    public partial struct Op13 : IOpCount;
 
-    /// <summary>
-    /// 12 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op12 : IOpCount { public static int Count => 12; }
+    [GenerateStackOpcode(14)]
+    public partial struct Op14 : IOpCount;
 
-    /// <summary>
-    /// 13 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op13 : IOpCount { public static int Count => 13; }
+    [GenerateStackOpcode(15)]
+    public partial struct Op15 : IOpCount;
 
-    /// <summary>
-    /// 14 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op14 : IOpCount { public static int Count => 14; }
+    [GenerateStackOpcode(16)]
+    public partial struct Op16 : IOpCount;
 
-    /// <summary>
-    /// 15 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op15 : IOpCount { public static int Count => 15; }
+    [GenerateStackOpcode(17)]
+    public partial struct Op17 : IOpCount;
 
-    public struct Op16 : IOpCount
-    {
-        const int Size = 16;
-        public static int Count => Size;
+    [GenerateStackOpcode(18)]
+    public partial struct Op18 : IOpCount;
 
-        /// <summary>
-        /// Push operation for 16 bytes.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
-            where TTracingInst : struct, IFlag
-        {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push16Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
-        }
-    }
+    [GenerateStackOpcode(19)]
+    public partial struct Op19 : IOpCount;
 
-    /// <summary>
-    /// 17 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op17 : IOpCount { public static int Count => 17; }
+    [GenerateStackOpcode(20)]
+    public partial struct Op20 : IOpCount;
 
-    /// <summary>
-    /// 18 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op18 : IOpCount { public static int Count => 18; }
+    [GenerateStackOpcode(21)]
+    public partial struct Op21 : IOpCount;
 
-    /// <summary>
-    /// 19 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op19 : IOpCount { public static int Count => 19; }
+    [GenerateStackOpcode(22)]
+    public partial struct Op22 : IOpCount;
 
-    /// <summary>
-    /// 20 item operations.
-    /// </summary>
-    public struct Op20 : IOpCount
-    {
-        const int Size = 20;
-        public static int Count => Size;
+    [GenerateStackOpcode(23)]
+    public partial struct Op23 : IOpCount;
 
-        /// <summary>
-        /// Push operation for 20 bytes (commonly used for addresses).
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
-            where TTracingInst : struct, IFlag
-        {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                // Optimized push for address size data.
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push20Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
-        }
-    }
+    [GenerateStackOpcode(24)]
+    public partial struct Op24 : IOpCount;
 
+    [GenerateStackOpcode(25)]
+    public partial struct Op25 : IOpCount;
 
-    /// <summary>
-    /// 21 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op21 : IOpCount { public static int Count => 21; }
+    [GenerateStackOpcode(26)]
+    public partial struct Op26 : IOpCount;
 
-    /// <summary>
-    /// 22 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op22 : IOpCount { public static int Count => 22; }
+    [GenerateStackOpcode(27)]
+    public partial struct Op27 : IOpCount;
 
-    /// <summary>
-    /// 23 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op23 : IOpCount { public static int Count => 23; }
+    [GenerateStackOpcode(28)]
+    public partial struct Op28 : IOpCount;
 
-    /// <summary>
-    /// 24 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op24 : IOpCount { public static int Count => 24; }
+    [GenerateStackOpcode(29)]
+    public partial struct Op29 : IOpCount;
 
-    /// <summary>
-    /// 25 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op25 : IOpCount { public static int Count => 25; }
+    [GenerateStackOpcode(30)]
+    public partial struct Op30 : IOpCount;
 
-    /// <summary>
-    /// 26 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op26 : IOpCount { public static int Count => 26; }
+    [GenerateStackOpcode(31)]
+    public partial struct Op31 : IOpCount;
 
-    /// <summary>
-    /// 27 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op27 : IOpCount { public static int Count => 27; }
-
-    /// <summary>
-    /// 28 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op28 : IOpCount { public static int Count => 28; }
-
-    /// <summary>
-    /// 29 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op29 : IOpCount { public static int Count => 29; }
-
-    /// <summary>
-    /// 30 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op30 : IOpCount { public static int Count => 30; }
-
-    /// <summary>
-    /// 31 item operations.
-    /// Uses the default implementation for pushing data.
-    /// </summary>
-    public struct Op31 : IOpCount { public static int Count => 31; }
-
-    /// <summary>
-    /// 32 item operations.
-    /// </summary>
-    public struct Op32 : IOpCount
-    {
-        const int Size = 32;
-        public static int Count => Size;
-
-        /// <summary>
-        /// Push operation for 32 bytes.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
-            where TTracingInst : struct, IFlag
-        {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                // Leverage reinterpretation of bytes as a 256-bit vector.
-                stack.Push32Bytes<TTracingInst>(in As<byte, Word>(ref Add(ref MemoryMarshal.GetReference(code), programCounter)));
-            }
-            else
-            {
-                stack.PushBothPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
-        }
-    }
+    [GenerateStackOpcode(32)]
+    public partial struct Op32 : IOpCount;
 
     /// <summary>
     /// Handles the PUSH0 opcode which pushes a zero onto the stack.
@@ -502,8 +318,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.PushZero<TTracingInst>();
-        return EvmExceptionType.None;
+        return stack.PushZeroWithResult<TTracingInst>();
     }
 
     /// <summary>
@@ -529,10 +344,10 @@ internal static partial class EvmInstructions
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
-        TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
+        EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
         // Advance the program counter by the number of bytes consumed.
         programCounter += TOpCount.Count;
-        return EvmExceptionType.None;
+        return result;
     }
 
     /// <summary>
