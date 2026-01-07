@@ -12,6 +12,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -90,21 +91,21 @@ public class CopyTreeVisitorTests
         dbProvider.CodeDb.Returns(new MemDb());
 
         // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
-        IStateReader stateReader = worldStateManager.GlobalStateReader;
+        (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager);
 
+        BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
         if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {
             NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
             using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
-            stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+            stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
         else
         {
             NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
             using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
-            stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+            stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
 

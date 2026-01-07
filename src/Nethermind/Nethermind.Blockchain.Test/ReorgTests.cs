@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -45,12 +46,11 @@ public class ReorgTests
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
-        using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             if (finalSpec.WithdrawalsEnabled)
             {
@@ -70,39 +70,40 @@ public class ReorgTests
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        IStateReader stateReader = worldStateManager.GlobalStateReader;
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
 
-        _blockTree = Build.A.BlockTree()
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
             .WithoutSettingHead
-            .WithSpecProvider(specProvider)
-            .TestObject;
+            .WithSpecProvider(specProvider);
 
-        EthereumCodeInfoRepository codeInfoRepository = new();
+        _blockTree = blockTreeBuilder.TestObject;
+
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, worldStateManager.GlobalStateReader, codeInfoRepository),
+                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, stateReader),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
-        VirtualMachine virtualMachine = new(
+        BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
+        EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
             LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
+            BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,
             virtualMachine,
-            codeInfoRepository,
+            new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockProcessor blockProcessor = new BlockProcessor(
+        BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
@@ -110,15 +111,16 @@ public class ReorgTests
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            new BlockhashStore(stateProvider),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new BranchProcessor(
+        BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            blockhashProvider,
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(

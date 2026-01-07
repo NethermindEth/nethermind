@@ -13,11 +13,18 @@ namespace Nethermind.Core.ExecutionRequest;
 
 public static class ExecutionRequestExtensions
 {
-    public const int DepositRequestsBytesSize = PublicKeySize /*pubkey: Bytes48 */ + Hash256.Size /*withdrawal_credentials: Bytes32 */ + sizeof(ulong) /*amount: uint64*/ + 96 /*signature: Bytes96*/ + sizeof(ulong) /*index: uint64*/;
+    public const int PublicKeySize = 48;
+    public const int WithdrawalCredentialsSize = Hash256.Size;
+    public const int AmountSize = sizeof(ulong);
+    public const int SignatureSize = 96;
+    public const int IndexSize = sizeof(ulong);
+    public const int DepositRequestsBytesSize = PublicKeySize + WithdrawalCredentialsSize + AmountSize + SignatureSize + IndexSize;
+
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
     public const int MaxRequestsCount = 3;
-    private const int PublicKeySize = 48;
+
+
 
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
@@ -31,7 +38,7 @@ public static class ExecutionRequestExtensions
             throw new ArgumentException("Flat encoded requests must be an array");
         }
 
-        using ArrayPoolList<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
+        using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
@@ -50,7 +57,7 @@ public static class ExecutionRequestExtensions
         ExecutionRequest[] consolidationRequests
     )
     {
-        var result = new ArrayPoolList<byte[]>(MaxRequestsCount);
+        ArrayPoolList<byte[]> result = new(MaxRequestsCount);
 
         if (depositRequests.Length > 0)
         {
@@ -71,7 +78,7 @@ public static class ExecutionRequestExtensions
 
         static byte[] FlatEncodeRequests(ExecutionRequest[] requests, int bufferSize, byte type)
         {
-            using ArrayPoolList<byte> buffer = new(bufferSize + 1) { type };
+            using ArrayPoolListRef<byte> buffer = new(bufferSize + 1, type);
 
             foreach (ExecutionRequest request in requests)
             {

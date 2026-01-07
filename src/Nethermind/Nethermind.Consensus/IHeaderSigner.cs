@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus;
+
 public interface IHeaderSigner : ISigner
 {
     bool CanSignHeader { get; }

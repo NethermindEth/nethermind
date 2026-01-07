@@ -11,5 +11,5 @@ public class SimulateCallResult
     public byte[]? ReturnData { get; set; }
     public ulong? GasUsed { get; set; }
     public Error? Error { get; set; }
-    public IEnumerable<Log> Logs { get; set; } = [];
+    public ICollection<Log> Logs { get; set; } = [];
 }

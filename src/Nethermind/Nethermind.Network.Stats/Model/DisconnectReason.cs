@@ -53,8 +53,9 @@ public enum DisconnectReason : byte
     InvalidReceiptRoot,
     EthSyncException,
     InvalidBlockRangeUpdate,
+    MessageLimitsBreached,
 
-    // These are from EthDisconnectReason which does not necessarily used in Nethermind.
+    // These are from EthDisconnectReason that does not necessarily use in Nethermind.
     EthDisconnectRequested,
     TcpSubSystemError,
     BreachOfProtocol,
@@ -67,7 +68,7 @@ public enum DisconnectReason : byte
     ReceiveMessageTimeout,
     MultipleHeaderDependencies,
 
-    // Try not to use this. Instead create a new one.
+    // Try not to use this. Instead, create a new one.
     Other,
 }
 
@@ -91,10 +92,11 @@ public static class DisconnectReasonExtension
             DisconnectReason.ForwardSyncFailed => EthDisconnectReason.DisconnectRequested,
             DisconnectReason.GossipingInPoS => EthDisconnectReason.BreachOfProtocol,
             DisconnectReason.AppClosing => EthDisconnectReason.ClientQuitting,
-            DisconnectReason.InvalidTxOrUncle or DisconnectReason.HeaderResponseTooLong or DisconnectReason.InconsistentHeaderBatch or DisconnectReason.UnexpectedHeaderHash or DisconnectReason.HeaderBatchOnDifferentBranch or DisconnectReason.UnexpectedParentHeader or DisconnectReason.InvalidHeader or DisconnectReason.InvalidReceiptRoot or DisconnectReason.EthSyncException => EthDisconnectReason.BreachOfProtocol,
+            DisconnectReason.InvalidTxOrUncle or DisconnectReason.HeaderResponseTooLong or DisconnectReason.InconsistentHeaderBatch or DisconnectReason.UnexpectedHeaderHash or DisconnectReason.HeaderBatchOnDifferentBranch or DisconnectReason.UnexpectedParentHeader or DisconnectReason.InvalidHeader or DisconnectReason.InvalidReceiptRoot or DisconnectReason.EthSyncException or DisconnectReason.InvalidBlockRangeUpdate => EthDisconnectReason.BreachOfProtocol,
             DisconnectReason.EthDisconnectRequested => EthDisconnectReason.DisconnectRequested,
             DisconnectReason.TcpSubSystemError => EthDisconnectReason.TcpSubSystemError,
             DisconnectReason.BreachOfProtocol => EthDisconnectReason.BreachOfProtocol,
+            DisconnectReason.MessageLimitsBreached => EthDisconnectReason.BreachOfProtocol,
             DisconnectReason.UselessPeer => EthDisconnectReason.UselessPeer,
             DisconnectReason.AlreadyConnected => EthDisconnectReason.AlreadyConnected,
             DisconnectReason.NullNodeIdentityReceived => EthDisconnectReason.NullNodeIdentityReceived,

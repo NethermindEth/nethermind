@@ -56,9 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    ReportIn(getReceiptsMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
+                    HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -66,9 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     Handle(receiptsMessage, size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    ReportIn(getNodeDataMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
+                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -98,13 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            if (msg.Hashes.Count > 4096)
-            {
-                throw new EthSyncException("Incoming node data request for more than 4096 nodes");
-            }
-
             IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
-
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
@@ -122,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
-            // could use more array pooled lists (pooled memmory) here.
+            // could use more array pooled lists (pooled memory) here.
             // maybe remeasure allocations on another network since goerli has been phased out.
             return SendRequest(msg, token);
         }
@@ -143,7 +133,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending node fata request:");
+                Logger.Trace("Sending node data request:");
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
@@ -159,7 +149,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending node fata request:");
+                Logger.Trace("Sending receipts request:");
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,8 +14,8 @@ using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -441,22 +442,402 @@ public class StorageProviderTests
         provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
     }
 
+    [Test]
+    public void Selfdestruct_works_across_blocks()
+    {
+        Context ctx = new(setInitialState: false, trackWrittenData: true);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        Hash256 originalStateRoot = baseBlock.StateRoot;
+
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 101), [10]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().NotBe(originalStateRoot);
+
+        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().Be(originalStateRoot);
+
+        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+    }
+
+    [Test]
+    public void Selfdestruct_works_even_when_its_the_only_call()
+    {
+        Context ctx = new(setInitialState: false, trackWrittenData: true);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        ctx.WrittenData.SelfDestructed[TestItem.AddressA].Should().BeTrue();
+        ctx.WrittenData.Clear();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Get(new StorageCell(TestItem.AddressA, 100)).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_in_the_same_transaction()
+    {
+        Context ctx = new(setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        baseBlock.StateRoot.Should().Be(Keccak.EmptyTreeHash);
+    }
+
+    [Test]
+    public void Selfdestruct_before_commit_will_mark_contract_as_empty()
+    {
+        Context ctx = new(setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.ClearStorage(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_persist_between_commit()
+    {
+        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        Context ctx = new(preBlockCaches);
+        StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
+        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
+        provider.ClearStorage(TestItem.AddressA);
+        provider.Commit(Paris.Instance);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [TestCase(2)]
+    [TestCase(1000)]
+    public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
+    {
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        for (int i = 0; i < numItems; i++)
+        {
+            UInt256 asUInt256 = (UInt256)(i + 1);
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), asUInt256.ToBigEndian());
+        }
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        var fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        for (int i = 0; i < numItems; i++)
+        {
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), [0]);
+        }
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        var clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
+    [Test]
+    public void Set_empty_value_for_storage_cell_with_read_clears_data()
+    {
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), _values[11]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), _values[12]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        var fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        worldState.Get(new StorageCell(TestItem.AddressA, 1));
+        worldState.Get(new StorageCell(TestItem.AddressA, 2));
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [0]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), [0]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        var clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
     private class Context
     {
         public WorldState StateProvider { get; }
+        internal WrittenData WrittenData = null;
 
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
 
-        public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true)
+        public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false)
         {
-            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(
+                TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                new MemDb(), LimboLogs.Instance);
+
+            if (preBlockCaches is not null)
+            {
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+            }
+
+            if (trackWrittenData)
+            {
+                WrittenData = new WrittenData(
+                    new ConcurrentDictionary<Address, Account>(),
+                    new ConcurrentDictionary<StorageCell, byte[]>(),
+                    new ConcurrentDictionary<Address, bool>()
+                );
+                scopeProvider = new WritesInterceptor(scopeProvider, WrittenData);
+            }
+
+            StateProvider = new WorldState(scopeProvider, LogManager);
             if (setInitialState)
             {
                 StateProvider.BeginScope(IWorldState.PreGenesis);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
+            }
+        }
+    }
+
+    internal record WrittenData(
+        ConcurrentDictionary<Address, Account> Accounts,
+        ConcurrentDictionary<StorageCell, byte[]> Slots,
+        ConcurrentDictionary<Address, bool> SelfDestructed)
+    {
+        public void Clear()
+        {
+            Accounts.Clear();
+            Slots.Clear();
+            SelfDestructed.Clear();
+        }
+    }
+
+    private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
+    {
+
+        public bool HasRoot(BlockHeader baseBlock)
+        {
+            return scopeProvider.HasRoot(baseBlock);
+        }
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock)
+        {
+            return new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
+        }
+
+        private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
+        {
+            public void Dispose()
+            {
+                baseScope.Dispose();
+            }
+
+            public Hash256 RootHash => baseScope.RootHash;
+
+            public void UpdateRootHash()
+            {
+                baseScope.UpdateRootHash();
+            }
+
+            public Account Get(Address address)
+            {
+                return baseScope.Get(address);
+            }
+
+            public void HintGet(Address address, Account account)
+            {
+                baseScope.HintGet(address, account);
+            }
+
+            public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+            {
+                return baseScope.CreateStorageTree(address);
+            }
+
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
+            {
+                return new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
+            }
+
+            public void Commit(long blockNumber)
+            {
+                baseScope.Commit(blockNumber);
+            }
+        }
+
+        private class WriteBatchDecorator(
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+            WrittenData writtenData
+        )
+            : IWorldStateScopeProvider.IWorldStateWriteBatch
+        {
+            public void Dispose()
+            {
+                writeBatch.Dispose();
+            }
+
+            public event EventHandler<IWorldStateScopeProvider.AccountUpdated> OnAccountUpdated
+            {
+                add => writeBatch.OnAccountUpdated += value;
+                remove => writeBatch.OnAccountUpdated -= value;
+            }
+
+            public void Set(Address key, Account account)
+            {
+                writeBatch.Set(key, account);
+            }
+
+            public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+            {
+                return new StorageWriteBatchDecorator(writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, writtenData);
+
+            }
+        }
+
+        private class StorageWriteBatchDecorator(
+            IWorldStateScopeProvider.IStorageWriteBatch baseStorageBatch,
+            Address address,
+            WrittenData writtenData
+        ) : IWorldStateScopeProvider.IStorageWriteBatch
+        {
+            public void Dispose()
+            {
+                baseStorageBatch?.Dispose();
+            }
+
+            public void Set(in UInt256 index, byte[] value)
+            {
+                baseStorageBatch.Set(in index, value);
+                writtenData.Slots[new StorageCell(address, index)] = value;
+            }
+
+            public void Clear()
+            {
+                baseStorageBatch.Clear();
+                writtenData.SelfDestructed[address] = true;
             }
         }
     }

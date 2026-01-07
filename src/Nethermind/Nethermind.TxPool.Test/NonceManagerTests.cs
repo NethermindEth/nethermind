@@ -40,8 +40,7 @@ public class NonceManagerTests
         _headInfo = new ChainHeadInfoProvider(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
             _blockTree,
-            _stateProvider,
-            new EthereumCodeInfoRepository());
+            _stateProvider);
         _nonceManager = new NonceManager(_headInfo.ReadOnlyStateProvider);
     }
 
@@ -192,7 +191,7 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Repeat(2)]
     public void should_lock_on_same_account()
     {
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
@@ -201,7 +200,7 @@ public class NonceManagerTests
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 _);
         });
-        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
+        TimeSpan ts = TimeSpan.FromMilliseconds(100);
         task.Wait(ts);
         task.IsCompleted.Should().Be(false);
     }

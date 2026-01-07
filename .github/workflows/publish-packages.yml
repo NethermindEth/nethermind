@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !github.event.release.prerelease }}
     steps:
-      - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
       - name: Set up GPG
@@ -34,16 +34,16 @@ jobs:
         run: |
           version=${{ github.event.release.tag_name }}
           json=$(curl -sL ${{ github.event.release.assets_url }})
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-arm64"))')
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-x64"))')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | sha256sum | awk '{print $1}')
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url='$arm64_url'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
           awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
 
-          changelog="nethermind ($version) focal; urgency=high\n"
+          changelog="nethermind ($version) jammy; urgency=high\n"
           changelog+="  * Nethermind v$version\n"
           changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
           echo -e "$changelog" > debian/changelog
@@ -67,7 +67,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
       - name: Install launchpadlib
         run: pip install launchpadlib --upgrade
       - name: Copy to other series
@@ -77,8 +77,8 @@ jobs:
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "jammy" "noble"; do
-            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s focal --to-suite=$release nethermind
+          for release in "noble"; do
+            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
           done
           rm -f /tmp/lp_credentials
 
@@ -92,7 +92,7 @@ jobs:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
-          $releaseUrl = $releaseInfo | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
+          $releaseUrl = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
           ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl
 
@@ -103,16 +103,16 @@ jobs:
     env:
       FORMULA: nethermind.rb
     steps:
-      - name: Authenticate App
+      - name: Create GitHub app token
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "homebrew-nethermind"
+          repositories: homebrew-nethermind
 
       - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: NethermindEth/homebrew-nethermind
           token: ${{ steps.gh-app.outputs.token }}
@@ -120,15 +120,16 @@ jobs:
       - name: Update formula file
         run: |
           json=$(curl -sL ${{ github.event.release.assets_url }})
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-x64"))')
-          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-arm64"))')
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-x64.zip"))')
+          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
           sed -i "s/version .*/version \"${{ github.event.release.tag_name }}\"/" $FORMULA
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$x64_hash'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$arm64_hash'\""); } 1' $FORMULA
+
       - name: Submit package
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
@@ -142,3 +143,47 @@ jobs:
           git commit -am "$message"
           git push origin $head_branch
           gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v${{ github.event.release.tag_name }}"
+
+  publish-nuget:
+    name: Publish Nethermind.ReferenceAssemblies
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download Nethermind reference assemblies
+        id: download
+        run: |
+          json=$(curl -s ${{ github.event.release.assets_url }})
+          asset=$(echo "$json" | jq -r '.[] | select(.name | contains("ref-assemblies"))')
+          name=$(echo "$asset" | jq -r '.name')
+          url=$(echo "$asset" | jq -r '.browser_download_url')
+          curl -sL $url -o refasm.zip
+          unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
+          echo "asset-name=$name" >> $GITHUB_OUTPUT
+
+      - name: Submit package
+        working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet pack -c release
+          dotnet nuget push ../artifacts/**/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json
+
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Delete asset from release
+        env:
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: gh release delete-asset ${{ github.event.release.tag_name }} ${{ steps.download.outputs.asset-name }} -y

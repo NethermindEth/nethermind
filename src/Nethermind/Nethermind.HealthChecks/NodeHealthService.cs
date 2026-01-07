@@ -24,19 +24,19 @@ namespace Nethermind.HealthChecks
         public IEnumerable<string> Errors { get; set; }
     }
 
-    public class NodeHealthService : INodeHealthService
+    public class NodeHealthService(
+        ISyncServer syncServer,
+        IBlockchainProcessor blockchainProcessor,
+        IBlockProducerRunner blockProducerRunner,
+        IHealthChecksConfig healthChecksConfig,
+        IHealthHintService healthHintService,
+        IEthSyncingInfo ethSyncingInfo,
+        IClHealthTracker clHealthTracker,
+        UInt256? terminalTotalDifficulty,
+        IDriveInfo[] drives,
+        bool isMining)
+        : INodeHealthService
     {
-        private readonly ISyncServer _syncServer;
-        private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IBlockProducerRunner _blockProducerRunner;
-        private readonly IHealthChecksConfig _healthChecksConfig;
-        private readonly IHealthHintService _healthHintService;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly IClHealthTracker _clHealthTracker;
-        private readonly UInt256? _terminalTotalDifficulty;
-        private readonly IDriveInfo[] _drives;
-        private readonly bool _isMining;
-
         public NodeHealthService(
             ISyncServer syncServer,
             IMainProcessingContext mainProcessingContext,
@@ -47,7 +47,7 @@ namespace Nethermind.HealthChecks
             IClHealthTracker clHealthTracker,
             ISpecProvider specProvider,
             [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
-            IInitConfig initConfig) : this(
+            IMiningConfig miningConfig) : this(
             syncServer,
             mainProcessingContext.BlockchainProcessor,
             blockProducerRunner,
@@ -57,31 +57,8 @@ namespace Nethermind.HealthChecks
             clHealthTracker,
             specProvider.TerminalTotalDifficulty,
             drives,
-            initConfig.IsMining)
+            miningConfig.Enabled)
         {
-        }
-
-        public NodeHealthService(ISyncServer syncServer,
-            IBlockchainProcessor blockchainProcessor,
-            IBlockProducerRunner blockProducerRunner,
-            IHealthChecksConfig healthChecksConfig,
-            IHealthHintService healthHintService,
-            IEthSyncingInfo ethSyncingInfo,
-            IClHealthTracker clHealthTracker,
-            UInt256? terminalTotalDifficulty,
-            IDriveInfo[] drives,
-            bool isMining)
-        {
-            _syncServer = syncServer;
-            _isMining = isMining;
-            _healthChecksConfig = healthChecksConfig;
-            _healthHintService = healthHintService;
-            _blockchainProcessor = blockchainProcessor;
-            _blockProducerRunner = blockProducerRunner;
-            _ethSyncingInfo = ethSyncingInfo;
-            _clHealthTracker = clHealthTracker;
-            _terminalTotalDifficulty = terminalTotalDifficulty;
-            _drives = drives;
         }
 
         public CheckHealthResult CheckHealth()
@@ -89,10 +66,10 @@ namespace Nethermind.HealthChecks
             List<(string Message, string LongMessage)> messages = new();
             List<string> errors = new();
             bool healthy = false;
-            long netPeerCount = _syncServer.GetPeerCount();
-            SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
+            long netPeerCount = syncServer.GetPeerCount();
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
-            if (_terminalTotalDifficulty is not null)
+            if (terminalTotalDifficulty is not null)
             {
                 bool syncHealthy = CheckSyncPostMerge(messages, errors, syncingResult);
 
@@ -109,24 +86,24 @@ namespace Nethermind.HealthChecks
             }
             else
             {
-                if (!_isMining && syncingResult.IsSyncing)
+                if (!isMining && syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
                     CheckPeers(messages, errors, netPeerCount);
                 }
-                else if (!_isMining && !syncingResult.IsSyncing)
+                else if (!isMining && !syncingResult.IsSyncing)
                 {
                     AddFullySyncMessage(messages);
                     bool peers = CheckPeers(messages, errors, netPeerCount);
                     bool processing = IsProcessingBlocks(messages, errors);
                     healthy = peers && processing;
                 }
-                else if (_isMining && syncingResult.IsSyncing)
+                else if (isMining && syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
                     healthy = CheckPeers(messages, errors, netPeerCount);
                 }
-                else if (_isMining && !syncingResult.IsSyncing)
+                else if (isMining && !syncingResult.IsSyncing)
                 {
                     AddFullySyncMessage(messages);
                     bool peers = CheckPeers(messages, errors, netPeerCount);
@@ -137,11 +114,11 @@ namespace Nethermind.HealthChecks
             }
 
             bool isLowDiskSpaceErrorAdded = false;
-            for (int index = 0; index < _drives.Length; index++)
+            for (int index = 0; index < drives.Length; index++)
             {
-                IDriveInfo drive = _drives[index];
+                IDriveInfo drive = drives[index];
                 double freeSpacePercentage = drive.GetFreeSpacePercentage();
-                if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                if (freeSpacePercentage < healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
                     AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
                     if (!isLowDiskSpaceErrorAdded)
@@ -156,18 +133,18 @@ namespace Nethermind.HealthChecks
             return new CheckHealthResult() { Healthy = healthy, Errors = errors, Messages = messages, IsSyncing = syncingResult.IsSyncing };
         }
 
-        public bool CheckClAlive() => _clHealthTracker?.CheckClAlive() ?? true;
+        public bool CheckClAlive() => clHealthTracker?.CheckClAlive() ?? true;
 
         private ulong? GetBlockProcessorIntervalHint()
         {
-            return _healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
-                   _healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
+            return healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
+                   healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
         }
 
         private ulong? GetBlockProducerIntervalHint()
         {
-            return _healthChecksConfig.MaxIntervalWithoutProducedBlock ??
-                   _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
+            return healthChecksConfig.MaxIntervalWithoutProducedBlock ??
+                   healthHintService.MaxSecondsIntervalForProducingBlocksHint();
         }
 
         private static bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
@@ -223,7 +200,7 @@ namespace Nethermind.HealthChecks
         private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProducerIntervalHint();
-            bool producingBlocks = _blockProducerRunner.IsProducingBlocks(maxIntervalHint);
+            bool producingBlocks = blockProducerRunner.IsProducingBlocks(maxIntervalHint);
             if (producingBlocks == false)
             {
                 errors.Add(ErrorStrings.NotProducingBlocks);
@@ -236,7 +213,7 @@ namespace Nethermind.HealthChecks
         private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
-            bool processingBlocks = _blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
+            bool processingBlocks = blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
             if (processingBlocks == false)
             {
                 errors.Add(ErrorStrings.NotProcessingBlocks);

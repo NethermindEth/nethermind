@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test
     public class AuRaPluginTests
     {
         [Test]
-        public void Init_when_not_AuRa_doesnt_trow()
+        public void Init_when_not_AuRa_does_not_throw()
         {
             ChainSpec chainSpec = new();
             AuRaPlugin auRaPlugin = new(chainSpec);
@@ -45,6 +45,20 @@ namespace Nethermind.AuRa.Test
             AuRaNethermindApi api = new AuRaNethermindApi(apiDependencies);
             Action init = () => auRaPlugin.Init(api);
             init.Should().NotThrow();
+        }
+
+        [Test]
+        public void DecorateReleaseSpecWithAuraReleaseSpec()
+        {
+            ChainSpec chainSpec = new();
+            chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddModule(new AuRaModule(chainSpec))
+                .Build();
+
+            container.Resolve<ISpecProvider>().GetSpec(Build.A.BlockHeader.WithNumber(10).TestObject)
+                .Should().BeOfType<AuRaReleaseSpecDecorator>();
         }
 
     }

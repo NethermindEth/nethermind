@@ -117,10 +117,14 @@ namespace Nethermind.Hive
                 try
                 {
                     Block block = DecodeBlock(file);
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block, parent);
+
+                    if (parent is null && block.Number is 1)
+                    {
+                        parent = blockTree.Genesis;
+                    }
+
+                    if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
+                    await ProcessBlock(block, parent!);
                     parent = block.Header;
                 }
                 catch (RlpException e)
@@ -158,7 +162,13 @@ namespace Nethermind.Hive
                 Block block = blocks[i];
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
-                await ProcessBlock(block, parent);
+
+                if (parent is null && block.Number is 1)
+                {
+                    parent = blockTree.Genesis;
+                }
+
+                await ProcessBlock(block, parent!);
                 parent = block.Header;
             }
         }
@@ -179,16 +189,16 @@ namespace Nethermind.Hive
             }
         }
 
-        private async Task ProcessBlock(Block block, BlockHeader? parent)
+        private async Task ProcessBlock(Block block, BlockHeader parent)
         {
             try
             {
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
-                if (!blockValidator.ValidateSuggestedBlock(block, parent, out _))
+                if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? err))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
+                    if (_logger.IsInfo) _logger.Info($"Invalid block {block}. Error: {err}");
                     return;
                 }
 

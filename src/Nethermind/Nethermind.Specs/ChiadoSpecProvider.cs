@@ -14,7 +14,8 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestampConst = 0x6343ee4c;
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
     public const ulong CancunTimestamp = 0x65ba8e4c;
-    public const ulong PragueTimestamp = 0x67C96E4C;
+    public const ulong PragueTimestamp = 0x67c96e4c;
+    public const ulong OsakaTimestamp = ulong.MaxValue - 1;
 
     public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
 
@@ -27,7 +28,8 @@ public class ChiadoSpecProvider : ISpecProvider
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => ShanghaiGnosis.Instance,
             < PragueTimestamp => CancunGnosis.Instance,
-            _ => PragueGnosis.Instance
+            < OsakaTimestamp => PragueGnosis.Instance,
+            _ => OsakaGnosis.Instance
         }
     };
 
@@ -42,7 +44,9 @@ public class ChiadoSpecProvider : ISpecProvider
 
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
+
+    // 231707791542740786049188744689299064356246512
+    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(18446744073375486960ul, 18446744073709551615ul, 680927ul);
     public IReleaseSpec GenesisSpec => London.Instance;
     public long? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;

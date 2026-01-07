@@ -100,6 +100,33 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_EmptySlotsList_ReturnsEmptySlots()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        StorageRange storage = new StorageRange()
+        {
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+        };
+
+        // Test with empty slots list
+        List<PathWithStorageSlot> emptySlots = [];
+
+        snapProvider.AddStorageRangeForAccount(
+            storage,
+            0,
+            emptySlots,
+            null).Should().Be(AddRangeResult.EmptySlots);
+
+        progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+    }
+
+    [Test]
     public void AddAccountRange_SetStartRange_ToAfterLastPath()
     {
         (Hash256, Account)[] entries =

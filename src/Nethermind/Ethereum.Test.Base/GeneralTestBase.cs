@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using Autofac;
-using Nethermind.Api;
-using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,17 +11,20 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Ethereum.Test.Base
 {
@@ -87,10 +86,20 @@ namespace Ethereum.Test.Base
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
-            using var _ = stateProvider.BeginScope(null);
+            using IDisposable _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
             InitializeTestState(test.Pre, stateProvider, specProvider);
+
+            // Legacy tests expect coinbase to be created BEFORE transaction execution
+            // (old buggy behavior that was baked into expected state roots).
+            // Modern tests correctly create coinbase only after successful tx.
+            if (test.IsLegacy && test.CurrentCoinbase is not null)
+            {
+                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+                stateProvider.RecalculateStateRoot();
+            }
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -100,17 +109,19 @@ namespace Ethereum.Test.Base
                 test.CurrentNumber,
                 test.CurrentGasLimit,
                 test.CurrentTimestamp,
-                []);
-            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
-            header.StateRoot = test.PostHash;
+                [])
+            {
+                BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero,
+                StateRoot = test.PostHash,
+                IsPostMerge = test.CurrentRandom is not null,
+                MixHash = test.CurrentRandom,
+                WithdrawalsRoot = test.CurrentWithdrawalsRoot,
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
+                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
+                BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
+                RequestsHash = test.RequestsHash
+            };
             header.Hash = header.CalculateHash();
-            header.IsPostMerge = test.CurrentRandom is not null;
-            header.MixHash = test.CurrentRandom;
-            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
-            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
-            header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
-            header.RequestsHash = test.RequestsHash;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -148,37 +159,48 @@ namespace Ethereum.Test.Base
             }
 
             stopwatch.Stop();
+
             if (txResult is not null && txResult.Value == TransactionResult.Ok)
             {
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.CommitTree(1);
 
-                // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
-                if (!stateProvider.AccountExists(test.CurrentCoinbase))
+                // '@winsvega added a 0-wei reward to the miner, so we had to add that into the state test execution phase. He needed it for retesteth.'
+                // This must only happen after successful transaction execution, not when tx fails validation.
+                // For legacy tests, coinbase was already created before tx execution.
+                if (!test.IsLegacy)
                 {
-                    stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
                 }
-
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-
                 stateProvider.RecalculateStateRoot();
             }
             else
             {
-                stateProvider.Reset();
+                // For legacy tests with failed tx, we need to recalculate root since coinbase was created
+                if (test.IsLegacy)
+                {
+                    stateProvider.CommitTree(0);
+                    stateProvider.RecalculateStateRoot();
+                }
+                else
+                {
+                    stateProvider.Reset();
+                }
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
-            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
-            testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
-            testResult.StateRoot = stateProvider.StateRoot;
+            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
+            {
+                TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
+                StateRoot = stateProvider.StateRoot
+            };
 
             if (differences.Count > 0)
             {
                 _logger.Info($"\nDifferences from expected\n{string.Join("\n", differences)}");
             }
 
-            //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 

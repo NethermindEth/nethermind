@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class AccountDecoder : IRlpObjectDecoder<Account?>, IRlpStreamDecoder<Account?>, IRlpValueDecoder<Account?>
+    public sealed class AccountDecoder : RlpValueDecoder<Account?>, IRlpObjectDecoder<Account?>
     {
         private readonly bool _slimFormat;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        public Account? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Account? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = rlpStream.ReadSequenceLength();
             if (length == 1)
@@ -74,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        public void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -144,7 +144,7 @@ namespace Nethermind.Serialization.Rlp
             return length;
         }
 
-        public int GetLength(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -234,7 +234,7 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public Account? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Account? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)

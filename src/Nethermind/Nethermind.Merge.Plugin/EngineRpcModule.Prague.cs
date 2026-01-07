@@ -16,7 +16,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
 
     /// <summary>
-    /// Method parameter list is extended with <see cref="ExecutionRequets"/> parameter.
+    /// Method parameter list is extended with <see cref="ExecutionRequests"/> parameter.
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)

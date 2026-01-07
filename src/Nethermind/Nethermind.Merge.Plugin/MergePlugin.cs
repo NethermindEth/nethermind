@@ -15,13 +15,13 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -41,6 +41,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -215,9 +216,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
             _api.FinalizationManager = InitializeMergeFinilizationManager();
 
-            // Need to do it here because blockprocessor is not available in init
-            _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
-
             if (_poSSwitcher.TransitionFinished)
             {
                 AddEth69();
@@ -242,8 +240,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
 
@@ -290,6 +286,11 @@ public class BaseMergePluginModule : Module
                 .Bind<IPivot, IBeaconPivot>()
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
+            .OnActivate<IMainProcessingContext>(((context, ctx) =>
+            {
+                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
+            }))
+
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
@@ -306,6 +307,8 @@ public class BaseMergePluginModule : Module
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
+
+            .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
 
             .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 
@@ -327,7 +330,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
-                .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>
@@ -339,6 +342,7 @@ public class BaseMergePluginModule : Module
                             : NoGCStrategy.Instance,
                         ctx.Resolve<ILogManager>());
                 })
+                .AddSingleton<IHttpClient, DefaultHttpClient>()
             ;
     }
 
@@ -354,11 +358,8 @@ public class BaseMergePluginModule : Module
             return new BlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
         }
 
-        ILogManager logManager = ctx.Resolve<ILogManager>();
         IStateReader stateReader = ctx.Resolve<IStateReader>();
-        IJsonSerializer jsonSerializer = ctx.Resolve<IJsonSerializer>();
-
-        DefaultHttpClient httpClient = new(new HttpClient(), jsonSerializer, logManager, retryDelayMilliseconds: 100);
+        IHttpClient httpClient = ctx.Resolve<IHttpClient>();
         IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
         return new BoostBlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, stateReader);
     }

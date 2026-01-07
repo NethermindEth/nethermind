@@ -27,12 +27,11 @@ namespace Nethermind.Consensus.Producers
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
         public IBlockProducerEnv Create()
         {
-            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
             ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
                 ConfigureBuilder(builder)
                     .AddScoped(worldState));

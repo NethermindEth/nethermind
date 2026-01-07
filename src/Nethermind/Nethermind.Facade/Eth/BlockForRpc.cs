@@ -18,14 +18,13 @@ namespace Nethermind.Facade.Eth;
 public class BlockForRpc
 {
     private static readonly BlockDecoder _blockDecoder = new();
-    private readonly bool _isAuRaBlock;
 
     public BlockForRpc() { }
 
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
     {
-        _isAuRaBlock = block.Header.AuRaSignature is not null;
+        bool isAuRaBlock = block.Header.AuRaSignature is not null;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -33,7 +32,7 @@ public class BlockForRpc
         Hash = block.Hash;
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
-        if (!_isAuRaBlock)
+        if (!isAuRaBlock)
         {
             MixHash = block.MixHash;
             Nonce = new byte[8];
@@ -64,6 +63,12 @@ public class BlockForRpc
             {
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
+
+            // Set TD only if network is not merged
+            if (specProvider.MergeBlockNumber is null)
+            {
+                TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+            }
         }
 
         Number = block.Number;
@@ -73,7 +78,7 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
@@ -100,30 +105,23 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
     public Address Miner { get; set; }
-    public Hash256 MixHash { get; set; }
-
-    public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
+    public Hash256? MixHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[] Nonce { get; set; }
-
-    public bool ShouldSerializeNonce() => !_isAuRaBlock;
+    public byte[]? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
     public Hash256 ParentHash { get; set; }
     public Hash256 ReceiptsRoot { get; set; }
     public Hash256 Sha3Uncles { get; set; }
-    public byte[] Signature { get; set; }
-    public bool ShouldSerializeSignature() => _isAuRaBlock;
+    public byte[]? Signature { get; set; }
     public long Size { get; set; }
     public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
-
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? TotalDifficulty { get; set; }
-    public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }

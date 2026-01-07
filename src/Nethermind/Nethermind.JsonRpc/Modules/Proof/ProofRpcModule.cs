@@ -61,14 +61,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             {
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
-                Author = Address.SystemUser
+                Author = Address.Zero
             };
 
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
             Transaction transaction = tx.ToTransaction();
-            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.SenderAddress ??= Address.Zero;
 
             if (transaction.GasLimit == 0)
             {
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = new(callHeader, new[] { transaction }, []);
 
-            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.SystemUser);
+            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.Zero);
             scope.Component.Trace(block, proofBlockTracer);
 
             CallResultWithProof callResultWithProof = new();
@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             // we collect proofs from before execution (after learning which addresses will be touched)
             // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
-            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader.StateRoot, proofTxTracer);
+            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader, proofTxTracer);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
@@ -153,7 +153,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
 
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, block.Timestamp, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
 
@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(ITracer tracer, Hash256 stateRoot, ProofTxTracer proofTxTracer)
+        private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new();
             foreach (Address address in proofTxTracer.Accounts)
@@ -174,7 +174,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .Where(s => s.Address == address)
                     .Select(s => s.Index).ToArray());
 
-                tracer.Accept(collector, stateRoot);
+                tracer.Accept(collector, baseBlock);
                 accountProofs.Add(collector.BuildResult());
             }
 

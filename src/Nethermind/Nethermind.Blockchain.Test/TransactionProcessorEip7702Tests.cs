@@ -40,12 +40,11 @@ internal class TransactionProcessorEip7702Tests
     public void Setup()
     {
         _specProvider = new TestSpecProvider(Prague.Instance);
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        _stateProvider = worldStateManager.GlobalWorldState;
+        _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        EthereumCodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -458,7 +457,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
-        //Increment 1 everytime it's called
+        // Increment by 1 every time it's called
         byte[] code = Prepare.EvmCode
             .Op(Instruction.PUSH0)
             .Op(Instruction.SLOAD)
@@ -579,7 +578,7 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> EXTCODEHASHAccountSetup()
     {
-        yield return new object[] { static (IWorldState state, Address accountt) =>
+        yield return new object[] { static (IWorldState state, Address account) =>
             {
                 //Account does not exists
             },
@@ -784,7 +783,7 @@ internal class TransactionProcessorEip7702Tests
         };
     }
     [TestCaseSource(nameof(AccountAccessGasCases))]
-    public void Execute_DiffentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
+    public void Execute_DifferentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;

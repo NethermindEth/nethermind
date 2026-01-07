@@ -34,6 +34,7 @@ using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test;
@@ -43,10 +44,9 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
+        BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -57,11 +57,12 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new BranchProcessor(
+        BranchProcessor branchProcessor = new(
             processor,
-            HoleskySpecProvider.Instance,
+            HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -78,11 +79,10 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Recovers_state_on_cancel()
     {
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new BlockProcessor(
-            HoleskySpecProvider.Instance,
+        BlockProcessor processor = new(
+            HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -93,11 +93,12 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
-        BranchProcessor branchProcessor = new BranchProcessor(
+        BranchProcessor branchProcessor = new(
             processor,
-            HoleskySpecProvider.Instance,
+            HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
@@ -129,7 +130,7 @@ public class BlockProcessorTests
     public async Task Process_long_running_branch(int blocksAmount)
     {
         Address address = TestItem.Addresses[0];
-        TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
+        TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());

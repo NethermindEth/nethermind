@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -26,15 +25,9 @@ namespace Nethermind.Consensus.Processing
             IReleaseSpec spec,
             CancellationToken token = default);
 
-        /// <summary>
-        /// Fired after a transaction has been processed (even if inside the block).
-        /// </summary>
-        event EventHandler<TxProcessedEventArgs> TransactionProcessed;
-
         public interface IBlockTransactionsExecutor
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
-            event EventHandler<TxProcessedEventArgs> TransactionProcessed;
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         }
     }

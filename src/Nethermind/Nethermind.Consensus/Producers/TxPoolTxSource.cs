@@ -51,17 +51,19 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent, spec);
+            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
 
+            int maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
-            IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
+            IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, maxBlobCount);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)spec.MaxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs);
+            using ArrayPoolList<Transaction> selectedBlobTxs = new(maxBlobCount);
+
+            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount);
 
             foreach (Transaction tx in transactions)
             {
@@ -103,20 +105,31 @@ namespace Nethermind.Consensus.Producers
 
             bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
             {
-                if (TryGetFullBlobTx(blobTx, out fullBlobTx))
+                if (!TryGetFullBlobTx(blobTx, out fullBlobTx))
                 {
-                    ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
-                    if (spec.BlobProofVersion != proofVersion)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
-                        return false;
-                    }
-
-                    return true;
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                    return false;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                return false;
+                if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
+                    return false;
+                }
+
+                if (spec.BlobProofVersion != wrapper.Version)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
+                    return false;
+                }
+
+                if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                    return false;
+                }
+
+                return true;
             }
         }
 
@@ -137,10 +150,9 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<(Transaction tx, long blobChain)> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<(Transaction tx, long blobChain)> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs, int maxBlobs)
         {
-            int maxBlobsPerBlock = (int)spec.MaxBlobCount;
-            int maxBlobsToConsider = maxBlobsPerBlock * 5;
+            int maxBlobsToConsider = maxBlobs * 5;
             int countOfRemainingBlobs = 0;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
@@ -153,7 +165,7 @@ namespace Nethermind.Consensus.Producers
             foreach ((Transaction blobTx, long blobChain) in blobTransactions)
             {
                 int txBlobCount = blobTx.GetBlobCount();
-                if (txBlobCount > maxBlobsPerBlock)
+                if (txBlobCount > maxBlobs)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
@@ -168,7 +180,7 @@ namespace Nethermind.Consensus.Producers
                 if (txBlobCount == 1 && candidates is null)
                 {
                     selectedBlobTxs.Add(blobTx);
-                    if (selectedBlobTxs.Count == maxBlobsPerBlock)
+                    if (selectedBlobTxs.Count == maxBlobs)
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees
                         // No need to consider other tx.
@@ -196,7 +208,7 @@ namespace Nethermind.Consensus.Producers
             using (candidates)
             {
                 // We have leftover candidates. Check how many blob slots remain.
-                int leftoverCapacity = maxBlobsPerBlock - selectedBlobTxs.Count;
+                int leftoverCapacity = maxBlobs - selectedBlobTxs.Count;
                 if (countOfRemainingBlobs <= leftoverCapacity)
                 {
                     // We can take all, no optimal picking needed.
@@ -234,7 +246,7 @@ namespace Nethermind.Consensus.Producers
         {
             int maxCapacity = leftoverCapacity + 1;
             // The maximum total fee achievable with capacity
-            using ArrayPoolList<ulong> dpFeesPooled = new(capacity: maxCapacity, count: maxCapacity);
+            using ArrayPoolListRef<ulong> dpFeesPooled = new(maxCapacity, maxCapacity);
             Span<ulong> dpFees = dpFeesPooled.AsSpan();
 
             using ArrayPoolBitMap isChosen = new(candidateTxs.Count * maxCapacity);

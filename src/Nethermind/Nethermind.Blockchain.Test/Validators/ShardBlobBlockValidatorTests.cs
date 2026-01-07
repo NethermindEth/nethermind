@@ -24,13 +24,14 @@ public class ShardBlobBlockValidatorTests
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
         BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        return blockValidator.ValidateSuggestedBlock(Build.A.Block
-            .WithBlobGasUsed(blobGasUsed)
-            .WithExcessBlobGas(excessBlobGas)
-            .WithWithdrawalsRoot(TestItem.KeccakA)
-            .WithWithdrawals(TestItem.WithdrawalA_1Eth)
-            .WithParent(parent)
-            .TestObject,
+        return blockValidator.ValidateSuggestedBlock(
+            Build.A.Block
+                .WithBlobGasUsed(blobGasUsed)
+                .WithExcessBlobGas(excessBlobGas)
+                .WithWithdrawalsRoot(TestItem.KeccakA)
+                .WithWithdrawals(TestItem.WithdrawalA_1Eth)
+                .WithParent(parent)
+                .TestObject,
             parent,
             out _);
     }

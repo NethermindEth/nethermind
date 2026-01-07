@@ -52,7 +52,7 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
 
         if (requestSize > 128)
         {
@@ -75,7 +75,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2([]);
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
@@ -99,14 +99,14 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
         result.Data.Should().NotBeNull();
-        result.Data!.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data!.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
-        result.Data!.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+        result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
+        result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
     }
 
     [Test]
@@ -127,7 +127,7 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeNull();
@@ -162,7 +162,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
         if (multiplier > 1)
         {
             result.Result.Should().Be(Result.Success);
@@ -173,9 +173,77 @@ public partial class EngineModuleTests
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
             result.Data.Should().NotBeNull();
-            result.Data!.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-            result.Data!.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
-            result.Data!.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+            result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+            result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
+            result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
         }
+    }
+
+    [Test]
+    public async Task GetBlobsV3_should_return_partial_results_with_nulls_for_missing_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs, [Values(1, 2)] int multiplier)
+    {
+        int requestSize = multiplier * numberOfBlobs;
+
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithMaxFeePerBlobGas(1000.Wei())
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+
+        int actualIndex = 0;
+        for (int i = 0; i < requestSize; i++)
+        {
+            bool addActualHash = i % multiplier == 0;
+            blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
+        }
+
+        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
+
+        result.Result.Should().Be(Result.Success);
+        result.Data.Should().NotBeNull();
+        result.Data!.Should().HaveCount(requestSize);
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+
+        // V3 returns partial results with nulls for missing blobs
+        int foundIndex = 0;
+        for (int i = 0; i < requestSize; i++)
+        {
+            bool shouldBeFound = i % multiplier == 0;
+            if (shouldBeFound)
+            {
+                result.Data!.ElementAt(i).Should().NotBeNull();
+                result.Data!.ElementAt(i)!.Blob.Should().BeEquivalentTo(wrapper.Blobs[foundIndex]);
+                result.Data!.ElementAt(i)!.Proofs.Should().BeEquivalentTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128));
+                foundIndex++;
+            }
+            else
+            {
+                result.Data!.ElementAt(i).Should().BeNull();
+            }
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV1_should_return_invalid_fork_post_osaka()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
+
+        result.Result.Should().BeEquivalentTo(Result.Fail(MergeErrorMessages.UnsupportedFork));
+        result.ErrorCode.Should().Be(MergeErrorCodes.UnsupportedFork);
     }
 }

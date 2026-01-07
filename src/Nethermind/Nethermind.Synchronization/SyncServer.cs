@@ -124,6 +124,8 @@ namespace Nethermind.Synchronization
             }
         }
 
+        public long LowestBlock => Math.Min(Head?.Number ?? 0, _blockTree.GetLowestBlock());
+
         public int GetPeerCount() => _pool.PeerCount;
 
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
@@ -556,6 +558,7 @@ namespace Nethermind.Synchronization
         private void StopNotifyingPeersAboutBlockRangeUpdates()
         {
             _blockTree.NewHeadBlock -= OnNewRange;
+            _historyPruner.NewOldestBlock -= OnNewRange;
         }
 
         public void Dispose()

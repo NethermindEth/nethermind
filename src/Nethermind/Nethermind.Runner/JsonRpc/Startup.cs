@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
@@ -326,8 +327,10 @@ public class Startup : IStartup
 
         if (healthChecksConfig.Enabled)
         {
-            app.UseDefaultFiles();
-            app.UseStaticFiles();
+            var fileProvider = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot");
+
+            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+            app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
         }
     }
 

@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
 
 
     int? MaxOpenFiles { get; set; }
+    bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
     string RocksDbOptions { get; set; }

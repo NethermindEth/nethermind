@@ -30,23 +30,17 @@ namespace Nethermind.Network.Rlpx
 
             bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
             bool isFirst = totalPacketSize.HasValue || !isChunked;
+
+            headerBodyItems.Check(headerDataEnd);
             return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
 
-        internal readonly struct FrameInfo
+        internal readonly struct FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
         {
-            public FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
-            {
-                IsChunked = isChunked;
-                IsFirst = isFirst;
-                Size = size;
-                TotalPacketSize = totalPacketSize;
-            }
-
-            public bool IsChunked { get; }
-            public bool IsFirst { get; }
-            public int Size { get; }
-            public int TotalPacketSize { get; }
+            public bool IsChunked { get; } = isChunked;
+            public bool IsFirst { get; } = isFirst;
+            public int Size { get; } = size;
+            public int TotalPacketSize { get; } = totalPacketSize;
             public int Padding => Frame.CalculatePadding(Size);
 
             public int PayloadSize => Size + Padding;

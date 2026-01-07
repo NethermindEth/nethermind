@@ -58,24 +58,21 @@ public class OptimismGenesisLoaderTests
         });
 
         var specProvider = Substitute.For<ISpecProvider>();
-        var stateReader = Substitute.For<IStateReader>();
         var transactionProcessor = Substitute.For<ITransactionProcessor>();
         var logManager = Substitute.For<ILogManager>();
 
         var withdrawalProcessor = new OptimismWithdrawalProcessor(stateProvider, logManager, specHelper);
         var postProcessor = new OptimismGenesisPostProcessor(withdrawalProcessor, specProvider);
 
-        var loader = new GenesisLoader(
+        var loader = new GenesisBuilder(
             chainspec,
             specProvider,
-            stateReader,
             stateProvider,
             transactionProcessor,
-            postProcessor,
-            logManager
+            [postProcessor]
         );
 
-        var actualGenesis = loader.Load();
+        var actualGenesis = loader.Build();
 
         var genesisHash = actualGenesis.Hash;
         genesisHash.Should().Be(new Hash256("0xab1c80ef327bcd962e1e8569d918702dd7e3888d3483869083528c9e0bde5890"));

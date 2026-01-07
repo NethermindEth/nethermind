@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
@@ -21,7 +24,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -35,6 +37,8 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
+        private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
+
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
 
@@ -120,6 +124,7 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
+            _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
@@ -146,7 +151,7 @@ namespace Nethermind.TxPool
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
-                new PriorityFeeTooLowFilter(_logger),
+                new PriorityFeeTooLowFilter(_headInfo, txPoolConfig, _logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             ];
@@ -164,7 +169,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
+                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -172,7 +177,7 @@ namespace Nethermind.TxPool
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -359,7 +364,7 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
-            using ArrayPoolList<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
+            using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long notInMempoool = 0;
@@ -397,11 +402,6 @@ namespace Nethermind.TxPool
                         }
                         else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                     }
-                }
-
-                if (blockTx.Type == TxType.SetCode)
-                {
-                    eip7702Txs++;
                 }
 
                 bool isKnown = IsKnown(txHash);
@@ -493,6 +493,7 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
+                _retryCache.Received(tx.Hash!);
                 return AcceptTxResult.Syncing;
             }
 
@@ -532,6 +533,11 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
+            if (accepted != AcceptTxResult.Invalid)
+            {
+                _retryCache.Received(tx.Hash!);
+            }
+
             if (accepted)
             {
                 // Clear proper snapshot
@@ -555,9 +561,9 @@ namespace Nethermind.TxPool
         {
             if (_txPoolConfig.ProofsTranslationEnabled
                 && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
-                && _headInfo.CurrentProofVersion == ProofVersion.V1)
+                && _headInfo.CurrentProofVersion is ProofVersion.V1)
             {
-                using ArrayPoolList<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+                using ArrayPoolListRef<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
                 foreach (byte[] blob in wrapper.Blobs)
                 {
@@ -570,6 +576,8 @@ namespace Nethermind.TxPool
                 tx.NetworkWrapper = wrapper with { Proofs = [.. cellProofs], Version = ProofVersion.V1 };
             }
         }
+
+        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => _retryCache.Announced(txhash, retryHandler);
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
@@ -725,7 +733,7 @@ namespace Nethermind.TxPool
 
                     if (!valid)
                     {
-                        MarkForEviction(tx, valid.AllowTxPoolReentrance);
+                        MarkForEviction(tx, valid.Error == TxErrorMessages.InvalidProofVersion);
                         continue;
                     }
 
@@ -1068,20 +1076,21 @@ Discarded at Filter Stage:
 2.  Tx Too Large:       {Metrics.PendingTransactionsSizeTooLarge,24:N0}
 3.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
 4.  TooLow PriorityFee: {Metrics.PendingTransactionsTooLowPriorityFee,24:N0}
-5.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
-6.  Malformed:          {Metrics.PendingTransactionsMalformed,24:N0}
-7.  Null Hash:          {Metrics.PendingTransactionsNullHash,24:N0}
-8.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
-9.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
-10. Conflicting TxType: {Metrics.PendingTransactionsConflictingTxType,24:N0}
-11. NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
-12. Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
-13. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
-14. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
-15. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
-16. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
-17. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
-18. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+5.  TooLow FeePerBlobGa:{Metrics.PendingTransactionsTooLowFeePerBlobGas,24:N0}
+6.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+7.  Malformed:          {Metrics.PendingTransactionsMalformed,24:N0}
+8.  Null Hash:          {Metrics.PendingTransactionsNullHash,24:N0}
+9.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
+10.  Unknown Sender:    {Metrics.PendingTransactionsUnresolvableSender,24:N0}
+11. Conflicting TxType: {Metrics.PendingTransactionsConflictingTxType,24:N0}
+12. NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
+13. Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+14. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
+15. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
+16. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+17. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+18. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
+19. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
 ------------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
 ------------------------------------------------
@@ -1116,10 +1125,7 @@ Db usage:
         // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
         private static void DisposeBlockAccountChanges(Block block)
         {
-            if (block.AccountChanges is null) return;
-
-            block.AccountChanges.Dispose();
-            block.AccountChanges = null;
+            block.DisposeAccountChanges();
         }
     }
 }

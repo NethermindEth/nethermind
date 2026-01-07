@@ -3,17 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
@@ -37,12 +34,6 @@ namespace Nethermind.Consensus.Processing
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
-            event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed
-            {
-                add => _transactionProcessed += value;
-                remove => _transactionProcessed -= value;
-            }
-
             event EventHandler<AddingTxEventArgs>? IBlockProductionTransactionsExecutor.AddingTransaction
             {
                 add => txPicker.AddingTransaction += value;
@@ -64,7 +55,7 @@ namespace Nethermind.Consensus.Processing
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
                 IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
 
-                using ArrayPoolList<Transaction> includedTx = new(txCount);
+                using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
@@ -116,11 +107,11 @@ namespace Nethermind.Consensus.Processing
                     if (result)
                     {
                         _transactionProcessed?.Invoke(this,
-                            new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                            new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                     }
                     else
                     {
-                        args.Set(TxAction.Skip, result.Error!);
+                        args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }
 

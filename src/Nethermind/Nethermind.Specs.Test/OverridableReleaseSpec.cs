@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -118,6 +119,7 @@ namespace Nethermind.Specs.Test
         public bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
         public bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
+        public bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
 
         public bool IsEip7623Enabled => spec.IsEip7623Enabled;
         public bool IsEip7918Enabled => spec.IsEip7918Enabled;
@@ -131,31 +133,31 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
 
-        private long? _overridenEip1559TransitionBlock;
+        private long? _overriddenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
         {
-            get => _overridenEip1559TransitionBlock ?? spec.Eip1559TransitionBlock;
-            set => _overridenEip1559TransitionBlock = value;
+            get => _overriddenEip1559TransitionBlock ?? spec.Eip1559TransitionBlock;
+            set => _overriddenEip1559TransitionBlock = value;
         }
 
-        private Address? _overridenFeeCollector;
+        private Address? _overriddenFeeCollector;
         public Address? FeeCollector
         {
-            get => _overridenFeeCollector ?? spec.FeeCollector;
-            set => _overridenFeeCollector = value;
+            get => _overriddenFeeCollector ?? spec.FeeCollector;
+            set => _overriddenFeeCollector = value;
         }
 
-        private ulong? _overridenEip4844TransitionTimeStamp;
+        private ulong? _overriddenEip4844TransitionTimestamp;
 
         public ulong Eip4844TransitionTimestamp
         {
             get
             {
-                return _overridenEip4844TransitionTimeStamp ?? spec.Eip4844TransitionTimestamp;
+                return _overriddenEip4844TransitionTimestamp ?? spec.Eip4844TransitionTimestamp;
             }
             set
             {
-                _overridenEip4844TransitionTimeStamp = value;
+                _overriddenEip4844TransitionTimestamp = value;
             }
         }
 
@@ -198,5 +200,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
+        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }

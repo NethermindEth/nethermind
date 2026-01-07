@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -254,10 +254,10 @@ public class BlockTreeTests
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
         Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 1");
+        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
         Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
-        Assert.That(blockInfosDb.Get(2), Is.Null, "level 1");
+        Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
     }
@@ -1050,10 +1050,6 @@ public class BlockTreeTests
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
         Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1b");
-        Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2b");
-        Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3b");
-
         repository.LoadLevel(1)!.BlockInfos.Length.Should().Be(1);
         repository.LoadLevel(2)!.BlockInfos.Length.Should().Be(1);
         repository.LoadLevel(3)!.BlockInfos.Length.Should().Be(1);
@@ -1146,7 +1142,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = beginIndex.ToString(),
+            PivotNumber = beginIndex,
         };
 
         BlockTreeBuilder builder = Build.A
@@ -1177,7 +1173,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = "105",
+            PivotNumber = 105,
         };
 
         BlockTreeBuilder builder = Build.A
@@ -1218,7 +1214,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = $"{syncPivot}"
+            PivotNumber = syncPivot
         };
 
         MemDb blockInfosDb = new MemDb();
@@ -1275,7 +1271,7 @@ public class BlockTreeTests
 
         SyncConfig syncConfig = new()
         {
-            PivotNumber = beginIndex.ToString(),
+            PivotNumber = beginIndex,
             FastSync = true,
         };
 
@@ -1312,7 +1308,7 @@ public class BlockTreeTests
 
         SyncConfig syncConfig = new()
         {
-            PivotNumber = "0",
+            PivotNumber = 0,
             FastSync = true,
         };
 
@@ -1366,7 +1362,7 @@ public class BlockTreeTests
     {
         SyncConfig syncConfig = new()
         {
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
         };
         BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead
@@ -1402,7 +1398,7 @@ public class BlockTreeTests
         int head = 10;
         SyncConfig syncConfig = new()
         {
-            PivotNumber = pivotNumber.ToString()
+            PivotNumber = pivotNumber
         };
 
         BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
@@ -1423,7 +1419,7 @@ public class BlockTreeTests
 
         SyncConfig syncConfig = new()
         {
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
         };
 
         BlockTree tree = Build.A.BlockTree()
@@ -1444,7 +1440,7 @@ public class BlockTreeTests
 
         SyncConfig syncConfig = new()
         {
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
         };
 
         CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance));
@@ -1472,7 +1468,7 @@ public class BlockTreeTests
 
         SyncConfig syncConfig = new()
         {
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
         };
 
         IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
@@ -1503,7 +1499,7 @@ public class BlockTreeTests
     {
         SyncConfig syncConfig = new()
         {
-            PivotNumber = 0L.ToString(),
+            PivotNumber = 0L,
         };
 
         BlockTreeBuilder builder = Build.A.BlockTree()
@@ -1881,7 +1877,7 @@ public class BlockTreeTests
         // First run
         {
             Hash256 uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)
@@ -1947,7 +1943,7 @@ public class BlockTreeTests
 
         // Assume Nethermind got restarted
         {
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)
@@ -2037,7 +2033,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
-            PivotNumber = "999",
+            PivotNumber = 999,
             PivotHash = Hash256.Zero.ToString(),
         };
         BlockTree blockTree = Build.A.BlockTree().WithSyncConfig(syncConfig).TestObject;
@@ -2050,7 +2046,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
-            PivotNumber = "999",
+            PivotNumber = 999,
             PivotHash = Hash256.Zero.ToString(),
         };
         IDb metadataDb = new MemDb();
@@ -2069,7 +2065,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
@@ -2112,7 +2108,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
@@ -2160,7 +2156,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = pivotNumber.ToString(),
+            PivotNumber = pivotNumber,
             PivotHash = TestItem.KeccakA.ToString(),
         };
 

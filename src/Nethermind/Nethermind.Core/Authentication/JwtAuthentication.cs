@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -16,22 +18,31 @@ namespace Nethermind.Core.Authentication;
 
 public sealed partial class JwtAuthentication : IRpcAuthentication
 {
-    private static readonly Task<bool> False = Task.FromResult(false);
-    private readonly JsonWebTokenHandler _handler = new();
-    private readonly SecurityKey _securityKey;
-    private readonly ILogger _logger;
-    private readonly ITimestamper _timestamper;
     private const string JwtMessagePrefix = "Bearer ";
     private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
+    private static readonly Task<bool> True = Task.FromResult(true);
+    private static readonly Task<bool> False = Task.FromResult(false);
+
+    private readonly JsonWebTokenHandler _handler = new();
+    private readonly SecurityKey _securityKey;
+    private readonly ILogger _logger;
+    private readonly ITimestamper _timestamper;
+    private readonly LifetimeValidator _lifetimeValidator;
+
+    // Single entry cache: last successfully validated token
+    private TokenCacheEntry? _lastToken;
+
     private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(secret);
+        ArgumentNullException.ThrowIfNull(timestamper);
 
         _securityKey = new SymmetricSecurityKey(secret);
         _logger = logger;
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        _timestamper = timestamper;
+        _lifetimeValidator = LifetimeValidator;
     }
 
     public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, ILogger logger)
@@ -118,6 +129,14 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return False;
         }
 
+        // fast path - reuse last successful validation for the same token
+        // we keep it very cheap: one time read, one cache read, one string compare
+        long nowUnixSeconds = _timestamper.UtcNow.ToUnixTimeSeconds();
+        if (TryLastValidationFromCache(token, nowUnixSeconds))
+        {
+            return True;
+        }
+
         return AuthenticateCore(token);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -138,7 +157,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
                 ValidateLifetime = true,
                 ValidateAudience = false,
                 ValidateIssuer = false,
-                LifetimeValidator = LifetimeValidator
+                LifetimeValidator = _lifetimeValidator
             };
 
             ReadOnlyMemory<char> tokenSlice = token.AsMemory(JwtMessagePrefix.Length);
@@ -152,8 +171,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             }
 
             DateTime now = _timestamper.UtcNow;
-            if (Math.Abs(jwtToken.IssuedAt.ToUnixTimeSeconds() - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
+            long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
+            if (Math.Abs(issuedAtUnix - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
             {
+                // full validation succeeded and TTL check passed - cache as last valid token
+                CacheLastToken(token, issuedAtUnix);
+
                 if (_logger.IsTrace) Trace(jwtToken, now, tokenSlice);
                 return true;
             }
@@ -210,6 +233,44 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         return _timestamper.UnixTime.SecondsLong < expires.Value.ToUnixTimeSeconds();
     }
 
+    private void CacheLastToken(string token, long issuedAtUnixSeconds)
+    {
+        TokenCacheEntry entry = new(token, issuedAtUnixSeconds);
+        // last writer wins, atomic swap
+        Interlocked.Exchange(ref _lastToken, entry);
+    }
+
+    private bool TryLastValidationFromCache(string token, long nowUnixSeconds)
+    {
+        // Read the last validated token entry atomically
+        // this is a single entry cache because tokens tend to be reused
+        // for a handful of sequential requests before a fresh token is issued
+        TokenCacheEntry? entry = Volatile.Read(ref _lastToken);
+        if (entry is null)
+            return false;
+
+        // Only allow cache hit if the exact same token string is being reused
+        // different tokens bypass the cache and undergo full validation
+        if (!string.Equals(entry.Token, token, StringComparison.Ordinal))
+            return false;
+
+        // Token reuse is only allowed within the original JWT lifetime
+        // We never extend token validity beyond what the issuer intended
+        // - IssuedAtUnixSeconds ensures we don't accept a token older than TTL
+        if (Math.Abs(entry.IssuedAtUnixSeconds - nowUnixSeconds) > JwtTokenTtl)
+        {
+            // Token lifetime exceeded - drop the cached entry and force a fresh validation
+            Interlocked.CompareExchange(ref _lastToken, null, entry);
+            return false;
+        }
+
+        // Same token, within TTL, recently validated:
+        // Accept as valid without rerunning JWT parsing and crypto checks
+        return true;
+    }
+
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
     private static partial Regex SecretRegex();
+
+    private record TokenCacheEntry(string Token, long IssuedAtUnixSeconds);
 }

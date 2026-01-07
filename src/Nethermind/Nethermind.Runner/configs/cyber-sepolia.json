@@ -12,7 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": 10000000000
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 10

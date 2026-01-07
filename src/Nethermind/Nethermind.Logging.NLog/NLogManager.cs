@@ -31,6 +31,7 @@ namespace Nethermind.Logging.NLog
             // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
             _logManagerOnConfigurationChanged = (sender, args) => Setup(logFileName, logDirectory, logRules);
             LogManager.ConfigurationChanged += _logManagerOnConfigurationChanged;
+            Static.LogManager = this;
         }
 
         private static void Setup(string logFileName, string logDirectory = null, string logRules = null)
@@ -100,7 +101,7 @@ namespace Nethermind.Logging.NLog
                     IEnumerable<LoggingRule> loggingRules = ParseRules(logRules, targets);
                     foreach (LoggingRule loggingRule in loggingRules)
                     {
-                        RemoveOverridenRules(configurationLoggingRules, loggingRule);
+                        RemoveOverriddenRules(configurationLoggingRules, loggingRule);
                         configurationLoggingRules.Add(loggingRule);
                     }
                 }
@@ -110,7 +111,7 @@ namespace Nethermind.Logging.NLog
         private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
             configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
 
-        private static void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
+        private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
             string reqexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
             for (int j = 0; j < configurationLoggingRules.Count;)

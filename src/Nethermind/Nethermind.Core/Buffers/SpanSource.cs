@@ -67,6 +67,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
             if (obj is byte[] array)
                 return array.Length;
 
+            if (obj is null) return 0;
             return Unsafe.As<CappedArraySource>(obj).Length;
         }
     }
@@ -93,6 +94,22 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 
     public bool IsNotNull => !IsNull;
     public bool IsNull => _obj == null;
+    public bool IsNullOrEmpty
+    {
+        get
+        {
+            var obj = _obj;
+
+            if (obj is null)
+                return true;
+
+            if (obj is byte[] array)
+                return array.Length == 0;
+
+            return Unsafe.As<CappedArraySource>(obj).Length == 0;
+        }
+    }
+
     public bool IsNotNullOrEmpty
     {
         get

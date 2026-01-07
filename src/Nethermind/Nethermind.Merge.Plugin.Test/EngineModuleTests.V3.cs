@@ -140,7 +140,7 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
         ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
+            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V0);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
 
@@ -385,7 +385,7 @@ public partial class EngineModuleTests
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
+                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
                  Substitute.For<IEngineRequestsTracker>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),

@@ -11,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -30,11 +29,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddModule(new MergePluginModule())
 
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
-            .OnActivate<IMainProcessingContext>(((context, componentContext) =>
-            {
-                componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
-            }))
-
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
@@ -48,6 +42,9 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddScoped<PostMergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerFactory, TestMergeBlockProducerFactory>()
+
+            // Engine rpc
+            .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
             ;
 
         if (txPoolConfig.BlobsSupport.SupportsReorgs())

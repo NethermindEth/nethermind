@@ -12,6 +12,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterBlockHandlerTests : BaseEngineModuleTests
 {
     [Test]

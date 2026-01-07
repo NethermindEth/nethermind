@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -306,6 +307,12 @@ namespace Nethermind.Core.Specs
         Address Eip2935ContractAddress { get; }
 
         /// <summary>
+        /// EIP-2935 ring buffer size for historical block hash storage.
+        /// Defaults to 8,191 blocks for Ethereum mainnet.
+        /// </summary>
+        long Eip2935RingBufferSize => Eip2935Constants.RingBufferSize;
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
@@ -346,6 +353,9 @@ namespace Nethermind.Core.Specs
 
         /// OP Holocene
         bool IsOpHoloceneEnabled { get; }
+
+        /// OP Jovian
+        bool IsOpJovianEnabled { get; }
 
         // OP Isthmus
         bool IsOpIsthmusEnabled { get; }
@@ -495,6 +505,19 @@ namespace Nethermind.Core.Specs
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }
+
+        /// <summary>
+        /// Determines whether the specified address is a precompiled contract for this release specification.
+        /// </summary>
+        /// <param name="address">The address to check for precompile status.</param>
+        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
+        bool IsPrecompile(Address address) => Precompiles.Contains(address);
+
+        /// <summary>
+        /// Gets a cached set of all precompiled contract addresses for this release specification.
+        /// Chain-specific implementations can override this to include their own precompiled contracts.
+        /// </summary>
+        FrozenSet<AddressAsKey> Precompiles { get; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 

@@ -211,11 +211,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             blockProducer);
     }
 
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
-
     public bool MustInitialize => true;
 
     public Type ApiType => typeof(OptimismNethermindApi);
@@ -261,6 +256,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
             .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
+            .AddScoped<IGenesisPostProcessor, OptimismGenesisPostProcessor>()
 
             // Rpcs
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>

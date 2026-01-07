@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -108,6 +109,25 @@ namespace Nethermind.Store.Test
             }
 
             fullTrieStore.HasRoot(stateRoot).Should().Be(hasRoot);
+        }
+
+
+        [Test]
+        public void Modify_LeafOnlyNode_And_RecalculateRoot()
+        {
+            using ITrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+            tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [1]);
+            tree.UpdateRootHash();
+
+            Hash256 rootHash = tree.RootHash;
+
+            tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [2]);
+            tree.UpdateRootHash();
+
+            tree.RootHash.Should().NotBe(rootHash);
         }
 
         private ITrieStore CreateTrieStore(IDb db = null)

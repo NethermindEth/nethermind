@@ -25,6 +25,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
@@ -44,10 +45,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof;
 // [TestFixture(true, true)] TODO fix or remove test?
 [TestFixture(true, false)]
 [TestFixture(false, false)]
-public class ProofRpcModuleTests
+public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice)
 {
-    private readonly bool _createSystemAccount;
-    private readonly bool _useNonZeroGasPrice;
     private IProofRpcModule _proofRpcModule = null!;
     private IBlockTree _blockTree = null!;
     private IDbProvider _dbProvider = null!;
@@ -55,20 +54,14 @@ public class ProofRpcModuleTests
     private WorldStateManager _worldStateManager = null!;
     private IContainer _container;
 
-    public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
-    {
-        _createSystemAccount = createSystemAccount;
-        _useNonZeroGasPrice = useNonZeroGasPrice;
-    }
-
     [SetUp]
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
+        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
-        IWorldState worldState = _worldStateManager.GlobalWorldState;
+        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -79,10 +72,10 @@ public class ProofRpcModuleTests
 
         InMemoryReceiptStorage receiptStorage = new();
         _specProvider = new TestSpecProvider(London.Instance);
-        _blockTree = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject, new BlockBody()), _specProvider)
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject, new BlockBody()), _specProvider)
             .WithTransactions(receiptStorage)
-            .OfChainLength(10)
-            .TestObject;
+            .OfChainLength(10);
+        _blockTree = blockTreeBuilder.TestObject;
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
@@ -90,6 +83,7 @@ public class ProofRpcModuleTests
             .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
             .AddSingleton<IReceiptStorage>(receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
             .Build();
@@ -176,21 +170,14 @@ public class ProofRpcModuleTests
         Assert.That(receiptWithProof.Receipt, Is.Not.Null);
         Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
-        if (withHeader)
-        {
-            Assert.That(receiptWithProof.BlockHeader, Is.Not.Null);
-        }
-        else
-        {
-            Assert.That(receiptWithProof.BlockHeader, Is.Null);
-        }
+        Assert.That(receiptWithProof.BlockHeader, withHeader ? Is.Not.Null : Is.Null);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         response.Should().Be(expectedResult);
     }
 
-    [TestCase(true, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0eb9c9ef295ba68ff22c85763176dabc05773d58ef77ce34e4a23bf9516c706bc80808080808080a0850e08970f6beee9bd3687c74e591429cf6f65d5faf9db298ddc627ac4a26a1b8080808080808080\",\"0xf86431b861f85f010182a410940000000000000000000000000000000000000000020126a0872929cb57ab6d88d0004a60f00df3dd9e0755860549aea25e559bce3d4a66dba01c06266ee2085ae815c258dd9dbb601bfc08c35c13b7cc9cd4ed88a16c3eb3f0\"],\"receiptProof\":[\"0xf851a0460919cda4f025e4e91b9540e4a0fb8a2cf07e4ad8b2379a053efe2f98b1789980808080808080a0bc8717240b46db28e32bc834f8c34f4d70c2e9ba880eb68de904351fd5ef158f8080808080808080\",\"0xf9010d31b90109f901060180b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"],\"blockHeader\":\"0xf901f9a0a3e31eb259593976b3717142a5a9e90637f614d33e2ad13f01134ea00c24ca5aa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a009e11c477e0a0dfdfe036492b9bce7131991eb23bcf9575f9bff1e4016f90447a0e1b1585a222beceb3887dc6701802facccf186c2d0f6aa69e26ae0c431fc2b5db9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424001833d090080830f424183010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8\"},\"id\":67}")]
-    [TestCase(false, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0eb9c9ef295ba68ff22c85763176dabc05773d58ef77ce34e4a23bf9516c706bc80808080808080a0850e08970f6beee9bd3687c74e591429cf6f65d5faf9db298ddc627ac4a26a1b8080808080808080\",\"0xf86431b861f85f010182a410940000000000000000000000000000000000000000020126a0872929cb57ab6d88d0004a60f00df3dd9e0755860549aea25e559bce3d4a66dba01c06266ee2085ae815c258dd9dbb601bfc08c35c13b7cc9cd4ed88a16c3eb3f0\"],\"receiptProof\":[\"0xf851a0460919cda4f025e4e91b9540e4a0fb8a2cf07e4ad8b2379a053efe2f98b1789980808080808080a0bc8717240b46db28e32bc834f8c34f4d70c2e9ba880eb68de904351fd5ef158f8080808080808080\",\"0xf9010d31b90109f901060180b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"]},\"id\":67}")]
+    [TestCase(true, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0eb9c9ef295ba68ff22c85763176dabc05773d58ef77ce34e4a23bf9516c706bc80808080808080a0850e08970f6beee9bd3687c74e591429cf6f65d5faf9db298ddc627ac4a26a1b8080808080808080\",\"0xf86431b861f85f010182a410940000000000000000000000000000000000000000020126a0872929cb57ab6d88d0004a60f00df3dd9e0755860549aea25e559bce3d4a66dba01c06266ee2085ae815c258dd9dbb601bfc08c35c13b7cc9cd4ed88a16c3eb3f0\"],\"receiptProof\":[\"0xf851a0460919cda4f025e4e91b9540e4a0fb8a2cf07e4ad8b2379a053efe2f98b1789980808080808080a0bc8717240b46db28e32bc834f8c34f4d70c2e9ba880eb68de904351fd5ef158f8080808080808080\",\"0xf9010d31b90109f901060180b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"],\"blockHeader\":\"0xf901f9a0a3e31eb259593976b3717142a5a9e90637f614d33e2ad13f01134ea00c24ca5aa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a009e11c477e0a0dfdfe036492b9bce7131991eb23bcf9575f9bff1e4016f90447a0e1b1585a222beceb3887dc6701802facccf186c2d0f6aa69e26ae0c431fc2b5db9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424001833d090080830f424183010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8\"},\"id\":67}")]
+    [TestCase(false, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x4901390ae91e8a4286f7ae9053440c48eb5c2bca11ca83439f0088a4af90ceb8\",\"blockHash\":\"0xda4b917515655b1aabcc9b01125df34a76c6ebb3e7e2f2b060d4daa70d9f813d\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0xf4241\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0eb9c9ef295ba68ff22c85763176dabc05773d58ef77ce34e4a23bf9516c706bc80808080808080a0850e08970f6beee9bd3687c74e591429cf6f65d5faf9db298ddc627ac4a26a1b8080808080808080\",\"0xf86431b861f85f010182a410940000000000000000000000000000000000000000020126a0872929cb57ab6d88d0004a60f00df3dd9e0755860549aea25e559bce3d4a66dba01c06266ee2085ae815c258dd9dbb601bfc08c35c13b7cc9cd4ed88a16c3eb3f0\"],\"receiptProof\":[\"0xf851a0460919cda4f025e4e91b9540e4a0fb8a2cf07e4ad8b2379a053efe2f98b1789980808080808080a0bc8717240b46db28e32bc834f8c34f4d70c2e9ba880eb68de904351fd5ef158f8080808080808080\",\"0xf9010d31b90109f901060180b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"]},\"id\":67}")]
     public async Task Get_receipt_when_block_has_few_receipts(bool withHeader, string expectedResult)
     {
         IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
@@ -274,7 +261,7 @@ public class ProofRpcModuleTests
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
 
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
@@ -297,7 +284,7 @@ public class ProofRpcModuleTests
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash!));
 
@@ -320,14 +307,14 @@ public class ProofRpcModuleTests
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = block.Hash, requireCanonical = true });
         Assert.That(response.Contains("-32000"), Is.True);
 
         response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = TestItem.KeccakG, requireCanonical = true });
-        Assert.That(response.Contains("-32001"), Is.True);
+        Assert.That(response.Contains(ErrorCodes.ResourceNotFound.ToString()), Is.True);
     }
 
     [TestCase]
@@ -376,7 +363,7 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -389,7 +376,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.SLOAD)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -402,7 +389,7 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -416,17 +403,17 @@ public class ProofRpcModuleTests
             .Op(Instruction.EXTCODECOPY)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
-    public async Task Can_call_with_extcodecopy_to_system_account()
+    public async Task Can_call_with_extcodecopy_to_zero_account()
     {
         byte[] code = Prepare.EvmCode
             .PushData("0x20")
             .PushData("0x00")
             .PushData("0x00")
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODECOPY)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -441,14 +428,14 @@ public class ProofRpcModuleTests
             .Op(Instruction.EXTCODESIZE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
-    public async Task Can_call_with_extcodesize_to_system_account()
+    public async Task Can_call_with_extcodesize_to_zero_account()
     {
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODESIZE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -464,15 +451,15 @@ public class ProofRpcModuleTests
             .Op(Instruction.EXTCODEHASH)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
-    public async Task Can_call_with_extcodehash_to_system_account()
+    public async Task Can_call_with_extcodehash_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODEHASH)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -487,7 +474,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.STOP)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -500,7 +487,7 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3 + (useNonZeroGasPrice ? 1 : 0)));
     }
 
     [TestCase]
@@ -512,15 +499,15 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
-    public async Task Can_call_with_balance_of_system_account()
+    public async Task Can_call_with_balance_of_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.BALANCE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -528,7 +515,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_call_to_system_account_with_zero_value()
+    public async Task Can_call_with_call_to_zero_account_with_zero_value()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -537,7 +524,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.CALL)
             .Done;
@@ -546,7 +533,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_static_call_to_system_account()
+    public async Task Can_call_with_static_call_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -554,7 +541,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.STATICCALL)
             .Done;
@@ -563,7 +550,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_delegate_call_to_system_account()
+    public async Task Can_call_with_delegate_call_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -571,7 +558,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.DELEGATECALL)
             .Done;
@@ -580,7 +567,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_call_to_system_account_with_non_zero_value()
+    public async Task Can_call_with_call_to_zero_account_with_non_zero_value()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -589,7 +576,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(1)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.CALL)
             .Done;
@@ -612,7 +599,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.CALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
@@ -629,7 +616,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.STATICCALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
@@ -646,7 +633,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.DELEGATECALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(_createSystemAccount && _useNonZeroGasPrice ? 3 : 2));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
@@ -664,7 +651,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.CALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3 + (useNonZeroGasPrice ? 1 : 0)));
     }
 
     [TestCase]
@@ -677,15 +664,15 @@ public class ProofRpcModuleTests
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
 
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3 + (useNonZeroGasPrice ? 1 : 0)));
     }
 
     [TestCase]
-    public async Task Can_call_with_self_destruct_to_system_account()
+    public async Task Can_call_with_self_destruct_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.SELFDESTRUCT)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -705,7 +692,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.SSTORE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -755,7 +742,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.SSTORE)
             .Done;
 
-        await TestCallWithStorageAndCode(code, _useNonZeroGasPrice ? 10.GWei() : 0);
+        await TestCallWithStorageAndCode(code, useNonZeroGasPrice ? 10.GWei() : 0);
     }
 
     [TestCase]
@@ -798,7 +785,7 @@ public class ProofRpcModuleTests
         {
             From = from,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
 
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
@@ -846,7 +833,7 @@ public class ProofRpcModuleTests
 
         TransactionForRpc tx = new LegacyTransactionForRpc
         {
-            // we are testing system transaction here when From is null
+            // we are testing transaction from zero address here when From is null
             From = from,
             To = TestItem.AddressB,
             GasPrice = gasPrice,
@@ -855,19 +842,6 @@ public class ProofRpcModuleTests
 
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
-
-        // just the keys for debugging
-        byte[] span = new byte[32];
-        new UInt256(0).ToBigEndian(span);
-        _ = Keccak.Compute(span);
-
-        // just the keys for debugging
-        new UInt256(1).ToBigEndian(span);
-        _ = Keccak.Compute(span);
-
-        // just the keys for debugging
-        new UInt256(2).ToBigEndian(span);
-        _ = Keccak.Compute(span);
 
         foreach (AccountProof accountProof in callResultWithProof.Accounts)
         {
@@ -897,7 +871,7 @@ public class ProofRpcModuleTests
 
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
-        IWorldState stateProvider = _worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
@@ -908,9 +882,9 @@ public class ProofRpcModuleTests
             AddCode(stateProvider, TestItem.AddressB, code);
         }
 
-        if (_createSystemAccount)
+        if (createZeroAccount)
         {
-            AddAccount(stateProvider, Address.SystemUser, 1.Ether());
+            AddAccount(stateProvider, Address.Zero, 1.Ether());
         }
 
         stateProvider.CommitTree(0);

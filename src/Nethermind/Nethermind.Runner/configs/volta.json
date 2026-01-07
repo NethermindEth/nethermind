@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "IsMining": false,
     "ChainSpecPath": "chainspec/volta.json",
     "GenesisHash": "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5",
     "BaseDbPath": "nethermind_db/volta",
@@ -17,9 +16,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 33270000,
-    "PivotHash": "0xbd0c66e102a06d1aa76ee4ff791c1dcb71212847182c099e0cc8a10406b496d5",
-    "PivotTotalDifficulty": "11321194347459622679426473189254928394756915060",
+    "PivotNumber": 33570000,
+    "PivotHash": "0x12552db4b69d8b0bf1d1fef2875088d8beafa42be85efe588bee275001411991",
+    "PivotTotalDifficulty": "11423279057535904218465485571484458858193067467",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },
@@ -28,9 +27,6 @@
   },
   "Metrics": {
     "NodeName": "Volta"
-  },
-  "Mining": {
-    "MinGasPrice": 1
   },
   "Blocks": {
     "GasToken": "VT"

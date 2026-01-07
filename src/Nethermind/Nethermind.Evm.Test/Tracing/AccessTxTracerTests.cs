@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -74,7 +75,7 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [TestCaseSource(nameof(OptimizedAddressCases))]
-        public void ReportAccess_AddressIsSetToOptmizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccesslist(IEnumerable<Address> optimized, IEnumerable<Address> expected)
+        public void ReportAccess_AddressIsSetToOptimizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccessList(IEnumerable<Address> optimized, IEnumerable<Address> expected)
         {
             JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
             JournalSet<StorageCell> accessedStorageCells = [];
@@ -86,7 +87,7 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AddressAAndBIsInTheAccesslist()
+        public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AddressAAndBIsInTheAccessList()
         {
             JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
             JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 0)];
@@ -98,7 +99,7 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AccesslistHasCorrectStorageCell()
+        public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AccessListHasCorrectStorageCell()
         {
             JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
             JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 1)];

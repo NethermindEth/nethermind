@@ -520,12 +520,10 @@ public class BlockchainProcessorTests
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveKeyed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), // Need to use the non  ChainHeadSpecProvider constructor.
-                    codeInfoRepository)
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader)) // Need to use the non  ChainHeadSpecProvider constructor.
                 {
                     HasSynced = true
                 };
@@ -625,7 +623,7 @@ public class BlockchainProcessorTests
     }
 
     [Test(Description = "Covering scenario when we have an invalid block followed by its descendants." +
-                        "All the descandant blocks should get discarded and an alternative branch should get selected." +
+                        "All the descendant blocks should get discarded and an alternative branch should get selected." +
                         "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
                         "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
                         "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +

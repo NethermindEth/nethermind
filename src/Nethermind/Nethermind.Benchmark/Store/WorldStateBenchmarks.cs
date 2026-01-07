@@ -6,6 +6,7 @@ using System.Linq;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Common.Utilities;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -44,7 +45,8 @@ public class WorldStateBenchmarks
             .AddModule(new TestNethermindModule())
             .Build();
 
-        IWorldState worldState = _globalWorldState = _container.Resolve<IWorldStateManager>().GlobalWorldState;
+        IWorldState worldState = _globalWorldState = _container.Resolve<IMainProcessingContext>().WorldState;
+        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
 
         Random rand = new Random(0);
         byte[] randomBuffer = new byte[20];

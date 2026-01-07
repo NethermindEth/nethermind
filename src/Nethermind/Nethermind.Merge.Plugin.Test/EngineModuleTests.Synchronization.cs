@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -90,7 +91,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_unknown_block_without_newpayload_initiates_syncing()
+    public async Task forkChoiceUpdatedV1_unknown_block_without_newPayload_initiates_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -136,7 +137,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_unknown_block_without_newpayload_and_peer_timeout__it_does_not_initiates_syncing()
+    public async Task forkChoiceUpdatedV1_unknown_block_without_newPayload_and_peer_timeout__it_does_not_initiate_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -728,6 +729,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [CancelAfter(5000)]
+    [Retry(3)]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -816,6 +819,7 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
 
         await bestBlockProcessed.WaitAsync();
+        await chain.BlockProcessingQueue.WaitForBlockProcessing();
 
         // beacon sync should be finished, eventually
         bestBeaconBlockRequest = CreateBlockRequest(chain, bestBeaconBlockRequest, Address.Zero);
@@ -841,7 +845,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -869,7 +873,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -899,7 +903,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };

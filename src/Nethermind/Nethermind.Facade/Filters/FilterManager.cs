@@ -15,7 +15,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterManager : IFilterManager
+    public sealed class FilterManager
     {
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
             new();
@@ -27,22 +27,21 @@ namespace Nethermind.Blockchain.Filters
             new();
 
         private Hash256? _lastBlockHash;
-        private readonly IFilterStore _filterStore;
+        private readonly FilterStore _filterStore;
         private readonly ILogger _logger;
         private long _logIndex;
 
         public FilterManager(
-            IFilterStore filterStore,
-            IBranchProcessor blockProcessor,
+            FilterStore filterStore,
+            IMainProcessingContext mainProcessingContext,
             ITxPool txPool,
             ILogManager logManager)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
-            blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            blockProcessor.BlockProcessed += OnBlockProcessed;
-            blockProcessor.TransactionProcessed += OnTransactionProcessed;
+            mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
+            mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
             txPool.NewPending += OnNewPendingTransaction;
             txPool.RemovedPending += OnRemovedPendingTransaction;
@@ -65,7 +64,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
         {
-            AddReceipts(e.TxReceipt);
+            AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
@@ -160,14 +159,14 @@ namespace Nethermind.Blockchain.Filters
             return existingPendingTransactions;
         }
 
-        private void AddReceipts(TxReceipt txReceipt)
+        private void AddReceipts(TxReceipt txReceipt, ulong blockTimestamp)
         {
             ArgumentNullException.ThrowIfNull(txReceipt);
 
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
             {
-                StoreLogs(filter, txReceipt, _logIndex);
+                StoreLogs(filter, txReceipt, _logIndex, blockTimestamp);
             }
 
             _logIndex += txReceipt.Logs?.Length ?? 0;
@@ -197,7 +196,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex, ulong blockTimestamp)
         {
             if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
             {
@@ -208,7 +207,7 @@ namespace Nethermind.Blockchain.Filters
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 LogEntry? logEntry = txReceipt.Logs[i];
-                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++);
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
                 if (filterLog is not null)
                 {
                     logs.Add(filterLog);
@@ -223,7 +222,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
-        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)
+        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
@@ -246,16 +245,16 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == BlockParameterType.Earliest
                 || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
-                return new FilterLog(index, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
             }
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
-                return new FilterLog(index, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
             }
 
-            return new FilterLog(index, txReceipt, logEntry);
+            return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
         }
     }
 }

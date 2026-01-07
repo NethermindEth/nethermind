@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;

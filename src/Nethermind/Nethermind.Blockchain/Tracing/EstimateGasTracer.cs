@@ -38,6 +38,10 @@ public class EstimateGasTracer : TxTracer
 
     public byte StatusCode { get; set; }
 
+    public bool OutOfGas { get; private set; }
+
+    public bool TopLevelRevert { get; private set; }
+
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
@@ -105,6 +109,8 @@ public class EstimateGasTracer : TxTracer
     {
         if (_currentNestingLevel == -1)
         {
+            OutOfGas = false;
+            TopLevelRevert = false;
             IntrinsicGasAt = gas;
         }
 
@@ -131,12 +137,24 @@ public class EstimateGasTracer : TxTracer
 
     public override void ReportActionError(EvmExceptionType exceptionType)
     {
+        ReportOperationError(exceptionType);
         UpdateAdditionalGas();
     }
 
     public void ReportActionError(EvmExceptionType exceptionType, long gasLeft)
     {
+        ReportOperationError(exceptionType);
         UpdateAdditionalGas(gasLeft);
+    }
+
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        OutOfGas |= error == EvmExceptionType.OutOfGas;
+
+        if (error == EvmExceptionType.Revert && _currentNestingLevel == 0)
+        {
+            TopLevelRevert = true;
+        }
     }
 
     private void UpdateAdditionalGas(long? gasLeft = null)

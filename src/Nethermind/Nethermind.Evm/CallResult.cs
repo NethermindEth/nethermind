@@ -3,12 +3,14 @@
 
 using System;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 
-public sealed unsafe partial class VirtualMachine
+public partial class VirtualMachine<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    internal readonly ref struct CallResult
+    protected readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
@@ -23,7 +25,7 @@ public sealed unsafe partial class VirtualMachine
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
         public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
 
-        public CallResult(EvmState stateToExecute)
+        public CallResult(VmState<TGasPolicy> stateToExecute)
         {
             StateToExecute = stateToExecute;
             Output = (null, Array.Empty<byte>());
@@ -61,13 +63,15 @@ public sealed unsafe partial class VirtualMachine
             ExceptionType = exceptionType;
         }
 
-        public EvmState? StateToExecute { get; }
+        public VmState<TGasPolicy>? StateToExecute { get; }
         public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }
         public bool IsReturn => StateToExecute is null;
-        public bool IsException => ExceptionType != EvmExceptionType.None;
+        //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
+        public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
         public int FromVersion { get; }
+        public string? SubstateError { get; init; }
     }
 }

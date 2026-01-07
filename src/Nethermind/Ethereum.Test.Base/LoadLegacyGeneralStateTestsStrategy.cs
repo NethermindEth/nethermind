@@ -24,20 +24,21 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<EthereumTest> testJsons = new();
+            List<EthereumTest> tests = new();
             foreach (string testDir in testDirs)
             {
-                testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
+                tests.AddRange(LoadTestsFromDirectory(testDir, wildcard));
             }
 
-            return testJsons;
+            return tests;
         }
 
-        private string GetLegacyGeneralStateTestsDirectory()
+        private static string GetLegacyGeneralStateTestsDirectory()
         {
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "GeneralStateTests");
+            return Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "GeneralStateTests");
         }
 
         private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
@@ -49,9 +50,14 @@ namespace Ethereum.Test.Base
             {
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
                 var tests = fileTestsSource.LoadTests(TestType.State);
-                foreach (EthereumTest blockchainTest in tests)
+                foreach (EthereumTest ethereumTest in tests)
                 {
-                    blockchainTest.Category = testDir;
+                    ethereumTest.Category = testDir;
+                    // Mark legacy tests to use old coinbase behavior for backward compatibility
+                    if (ethereumTest is GeneralStateTest generalStateTest)
+                    {
+                        generalStateTest.IsLegacy = true;
+                    }
                 }
 
                 testsByName.AddRange(tests);

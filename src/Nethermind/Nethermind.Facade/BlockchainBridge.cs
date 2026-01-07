@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -44,8 +44,8 @@ namespace Nethermind.Facade
         IStateReader stateReader,
         ITxPool txPool,
         IReceiptFinder receiptStorage,
-        IFilterStore filterStore,
-        IFilterManager filterManager,
+        FilterStore filterStore,
+        FilterManager filterManager,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
         ILogFinder logFinder,
@@ -97,19 +97,19 @@ namespace Nethermind.Facade
             return false;
         }
 
-        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
+        public (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash)
         {
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
-                return (txReceipt, tx.GetGasInfo(spec, block.Header), logIndexStart);
+                return (txReceipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 
-            return (null, null, 0);
+            return (null, 0, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
+        public (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
             TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
                 ? (txReceipt, tx, block.BaseFeePerGas)
                 : checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
@@ -132,10 +132,11 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
+                Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.Success
+                InputError = !tryCallResult.TransactionExecuted,
+                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
             };
         }
 
@@ -158,7 +159,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
 
-            string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
+            string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             if (err is not null)
@@ -170,7 +171,9 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success || err is not null
+                OutputData = estimateGasTracer.ReturnValue,
+                InputError = !tryCallResult.TransactionExecuted || err is not null,
+                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
             };
         }
 
@@ -191,12 +194,12 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
+                Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.Success,
-                AccessList = accessTxTracer.AccessList
+                InputError = !tryCallResult.TransactionExecuted,
+                AccessList = accessTxTracer.AccessList,
             };
         }
 
@@ -211,9 +214,9 @@ namespace Nethermind.Facade
             {
                 return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
             }
-            catch (InsufficientBalanceException ex)
+            catch (InsufficientBalanceException)
             {
-                return new TransactionResult(ex.Message);
+                return TransactionResult.InsufficientSenderBalance;
             }
         }
 
@@ -224,7 +227,7 @@ namespace Nethermind.Facade
             ITxTracer tracer,
             BlockProcessingComponents components)
         {
-            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
             transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
@@ -238,7 +241,7 @@ namespace Nethermind.Facade
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds),
-                    Array.Empty<byte>())
+                    [])
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,
@@ -254,6 +257,8 @@ namespace Nethermind.Facade
                 ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
                 : blockHeader.BaseFeePerGas;
 
+            UInt256 blobBaseFee = UInt256.Zero;
+
             if (releaseSpec.IsEip4844Enabled)
             {
                 callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
@@ -261,7 +266,7 @@ namespace Nethermind.Facade
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
 
-                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee))
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee))
                 {
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
@@ -269,7 +274,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, releaseSpec.BlobBaseFeeUpdateFraction);
+            BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
             return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
@@ -284,21 +289,21 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null,
+            HashSet<AddressAsKey>? addresses = null,
+            IEnumerable<Hash256[]?>? topics = null,
             CancellationToken cancellationToken = default)
         {
-            LogFilter filter = GetFilter(fromBlock, toBlock, address, topics);
+            LogFilter filter = GetFilter(fromBlock, toBlock, addresses, topics);
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
         public LogFilter GetFilter(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null)
+            HashSet<AddressAsKey>? addresses = null,
+            IEnumerable<Hash256[]?>? topics = null)
         {
-            return filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+            return filterStore.CreateLogFilter(fromBlock, toBlock, addresses, topics, false);
         }
 
         public IEnumerable<FilterLog> GetLogs(
@@ -320,17 +325,17 @@ namespace Nethermind.Facade
             return filter is not null;
         }
 
-        public int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock,
-            object? address = null, IEnumerable<object>? topics = null)
+        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
+            HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null)
         {
-            LogFilter filter = filterStore.CreateLogFilter(fromBlock ?? BlockParameter.Latest, toBlock ?? BlockParameter.Latest, address, topics);
+            LogFilter filter = filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
 
         public int NewBlockFilter()
         {
-            BlockFilter filter = filterStore.CreateBlockFilter(blockTree.Head!.Number);
+            BlockFilter filter = filterStore.CreateBlockFilter();
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
@@ -373,9 +378,9 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {
-            stateReader.RunTreeVisitor(treeVisitor, stateRoot);
+            stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
         public bool HasStateForBlock(BlockHeader baseBlock)
@@ -393,16 +398,17 @@ namespace Nethermind.Facade
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
-        private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
             var error = txResult switch
             {
-                { Success: true } when tracerError is not null => tracerError,
-                { Success: false, Error: not null } => txResult.Error,
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.SubstateError ?? txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when tracerError is not null => tracerError,
+                { TransactionExecuted: false, Error: not TransactionResult.ErrorType.None } => txResult.ErrorDescription,
                 _ => null
             };
 
-            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+            return error;
         }
 
         public record BlockProcessingComponents(

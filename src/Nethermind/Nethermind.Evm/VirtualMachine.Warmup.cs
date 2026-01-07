@@ -3,11 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,15 +21,14 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
-
-public unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachine<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        VirtualMachine<TGasPolicy> vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];
@@ -37,39 +39,39 @@ public unsafe partial class VirtualMachine
 
         state.CreateAccount(addressOne, 1000.Ether());
         state.Commit(spec);
-        BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
+        BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
-        vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
+        vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        ExecutionEnvironment env = new(
-            executingAccount: addressOne,
-            codeSource: addressOne,
-            caller: addressOne,
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
-            value: 0,
+            executingAccount: addressOne,
+            caller: addressOne,
+            codeSource: addressOne,
+            callDepth: 0,
             transferValue: 0,
-            inputData: default,
-            callDepth: 0);
+            value: 0,
+            inputData: default);
 
-        using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
         {
-            vm.EvmState = evmState;
+            vm.VmState = vmState;
             vm._worldState = state;
             vm._codeInfoRepository = codeInfoRepository;
-            evmState.InitializeStacks();
+            vmState.InitializeStacks();
 
-            RunOpCodes<OnFlag>(vm, state, evmState, spec);
-            RunOpCodes<OffFlag>(vm, state, evmState, spec);
+            RunOpCodes<OnFlag>(vm, state, vmState, spec);
+            RunOpCodes<OffFlag>(vm, state, vmState, spec);
         }
 
-        TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
-        processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
+        TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
 
         RunTransactions(processor, state, spec);
     }
 
-    private static void RunTransactions(TransactionProcessor processor, IWorldState state, IReleaseSpec spec)
+    private static void RunTransactions(TransactionProcessor<TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
     {
         const int WarmUpIterations = 40;
 
@@ -145,16 +147,16 @@ public unsafe partial class VirtualMachine
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, IWorldState state, EvmState evmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, VmState<TGasPolicy> vmState, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;
 
-        OpCode[] opcodes = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+        var opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        EvmStack stack = new(0, txTracer, evmState.DataStack);
-        long gas = long.MaxValue;
+        EvmStack stack = new(0, txTracer, vmState.DataStack);
+        TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
@@ -170,15 +172,15 @@ public unsafe partial class VirtualMachine
                 stack.PushOne<TTracingInst>();
 
                 opcodes[i](vm, ref stack, ref gas, ref pc);
-                if (vm.ReturnData is EvmState returnState)
+                if (vm.ReturnData is VmState<TGasPolicy> returnState)
                 {
                     returnState.Dispose();
                     vm.ReturnData = null!;
                 }
 
                 state.Reset(resetBlockChanges: true);
-                stack = new(0, txTracer, evmState.DataStack);
-                gas = long.MaxValue;
+                stack = new(0, txTracer, vmState.DataStack);
+                gas = TGasPolicy.FromLong(long.MaxValue);
                 pc = 0;
             }
         }
@@ -189,11 +191,13 @@ public unsafe partial class VirtualMachine
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
             return Keccak.Compute(spec!.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
-                : (number).ToString());
+                : number.ToString());
         }
+
+        public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }
 }

@@ -6,9 +6,11 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions
@@ -19,17 +21,18 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the program counter is pushed.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the gas cost.</param>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionProgramCounter<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionProgramCounter<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
 
@@ -42,16 +45,17 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the jump destination cost.</param>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost specific for a jump destination marker.
-        gasAvailable -= GasCostOf.JumpDest;
+        TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
 
         return EvmExceptionType.None;
     }
@@ -63,21 +67,22 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack from which the jump destination is popped.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the gas cost for jumping.</param>
+    /// <param name="gas">Reference to the gas state; reduced by the gas cost for jumping.</param>
     /// <param name="programCounter">Reference to the program counter that may be updated with the jump destination.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.InvalidJumpDestination"/>
     /// on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost for performing a jump.
-        gasAvailable -= GasCostOf.Jump;
+        TGasPolicy.Consume(ref gas, GasCostOf.Jump);
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
-        if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
+        if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -94,7 +99,7 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack from which the jump destination and condition are popped.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the cost for conditional jump.</param>
+    /// <param name="gas">Reference to the gas state; reduced by the cost for conditional jump.</param>
     /// <param name="programCounter">Reference to the program counter that may be updated on a jump.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; returns <see cref="EvmExceptionType.StackUnderflow"/>
@@ -102,10 +107,11 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the high gas cost for a conditional jump.
-        gasAvailable -= GasCostOf.JumpI;
+        TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
@@ -113,7 +119,7 @@ internal static partial class EvmInstructions
         if (isOverflow) goto StackUnderflow;
         if (shouldJump)
         {
-            if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
         }
 
         return EvmExceptionType.None;
@@ -145,10 +151,11 @@ internal static partial class EvmInstructions
     /// In EOFCREATE or TXCREATE executions, the STOP opcode is considered illegal.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionStop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // In contract creation contexts, a STOP is not permitted.
-        if (vm.EvmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
+        if (vm.VmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {
             return EvmExceptionType.BadInstruction;
         }
@@ -162,7 +169,8 @@ internal static partial class EvmInstructions
     /// and returns a revert exception.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRevert(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRevert<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 position) ||
@@ -172,13 +180,13 @@ internal static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
+            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
 
-        // Copy the specified memory region as return data.
-        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
     // Jump forward to be unpredicted by the branch predictor.
@@ -194,12 +202,13 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
 
-        EvmState vmState = vm.EvmState;
+        VmState<TGasPolicy> vmState = vm.VmState;
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
@@ -210,7 +219,7 @@ internal static partial class EvmInstructions
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (spec.UseShanghaiDDosProtection)
         {
-            gasAvailable -= GasCostOf.SelfDestructEip150;
+            TGasPolicy.ConsumeSelfDestructGas(ref gas);
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
@@ -219,7 +228,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -236,7 +245,7 @@ internal static partial class EvmInstructions
         // For certain specs, charge gas if transferring to a dead account.
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
                 goto OutOfGas;
         }
 
@@ -244,7 +253,7 @@ internal static partial class EvmInstructions
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
                 goto OutOfGas;
         }
 
@@ -279,16 +288,18 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Handles invalid opcodes by deducting a high gas cost and returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionInvalid(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionInvalid<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        gasAvailable -= GasCostOf.High;
+        TGasPolicy.Consume(ref gas, GasCostOf.High);
         return EvmExceptionType.BadInstruction;
     }
 
     /// <summary>
     /// Default handler for undefined opcodes, always returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionBadInstruction(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => EvmExceptionType.BadInstruction;
 
     /// <summary>
@@ -302,7 +313,7 @@ internal static partial class EvmInstructions
     /// <c>true</c> if the destination is valid and the program counter is updated; otherwise, <c>false</c>.
     /// </returns>
     [SkipLocalsInit]
-    private static bool Jump(in UInt256 jumpDestination, ref int programCounter, in ExecutionEnvironment env)
+    private static bool Jump(in UInt256 jumpDestination, ref int programCounter, ExecutionEnvironment env)
     {
         // Check if the jump destination exceeds the maximum allowed integer value.
         if (jumpDestination > int.MaxValue)
@@ -311,10 +322,10 @@ internal static partial class EvmInstructions
         }
 
         // Extract the jump destination from the lowest limb of the UInt256.
-        return Jump((int)jumpDestination.u0, ref programCounter, in env);
+        return Jump((int)jumpDestination.u0, ref programCounter, env);
     }
 
-    private static bool Jump(int jumpDestination, ref int programCounter, in ExecutionEnvironment env)
+    private static bool Jump(int jumpDestination, ref int programCounter, ExecutionEnvironment env)
     {
         // Validate that the jump destination corresponds to a valid jump marker in the code.
         if (!env.CodeInfo.ValidateJump(jumpDestination))

@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -38,24 +39,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
-public abstract class StateSyncFeedTestsBase
+public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
 {
     public const int TimeoutLength = 20000;
 
-    private static IBlockTree? _blockTree;
-    protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
+    // Chain length used for test block trees, use a constant to avoid shared state
+    private const int TestChainLength = 100;
 
     protected ILogger _logger;
     protected ILogManager _logManager = null!;
-
-    private readonly int _defaultPeerCount;
-    private readonly int _defaultPeerMaxRandomLatency;
-
-    public StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
-    {
-        _defaultPeerCount = defaultPeerCount;
-        _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
-    }
 
     public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
@@ -84,14 +76,14 @@ public abstract class StateSyncFeedTestsBase
 
     protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
     {
-        SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
-        for (int i = 0; i < _defaultPeerCount; i++)
+        SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
+        for (int i = 0; i < defaultPeerCount; i++)
         {
             Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
             {
-                EthDetails = "eth66",
+                EthDetails = "eth68",
             };
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
+            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
             mockMutator?.Invoke(mock);
             syncPeers[i] = mock;
         }
@@ -101,9 +93,12 @@ public abstract class StateSyncFeedTestsBase
 
         builder.RegisterBuildCallback((ctx) =>
         {
+            IBlockTree blockTree = ctx.Resolve<IBlockTree>();
             ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
-            foreach (ISyncPeer syncPeer in syncPeers)
+            foreach (SyncPeerMock syncPeer in syncPeers)
             {
+                // Set per-test block tree to avoid race conditions during parallel execution
+                syncPeer.SetBlockTree(blockTree);
                 peerPool.AddPeer(syncPeer);
             }
         });
@@ -129,9 +124,10 @@ public abstract class StateSyncFeedTestsBase
             .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
+            // Cache key includes type name so different inherited test classes don't share the same blocktree
             .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(
-                $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{BlockTree.BestSuggestedHeader!.Number}",
-                () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength((int)BlockTree.BestSuggestedHeader!.Number)))
+                $"{GetType().Name}{dbContext.RemoteStateTree.RootHash}{TestChainLength}",
+                () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength(TestChainLength)))
 
             .Add<SafeContext>();
 
@@ -169,7 +165,9 @@ public abstract class StateSyncFeedTestsBase
         Lazy<ISyncPeerPool> syncPeerPool,
         Lazy<TreeSync> treeSync,
         Lazy<StateSyncFeed> stateSyncFeed,
+        Lazy<ISyncDownloader<StateSyncBatch>> downloader,
         Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+        Lazy<IBlockProcessingQueue> blockProcessingQueue,
         IBlockTree blockTree
     ) : IDisposable
     {
@@ -177,20 +175,23 @@ public abstract class StateSyncFeedTestsBase
         public ISyncPeerPool Pool => syncPeerPool.Value;
         public TreeSync TreeFeed => treeSync.Value;
         public StateSyncFeed Feed => stateSyncFeed.Value;
+        public IBlockProcessingQueue BlockProcessingQueue => blockProcessingQueue.Value;
 
-        private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
+        public ISyncDownloader<StateSyncBatch> Downloader => downloader.Value;
+
+        private readonly AutoCancelTokenSource _autoCancelTokenSource = new();
         public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
 
         private bool _isDisposed;
 
-        public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
+        public async Task SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
         {
             Block newBlock = Build.A.Block
                 .WithParent(blockTree.BestSuggestedHeader!)
                 .WithStateRoot(newRootHash)
                 .TestObject;
 
-            blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
+            (await blockTree.SuggestBlockAsync(newBlock)).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([newBlock], false, true);
         }
 
@@ -283,6 +284,9 @@ public abstract class StateSyncFeedTestsBase
         private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
         private readonly long _maxRandomizedLatencyMs;
 
+        // Per-test block tree to avoid race conditions during parallel test execution
+        private IBlockTree? _blockTree;
+
         public SyncPeerMock(
             IDb stateDb,
             IDb codeDb,
@@ -294,13 +298,15 @@ public abstract class StateSyncFeedTestsBase
             _codeDb = codeDb;
             _executorResultFunction = executorResultFunction;
 
-            Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
+            Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth68" };
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
             IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
             alwaysAvailableRootTracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            PruningConfig pruningConfig = new PruningConfig();
+            TestFinalizedStateProvider testFinalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
-                Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
+                Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
                 trieStore.AsReadOnly(),
@@ -346,6 +352,11 @@ public abstract class StateSyncFeedTestsBase
             _filter = availableHashes;
         }
 
+        public void SetBlockTree(IBlockTree blockTree)
+        {
+            _blockTree = blockTree;
+        }
+
         public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
             if (protocol == Protocol.Snap)
@@ -359,7 +370,7 @@ public abstract class StateSyncFeedTestsBase
 
         public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
-            return Task.FromResult(BlockTree.Head?.Header);
+            return Task.FromResult(_blockTree?.Head?.Header);
         }
 
         public override Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)

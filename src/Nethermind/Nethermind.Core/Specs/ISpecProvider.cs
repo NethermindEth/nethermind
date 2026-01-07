@@ -84,11 +84,7 @@ namespace Nethermind.Core.Specs
 
     public static class SpecProviderExtensions
     {
-        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, ForkActivation forkActivation)
-            => specProvider.SealEngine == SealEngineType.AuRa
-                ? new AuraSpecProvider(specProvider.GetSpecInternal(forkActivation))
-                : specProvider.GetSpecInternal(forkActivation);
-
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, ForkActivation forkActivation) => specProvider.GetSpecInternal(forkActivation);
         public static IReleaseSpec GetSpec(this ISpecProvider specProvider, long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
         public static IReleaseSpec GetSpec(this ISpecProvider specProvider, BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
 
