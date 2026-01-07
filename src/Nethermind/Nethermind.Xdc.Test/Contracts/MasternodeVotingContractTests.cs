@@ -75,9 +75,6 @@ internal class MasternodeVotingContractTests
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
 
         readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
-        //EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        //EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        //EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
 
