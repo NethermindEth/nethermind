@@ -48,8 +48,8 @@ public class RetryCacheTests
         AnnounceResult result1 = _cache.Announced(1, Substitute.For<ITestHandler>());
         AnnounceResult result2 = _cache.Announced(1, Substitute.For<ITestHandler>());
 
-        Assert.That(result1, Is.EqualTo(AnnounceResult.New));
-        Assert.That(result2, Is.EqualTo(AnnounceResult.Enqueued));
+        Assert.That(result1, Is.EqualTo(AnnounceResult.RequestRequired));
+        Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
     }
 
     [Test]
@@ -91,7 +91,7 @@ public class RetryCacheTests
         _cache.Received(1);
 
         AnnounceResult result = _cache.Announced(1, Substitute.For<ITestHandler>());
-        Assert.That(result, Is.EqualTo(AnnounceResult.New));
+        Assert.That(result, Is.EqualTo(AnnounceResult.RequestRequired));
     }
 
     [Test]
@@ -161,7 +161,7 @@ public class RetryCacheTests
 
         await Task.Delay(Timeout, _cancellationTokenSource.Token);
 
-        Assert.That(() => _cache.Announced(1, Substitute.For<ITestHandler>()), Is.EqualTo(AnnounceResult.New).After(Timeout, 100));
+        Assert.That(() => _cache.Announced(1, Substitute.For<ITestHandler>()), Is.EqualTo(AnnounceResult.RequestRequired).After(Timeout, 100));
     }
 
     [Test]
