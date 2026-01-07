@@ -634,11 +634,12 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         IReleaseSpec spec = vm.Spec;
         TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
 
         Address address = stack.PopAddress();
-        if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
@@ -683,10 +684,11 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, spec.GetExtCodeHashCost());
 
         Address address = stack.PopAddress();
-        if (address is null) goto StackUnderflow;
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;

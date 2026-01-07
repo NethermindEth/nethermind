@@ -514,6 +514,12 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+
+        if (CheckStackOverflow(ref stack, 1))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         stack.PushZero<TTracingInst>();
         return EvmExceptionType.None;
