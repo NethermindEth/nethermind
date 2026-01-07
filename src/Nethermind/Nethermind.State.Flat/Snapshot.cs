@@ -127,9 +127,9 @@ public record SnapshotContent(
             { MemoryType.StorageBytes, Storages.Count * 40 },
             { MemoryType.SelfDestructedAddress, SelfDestructedStorageAddresses.Count },
             { MemoryType.StateNodes, StateNodes.Count },
-            { MemoryType.StateNodesBytes, StateNodes.Sum((kv) => kv.Value.GetMemorySize(false)) },
+            { MemoryType.StateNodesBytes, StateNodes.Count * 700 }, // Just estimate
             { MemoryType.StorageNodes, StorageNodes.Count },
-            { MemoryType.StorageNodesBytes, StorageNodes.Sum((kv) => kv.Value.GetMemorySize(false)) },
+            { MemoryType.StorageNodesBytes, StorageNodes.Count * 700 },
         };
 
         // I'm just winging it here.

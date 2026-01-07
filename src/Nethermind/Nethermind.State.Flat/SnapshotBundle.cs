@@ -582,7 +582,7 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
 
     private void GuardDispose()
     {
-        if (_isDisposed) throw new InvalidOperationException($"{nameof(SnapshotBundle)} disposed");
+        if (_isDisposed) throw new ObjectDisposedException($"{nameof(SnapshotBundle)} disposed");
     }
 
     public void Dispose()
