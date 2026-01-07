@@ -2,15 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
+internal interface ISnapshotBundleTrieProvider
+{
+    TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer);
+    TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx, bool isTrieWarmer);
+    byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer);
+
+    void SetStateNode(in TreePath path, TrieNode node);
+    void SetStorageNode(Hash256 address, in TreePath path, TrieNode node);
+}
+
 internal class StateTrieStoreAdapter(
-    SnapshotBundle bundle,
+    ISnapshotBundleTrieProvider bundle,
     ConcurrencyQuota concurrencyQuota,
     bool isTrieWarmer
 ) : AbstractMinimalTrieStore
@@ -31,7 +40,7 @@ internal class StateTrieStoreAdapter(
         return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address, -1, isTrieWarmer);
     }
 
-    private class Committer(SnapshotBundle bundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(ISnapshotBundleTrieProvider bundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
@@ -42,7 +51,7 @@ internal class StateTrieStoreAdapter(
 }
 
 internal class StorageTrieStoreAdapter(
-    SnapshotBundle bundle,
+    ISnapshotBundleTrieProvider bundle,
     ConcurrencyQuota concurrencyQuota,
     Hash256AsKey addressHash,
     int selfDestructKnownStateIdx,
@@ -66,7 +75,7 @@ internal class StorageTrieStoreAdapter(
         return new Committer(bundle, addressHash, concurrencyQuota);
     }
 
-    private class Committer(SnapshotBundle bundle, Hash256AsKey addressHash, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(ISnapshotBundleTrieProvider bundle, Hash256AsKey addressHash, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {

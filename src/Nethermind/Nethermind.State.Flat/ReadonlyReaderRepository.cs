@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat;
 
 public class ReadonlyReaderRepository: IAsyncDisposable
 {
-    private ConcurrentDictionary<StateId, RefCountingDisposableBox<SnapshotBundle>> _sharedReader = new();
+    private ConcurrentDictionary<StateId, RefCountingDisposableBox<ReadOnlySnapshotBundle>> _sharedReader = new();
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly Task _clearReaderTask;
 
@@ -50,14 +50,14 @@ public class ReadonlyReaderRepository: IAsyncDisposable
 
         foreach (var stateId in toRemoves)
         {
-            if (_sharedReader.TryRemove(stateId, out RefCountingDisposableBox<SnapshotBundle>? snapshotBundle))
+            if (_sharedReader.TryRemove(stateId, out RefCountingDisposableBox<ReadOnlySnapshotBundle>? snapshotBundle))
             {
                 snapshotBundle.Dispose();
             }
         }
     }
 
-    public RefCountingDisposableBox<SnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
+    public RefCountingDisposableBox<ReadOnlySnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
     {
         if (_sharedReader.TryGetValue(baseBlock, out var snapshotBundle))
         {
@@ -71,10 +71,10 @@ public class ReadonlyReaderRepository: IAsyncDisposable
             }
         }
 
-        SnapshotBundle? bundle = _flatDiffRepository.GatherReaderAtBaseBlock(baseBlock, IFlatDiffRepository.SnapshotBundleUsage.StateReader);
+        ReadOnlySnapshotBundle? bundle = _flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(baseBlock);
         if (bundle is null) return null;
 
-        RefCountingDisposableBox<SnapshotBundle> newReader = new RefCountingDisposableBox<SnapshotBundle>(bundle);
+        RefCountingDisposableBox<ReadOnlySnapshotBundle> newReader = new RefCountingDisposableBox<ReadOnlySnapshotBundle>(bundle);
         newReader.AcquireLease();
         if (!_sharedReader.TryAdd(baseBlock, newReader))
         {

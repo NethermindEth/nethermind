@@ -292,6 +292,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return GatherSnapshotBundle(baseBlock, usage);
     }
 
+    public ReadOnlySnapshotBundle GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
+    {
+        return GatherReadOnlySnapshotBundle(baseBlock);
+    }
+
     private static Histogram _knownStatesSize = DevMetric.Factory.CreateHistogram("flatdiff_known_state_size", "timer",
         new HistogramConfiguration()
         {
@@ -300,7 +305,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             Buckets = [1]
         });
 
-    private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
+    private ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock)
     {
         // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
         long sw =  Stopwatch.GetTimestamp();
@@ -309,12 +314,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always try to generate genesis.
-            return new SnapshotBundle(
-                new ArrayPoolList<Snapshot>(0),
-                new NoopPersistenceReader(),
-                _trieNodeCache,
-                _resourcePool,
-                usage: usage);
+            return new ReadOnlySnapshotBundle(new ArrayPoolList<Snapshot>(0), new NoopPersistenceReader());
         }
 
         StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
@@ -342,7 +342,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             }
         }
 
-        _flatdiffimes.WithLabels("gather_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
+        _flatdiffimes.WithLabels("gather_readonly_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
         sw =  Stopwatch.GetTimestamp();
         _knownStatesSize.Observe(snapshots.Count);
 
@@ -363,16 +363,45 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         // TODO: Measure this
         snapshots.Reverse();
-        _flatdiffimes.WithLabels("gather_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
+        _flatdiffimes.WithLabels("gather_readonly_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
         sw =  Stopwatch.GetTimestamp();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {_persistenceManager.GetCurrentPersistedStateId()}");
-        var res = new SnapshotBundle(
+        var res = new ReadOnlySnapshotBundle(
             snapshots,
-            persistenceReader,
+            persistenceReader);
+        _flatdiffimes.WithLabels("gather_readonly_cache", "done").Observe(Stopwatch.GetTimestamp() - sw);
+        return res;
+    }
+
+    private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
+    {
+        // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
+        long sw =  Stopwatch.GetTimestamp();
+        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+        ReadOnlySnapshotBundle readOnlySnapshotBundle = GatherReadOnlySnapshotBundle(baseBlock);
+        _flatdiffimes.WithLabels("gather_cache", "gather_readonly").Observe(Stopwatch.GetTimestamp() - sw);
+
+        if (baseBlock == StateId.PreGenesis)
+        {
+            // Special case for pregenesis. Note: nethermind always try to generate genesis.
+            return new SnapshotBundle(
+                readOnlySnapshotBundle,
+                new ArrayPoolList<Snapshot>(1),
+                _trieNodeCache,
+                _resourcePool,
+                usage: usage);
+        }
+
+        sw =  Stopwatch.GetTimestamp();
+
+        var res = new SnapshotBundle(
+            readOnlySnapshotBundle,
+            new ArrayPoolList<Snapshot>(1),
             _trieNodeCache,
             _resourcePool,
             usage: usage);
+
         _flatdiffimes.WithLabels("gather_cache", "done").Observe(Stopwatch.GetTimestamp() - sw);
         return res;
     }

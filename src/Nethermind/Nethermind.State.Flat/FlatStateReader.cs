@@ -23,14 +23,14 @@ public class FlatStateReader(
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using RefCountingDisposableBox<SnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        using RefCountingDisposableBox<ReadOnlySnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
         if (readerBox is null)
         {
             account = default;
             return false;
         }
 
-        SnapshotBundle reader = readerBox.Item;
+        ReadOnlySnapshotBundle reader = readerBox.Item;
         if (reader.TryGetAccount(address, out Account? accountCls) && accountCls != null)
         {
             account = accountCls.ToStruct();
@@ -44,13 +44,13 @@ public class FlatStateReader(
     // TODO: Why is it return span? How is it suppose to dispose itself?
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using RefCountingDisposableBox<SnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        using RefCountingDisposableBox<ReadOnlySnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
         if (readerBox is null)
         {
             return Array.Empty<byte>();
         }
 
-        SnapshotBundle reader = readerBox.Item;
+        ReadOnlySnapshotBundle reader = readerBox.Item;
         if (reader.TryGetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out byte[]? value))
         {
             return value;
@@ -71,13 +71,13 @@ public class FlatStateReader(
             throw new InvalidOperationException($"State root {stateRoot} not found");
         }
 
-        using RefCountingDisposableBox<SnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(stateId.Value);
+        using RefCountingDisposableBox<ReadOnlySnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(stateId.Value);
         if (readerBox is null)
         {
             throw new InvalidOperationException($"State root {stateRoot} not found");
         }
 
-        SnapshotBundle reader = readerBox.Item;
+        ReadOnlySnapshotBundle reader = readerBox.Item;
         StateTrieStoreAdapter trieStoreAdapter = new StateTrieStoreAdapter(
             reader,
             new ConcurrencyQuota(),

@@ -14,6 +14,7 @@ public interface IFlatDiffRepository
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
     SnapshotBundle GatherReaderAtBaseBlock(StateId baseBlock, SnapshotBundleUsage usage);
+    ReadOnlySnapshotBundle GatherReadOnlyReaderAtBaseBlock(StateId baseBlock);
     void AddSnapshot(Snapshot snapshot, CachedResource cachedResource);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(StateId stateId);
