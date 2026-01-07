@@ -466,6 +466,7 @@ internal static partial class EvmInstructions
         // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
         if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
 
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);

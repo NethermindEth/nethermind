@@ -537,7 +537,7 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, TOpCount.Count)) {
+        if(CheckStackOverflow(ref stack, 1)) {
             return EvmExceptionType.StackOverflow;
         }
 
