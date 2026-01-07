@@ -53,6 +53,8 @@ namespace Nethermind.Xdc
                 throw new ArgumentNullException(nameof(block));
             if (block.Header is not XdcBlockHeader xdcHeader)
                 throw new InvalidOperationException("Only supports XDC headers");
+            if (xdcHeader.Number == 0)
+                return Array.Empty<BlockReward>();
 
             // Rewards in XDC are calculated only if it's an epoch switch block
             if (!epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
