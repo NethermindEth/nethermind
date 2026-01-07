@@ -42,7 +42,7 @@ The repository is composed of two main parts:
 After building both components, you can run the .NET application from the root directory:
 
 ```bash
-dotnet run
+dotnet run <LatestBlockId> <BlockCount>
 ```
 
 This will execute the `Program.cs` which should then utilize the compiled Rust verifiers.

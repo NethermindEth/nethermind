@@ -24,7 +24,7 @@ namespace EthProofValidator.src
         public async Task ValidateBlockAsync(long blockId)
         {
             Console.WriteLine($"\n📦 Processing Block #{blockId}");
-            
+
             var proofs = await _apiClient.GetProofsForBlockAsync(blockId);
             if (proofs == null || proofs.Count == 0)
             {
@@ -39,41 +39,55 @@ namespace EthProofValidator.src
             });
             var results = await Task.WhenAll(tasks);
 
-            int validCount = results.Count(r => r == 1);
-            int totalCount = results.Count(r => r != -1); // Exclude skipped proofs
+            int validCount = 0, totalCount = 0;
+            foreach (var result in results)
+            {
+                if (result == ZkResult.Valid) validCount++;
+                if (result != ZkResult.Failed && result != ZkResult.Skipped) totalCount++;
+            }
 
-            Console.WriteLine("   -----------------------------");
-            Console.WriteLine((double)validCount / totalCount >= 0.5
+            Console.WriteLine("   --------------------------------");
+            Console.WriteLine(validCount * 2 >= totalCount
                 ? $"✅ BLOCK #{blockId} ACCEPTED ({validCount}/{totalCount})"
                 : $"❌ BLOCK #{blockId} REJECTED ({validCount}/{totalCount})");
         }
 
-        private async Task<int> ProcessProofAsync(ProofMetadata proof, ZkProofVerifier? verifier)
+        private async Task<ZkResult> ProcessProofAsync(ProofMetadata proof, ZkProofVerifier? verifier)
         {
-            if (verifier == null)
+            if (verifier is null)
             {
                 var zkType = proof.Cluster.ZkvmVersion.ZkVm.Type;
-                Console.WriteLine($"   ⚠️  Skipping proof {proof.ProofId}: No verifier for cluster ({zkType}) {proof.ClusterId}");
-                return -1;
+                this.DisplayProofResult(ZkResult.Skipped, proof.ProofId, zkType, $"No verifier for cluster {proof.ClusterId}");
+                return ZkResult.Skipped;
             }
 
             var proofBytes = await _apiClient.DownloadProofAsync(proof.ProofId);
-            if (proofBytes == null) return -1;
+            if (proofBytes is null)
+            {
+                this.DisplayProofResult(ZkResult.Skipped, proof.ProofId, $"{verifier.ZkType}", "Could not download proof");
+                return ZkResult.Skipped;
+            }
 
-            try
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            ZkResult result = verifier.Verify(proofBytes);
+            sw.Stop();
+
+            this.DisplayProofResult(result, proof.ProofId, $"{verifier.ZkType}", $"{sw.ElapsedMilliseconds} ms");
+            return result;
+        }
+
+        private void DisplayProofResult(ZkResult result, long proofId, string zkType, string info)
+        {
+            var status = result switch
             {
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                bool isValid = verifier.Verify(proofBytes);
-                sw.Stop();
-                
-                Console.WriteLine($"   Proof {proof.ProofId,-10} : {(isValid ? "✅ Valid" : "❌ Invalid")} ({verifier.ZkType}, {sw.ElapsedMilliseconds} ms)");
-                return isValid ? 1 : 0;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"   ❌ Error processing proof {proof.ProofId}: {ex.Message}");
-                return 0;
-            }
+                ZkResult.Valid => "✅ Valid",
+                ZkResult.Invalid => "❌ Invalid",
+                ZkResult.Failed => "⛔ Error",
+                ZkResult.Skipped => "⚠️  Skipped",
+                _ => "❓ Unknown"
+            };
+
+            Console.WriteLine($"   Proof {proofId} - {zkType, -15} : {status} ({info})");
         }
     }
 }

@@ -23,16 +23,23 @@ namespace EthProofValidator.src.Verifiers
             AllocateVkMemory(vkBinary);
         }
 
-        public bool Verify(byte[] proof)
+        public ZkResult Verify(byte[] proof)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            try {
-                var result = NativeMethods.verify((int)_zkType, proof, (nuint)proof.Length, _vkPtr, _vkLen);
-                return result == 1;
-            } catch
+            try
             {
-                return false;
+                var result = NativeMethods.verify((int)_zkType, proof, (nuint)proof.Length, _vkPtr, _vkLen);
+                return result switch
+                {
+                    1 => ZkResult.Valid,
+                    0 => ZkResult.Invalid,
+                    _ => ZkResult.Failed
+                };
+            }
+            catch
+            {
+                return ZkResult.Failed;
             }
         }
 

@@ -5,20 +5,20 @@ namespace EthProofValidator.src
 {
     class Program
     {
-        static async Task Main()
+        static async Task Main(string[] args)
         {
-            var validator = new BlockValidator();
-            // await validator.InitializeAsync();
-
-            // The following include Single-GPU (1:100) zk proofs
-            // var blockIds = new List<long> { 24046700, 24046800, 24046900, 24047000, 24047100, 24047200, 24047300, 24047400, 24047500, 24047600, 24047700 };
-
-            const long LatestBlockId = 24080984;
-            const int BlockCount = 25;
-            var blockIds = Enumerable.Range((int)(LatestBlockId - BlockCount), BlockCount+1).Select(i => i).ToList();
-
-            foreach (var blockId in blockIds)
+            if (args.Length < 2 || !int.TryParse(args[0], out int latestBlockId) || !int.TryParse(args[1], out int blockCount))
             {
+                Console.WriteLine("Usage: dotnet run <LatestBlockId> <BlockCount>");
+                Console.WriteLine("Example: dotnet run 24182425 25");
+                return;
+            }
+
+            BlockValidator validator = new BlockValidator();
+
+            while (blockCount-- > 0)
+            {
+                int blockId = latestBlockId - blockCount;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 await validator.ValidateBlockAsync(blockId);
                 sw.Stop();
