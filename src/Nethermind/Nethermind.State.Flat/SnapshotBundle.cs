@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// A bundle of <see cref="Snapshot"/> and a layer of write buffer backed by a <see cref="SnapshotContent"/>.
 /// </summary>
-public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
+public sealed class SnapshotBundle : IDisposable
 {
     private ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 
@@ -367,11 +367,6 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
         return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
     }
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx, bool isTrieWarmer)
-    {
-        return FindStorageNodeOrUnknown(address, path, hash, selfDestructKnownStateIdx, isTrieWarmer, storageInitializer: false);
-    }
-
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer, bool storageInitializer = false)
     {
         long sw = Stopwatch.GetTimestamp();
@@ -652,5 +647,33 @@ public class SnapshotBundle : ISnapshotBundleTrieProvider, IDisposable
                 }
             }
         }
+    }
+}
+
+public struct SnapshotBundleTrieProvider(SnapshotBundle bundle) : ISnapshotBundleTrieProvider
+{
+    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
+    {
+        return bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
+    }
+
+    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx, bool isTrieWarmer)
+    {
+        return bundle.FindStorageNodeOrUnknown(address, path, hash, selfDestructKnownStateIdx, isTrieWarmer, storageInitializer: false);
+    }
+
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
+    {
+        return bundle.TryLoadRlp(address, path, hash, flags, isTrieWarmer);
+    }
+
+    public void SetStateNode(in TreePath path, TrieNode node)
+    {
+        bundle.SetStateNode(path, node);
+    }
+
+    public void SetStorageNode(Hash256 address, in TreePath path, TrieNode node)
+    {
+        bundle.SetStorageNode(address, path, node);
     }
 }

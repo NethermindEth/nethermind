@@ -10,7 +10,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
 
@@ -19,10 +18,9 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// A bundle of <see cref="Snapshot"/> and a layer of write buffer backed by a <see cref="SnapshotContent"/>.
 /// </summary>
-public sealed class ReadOnlySnapshotBundle : RefCountingDisposable, ISnapshotBundleTrieProvider
+public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
 {
     public int SnapshotCount => _snapshots.Count;
-    public int LeaseCount => (int)base._leases.Value;
 
     internal ArrayPoolList<Snapshot> _snapshots;
     private readonly IPersistence.IPersistenceReader _persistenceReader;
@@ -190,11 +188,6 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable, ISnapshotBun
         return true;
     }
 
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
-    {
-        return TryFindStateNodes(path, hash, out var node) ? node : new TrieNode(NodeType.Unknown, hash);
-    }
-
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
@@ -212,12 +205,6 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable, ISnapshotBun
         _nodeGetMiss.Inc();
         node = null;
         return false;
-    }
-
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx,
-        bool isTrieWarmer)
-    {
-        return TryFindStorageNodes(address, path, hash, selfDestructKnownStateIdx, out TrieNode? node) ? node :  new TrieNode(NodeType.Unknown, hash);
     }
 
     public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, [NotNullWhen(true)] out TrieNode? node)
@@ -276,16 +263,6 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable, ISnapshotBun
             }
         }
         return res;
-    }
-
-    public void SetStateNode(in TreePath path, TrieNode node)
-    {
-        throw new InvalidOperationException("Cannot set new node in a readonly snapshot bundle");
-    }
-
-    public void SetStorageNode(Hash256 address, in TreePath path, TrieNode node)
-    {
-        throw new InvalidOperationException("Cannot set new node in a readonly snapshot bundle");
     }
 
     private void GuardDispose()

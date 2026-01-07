@@ -72,8 +72,8 @@ public class FlatStateReader(
             throw new InvalidOperationException($"State root {stateRoot} not found");
         }
 
-        StateTrieStoreAdapter trieStoreAdapter = new StateTrieStoreAdapter(
-            reader,
+        StateTrieStoreAdapter<ReadOnlySnapshotBundleTrieProvider> trieStoreAdapter = new(
+            new ReadOnlySnapshotBundleTrieProvider(reader),
             new ConcurrencyQuota(),
             false);
 

@@ -18,26 +18,29 @@ internal interface ISnapshotBundleTrieProvider
     void SetStorageNode(Hash256 address, in TreePath path, TrieNode node);
 }
 
-internal class StateTrieStoreAdapter(
-    ISnapshotBundleTrieProvider bundle,
+internal class StateTrieStoreAdapter<TTrieProvider>(
+    TTrieProvider bundle,
     ConcurrencyQuota concurrencyQuota,
     bool isTrieWarmer
 ) : AbstractMinimalTrieStore
+    where TTrieProvider : struct, ISnapshotBundleTrieProvider
 {
+    private TTrieProvider _bundle = bundle;
+
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        return bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
+        return _bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadRlp(null, path, hash, flags, isTrieWarmer);
+    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _bundle.TryLoadRlp(null, path, hash, flags, isTrieWarmer);
 
-    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(bundle, concurrencyQuota);
+    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(_bundle, concurrencyQuota);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
         // Used in trie visitor and weird very edge case that cuts the whole thing to peaces
-        return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address, -1, isTrieWarmer);
+        return new StorageTrieStoreAdapter<TTrieProvider>(_bundle, concurrencyQuota, address, -1, isTrieWarmer);
     }
 
     private class Committer(ISnapshotBundleTrieProvider bundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
@@ -50,13 +53,14 @@ internal class StateTrieStoreAdapter(
     }
 }
 
-internal class StorageTrieStoreAdapter(
-    ISnapshotBundleTrieProvider bundle,
+internal class StorageTrieStoreAdapter<TTrieProvider> (
+    TTrieProvider bundle,
     ConcurrencyQuota concurrencyQuota,
     Hash256AsKey addressHash,
     int selfDestructKnownStateIdx,
     bool isTrieWarmer
 ): AbstractMinimalTrieStore
+    where TTrieProvider : struct, ISnapshotBundleTrieProvider
 {
     internal int SelfDestructKnownStateIdx = selfDestructKnownStateIdx;
 
