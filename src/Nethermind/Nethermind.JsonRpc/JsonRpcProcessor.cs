@@ -226,6 +226,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     }
                     JsonRpcBatchResult jsonRpcBatchResult = new((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c));
                     jsonRpcBatchResult.AddDisposable(() => collection.Dispose());
+                    jsonRpcBatchResult.AddDisposable(() => jsonDocument.Dispose());
                     yield return JsonRpcResult.Collection(jsonRpcBatchResult);
                 }
 
