@@ -337,6 +337,8 @@ public class DbConfig : IDbConfig
 
         // Make writes a tiny bit faster... please
         // "wal_bytes_per_sync:10000000;" +
+        "target_file_size_multiplier=2;" +
+        "max_bytes_for_level_base=128000000;" + // flat writes very little
 
         "compression=kLZ4Compression;" +
         "max_write_batch_group_size_bytes=4000000;" +
@@ -417,8 +419,8 @@ public class DbConfig : IDbConfig
     public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = false;
     public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
-    public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)64.MiB();
-    public ulong FlatStorageDbWriteBufferNumber { get; set; } = 8;
+    public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)32.MiB();
+    public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
 
     public string? FlatStorageDbRocksDbOptions
     {
@@ -444,6 +446,7 @@ public class DbConfig : IDbConfig
         // Make writes a tiny bit faster... please
         // "wal_bytes_per_sync:10000000;" +
         "manual_wal_flush=true;" +
+        "target_file_size_multiplier=2;" +
 
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +

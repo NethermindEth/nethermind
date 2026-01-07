@@ -153,16 +153,13 @@ public class TrieNodeCache
             AddToCacheWithHashCode(shardIdx, hashCode, newNode);
         }
 
-        Task stateNodesAdd = Task.Run(() =>
+        foreach (var kv in snapshot.StateNodes)
         {
-            foreach (var kv in snapshot.StateNodes)
-            {
-                kv.Value.PrunePersistedRecursively(1);
-                AddToCache(null, kv.Key, kv.Value);
-                (int, int) shardAndHashCode = GetShardAndHashCode(null, kv.Key);
-                cachedResource.Nodes.ClearCachedNode(shardAndHashCode.Item1, shardAndHashCode.Item2);
-            }
-        });
+            kv.Value.PrunePersistedRecursively(1);
+            AddToCache(null, kv.Key, kv.Value);
+            (int, int) shardAndHashCode = GetShardAndHashCode(null, kv.Key);
+            cachedResource.Nodes.ClearCachedNode(shardAndHashCode.Item1, shardAndHashCode.Item2);
+        }
 
         long sw = Stopwatch.GetTimestamp();
 
@@ -176,7 +173,6 @@ public class TrieNodeCache
         _times.WithLabels("storagenodes").Observe(Stopwatch.GetTimestamp() - sw);
 
         sw = Stopwatch.GetTimestamp();
-        stateNodesAdd.Wait();
 
         _times.WithLabels("statenodes").Observe(Stopwatch.GetTimestamp() - sw);
         sw = Stopwatch.GetTimestamp();
