@@ -65,7 +65,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 });
             })
 
-            .AddSingleton<ReadonlyReaderRepository>()
             .AddSingleton<FlatDiffRepository.Configuration, IFlatDbConfig>((config) => new FlatDiffRepository.Configuration()
             {
                 Boundary = config.PruningBoundary,

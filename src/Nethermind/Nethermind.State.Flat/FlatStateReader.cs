@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -16,21 +14,19 @@ namespace Nethermind.State.Flat;
 
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    ReadonlyReaderRepository readonlyReaderRepositor,
     IFlatDiffRepository flatDiffRepository,
     ILogManager  logManager
 ): IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using RefCountingDisposableBox<ReadOnlySnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
-        if (readerBox is null)
+        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        if (reader is null)
         {
             account = default;
             return false;
         }
 
-        ReadOnlySnapshotBundle reader = readerBox.Item;
         if (reader.TryGetAccount(address, out Account? accountCls) && accountCls != null)
         {
             account = accountCls.ToStruct();
@@ -44,13 +40,12 @@ public class FlatStateReader(
     // TODO: Why is it return span? How is it suppose to dispose itself?
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using RefCountingDisposableBox<ReadOnlySnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
-        if (readerBox is null)
+        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        if (reader is null)
         {
             return Array.Empty<byte>();
         }
 
-        ReadOnlySnapshotBundle reader = readerBox.Item;
         if (reader.TryGetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out byte[]? value))
         {
             return value;
@@ -71,13 +66,12 @@ public class FlatStateReader(
             throw new InvalidOperationException($"State root {stateRoot} not found");
         }
 
-        using RefCountingDisposableBox<ReadOnlySnapshotBundle>? readerBox = readonlyReaderRepositor.GatherReadOnlyReaderAtBaseBlock(stateId.Value);
-        if (readerBox is null)
+        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(stateId.Value);
+        if (reader is null)
         {
             throw new InvalidOperationException($"State root {stateRoot} not found");
         }
 
-        ReadOnlySnapshotBundle reader = readerBox.Item;
         StateTrieStoreAdapter trieStoreAdapter = new StateTrieStoreAdapter(
             reader,
             new ConcurrencyQuota(),
