@@ -39,7 +39,6 @@ internal static partial class EvmInstructions
             return stack.Head < 3;
         }
     }
-    }
 
     /// <summary>
     /// Copies a portion of code (or call data) into memory.
