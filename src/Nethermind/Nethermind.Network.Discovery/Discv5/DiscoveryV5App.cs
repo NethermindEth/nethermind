@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin.Secp256k1;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
@@ -207,9 +208,11 @@ public class DiscoveryV5App : IDiscoveryApp
     {
         Channel<Node> discoveredNodesChannel = Channel.CreateBounded<Node>(1);
 
-        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, ArrayPoolSpan<byte> nodeId)
         {
-            static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
+            using ArrayPoolSpan<byte> _ = nodeId;
+
+            static int[] GetDistances(byte[] srcNodeId, in ArrayPoolSpan<byte> destNodeId)
             {
                 const int WiderDistanceRange = 3;
 
@@ -243,7 +246,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
                 if (TryGetNodeFromEnr(newEntry, out Node? node2))
                 {
-                    discoveredNodesChannel.Writer.TryWrite(node2!);
+                    await discoveredNodesChannel.Writer.WriteAsync(node2!, token);
 
                     if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
 
@@ -255,7 +258,7 @@ public class DiscoveryV5App : IDiscoveryApp
                     continue;
                 }
 
-                foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)) ?? [])
+                foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, in nodeId)) ?? [])
                 {
                     if (!checkedNodes.Contains(newEnr))
                     {
@@ -272,16 +275,20 @@ public class DiscoveryV5App : IDiscoveryApp
 
         Task discoverTask = Task.Run(async () =>
         {
+            using ArrayPoolSpan<byte> selfNodeId = new(32);
+            _discv5Protocol.SelfEnr.NodeId.CopyTo(selfNodeId);
+
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    List<Task> discoverTasks = [];
-                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+                    using ArrayPoolList<Task> discoverTasks = new(RandomNodesToLookupCount);
+
+                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), selfNodeId));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
-                        byte[] randomNodeId = new byte[32];
+                        ArrayPoolSpan<byte> randomNodeId = new(32);
                         random.NextBytes(randomNodeId);
                         discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
                     }
