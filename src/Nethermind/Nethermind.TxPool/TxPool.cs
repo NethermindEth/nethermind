@@ -404,7 +404,7 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                bool isKnown = IsKnown(txHash);
+                bool isKnown = _hashCache.Get(txHash);
                 if (!isKnown)
                 {
                     discoveredForHashCache++;
@@ -577,7 +577,10 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => _retryCache.Announced(txhash, retryHandler);
+        public ResourceFetchStatus NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
+            !AcceptTxWhenNotSynced && _headInfo.IsSyncing ? ResourceFetchStatus.Ignored
+            : _hashCache.Get(hash) ? ResourceFetchStatus.Known
+            : _retryCache.NotifyAboutResource(hash, retryHandler);
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
@@ -946,8 +949,6 @@ namespace Nethermind.TxPool
 
         public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
 
-        public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
-
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
@@ -958,13 +959,14 @@ namespace Nethermind.TxPool
             if (_isDisposed) return;
             _isDisposed = true;
             _timer?.Dispose();
-            _cts.Cancel();
+            await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
             _transactions.Removed -= OnRemovedTx;
 
+            await _retryCache.DisposeAsync();
             await _headProcessing;
         }
 

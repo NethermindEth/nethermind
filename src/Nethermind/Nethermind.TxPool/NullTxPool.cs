@@ -51,8 +51,6 @@ namespace Nethermind.TxPool
 
         public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();
 
-        public bool IsKnown(Hash256 hash) => false;
-
         public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             transaction = null;
@@ -87,7 +85,7 @@ namespace Nethermind.TxPool
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.New;
+        public ResourceFetchStatus NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => ResourceFetchStatus.New;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {

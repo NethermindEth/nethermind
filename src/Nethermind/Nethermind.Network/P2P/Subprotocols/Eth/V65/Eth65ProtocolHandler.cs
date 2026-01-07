@@ -227,12 +227,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!_txPool.IsKnown(hash))
+                if (_txPool.NotifyAboutTx(hash, this) is ResourceFetchStatus.New)
                 {
-                    if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
-                    {
-                        discoveredTxHashesAndSizes.Add(hash);
-                    }
+                    discoveredTxHashesAndSizes.Add(hash);
                 }
             }
 

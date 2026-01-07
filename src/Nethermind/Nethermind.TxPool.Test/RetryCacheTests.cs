@@ -45,11 +45,11 @@ public class RetryCacheTests
     [Test]
     public void Announced_SameResourceDifferentNode_ReturnsEnqueued()
     {
-        AnnounceResult result1 = _cache.Announced(1, Substitute.For<ITestHandler>());
-        AnnounceResult result2 = _cache.Announced(1, Substitute.For<ITestHandler>());
+        ResourceFetchStatus result1 = _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>());
+        ResourceFetchStatus result2 = _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>());
 
-        Assert.That(result1, Is.EqualTo(AnnounceResult.New));
-        Assert.That(result2, Is.EqualTo(AnnounceResult.Enqueued));
+        Assert.That(result1, Is.EqualTo(ResourceFetchStatus.New));
+        Assert.That(result2, Is.EqualTo(ResourceFetchStatus.Enqueued));
     }
 
     [Test]
@@ -58,8 +58,8 @@ public class RetryCacheTests
         ITestHandler request1 = Substitute.For<ITestHandler>();
         ITestHandler request2 = Substitute.For<ITestHandler>();
 
-        _cache.Announced(1, request1);
-        _cache.Announced(1, request2);
+        _cache.NotifyAboutResource(1, request1);
+        _cache.NotifyAboutResource(1, request2);
 
         Assert.That(() => request2.ReceivedCallsMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
         request1.DidNotReceive().HandleMessage(Arg.Any<ResourceRequestMessage>());
@@ -73,10 +73,10 @@ public class RetryCacheTests
         ITestHandler request3 = Substitute.For<ITestHandler>();
         ITestHandler request4 = Substitute.For<ITestHandler>();
 
-        _cache.Announced(1, request1);
-        _cache.Announced(1, request2);
-        _cache.Announced(2, request3);
-        _cache.Announced(2, request4);
+        _cache.NotifyAboutResource(1, request1);
+        _cache.NotifyAboutResource(1, request2);
+        _cache.NotifyAboutResource(2, request3);
+        _cache.NotifyAboutResource(2, request4);
 
         Assert.That(() => request2.ReceivedCallsMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
         Assert.That(() => request4.ReceivedCallsMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
@@ -87,11 +87,11 @@ public class RetryCacheTests
     [Test]
     public void Received_RemovesResourceFromRetryQueue()
     {
-        _cache.Announced(1, Substitute.For<ITestHandler>());
+        _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>());
         _cache.Received(1);
 
-        AnnounceResult result = _cache.Announced(1, Substitute.For<ITestHandler>());
-        Assert.That(result, Is.EqualTo(AnnounceResult.New));
+        ResourceFetchStatus result = _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>());
+        Assert.That(result, Is.EqualTo(ResourceFetchStatus.New));
     }
 
     [Test]
@@ -99,8 +99,8 @@ public class RetryCacheTests
     {
         ITestHandler request = Substitute.For<ITestHandler>();
 
-        _cache.Announced(1, request);
-        _cache.Announced(1, request);
+        _cache.NotifyAboutResource(1, request);
+        _cache.NotifyAboutResource(1, request);
         _cache.Received(1);
 
 
@@ -117,9 +117,9 @@ public class RetryCacheTests
 
         faultyRequest.When(x => x.HandleMessage(Arg.Any<ResourceRequestMessage>())).Do(x => throw new InvalidOperationException("Test exception"));
 
-        _cache.Announced(1, Substitute.For<ITestHandler>());
-        _cache.Announced(1, faultyRequest);
-        _cache.Announced(1, normalRequest);
+        _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>());
+        _cache.NotifyAboutResource(1, faultyRequest);
+        _cache.NotifyAboutResource(1, normalRequest);
 
         Assert.That(() => normalRequest.ReceivedCallsMatching(r => r.HandleMessage(ResourceRequestMessage.New(1))), Is.True.After(Timeout, 100));
     }
@@ -129,7 +129,7 @@ public class RetryCacheTests
     {
         ITestHandler request = Substitute.For<ITestHandler>();
 
-        _cache.Announced(1, request);
+        _cache.NotifyAboutResource(1, request);
         await _cancellationTokenSource.CancelAsync();
         await Task.Delay(Timeout);
 
@@ -139,11 +139,11 @@ public class RetryCacheTests
     [Test]
     public async Task Announced_AfterRetryInProgress_ReturnsNew()
     {
-        _cache.Announced(1, Substitute.For<ITestHandler>());
+        _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>());
 
         await Task.Delay(Timeout, _cancellationTokenSource.Token);
 
-        Assert.That(() => _cache.Announced(1, Substitute.For<ITestHandler>()), Is.EqualTo(AnnounceResult.New).After(Timeout, 100));
+        Assert.That(() => _cache.NotifyAboutResource(1, Substitute.For<ITestHandler>()), Is.EqualTo(ResourceFetchStatus.New).After(Timeout, 100));
     }
 
     [Test]

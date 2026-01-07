@@ -169,12 +169,9 @@ public class Eth68ProtocolHandler(ISession session,
         for (int i = 0; i < hashes.Length; i++)
         {
             Hash256 hash = hashes[i];
-            if (!_txPool.IsKnown(hash))
+            if (_txPool.NotifyAboutTx(hash, this) is ResourceFetchStatus.New)
             {
-                if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
-                {
-                    discoveredTxHashesAndSizes.Add(i);
-                }
+                discoveredTxHashesAndSizes.Add(i);
             }
         }
 
