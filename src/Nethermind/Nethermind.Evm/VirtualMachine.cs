@@ -1227,17 +1227,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = VmState.ProgramCounter;
+        int opCodeCount = 0;
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         var opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>*
-               opcodeMethods = &opcodeArray[0])
+               opcodeMethods = opcodeArray)
         {
-            int opCodeCount = 0;
+            uint codeLength = (uint)codeSection.Length;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
-            while ((uint)programCounter < (uint)codeSection.Length)
+            while ((uint)programCounter < codeLength)
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
@@ -1258,24 +1259,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
-                // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                if (Instruction.POP == instruction)
-                {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
-                }
-                else
-                {
-                    // Retrieve the opcode function pointer corresponding to the current instruction.
-                    var opcodeMethod = opcodeMethods[(int)instruction];
-                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
-                    // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
-                }
+                // Invoke the opcode method, which may modify the stack, gas, and program counter.
+                // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+                exceptionType = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, ref programCounter);
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {
-                    OpCodeCount += opCodeCount;
                     goto OutOfGas;
                 }
                 // If an exception occurred, exit the loop.
@@ -1339,6 +1329,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
+        OpCodeCount += opCodeCount;
         TGasPolicy.SetOutOfGas(ref gas);
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
