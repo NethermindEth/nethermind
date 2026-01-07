@@ -68,7 +68,6 @@ internal static class ConfigGenerator
         writeStream.Close();
 
         File.Move(tempFileName, fileName, true);
-        File.Delete(tempFileName);
 
         AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
