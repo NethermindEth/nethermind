@@ -30,6 +30,11 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
         return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
     }
 
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(List<byte[]>? txRlp, string privKey = "", bool reorg = false)
+    {
+        throw new System.NotImplementedException();
+    }
+
     private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
     {
         bool allBlobsAvailable = true;

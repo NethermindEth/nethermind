@@ -320,7 +320,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return errorResult;
             }
 
-            payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
+            List<byte[]>? txRlp = [];
+            payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes, txRlp);
         }
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);

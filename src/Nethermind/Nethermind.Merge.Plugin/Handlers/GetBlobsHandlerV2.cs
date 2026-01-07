@@ -67,7 +67,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         }
     }
 
-    private Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> ReturnEmptyArray()
+    private Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> ReturnEmptyArray()
     {
         Metrics.GetBlobsRequestsFailureTotal++;
         return NotFound;
