@@ -13,7 +13,6 @@ impl Verifier for OpenVmVerifier {
         let vk: VmStarkVerifyingKey = match bitcode::deserialize(vk) {
             Ok(vk) => vk,
             Err(e) => {
-                println!("Failed to deserialize OpenVM verification key: {:?}", e);
                 return Err(anyhow::anyhow!("Failed to deserialize OpenVM verification key: {:?}", e));
             }
         };
@@ -22,7 +21,6 @@ impl Verifier for OpenVmVerifier {
         match verify_vm_stark_proof(&vk, proof) {
             Ok(()) => Ok(true),
             Err(e) => {
-                println!("OpenVM verification failed: {:?}", e);
                 return Err(anyhow::anyhow!("OpenVM verification failed: {:?}", e));
             }
         }

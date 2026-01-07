@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 use std::slice;
+use std::panic;
 
 mod verifiers;
 use verifiers::{ Verifier, VerifierType, openvm::OpenVmVerifier, pico::PicoVerifier, sp1_hypercube::Sp1HypercubeVerifier, zisk::ZiskVerifier };
@@ -28,16 +29,22 @@ pub extern "C" fn verify(
         Err(_) => return -1,
     };
 
-    let result = match verifier_type {
-        VerifierType::Zisk => ZiskVerifier::verify(proof, vk),
-        VerifierType::OpenVm => OpenVmVerifier::verify(proof, vk),
-        VerifierType::Pico => PicoVerifier::verify(proof, vk),
-        VerifierType::Sp1Hypercube => Sp1HypercubeVerifier::verify(proof, vk),
-    };
+    // Catch panics from the underlying verifier libraries
+    let panic_result = panic::catch_unwind(|| {
+        match verifier_type {
+            VerifierType::Zisk => ZiskVerifier::verify(proof, vk),
+            VerifierType::OpenVm => OpenVmVerifier::verify(proof, vk),
+            VerifierType::Pico => PicoVerifier::verify(proof, vk),
+            VerifierType::Sp1Hypercube => Sp1HypercubeVerifier::verify(proof, vk),
+        }
+    });
 
-    match result {
-        Ok(true) => 1,
-        Ok(false) => 0,
+    match panic_result {
+        Ok(verification_result) => match verification_result {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(_) => -1,
+        },
         Err(_) => -1,
     }
 }

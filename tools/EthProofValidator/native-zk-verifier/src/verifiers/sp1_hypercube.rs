@@ -13,7 +13,6 @@ impl Verifier for Sp1HypercubeVerifier {
         match SP1CompressedVerifierRaw::verify(proof, vk) {
             Ok(()) => Ok(true),
             Err(e) => {
-                println!("SP1-Hypercube verification failed: {:?}", e);
                 return Err(anyhow::anyhow!("SP1-Hypercube verification failed: {:?}", e));
             }
         }
