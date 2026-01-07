@@ -76,8 +76,6 @@ public sealed class SnapshotBundle : IDisposable
     private Histogram.Child _setSlotTime = null!;
     private Histogram.Child _setSlotToZeroTime = null!;
     private Histogram.Child _setAccountTime = null!;
-    private Histogram.Child _shouldPrewarmHit = null!;
-    private Histogram.Child _shouldPrewarmMiss = null!;
 
     private Counter.Child _accountGet = null!;
     private Counter.Child _slotGet = null!;
@@ -159,8 +157,6 @@ public sealed class SnapshotBundle : IDisposable
         _setSlotTime = _snapshotBundleTimes.WithLabels("set_slot", _isPrewarmer.ToString());
         _setSlotToZeroTime = _snapshotBundleTimes.WithLabels("set_slot_zero", _isPrewarmer.ToString());
         _setAccountTime = _snapshotBundleTimes.WithLabels("set_account", _isPrewarmer.ToString());
-        _shouldPrewarmHit = _snapshotBundleTimes.WithLabels("should_prewarm_hit", _isPrewarmer.ToString());
-        _shouldPrewarmMiss = _snapshotBundleTimes.WithLabels("should_prewarm_miss", _isPrewarmer.ToString());
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
         _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
@@ -472,7 +468,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        return _readOnlySnapshotBundle.TryLoadRlp(address, path, hash, flags, isTrieWarmer);
+        return _readOnlySnapshotBundle.TryLoadRlp(address, path, hash, flags);
     }
 
     // This is called only during trie commit
@@ -630,19 +626,19 @@ public sealed class SnapshotBundle : IDisposable
     }
 }
 
-public struct SnapshotBundleTrieProvider(SnapshotBundle bundle) : ISnapshotBundleTrieProvider
+public struct SnapshotBundleTrieProvider(SnapshotBundle bundle, bool isTrieWarmer) : ISnapshotBundleTrieProvider
 {
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
+    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         return bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
     }
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx, bool isTrieWarmer)
+    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx)
     {
         return bundle.FindStorageNodeOrUnknown(address, path, hash, selfDestructKnownStateIdx, isTrieWarmer, storageInitializer: false);
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         return bundle.TryLoadRlp(address, path, hash, flags, isTrieWarmer);
     }

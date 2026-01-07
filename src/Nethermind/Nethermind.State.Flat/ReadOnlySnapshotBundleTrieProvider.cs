@@ -10,20 +10,19 @@ namespace Nethermind.State.Flat;
 
 public struct ReadOnlySnapshotBundleTrieProvider(ReadOnlySnapshotBundle snapshotBundle) : ISnapshotBundleTrieProvider
 {
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
+    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         return snapshotBundle.TryFindStateNodes(path, hash, out var node) ? node : new TrieNode(NodeType.Unknown, hash);
     }
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx,
-        bool isTrieWarmer)
+    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx)
     {
         return snapshotBundle.TryFindStorageNodes(address, path, hash, selfDestructKnownStateIdx, out TrieNode? node) ? node :  new TrieNode(NodeType.Unknown, hash);
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
-        return snapshotBundle.TryLoadRlp(address, in path, hash, flags, isTrieWarmer);
+        return snapshotBundle.TryLoadRlp(address, in path, hash, flags);
     }
 
     public void SetStateNode(in TreePath path, TrieNode node)

@@ -74,8 +74,7 @@ public class FlatStateReader(
 
         StateTrieStoreAdapter<ReadOnlySnapshotBundleTrieProvider> trieStoreAdapter = new(
             new ReadOnlySnapshotBundleTrieProvider(reader),
-            new ConcurrencyQuota(),
-            false);
+            new ConcurrencyQuota());
 
         PatriciaTree patriciaTree = new PatriciaTree(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateRoot, visitingOptions);

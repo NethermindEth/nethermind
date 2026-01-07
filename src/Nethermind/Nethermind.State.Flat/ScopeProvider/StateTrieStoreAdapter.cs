@@ -10,9 +10,9 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 internal interface ISnapshotBundleTrieProvider
 {
-    TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer);
-    TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx, bool isTrieWarmer);
-    byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer);
+    TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash);
+    TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx);
+    byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flag);
 
     void SetStateNode(in TreePath path, TrieNode node);
     void SetStorageNode(Hash256 address, in TreePath path, TrieNode node);
@@ -20,8 +20,7 @@ internal interface ISnapshotBundleTrieProvider
 
 internal class StateTrieStoreAdapter<TTrieProvider>(
     TTrieProvider bundle,
-    ConcurrencyQuota concurrencyQuota,
-    bool isTrieWarmer
+    ConcurrencyQuota concurrencyQuota
 ) : AbstractMinimalTrieStore
     where TTrieProvider : struct, ISnapshotBundleTrieProvider
 {
@@ -29,10 +28,10 @@ internal class StateTrieStoreAdapter<TTrieProvider>(
 
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        return _bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
+        return _bundle.FindStateNodeOrUnknown(path, hash);
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _bundle.TryLoadRlp(null, path, hash, flags, isTrieWarmer);
+    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _bundle.TryLoadRlp(null, path, hash, flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(_bundle, concurrencyQuota);
 
@@ -40,7 +39,7 @@ internal class StateTrieStoreAdapter<TTrieProvider>(
     {
         if (address is null) return this;
         // Used in trie visitor and weird very edge case that cuts the whole thing to peaces
-        return new StorageTrieStoreAdapter<TTrieProvider>(_bundle, concurrencyQuota, address, -1, isTrieWarmer);
+        return new StorageTrieStoreAdapter<TTrieProvider>(_bundle, concurrencyQuota, address, -1);
     }
 
     private class Committer(ISnapshotBundleTrieProvider bundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
@@ -57,8 +56,7 @@ internal class StorageTrieStoreAdapter<TTrieProvider> (
     TTrieProvider bundle,
     ConcurrencyQuota concurrencyQuota,
     Hash256AsKey addressHash,
-    int selfDestructKnownStateIdx,
-    bool isTrieWarmer
+    int selfDestructKnownStateIdx
 ): AbstractMinimalTrieStore
     where TTrieProvider : struct, ISnapshotBundleTrieProvider
 {
@@ -66,12 +64,12 @@ internal class StorageTrieStoreAdapter<TTrieProvider> (
 
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        return bundle.FindStorageNodeOrUnknown(addressHash, path, hash, SelfDestructKnownStateIdx, isTrieWarmer);
+        return bundle.FindStorageNodeOrUnknown(addressHash, path, hash, SelfDestructKnownStateIdx);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        return bundle.TryLoadRlp(addressHash, in path, hash, flags, isTrieWarmer);
+        return bundle.TryLoadRlp(addressHash, in path, hash, flags);
     }
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None)

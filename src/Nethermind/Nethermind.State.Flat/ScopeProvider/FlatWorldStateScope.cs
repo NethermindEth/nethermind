@@ -30,6 +30,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     internal static Counter _flatScopeCounter = DevMetric.Factory.CreateCounter("flat_scope_counter", "aha", "type", "isPrewarmer");
 
     private Histogram.Child _storageTreeCreateTime;
+    private Histogram.Child _storageTreeCreateGetTime;
 
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
@@ -69,17 +70,18 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _codeDb = codeDb;
         _flatDiffRepository = flatDiffRepository;
         _resourcePool = resourcePool;
+        _isPrewarmerLabel = (_warmer is NoopTrieWarmer).ToString();
 
         _concurrencyQuota = new ConcurrencyQuota(); // Used during tree commit.
         _stateTree = new StateTree(
             new StateTrieStoreAdapter<SnapshotBundleTrieProvider>(
-                new SnapshotBundleTrieProvider(snapshotBundle), _concurrencyQuota, isTrieWarmer: false),
+                new SnapshotBundleTrieProvider(snapshotBundle, false), _concurrencyQuota),
             logManager
         );
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _warmupStateTree = new PatriciaTree(
             new StateTrieStoreAdapter<SnapshotBundleTrieProvider>(
-                new SnapshotBundleTrieProvider(snapshotBundle), _concurrencyQuota, isTrieWarmer: true),
+                new SnapshotBundleTrieProvider(snapshotBundle, true), _concurrencyQuota),
             logManager
         );
         _warmupStateTree.RootHash = currentStateId.stateRoot.ToCommitment();
@@ -87,8 +89,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
-        _isPrewarmerLabel = (_warmer is NoopTrieWarmer).ToString();
         _storageTreeCreateTime = _flatScopeTime.WithLabels("storage_create", _isPrewarmerLabel);
+        _storageTreeCreateGetTime = _flatScopeTime.WithLabels("storage_create_get_time", _isPrewarmerLabel);
         _statePrewarmPaused = _flatScopeCounter.WithLabels("state_prewarm_paused", _isPrewarmerLabel);
         _statePrewarmWrongNum = _flatScopeCounter.WithLabels("state_prewarm_wrong_num", _isPrewarmerLabel);
         _warmer.OnNewScope();
@@ -213,8 +215,10 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
                 return storage!;
             }
 
-            Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
             long sw = Stopwatch.GetTimestamp();
+            Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            _storageTreeCreateGetTime.Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
             storage = new FlatStorageTree(
                 this,
                 _warmer,
