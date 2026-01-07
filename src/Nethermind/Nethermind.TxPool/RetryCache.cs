@@ -30,7 +30,7 @@ public class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         public bool IsExpired(DateTime now) => now > ExpiresAfter;
     }
 
-    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, int maxQueueSize = 4096, CancellationToken token = default)
+    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 4096, int maxQueueSize = 1024, CancellationToken token = default)
     {
         _logger = logManager.GetClassLogger();
 
