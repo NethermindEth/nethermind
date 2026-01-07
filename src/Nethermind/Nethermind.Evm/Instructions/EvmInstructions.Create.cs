@@ -93,6 +93,9 @@ internal static partial class EvmInstructions
         // Increment metrics counter for contract creation operations.
         Metrics.IncrementCreates();
 
+        if(TOpCreate.CheckStackUndeflow(ref stack))
+            goto StackUnderflow;
+
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
         if (vm.EvmState.IsStatic)
@@ -105,10 +108,9 @@ internal static partial class EvmInstructions
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 value);
+        stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
+        stack.PopUInt256(out UInt256 initCodeLength);
 
         Span<byte> salt = default;
         // For CREATE2, an extra salt value is required. Use type check to differentiate.

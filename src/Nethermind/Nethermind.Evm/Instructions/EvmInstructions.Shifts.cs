@@ -66,19 +66,19 @@ internal static partial class EvmInstructions
         gasAvailable -= TOpShift.GasCost;
 
         // Pop the shift amount from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
 
         // If the shift amount is 256 or more, per EVM semantics, discard the second operand and push zero.
         if (a >= 256)
         {
             // Pop the second operand without using its value.
-            if (!stack.PopLimbo()) goto StackUnderflow;
+            stack.PopLimbo();
             stack.PushZero<TTracingInst>();
         }
         else
         {
             // Otherwise, pop the value to be shifted.
-            if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+            stack.PopUInt256(out UInt256 b);
             // Perform the shift operation using the specific implementation.
             TOpShift.Operation(in a, in b, out UInt256 result);
             stack.PushUInt256<TTracingInst>(in result);
@@ -107,11 +107,19 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSar<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        static bool CheckStackUnderflow(ref EvmStack stack) => stack.Head < 2;
+
+        if(CheckStackUnderflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
+
         // Deduct the gas cost for the arithmetic shift operation.
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the shift amount and the value to be shifted.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         if (a >= 256)

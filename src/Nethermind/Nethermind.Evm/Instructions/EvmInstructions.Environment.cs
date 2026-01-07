@@ -150,6 +150,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvAddress
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         // Deduct the gas cost as defined by the operation implementation.
         gasAvailable -= TOpEnv.GasCost;
 
@@ -177,6 +179,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkAddress
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         // Deduct the gas cost as defined by the operation implementation.
         gasAvailable -= TOpEnv.GasCost;
 
@@ -203,6 +207,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= TOpEnv.GasCost;
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
@@ -226,6 +232,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkUInt256
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= TOpEnv.GasCost;
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm);
@@ -249,6 +257,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt32
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= TOpEnv.GasCost;
 
         uint result = TOpEnv.Operation(vm.EvmState);
@@ -272,6 +282,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt64
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= TOpEnv.GasCost;
 
         ulong result = TOpEnv.Operation(vm.EvmState);
@@ -295,6 +307,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkUInt64
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= TOpEnv.GasCost;
 
         ulong result = TOpEnv.Operation(vm);
@@ -318,6 +332,8 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnv32Bytes
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= TOpEnv.GasCost;
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
@@ -498,12 +514,13 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
         gasAvailable -= spec.GetBalanceCost();
 
         Address address = stack.PopAddress();
-        if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
@@ -533,6 +550,8 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSelfBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         gasAvailable -= GasCostOf.SelfBalance;
 
         // Get balance for currently executing account.
@@ -655,6 +674,8 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionPrevRandao<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
         stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
@@ -676,6 +697,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionGas<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
         // Deduct the base gas cost for reading gas.
         gasAvailable -= GasCostOf.Base;
 
@@ -708,11 +730,12 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBlobHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
         // Deduct the gas cost for blob hash operation.
         gasAvailable -= GasCostOf.BlobHash;
 
         // Pop the blob index from the stack.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Retrieve the array of versioned blob hashes from the execution context.
         byte[][] versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
@@ -752,11 +775,12 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBlockHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
         // Deduct the gas cost for block hash operation.
         gasAvailable -= GasCostOf.BlockHash;
 
         // Pop the block number from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
 
         // Convert the block number to a long. Clamp the value to long.MaxValue if it exceeds it.
         long number = a > long.MaxValue ? long.MaxValue : (long)a.u0;

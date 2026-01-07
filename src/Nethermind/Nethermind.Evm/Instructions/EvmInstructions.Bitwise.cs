@@ -57,13 +57,11 @@ internal static partial class EvmInstructions
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         // Read the 256-bit vector from unaligned memory.
         Word aVec = ReadUnaligned<Word>(ref bytesRef);
 
         // Peek at the top of the stack for the second operand without removing it.
         bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         Word bVec = ReadUnaligned<Word>(ref bytesRef);
 
         // Write the result directly into the memory of the top stack element.

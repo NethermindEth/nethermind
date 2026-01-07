@@ -30,13 +30,6 @@ internal static partial class EvmInstructions
 
     const int CallDataLoadStackRequiredItems = 1;
 
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool CheckStackUnderflow(ref EvmStack stack, int itemsNeeded)
-    {
-        return stack.Head < itemsNeeded;
-    }
-
     /// <summary>
     /// Executes the transient load (TLOAD) instruction.
     /// <para>
@@ -64,7 +57,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.TLoad;
 
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Construct a transient storage cell using the executing account and the provided offset.
         StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, in result);
@@ -120,7 +113,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.TStore;
 
         // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -172,7 +165,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the memory offset; if not available, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Retrieve the 32-byte word to be stored.
         Span<byte> bytes = stack.PopWord256();
@@ -220,7 +213,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Pop a single byte from the stack.
         byte data = stack.PopByte();
@@ -268,7 +261,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.VeryLow;
 
         // Pop the memory offset; if missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         EvmState vmState = vm.EvmState;
 
@@ -317,7 +310,9 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
+        stack.PopUInt256(out UInt256 c);
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas);
@@ -384,7 +379,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
         ReadOnlySpan<byte> bytes = stack.PopWord256();
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
@@ -493,7 +488,7 @@ internal static partial class EvmInstructions
         }
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
         ReadOnlySpan<byte> bytes = stack.PopWord256();
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
@@ -652,7 +647,7 @@ internal static partial class EvmInstructions
         gasAvailable -= spec.GetSLoadCost();
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Construct the storage cell for the executing account.
         Address executingAccount = vm.EvmState.Env.ExecutingAccount;
@@ -697,8 +692,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Pop the offset from which to load call data.
-        if (!stack.PopUInt256(out UInt256 result))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
         // Load 32 bytes from input data, applying zero padding as needed.
         stack.PushBytes<TTracingInst>(vm.EvmState.Env.InputData.SliceWithZeroPadding(result, 32));
 

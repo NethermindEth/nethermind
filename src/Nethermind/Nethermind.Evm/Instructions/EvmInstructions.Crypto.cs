@@ -21,9 +21,11 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionKeccak256<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         // Ensure two 256-bit words are available (memory offset and length).
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
         gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas);

@@ -69,7 +69,8 @@ internal static partial class EvmInstructions
         gasAvailable -= TOpMath.GasCost;
 
         // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
 
         // Execute the math operation defined by TOpMath.
         TOpMath.Operation(in a, in b, out UInt256 result);
@@ -275,12 +276,16 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionExp<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackUnderflow(ref stack, 2))
+        {
+            goto StackUnderflow;
+        }
+
         // Charge the fixed gas cost for exponentiation.
         gasAvailable -= GasCostOf.Exp;
 
         // Pop the base value from the stack.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
 
         // Pop the exponent as a 256-bit word.
         ReadOnlySpan<byte> bytes = stack.PopWord256();

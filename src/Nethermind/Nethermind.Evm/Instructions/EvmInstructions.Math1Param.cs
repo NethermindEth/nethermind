@@ -33,6 +33,11 @@ internal static partial class EvmInstructions
         /// <param name="value">The input 256‐bit vector.</param>
         /// <returns>The result of the operation as a 256‐bit vector.</returns>
         abstract static Word Operation(Word value);
+
+        virtual static bool CheckStackUndeflow(ref EvmStack stack)
+        {
+            return stack.Head < 1;
+        }
     }
 
     /// <summary>
@@ -53,6 +58,9 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMath1Param<TOpMath>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpMath : struct, IOpMath1Param
     {
+        if(TOpMath.CheckStackUndeflow(ref stack))
+            goto StackUnderflow;
+
         // Deduct the gas cost associated with the math operation.
         gasAvailable -= TOpMath.GasCost;
 

@@ -134,10 +134,9 @@ internal static partial class EvmInstructions
         }
 
         // Pop the gas limit for the call.
-        if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 gasLimit);
         // Pop the code source address from the stack.
         Address codeSource = stack.PopAddress();
-        if (codeSource is null) goto StackUnderflow;
 
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         // Determine the call value based on the call type.
@@ -152,17 +151,13 @@ internal static partial class EvmInstructions
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
         }
-        else if (!stack.PopUInt256(out callValue))
-        {
-            goto StackUnderflow;
-        }
+        else stack.PopUInt256(out callValue);
 
         // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataLength);
+        stack.PopUInt256(out UInt256 outputOffset);
+        stack.PopUInt256(out UInt256 outputLength);
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
@@ -371,10 +366,14 @@ internal static partial class EvmInstructions
             goto BadInstruction;
         }
 
-        // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if(CheckStackUnderflow(ref stack, 2))
+        {
             goto StackUnderflow;
+        }
+
+        // Pop memory position and length for the return data.
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
 
         // Update the memory cost for the region being returned.
         if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))

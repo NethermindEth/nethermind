@@ -32,7 +32,9 @@ internal static partial class EvmInstructions
 
         gasAvailable -= TOpMath.GasCost;
 
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
+        stack.PopUInt256(out UInt256 c);
 
         if (c.IsZero)
         {

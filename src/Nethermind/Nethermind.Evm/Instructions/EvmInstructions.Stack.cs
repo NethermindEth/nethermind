@@ -17,6 +17,22 @@ using static Unsafe;
 
 internal static partial class EvmInstructions
 {
+    const int PopStackRequiredItemsCount = 1;
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool CheckStackUnderflow(ref EvmStack stack, int itemsNeeded)
+    {
+        return stack.Head < itemsNeeded;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool CheckStackOverflow(ref EvmStack stack, int itemsNeeded)
+    {
+        return stack.Head > EvmStack.MaxStackSize;
+    }
+
+
     /// <summary>
     /// Pops a value from the EVM stack.
     /// Deducts the base gas cost and returns an exception if the stack is underflowed.
@@ -30,10 +46,15 @@ internal static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionPop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
+        if (CheckStackUndeflow(ref stack, PopStackRequiredItemsCount))
+            return EvmExceptionType.StackUnderflow;
+
         // Deduct the minimal gas cost for a POP operation.
         gasAvailable -= GasCostOf.Base;
         // Pop from the stack; if nothing to pop, signal a stack underflow.
-        return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+        stack.PopLimbo();
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -509,6 +530,10 @@ internal static partial class EvmInstructions
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackOverflow(ref stack, TOpCount.Count)) {
+            return EvmExceptionType.StackOverflow;
+        }
+
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
@@ -534,9 +559,17 @@ internal static partial class EvmInstructions
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackUndeflow(ref stack, TOpCount.Count)
+            || CheckStackOverflow(ref stack, 1))
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
         gasAvailable -= GasCostOf.VeryLow;
 
-        return stack.Dup<TTracingInst>(TOpCount.Count);
+        stack.Dup<TTracingInst>(TOpCount.Count);
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -553,9 +586,16 @@ internal static partial class EvmInstructions
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
+        if(CheckStackUndeflow(ref stack, TOpCount.Count + 1))
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
         gasAvailable -= GasCostOf.VeryLow;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
-        return stack.Swap<TTracingInst>(TOpCount.Count + 1);
+        stack.Swap<TTracingInst>(TOpCount.Count + 1);
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -580,8 +620,12 @@ internal static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic) goto StaticCallViolation;
 
+        if(CheckStackUndeflow(ref stack, TOpCount.Count))
+            goto StackUnderflow;
+
         // Pop memory offset and length for the log data.
-        if (!stack.PopUInt256(out UInt256 position) || !stack.PopUInt256(out UInt256 length)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
 
         // The number of topics is defined by the generic parameter.
         long topicsCount = TOpCount.Count;
