@@ -164,7 +164,7 @@ internal static partial class EvmInstructions
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
             !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable) ||
-            !EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource))
+            !EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource, blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex))
         {
             goto OutOfGas;
         }

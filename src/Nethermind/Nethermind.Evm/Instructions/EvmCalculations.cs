@@ -21,7 +21,7 @@ public static class EvmCalculations
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
-    public static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    public static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true, int? blockAccessIndex = null)
     {
         IReleaseSpec spec = vm.Spec;
         if (!spec.UseHotAndColdStorage)
@@ -31,7 +31,7 @@ public static class EvmCalculations
         }
         bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm);
         return notOutOfGas
-               && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(address, spec, out Address delegated)
+               && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(address, spec, out Address delegated, blockAccessIndex)
                    // Charge additional gas for the delegated account if it exists.
                    || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm));
     }
