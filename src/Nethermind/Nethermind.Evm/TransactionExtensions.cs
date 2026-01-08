@@ -41,8 +41,6 @@ namespace Nethermind.Evm
 
     public readonly struct TxGasInfo
     {
-        public TxGasInfo() { }
-
         public TxGasInfo(UInt256? effectiveGasPrice, UInt256? feePerBlobGas, ulong? blobGasUsed)
         {
             EffectiveGasPrice = effectiveGasPrice;
