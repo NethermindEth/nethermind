@@ -177,7 +177,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _mainLoopTask;
+        try
+        {
+            await _mainLoopTask;
+        }
+        catch (OperationCanceledException) { }
+
         Clear();
     }
 }

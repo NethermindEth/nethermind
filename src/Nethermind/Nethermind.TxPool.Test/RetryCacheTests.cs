@@ -110,7 +110,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task Testit()
+    public async Task Clear_cache_after_timeout()
     {
         Parallel.For(0, 100, (i) =>
         {
