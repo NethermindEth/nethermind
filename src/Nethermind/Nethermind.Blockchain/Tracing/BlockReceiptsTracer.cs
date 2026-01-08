@@ -207,7 +207,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public int TakeSnapshot() => _txReceipts.Count;
 
-    public void Restore(int snapshot)
+    public void Restore(int snapshot, int? _)
     {
         int numToRemove = _txReceipts.Count - snapshot;
 

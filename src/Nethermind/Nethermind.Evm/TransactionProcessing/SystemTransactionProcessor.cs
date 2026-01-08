@@ -37,7 +37,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     {
         if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero, VirtualMachine.TxExecutionContext.BlockAccessIndex);
         }
 
         return base.Execute(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
@@ -68,7 +68,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
-        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
+        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender, VirtualMachine.TxExecutionContext.BlockAccessIndex)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 }

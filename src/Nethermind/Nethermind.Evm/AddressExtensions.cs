@@ -42,11 +42,11 @@ namespace Nethermind.Evm
         }
 
         // See https://eips.ethereum.org/EIPS/eip-7610
-        public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
+        public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state, int? blockAccessIndex = null)
         {
             return codeInfoRepository.GetCachedCodeInfo(contractAddress, spec).CodeSpan.Length != 0 ||
-                   state.GetNonce(contractAddress) != 0 ||
-                   !state.IsStorageEmpty(contractAddress);
+                   state.GetNonce(contractAddress, blockAccessIndex) != 0 ||
+                   !state.IsStorageEmpty(contractAddress, blockAccessIndex);
         }
     }
 }

@@ -169,13 +169,13 @@ public class EthRpcSimulateTestsBase
         return AbiEncoder.Instance.Decode(functionInfo.EncodingStyle, functionInfo.Signature, data).FirstOrDefault() as Address;
     }
 
-    public static Address? EcRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
+    public static async Task<Address?> EcRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
     {
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
-        ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
+        ResultWrapper<string> mainChainResult = await testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
         return ParseEcRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
     }
 }

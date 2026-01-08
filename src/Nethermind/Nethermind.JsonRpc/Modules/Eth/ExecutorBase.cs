@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Facade;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -23,7 +24,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
         _rpcConfig = rpcConfig;
     }
 
-    public virtual ResultWrapper<TResult> Execute(
+    public virtual Task<ResultWrapper<TResult>> Execute(
         TRequest call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -54,7 +55,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
     protected abstract TProcessing Prepare(TRequest call);
 
-    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
+    protected abstract Task<ResultWrapper<TResult>> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
     protected ResultWrapper<TResult>? TryGetInputError(CallOutput result)
     {

@@ -22,6 +22,7 @@ using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
+using System.Threading.Tasks;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -53,7 +54,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         stateProvider.CommitTree(blockNumber);
     }
 
-    public SimulateOutput<TTrace> TrySimulate<TTrace>(
+    public async Task<SimulateOutput<TTrace>> TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
@@ -69,7 +70,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+            await Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
         }
         catch (ArgumentException ex)
         {
@@ -94,7 +95,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return result;
     }
 
-    private void Simulate<TTrace>(BlockHeader parent,
+    private async Task Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
@@ -139,7 +140,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 env.SimulateRequestState.Validate = payload.Validation;
                 env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
-                (Block processedBlock, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(
+                (Block processedBlock, TxReceipt[] receipts) = await env.BlockProcessor.ProcessOne(
                     callBlock,
                     processingFlags,
                     cancellationBlockTracer,

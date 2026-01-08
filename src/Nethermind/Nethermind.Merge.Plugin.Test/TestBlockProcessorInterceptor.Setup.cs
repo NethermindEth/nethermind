@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,7 @@ public class TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor,
     public int DelayMs { get; set; } = delayMs;
     public Exception? ExceptionToThrow { get; set; }
 
-    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+    public Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
     {
         if (DelayMs > 0)
         {
