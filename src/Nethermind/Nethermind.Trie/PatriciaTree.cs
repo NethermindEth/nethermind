@@ -141,12 +141,18 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit = 0;
 
-            using ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags);
-            if (RootRef is not null && RootRef.IsDirty)
+            TrieNode? newRoot = RootRef;
+            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
             {
-                TreePath path = TreePath.Empty;
-                RootRef = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                if (RootRef is not null && RootRef.IsDirty)
+                {
+                    TreePath path = TreePath.Empty;
+                    newRoot = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                }
             }
+
+            // Need to be after committer dispose so that it can find it in trie store properly
+            RootRef = newRoot;
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
@@ -770,7 +776,9 @@ namespace Nethermind.Trie
                 byte[] extensionKey = [(byte)onlyChildIdx];
                 if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
                 {
+                    path.AppendMut(onlyChildIdx);
                     TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                    path.TruncateOne();
                     if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode))
                     {
                         return originalNode;
@@ -790,8 +798,11 @@ namespace Nethermind.Trie
                 {
                     if (Bytes.AreEqual(newKey, originalNode.Key))
                     {
+                        int originalLength = path.Length;
+                        path.AppendMut(newKey);
                         TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
                         TrieNode? newChild = onlyChildNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                        path.TruncateMut(originalLength);
                         if (!ShouldUpdateChild(originalNode, originalChild, newChild))
                         {
                             return originalNode;

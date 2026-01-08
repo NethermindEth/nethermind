@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -90,6 +91,12 @@ public class PatriciaTreeBulkSetterTests
             (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
             (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng)),
         }).SetName("deep value");
+
+        yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
+        {
+            (new Hash256("3333333333333333333333333333333333333333333333333333333333333333"), MakeRandomValue(rng)),
+            (new Hash256("3333333332222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
+        }).SetName("matching long extension");
     }
 
     public static IEnumerable<TestCaseData> PreExistingDataGen()
@@ -109,6 +116,13 @@ public class PatriciaTreeBulkSetterTests
             (new Hash256("3322222222222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
         }).SetName("one extension");
 
+        yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
+        {
+            (new Hash256("3333333332222222222222222222222222222222222222222222222222222222"), MakeRandomValue(rng)),
+            (new Hash256("3333333333333333333333333333333333333333333333333333333333333333"), MakeRandomValue(rng)),
+            (new Hash256("3333333344444444444444444444444444444444444444444444444444444444"), MakeRandomValue(rng)),
+        }).SetName("long extension with branch child");
+
         yield return new TestCaseData(GenRandomOfLength(1000)).SetName("random 1000");
     }
 
@@ -122,6 +136,10 @@ public class PatriciaTreeBulkSetterTests
             {
                 yield return new TestCaseData(existingData.Arguments[0], testCaseData.Arguments[0]).SetName(existingData.TestName + " and " + testCaseData.TestName);
             }
+
+            List<(Hash256 key, byte[] value)> originalSet = (List<(Hash256 key, byte[] value)>)existingData.Arguments[0];
+            List<(Hash256 key, byte[] value)> removal = originalSet.Select((kv) => (kv.key, (byte[])null)).ToList();
+            yield return new TestCaseData(existingData.Arguments[0], removal).SetName(existingData.TestName + " and remove self completely ");
         }
 
         yield return new TestCaseData(
@@ -255,7 +273,7 @@ public class PatriciaTreeBulkSetterTests
         long newWriteCount = 0;
         {
             TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStoce(new RawScopedTrieStore(db));
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -306,7 +324,7 @@ public class PatriciaTreeBulkSetterTests
         (Hash256 root, TimeSpan baselineTime, long baselineWriteCount, string originalDump) = CalculateBaseline(existingItems, items, recordDump);
 
         TestMemDb db = new TestMemDb();
-        IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+        IScopedTrieStore trieStore = new StrictRawScopedTrieStoce(new RawScopedTrieStore(db));
         PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
         pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -338,7 +356,7 @@ public class PatriciaTreeBulkSetterTests
         long preSortedWriteCount;
         {
             TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStoce(new RawScopedTrieStore(db));
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -396,7 +414,7 @@ public class PatriciaTreeBulkSetterTests
         {
             // Just the bulk set one stack
             TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStoce(new RawScopedTrieStore(db));
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -448,7 +466,7 @@ public class PatriciaTreeBulkSetterTests
         long baselineWriteCount = 0;
         {
             TestMemDb db = new TestMemDb();
-            IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStoce(new RawScopedTrieStore(db));
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -484,7 +502,7 @@ public class PatriciaTreeBulkSetterTests
     [Test]
     public void BulkSet_ShouldThrowOnNonUniqueEntries()
     {
-        IScopedTrieStore trieStore = new RawScopedTrieStore(new TestMemDb());
+        IScopedTrieStore trieStore = new StrictRawScopedTrieStoce(new RawScopedTrieStore(new TestMemDb()));
         PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
         pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -714,5 +732,31 @@ public class PatriciaTreeBulkSetterTests
         resultMask.Should().Be(expectedMask);
         result.ToArray().Should().BeEquivalentTo(expectedResult);
 
+    }
+
+    public class StrictRawScopedTrieStoce(IScopedTrieStore baseTrieStore) : IScopedTrieStore
+    {
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            TrieNode node = baseTrieStore.FindCachedOrUnknown(in path, hash);
+            if (hash != Keccak.EmptyTreeHash)
+            {
+                byte[] rlp = LoadRlp(path, hash);
+                Assert.That(Keccak.Compute(rlp), Is.EqualTo(hash));
+            }
+            return node;
+        }
+
+        public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+
+        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
+
+        public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
+
+        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => baseTrieStore.IsPersisted(in path, in keccak);
     }
 }
