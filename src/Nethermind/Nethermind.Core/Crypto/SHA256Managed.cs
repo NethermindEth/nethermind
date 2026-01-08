@@ -161,7 +161,7 @@ public sealed class SHA256Managed : SHA256
         }
 
         ref uint stateBase = ref MemoryMarshal.GetReference(state);
-        uint a = stateBase;
+        uint a = Unsafe.Add(ref stateBase, 0);
         uint b = Unsafe.Add(ref stateBase, 1);
         uint c = Unsafe.Add(ref stateBase, 2);
         uint d = Unsafe.Add(ref stateBase, 3);
@@ -186,7 +186,7 @@ public sealed class SHA256Managed : SHA256
             Round(ref b, c, d, ref e, f, g, h, ref a, Unsafe.Add(ref kBase, j + 7), Unsafe.Add(ref wBase, j + 7));
         }
 
-        stateBase += a;
+        Unsafe.Add(ref stateBase, 0) += a;
         Unsafe.Add(ref stateBase, 1) += b;
         Unsafe.Add(ref stateBase, 2) += c;
         Unsafe.Add(ref stateBase, 3) += d;
