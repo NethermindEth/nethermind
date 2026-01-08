@@ -30,7 +30,7 @@ namespace Nethermind.Store.Test
             TestRawTrieStore trieStore = new(nodeStorage);
             WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, LimboLogs.Instance), LimboLogs.Instance);
             StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
-            Hash256 stateRoot;
+            BlockHeader baseBlock;
 
             using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
             {
@@ -50,7 +50,7 @@ namespace Nethermind.Store.Test
 
                 stateProvider.CommitTree(0);
                 stateProvider.CommitTree(1);
-                stateRoot = stateProvider.StateRoot;
+                baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateProvider.StateRoot).TestObject;
             }
 
             codeDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
@@ -67,7 +67,7 @@ namespace Nethermind.Store.Test
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateReader.RunTreeVisitor(statsCollector, stateRoot, visitingOptions);
+            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
             var stats = statsCollector.Stats;
 
             stats.CodeCount.Should().Be(1);
