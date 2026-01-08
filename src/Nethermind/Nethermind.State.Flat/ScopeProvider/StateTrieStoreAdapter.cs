@@ -1,48 +1,44 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.ResolveAnything;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-internal interface ISnapshotBundleTrieProvider
-{
-    TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash);
-    TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructKnownStateIdx);
-    byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flag);
-
-    void SetStateNode(in TreePath path, TrieNode node);
-    void SetStorageNode(Hash256 address, in TreePath path, TrieNode node);
-}
-
-internal class StateTrieStoreAdapter<TTrieProvider>(
-    TTrieProvider bundle,
-    ConcurrencyQuota concurrencyQuota
+internal class StateTrieStoreAdapter(
+    SnapshotBundle bundle,
+    ConcurrencyQuota concurrencyQuota,
+    bool isTrieWarmer
 ) : AbstractMinimalTrieStore
-    where TTrieProvider : struct, ISnapshotBundleTrieProvider
 {
-    private TTrieProvider _bundle = bundle;
-
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        return _bundle.FindStateNodeOrUnknown(path, hash);
+        TrieNode node =  bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
+        if (node.Keccak != hash)
+        {
+            throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
+        }
+
+        return node;
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _bundle.TryLoadRlp(null, path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadRlp(null, path, hash, flags, isTrieWarmer);
 
-    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(_bundle, concurrencyQuota);
+    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(bundle, concurrencyQuota);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
         // Used in trie visitor and weird very edge case that cuts the whole thing to peaces
-        return new StorageTrieStoreAdapter<TTrieProvider>(_bundle, concurrencyQuota, address, -1);
+        return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address, -1, isTrieWarmer);
     }
 
-    private class Committer(ISnapshotBundleTrieProvider bundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(SnapshotBundle bundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
@@ -52,24 +48,30 @@ internal class StateTrieStoreAdapter<TTrieProvider>(
     }
 }
 
-internal class StorageTrieStoreAdapter<TTrieProvider> (
-    TTrieProvider bundle,
+internal class StorageTrieStoreAdapter(
+    SnapshotBundle bundle,
     ConcurrencyQuota concurrencyQuota,
     Hash256AsKey addressHash,
-    int selfDestructKnownStateIdx
+    int selfDestructKnownStateIdx,
+    bool isTrieWarmer
 ): AbstractMinimalTrieStore
-    where TTrieProvider : struct, ISnapshotBundleTrieProvider
 {
     internal int SelfDestructKnownStateIdx = selfDestructKnownStateIdx;
 
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        return bundle.FindStorageNodeOrUnknown(addressHash, path, hash, SelfDestructKnownStateIdx);
+        TrieNode node = bundle.FindStorageNodeOrUnknown(addressHash, path, hash, SelfDestructKnownStateIdx, isTrieWarmer);
+        if (node.Keccak != hash)
+        {
+            throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
+        }
+
+        return node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        return bundle.TryLoadRlp(addressHash, in path, hash, flags);
+        return bundle.TryLoadRlp(addressHash, in path, hash, flags, isTrieWarmer);
     }
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
@@ -77,7 +79,7 @@ internal class StorageTrieStoreAdapter<TTrieProvider> (
         return new Committer(bundle, addressHash, concurrencyQuota);
     }
 
-    private class Committer(ISnapshotBundleTrieProvider bundle, Hash256AsKey addressHash, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(SnapshotBundle bundle, Hash256AsKey addressHash, ConcurrencyQuota concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {

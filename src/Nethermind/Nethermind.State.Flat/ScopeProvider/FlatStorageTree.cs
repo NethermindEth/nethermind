@@ -22,8 +22,8 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
-    private readonly StorageTrieStoreAdapter<SnapshotBundleTrieProvider> _storageTrieAdapter;
-    private readonly StorageTrieStoreAdapter<SnapshotBundleTrieProvider> _warmerStorageTrieAdapter;
+    private readonly StorageTrieStoreAdapter _storageTrieAdapter;
+    private readonly StorageTrieStoreAdapter _warmerStorageTrieAdapter;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -48,10 +48,10 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
 
-        _storageTrieAdapter = new StorageTrieStoreAdapter<SnapshotBundleTrieProvider>(
-            new SnapshotBundleTrieProvider(bundle, false), concurrencyQuota, _addressHash, _selfDestructKnownStateIdx);
-        _warmerStorageTrieAdapter = new StorageTrieStoreAdapter<SnapshotBundleTrieProvider>(
-            new SnapshotBundleTrieProvider(bundle, true), concurrencyQuota, _addressHash, _selfDestructKnownStateIdx);
+        _storageTrieAdapter = new StorageTrieStoreAdapter(
+            bundle, concurrencyQuota, _addressHash, _selfDestructKnownStateIdx, false);
+        _warmerStorageTrieAdapter = new StorageTrieStoreAdapter(
+            bundle, concurrencyQuota, _addressHash, _selfDestructKnownStateIdx, true);
 
         _tree = new StorageTree(_storageTrieAdapter, storageRoot, logManager);
         _tree.RootHash = storageRoot;

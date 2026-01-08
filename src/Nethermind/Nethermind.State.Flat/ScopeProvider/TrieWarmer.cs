@@ -146,6 +146,11 @@ public sealed class TrieWarmer : ITrieWarmer
             _trieWarmEr.WithLabels("err_trienode").Inc();
             // It can be missing when the warmer lags so much behind that the node is now gone.
         }
+        catch (NodeHashMismatchException)
+        {
+            _trieWarmEr.WithLabels("node_hash_mismatch").Inc();
+            // Because it run in parallel, it could happen that the bundle changed which causes this.
+        }
         catch (ObjectDisposedException)
         {
             _trieWarmEr.WithLabels("err_disposed").Inc();

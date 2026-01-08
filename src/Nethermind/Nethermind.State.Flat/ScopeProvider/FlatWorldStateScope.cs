@@ -74,14 +74,12 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         _concurrencyQuota = new ConcurrencyQuota(); // Used during tree commit.
         _stateTree = new StateTree(
-            new StateTrieStoreAdapter<SnapshotBundleTrieProvider>(
-                new SnapshotBundleTrieProvider(snapshotBundle, false), _concurrencyQuota),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, false),
             logManager
         );
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _warmupStateTree = new PatriciaTree(
-            new StateTrieStoreAdapter<SnapshotBundleTrieProvider>(
-                new SnapshotBundleTrieProvider(snapshotBundle, true), _concurrencyQuota),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, true),
             logManager
         );
         _warmupStateTree.RootHash = currentStateId.stateRoot.ToCommitment();

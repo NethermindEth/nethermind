@@ -72,9 +72,7 @@ public class FlatStateReader(
             throw new InvalidOperationException($"State root {stateRoot} not found");
         }
 
-        StateTrieStoreAdapter<ReadOnlySnapshotBundleTrieProvider> trieStoreAdapter = new(
-            new ReadOnlySnapshotBundleTrieProvider(reader),
-            new ConcurrencyQuota());
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
         PatriciaTree patriciaTree = new PatriciaTree(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateRoot, visitingOptions);
