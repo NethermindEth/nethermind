@@ -575,11 +575,11 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackUnderflow(ref stack, TOpCount.Count)
-            || CheckStackOverflow(ref stack, 1))
-        {
+        if(CheckStackUnderflow(ref stack, TOpCount.Count))
             return EvmExceptionType.StackUnderflow;
-        }
+
+        if(CheckStackOverflow(ref stack, 1))
+            return EvmExceptionType.StackOverflow;
 
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
@@ -641,7 +641,7 @@ internal static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic) goto StaticCallViolation;
 
-        if(CheckStackUnderflow(ref stack, TOpCount.Count))
+        if(CheckStackUnderflow(ref stack, TOpCount.Count + 2))
             goto StackUnderflow;
 
         // Pop memory offset and length for the log data.
