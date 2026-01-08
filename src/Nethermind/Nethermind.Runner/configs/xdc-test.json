@@ -11,7 +11,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 0
+    "PivotNumber": 200000,
+    "PivotHash": "0x7c3d289822ab2e8127b8fa2e41f82437c243a9d5b2387c0183aab74a852a58f0",
+    "PivotTotalDifficulty": 200001
   },
   "JsonRpc": {
     "Enabled": false
