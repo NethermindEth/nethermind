@@ -55,7 +55,7 @@ public class CachedCodeInfoRepository(
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null)
     {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress, blockAccessIndex);
     }
 
     private static PrecompileInfo CreateCachedPrecompile(
