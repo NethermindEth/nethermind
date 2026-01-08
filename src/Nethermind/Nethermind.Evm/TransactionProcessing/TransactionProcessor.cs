@@ -132,7 +132,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
-            WorldState.TakeSnapshot(true);
+            WorldState.TakeSnapshot(true, VirtualMachine.TxExecutionContext.BlockAccessIndex);
             return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
         }
 

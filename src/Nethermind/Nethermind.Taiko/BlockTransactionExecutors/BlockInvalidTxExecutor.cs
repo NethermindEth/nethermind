@@ -36,7 +36,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            Snapshot snap = worldState.TakeSnapshot();
+            Snapshot snap = worldState.TakeSnapshot(blockAccessIndex: i);
             Transaction tx = block.Transactions[i];
 
             if (tx.Type == TxType.Blob)
@@ -52,7 +52,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 if (!txProcessor.Execute(tx, receiptsTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue
-                    worldState.Restore(snap);
+                    worldState.Restore(snap, i);
                     continue;
                 }
             }

@@ -197,7 +197,7 @@ internal static partial class EvmInstructions
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
-        Snapshot snapshot = state.TakeSnapshot();
+        Snapshot snapshot = state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
 
         // Check for contract address collision. If the contract already exists and contains code or non-zero state,
         // then the creation should be aborted.

@@ -54,7 +54,7 @@ public unsafe partial class VirtualMachine
             inputData: default,
             callDepth: 0);
 
-        using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex)))
         {
             vm.EvmState = evmState;
             vm._worldState = state;

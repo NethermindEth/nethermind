@@ -248,7 +248,7 @@ internal static partial class EvmInstructions
         }
 
         // Take a snapshot of the state for potential rollback.
-        Snapshot snapshot = state.TakeSnapshot();
+        Snapshot snapshot = state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec, vm.TxExecutionContext.BlockAccessIndex);
 
