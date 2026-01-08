@@ -249,7 +249,12 @@ internal static partial class EvmInstructions
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
-            stack.PushOne<TTracingInst>();
+            EvmExceptionType result = stack.PushOne<TTracingInst>();
+            if (result != EvmExceptionType.None)
+            {
+                return result;
+            }
+            // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
             return FastCall(vm, spec, in transferValue, target);
         }

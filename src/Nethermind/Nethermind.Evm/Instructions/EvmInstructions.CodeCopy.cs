@@ -285,13 +285,12 @@ internal static partial class EvmInstructions
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
                 if (!isCodeLengthNotZero)
                 {
-                    stack.PushOne<TTracingInst>();
+                    return stack.PushOne<TTracingInst>();
                 }
                 else
                 {
                     return stack.PushZero<TTracingInst>();
                 }
-                return EvmExceptionType.None;
             }
         }
 
