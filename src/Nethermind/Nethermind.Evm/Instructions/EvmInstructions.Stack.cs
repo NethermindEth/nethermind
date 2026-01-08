@@ -30,7 +30,7 @@ internal static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CheckStackOverflow(ref EvmStack stack, int itemsPushedCount)
     {
-        return stack.Head + itemsPushedCount > EvmStack.MaxStackSize;
+        return stack.Head + itemsPushedCount >= EvmStack.MaxStackSize;
     }
 
 
