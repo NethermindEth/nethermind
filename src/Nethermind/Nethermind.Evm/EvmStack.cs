@@ -20,10 +20,6 @@ namespace Nethermind.Evm;
 using Word = Vector256<byte>;
 using HalfWord = Vector128<byte>;
 
-/// <summary>
-/// Generic EVM stack implementation with configurable bounds checking.
-/// </summary>
-/// <typeparam name="TCheckBounds">Flag type controlling whether stack overflow/underflow checks are performed.</typeparam>
 [StructLayout(LayoutKind.Auto)]
 public ref struct EvmStack
 {
@@ -89,6 +85,7 @@ public ref struct EvmStack
         if (valueSpan.Length != WordSize)
         {
             ref byte bytes = ref PushBytesRef();
+            // Not full entry, clear first
             Unsafe.As<byte, Word>(ref bytes) = default;
             valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
         }
@@ -105,7 +102,10 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
+        // Build a 256-bit vector: [ 0, 0, 0, (value << 56) ]
+        // - when viewed as bytes: all zeros except byte[31] == value
         ref Word head = ref PushedHead();
+        // Single 32-byte store: last byte as value
         head = CreateWordFromUInt64((ulong)value << 56);
     }
 
@@ -113,11 +113,16 @@ public ref struct EvmStack
     public unsafe void Push2Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
+        // ushort size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in value, sizeof(ushort));
 
         ref Word head = ref PushedHead();
+        // Load 2-byte source into the top 16 bits of the last 64-bit lane:
+        // lane3 covers bytes [24..31], so shifting by 48 bits
         ulong lane3 = (ulong)Unsafe.As<byte, ushort>(ref value) << 48;
+
+        // Single 32-byte store
         head = CreateWordFromUInt64(lane3);
     }
 
@@ -125,11 +130,16 @@ public ref struct EvmStack
     public unsafe void Push4Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
+        // uint size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in value, sizeof(uint));
 
         ref Word head = ref PushedHead();
+        // Load 4-byte source into the top 32 bits of the last 64-bit lane:
+        // lane3 covers bytes [24..31], so shifting by 32 bits
         ulong lane3 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
+
+        // Single 32-byte store
         head = CreateWordFromUInt64(lane3);
     }
 
@@ -137,11 +147,15 @@ public ref struct EvmStack
     public unsafe void Push8Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
+        // ulong size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in value, sizeof(ulong));
 
         ref Word head = ref PushedHead();
+        // Load 8-byte source into last 64-bit lane
         ulong lane3 = Unsafe.As<byte, ulong>(ref value);
+
+        // Single 32-byte store
         head = CreateWordFromUInt64(lane3);
     }
 
@@ -149,11 +163,14 @@ public ref struct EvmStack
     public unsafe void Push16Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
+        // UInt128 size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in value, sizeof(HalfWord));
 
         ref Word head = ref PushedHead();
+        // Load 16-byte source into 16-byte source as a Vector128<byte>
         HalfWord src = Unsafe.As<byte, HalfWord>(ref value);
+        // Single 32-byte store
         head = Vector256.Create(default, src);
     }
 
@@ -161,14 +178,21 @@ public ref struct EvmStack
     public void Push20Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
+        // Address size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in value, 20);
 
         ref Word head = ref PushedHead();
+        // build the 4×8-byte lanes:
+        // - lane0 = 0UL
+        // - lane1 = first 4 bytes of 'value', shifted up into the high half
+        // - lane2 = bytes [4..11] of 'value'
+        // - lane3 = bytes [12..19] of 'value'
         ulong lane1 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
         ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
         ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
 
+        // Single 32-byte store
         head = Vector256.Create(default, lane1, lane2, lane3).AsByte();
     }
 
@@ -202,6 +226,7 @@ public ref struct EvmStack
         if (value.Length != WordSize)
         {
             ref byte bytes = ref PushBytesRef();
+            // Not full entry, clear first
             Unsafe.As<byte, Word>(ref bytes) = default;
             value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - paddingLength), value.Length));
         }
@@ -218,6 +243,10 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.OneByteSpan);
 
+        // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
+        // - when viewed as bytes: all zeros except byte[31] == 1
+
+        // Single 32-byte store
         PushedHead() = CreateWordFromUInt64(1UL << 56);
     }
 
@@ -228,6 +257,7 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
+        // Single 32-byte store: Zero
         PushedHead() = default;
     }
 
@@ -238,10 +268,11 @@ public ref struct EvmStack
         {
             value = BinaryPrimitives.ReverseEndianness(value);
         }
-
+        // uint size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
+        // Single 32-byte store
         PushedHead() = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
     }
 
@@ -252,13 +283,20 @@ public ref struct EvmStack
         {
             value = BinaryPrimitives.ReverseEndianness(value);
         }
-
+        // ulong size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
+        // Single 32-byte store
         PushedHead() = CreateWordFromUInt64(value);
     }
 
+    /// <summary>
+    /// Pushes an Uint256 written in big endian.
+    /// </summary>
+    /// <remarks>
+    /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
+    /// </remarks>
     public void PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
@@ -310,6 +348,7 @@ public ref struct EvmStack
     public void PushSignedInt256<TTracingInst>(in Int256.Int256 value)
         where TTracingInst : struct, IFlag
     {
+        // tail call into UInt256
         PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
@@ -319,6 +358,14 @@ public ref struct EvmStack
         Head--;
     }
 
+    /// <summary>
+    /// Pops an Uint256 written in big endian.
+    /// </summary>
+    /// <remarks>
+    /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
+    /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
+    /// </remarks>
+    /// <param name="result">The returned value.</param>
     public void PopUInt256(out UInt256 result)
     {
         Unsafe.SkipInit(out result);
@@ -349,6 +396,7 @@ public ref struct EvmStack
             ulong u3, u2, u1, u0;
             if (BitConverter.IsLittleEndian)
             {
+                // Combine read and switch endianness to movbe reg, mem
                 u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
                 u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
                 u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
