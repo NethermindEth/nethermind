@@ -368,15 +368,24 @@ public sealed class StackPushBytesGenerator : IIncrementalGenerator
             if (isByteValue)
             {
                 // size must be 1
-                sb.Indent(indent).Append("head = CreateWordFromUInt64((ulong)")
-                  .Append(valueName).AppendLine(" << 56);");
+                sb.Indent(indent).AppendLine($"ulong lane3 = (ulong){valueName} << 56;");
             }
             else
             {
                 var lane3Expr = EmitPackHiU64Expr(valueName, size);
                 sb.Indent(indent).Append("ulong lane3 = ").Append(lane3Expr).AppendLine(";");
-                sb.Indent(indent).AppendLine("head = CreateWordFromUInt64(lane3);");
             }
+
+            sb.Indent(indent).AppendLine("if (Vector256.IsHardwareAccelerated)")
+              .Indent(indent).AppendLine("{")
+              .Indent(indent + 1).AppendLine("head = CreateWordFromUInt64(lane3);")
+              .Indent(indent).AppendLine("}")
+              .Indent(indent).AppendLine("else")
+              .Indent(indent).AppendLine("{")
+              .Indent(indent + 1).AppendLine("ref Vector128<ulong> head128 = ref Unsafe.As<Vector256<byte>, Vector128<ulong>>(ref head);")
+              .Indent(indent + 1).AppendLine("head128 = default;")
+              .Indent(indent + 1).AppendLine("Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);")
+              .Indent(indent).AppendLine("}");
 
             return;
         }
@@ -387,7 +396,18 @@ public sealed class StackPushBytesGenerator : IIncrementalGenerator
             sb.Indent(indent).Append("Vector128<byte> src = ")
               .Append("Unsafe.ReadUnaligned<Vector128<byte>>(")
               .Append("ref ").Append(valueName).AppendLine(");");
-            sb.Indent(indent).AppendLine("head = Vector256.Create(default, src);");
+
+            sb.Indent(indent).AppendLine("if (Vector256.IsHardwareAccelerated)")
+              .Indent(indent).AppendLine("{")
+              .Indent(indent + 1).AppendLine("head = Vector256.Create(default, src);")
+              .Indent(indent).AppendLine("}")
+              .Indent(indent).AppendLine("else")
+              .Indent(indent).AppendLine("{")
+              .Indent(indent + 1).AppendLine("ref Vector128<byte> head128 = ref Unsafe.As<Vector256<byte>, Vector128<byte>>(ref head);")
+              .Indent(indent + 1).AppendLine("head128 = default;")
+              .Indent(indent + 1).AppendLine("Unsafe.Add(ref head128, 1) = src;")
+              .Indent(indent).AppendLine("}");
+
             return;
         }
 
@@ -425,12 +445,34 @@ public sealed class StackPushBytesGenerator : IIncrementalGenerator
             }
         }
 
-        sb.Indent(indent).Append("head = Vector256.Create(").AppendLine()
-          .Indent(indent + 1).Append(lane0).AppendLine(", ")
-          .Indent(indent + 1).Append(lane1).AppendLine(", ")
-          .Indent(indent + 1).Append(lane2).AppendLine(", ")
-          .Indent(indent + 1).Append(lane3).AppendLine()
-          .Indent(indent).AppendLine(").AsByte();");
+        sb.Indent(indent).AppendLine("if (Vector256.IsHardwareAccelerated)")
+          .Indent(indent).AppendLine("{")
+          .Indent(indent + 1).Append("head = Vector256.Create(").AppendLine()
+          .Indent(indent + 2).Append(lane0).AppendLine(", ")
+          .Indent(indent + 2).Append(lane1).AppendLine(", ")
+          .Indent(indent + 2).Append(lane2).AppendLine(", ")
+          .Indent(indent + 2).Append(lane3).AppendLine()
+          .Indent(indent + 1).AppendLine(").AsByte();")
+          .Indent(indent).AppendLine("}")
+          .Indent(indent).AppendLine("else")
+          .Indent(indent).AppendLine("{")
+          .Indent(indent + 1).AppendLine("ref Vector128<ulong> head128 = ref Unsafe.As<Vector256<byte>, Vector128<ulong>>(ref head);");
+        if (lane0 == "0UL" && lane1 == "0UL")
+        {
+            sb.Indent(indent + 1).AppendLine("head128 = default;");
+        }
+        else
+        {
+            sb.Indent(indent + 1).AppendLine("head128 = Vector128.Create(")
+                .Indent(indent + 2).Append(lane0).AppendLine(", ")
+                .Indent(indent + 2).AppendLine(lane1)
+                .Indent(indent + 1).AppendLine(");");
+        }
+        sb.Indent(indent + 1).AppendLine("Unsafe.Add(ref head128, 1) = Vector128.Create(")
+            .Indent(indent + 2).Append(lane2).AppendLine(", ")
+            .Indent(indent + 2).AppendLine(lane3)
+            .Indent(indent + 1).AppendLine(");")
+          .Indent(indent).AppendLine("}");
     }
 
     private static void EmitPadRightBody(StringBuilder sb, int indent, int size, bool isByteValue, string valueName)
