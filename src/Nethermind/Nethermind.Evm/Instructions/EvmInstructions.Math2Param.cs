@@ -313,20 +313,22 @@ internal static partial class EvmInstructions
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
             TGasPolicy.Consume(ref gas, vm.Spec.GetExpByteCost() * expSize);
 
-            if (a.IsZero)
+            if (a.IsUint64)
             {
-                return stack.PushZero<TTracingInst>();
+                ulong value = a.u0;
+                if (value == 0)
+                {
+                    return stack.PushZero<TTracingInst>();
+                }
+                else if (value == 1)
+                {
+                    return stack.PushOne<TTracingInst>();
+                }
             }
-            else if (a.IsOne)
-            {
-                return stack.PushOne<TTracingInst>();
-            }
-            else
-            {
-                // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(in a, in exponent, out UInt256 result);
-                return stack.PushUInt256<TTracingInst>(in result);
-            }
+
+            // Perform exponentiation and push the 256-bit result onto the stack.
+            UInt256.Exp(in a, in exponent, out UInt256 result);
+            return stack.PushUInt256<TTracingInst>(in result);
         }
 
     // Jump forward to be unpredicted by the branch predictor.
