@@ -226,7 +226,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     }
 
     public override void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
-        => IncrementNonce(address, delta, out _);
+        => IncrementNonce(address, delta, out _, blockAccessIndex);
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
     {
