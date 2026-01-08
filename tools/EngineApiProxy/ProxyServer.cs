@@ -64,7 +64,8 @@ public class ProxyServer
             KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
             KeepAlivePingTimeout = TimeSpan.FromSeconds(180),
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
-            EnableMultipleHttp2Connections = true
+            EnableMultipleHttp2Connections = true,
+            AutomaticDecompression = System.Net.DecompressionMethods.All
         };
 
         _httpClient = new HttpClient(defaultClientHandler)

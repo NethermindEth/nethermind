@@ -100,7 +100,7 @@ public class RequestForwarder(
             {
                 _logger.Debug($"Sending request to EL: {request.Method}");
                 response = await _httpClient.SendAsync(requestMessage);
-                _logger.Debug($"Received response from EL: {response.StatusCode}");
+                _logger.Debug($"Received response from EL: {response.StatusCode}, Content-Encoding: {response.Content.Headers.ContentEncoding.FirstOrDefault() ?? "none"}, Content-Type: {response.Content.Headers.ContentType?.ToString() ?? "unknown"}");
             }
             catch (HttpRequestException ex) when (ex.InnerException is HttpIOException ioEx)
             {
