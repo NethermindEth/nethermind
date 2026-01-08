@@ -34,10 +34,8 @@ internal static partial class EvmInstructions
         else
         {
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            return stack.PushUInt256<TTracingInst>(in result);
         }
-
-        return EvmExceptionType.None;
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor
         return EvmExceptionType.StackUnderflow;

@@ -76,9 +76,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
 
         // Push the length of the return data buffer (as a 32-bit unsigned integer) onto the stack.
-        stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
     }
 
     /// <summary>
@@ -232,9 +230,8 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataSize))
             goto OutOfGas;
 
-        stack.PushUInt32<TTracingInst>((uint)codeInfo.DataSection.Length);
+        return stack.PushUInt32<TTracingInst>((uint)codeInfo.DataSection.Length);
 
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

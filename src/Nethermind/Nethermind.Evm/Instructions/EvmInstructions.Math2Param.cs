@@ -65,9 +65,7 @@ internal static partial class EvmInstructions
         TOpMath.Operation(in a, in b, out UInt256 result);
 
         // Push the computed result onto the stack.
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -327,7 +325,7 @@ internal static partial class EvmInstructions
             {
                 // Perform exponentiation and push the 256-bit result onto the stack.
                 UInt256.Exp(in a, in exponent, out UInt256 result);
-                stack.PushUInt256<TTracingInst>(in result);
+                return stack.PushUInt256<TTracingInst>(in result);
             }
         }
 

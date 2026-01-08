@@ -74,10 +74,8 @@ internal static partial class EvmInstructions
             if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
             // Perform the shift operation using the specific implementation.
             TOpShift.Operation(in a, in b, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            return stack.PushUInt256<TTracingInst>(in result);
         }
-
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -120,7 +118,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Negative value: result is -1 (all bits set).
-                stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+                return stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
             }
         }
         else
@@ -128,10 +126,8 @@ internal static partial class EvmInstructions
             // For a valid shift amount (<256), perform an arithmetic right shift.
             As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
             // Convert the signed result back to unsigned representation.
-            stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+            return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
         }
-
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

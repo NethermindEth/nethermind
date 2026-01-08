@@ -524,13 +524,28 @@ public ref partial struct EvmStack
             return EvmExceptionType.StackOverflow;
         }
 
-        head = default;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // Single 32-byte store
+            head = default;
+        }
+        else
+        {
+            ref Vector128<uint> head128 = ref Unsafe.As<Vector256<byte>, Vector128<uint>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = default;
+        }
         return EvmExceptionType.None;
     }
 
-    public void PushUInt32<TTracingInst>(uint value)
+    public EvmExceptionType PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
+        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
+        if (Unsafe.IsNullRef(ref head))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
         if (BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
@@ -539,13 +554,28 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
-        // Single 32-byte store
-        PushedHead() = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // Single 32-byte store
+            head = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
+        }
+        else
+        {
+            ref Vector128<uint> head128 = ref Unsafe.As<Word, Vector128<uint>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0U, 0U, 0U, value);
+        }
+        return EvmExceptionType.None;
     }
 
-    public void PushUInt64<TTracingInst>(ulong value)
+    public EvmExceptionType PushUInt64<TTracingInst>(ulong value)
         where TTracingInst : struct, IFlag
     {
+        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
+        if (Unsafe.IsNullRef(ref head))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
         if (BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
@@ -554,8 +584,18 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
-        // Single 32-byte store
-        PushedHead() = CreateWordFromUInt64(value);
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // Single 32-byte store
+            head = CreateWordFromUInt64(value);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, value);
+        }
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -565,10 +605,14 @@ public ref partial struct EvmStack
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
     /// </remarks>
 
-    public void PushUInt256<TTracingInst>(in UInt256 value)
+    public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
-        ref Word head = ref PushedHead();
+        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
+        if (Unsafe.IsNullRef(ref head))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
         if (Avx2.IsSupported)
         {
             Word shuffle = Vector256.Create(
@@ -611,13 +655,15 @@ public ref partial struct EvmStack
 
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Word, byte>(ref head), WordSize));
+
+        return EvmExceptionType.None;
     }
 
-    public void PushSignedInt256<TTracingInst>(in Int256.Int256 value)
+    public EvmExceptionType PushSignedInt256<TTracingInst>(in Int256.Int256 value)
         where TTracingInst : struct, IFlag
     {
         // tail call into UInt256
-        PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
+        return PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -34,9 +34,7 @@ internal static partial class EvmInstructions
         // Deduct the base gas cost for reading the program counter.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
-        stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
-
-        return EvmExceptionType.None;
+        return stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
     }
 
     /// <summary>
