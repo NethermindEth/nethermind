@@ -305,7 +305,7 @@ internal static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            stack.PushOne<TTracingInst>();
+            return stack.PushOne<TTracingInst>();
         }
         else
         {
@@ -319,7 +319,7 @@ internal static partial class EvmInstructions
             }
             else if (a.IsOne)
             {
-                stack.PushOne<TTracingInst>();
+                return stack.PushOne<TTracingInst>();
             }
             else
             {
@@ -329,7 +329,6 @@ internal static partial class EvmInstructions
             }
         }
 
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

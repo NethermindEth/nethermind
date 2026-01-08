@@ -498,17 +498,32 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushOne<TTracingInst>()
+    public EvmExceptionType PushOne<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.OneByteSpan);
 
+        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
+        if (Unsafe.IsNullRef(ref head))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
         // - when viewed as bytes: all zeros except byte[31] == 1
-
-        // Single 32-byte store
-        PushedHead() = CreateWordFromUInt64(1UL << 56);
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // Single 32-byte store
+            head = CreateWordFromUInt64(1UL << 56);
+        }
+        else
+        {
+            ref HalfWord head128 = ref Unsafe.As<Word, HalfWord>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, 1UL << 56).AsByte();
+        }
+        return EvmExceptionType.None;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -964,7 +964,11 @@ internal static partial class EvmInstructions
         {
             vm.ReturnData = null;
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushOne<TTracingInst>();
+            EvmExceptionType result = stack.PushOne<TTracingInst>();
+            if (result != EvmExceptionType.None)
+            {
+                return result;
+            }
 
             // If tracing is active, record additional details regarding the failure.
             ITxTracer txTracer = vm.TxTracer;
@@ -989,8 +993,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnData = null;
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushOne<TTracingInst>();
-            return EvmExceptionType.None;
+            return stack.PushOne<TTracingInst>();
         }
 
         // 12. Deduct gas for the call and prepare the call data.
