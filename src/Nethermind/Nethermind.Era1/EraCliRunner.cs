@@ -13,7 +13,7 @@ public class EraCliRunner(
     IEraExporter eraExporter,
     ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<EraCliRunner>();
+    protected readonly ILogger _logger = logManager.GetClassLogger<EraCliRunner>();
 
     public async Task Run(CancellationToken token)
     {
@@ -27,7 +27,7 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Export(CancellationToken cancellation)
+    protected async Task Export(CancellationToken cancellation)
     {
         try
         {
@@ -48,10 +48,11 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Import(CancellationToken cancellation)
+    protected virtual async Task Import(CancellationToken cancellation)
     {
         try
         {
+            _logger.Info("Starting import job");
             await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, cancellation);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
