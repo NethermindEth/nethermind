@@ -61,7 +61,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
-        if(TOpMath.CheckStackUnderflow(ref stack))
+        if (TOpMath.CheckStackUnderflow(ref stack))
             goto StackUnderflow;
 
         // Deduct the gas cost associated with the math operation.
@@ -167,7 +167,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        if(CheckStackUnderflow(ref stack, 2))
+        if (CheckStackUnderflow(ref stack, 2))
             goto StackUnderflow;
 
         TGasPolicy.Consume(ref gas, GasCostOf.Low);

@@ -216,7 +216,7 @@ internal static partial class EvmInstructions
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataLoadN))
             goto OutOfGas;
@@ -560,8 +560,8 @@ internal static partial class EvmInstructions
         // Read the immediate operand.
         int imm = codeInfo.CodeSection.Span[programCounter];
 
-        if(CheckStackUnderflow(ref stack, imm + 1)) return EvmExceptionType.StackUnderflow;
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackUnderflow(ref stack, imm + 1)) return EvmExceptionType.StackUnderflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
         // Duplicate the (imm+1)th stack element.
         stack.Dup<TTracingInst>(imm + 1);
         programCounter += 1;
@@ -665,7 +665,7 @@ internal static partial class EvmInstructions
         if (vm.VmState.IsStatic)
             goto StaticCallViolation;
 
-        if(CheckStackUnderflow(ref stack, 4)) return EvmExceptionType.StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 4)) return EvmExceptionType.StackUnderflow;
 
         // Cast the current code info to EOF-specific container type.
         EofCodeInfo container = env.CodeInfo as EofCodeInfo;
@@ -819,7 +819,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.ReturnCode))
             goto OutOfGas;
 
-        if(CheckStackUnderflow(ref stack, 2)) return EvmExceptionType.StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 2)) return EvmExceptionType.StackUnderflow;
 
         IReleaseSpec spec = vm.Spec;
         EofCodeInfo codeInfo = (EofCodeInfo)vm.VmState.Env.CodeInfo;
@@ -920,7 +920,7 @@ internal static partial class EvmInstructions
         if (env.CodeInfo.Version == 0)
             goto BadInstruction;
 
-        if(TOpEofCall.CheckStackUnderflow(ref stack))
+        if (TOpEofCall.CheckStackUnderflow(ref stack))
             goto StackUnderflow;
 
         // 1. Pop the target address (as 32 bytes) and memory offsets/length for the call data.
@@ -941,7 +941,8 @@ internal static partial class EvmInstructions
             transferValue = UInt256.Zero;
             callValue = env.Value;
         }
-        else {
+        else
+        {
             stack.PopUInt256(out transferValue);
             callValue = transferValue;
         }

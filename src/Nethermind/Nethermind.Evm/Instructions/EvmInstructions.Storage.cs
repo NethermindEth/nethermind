@@ -52,7 +52,7 @@ internal static partial class EvmInstructions
         // Increment the opcode metric for TLOAD.
         Metrics.TloadOpcode++;
 
-        if(CheckStackUnderflow(ref stack, TLoadStackRequiredItems))
+        if (CheckStackUnderflow(ref stack, TLoadStackRequiredItems))
             goto StackUnderflow;
 
         // Deduct the fixed gas cost for TLOAD.
@@ -104,7 +104,7 @@ internal static partial class EvmInstructions
         // Increment the opcode metric for TSTORE.
         Metrics.TstoreOpcode++;
 
-        if(CheckStackUnderflow(ref stack, TStoreStackRequiredItems))
+        if (CheckStackUnderflow(ref stack, TStoreStackRequiredItems))
             goto StackUnderflow;
 
         VmState<TGasPolicy> vmState = vm.VmState;

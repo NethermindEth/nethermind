@@ -128,7 +128,7 @@ internal static partial class EvmInstructions
         // Clear previous return data.
         vm.ReturnData = null;
 
-        if(TOpCall.CheckStackUnderflow(ref stack))
+        if (TOpCall.CheckStackUnderflow(ref stack))
         {
             goto StackUnderflow;
         }
@@ -372,7 +372,7 @@ internal static partial class EvmInstructions
             goto BadInstruction;
         }
 
-        if(CheckStackUnderflow(ref stack, 2))
+        if (CheckStackUnderflow(ref stack, 2))
         {
             goto StackUnderflow;
         }

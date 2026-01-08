@@ -63,7 +63,7 @@ internal static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        if(TOpShift.CheckStackUnderflow(ref stack)) goto StackUnderflow;
+        if (TOpShift.CheckStackUnderflow(ref stack)) goto StackUnderflow;
 
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
@@ -114,7 +114,7 @@ internal static partial class EvmInstructions
     {
         static bool CheckStackUnderflow(ref EvmStack stack) => stack.Head < 2;
 
-        if(CheckStackUnderflow(ref stack))
+        if (CheckStackUnderflow(ref stack))
         {
             goto StackUnderflow;
         }

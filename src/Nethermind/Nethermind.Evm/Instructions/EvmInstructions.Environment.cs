@@ -256,7 +256,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkUInt256<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         TGasPolicy.Consume(ref gas, TOpEnv.GasCost);
 
@@ -283,7 +283,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt32<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         TGasPolicy.Consume(ref gas, TOpEnv.GasCost);
 
@@ -310,7 +310,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt64<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         TGasPolicy.Consume(ref gas, TOpEnv.GasCost);
 
@@ -364,7 +364,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnv32Bytes<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         TGasPolicy.Consume(ref gas, TOpEnv.GasCost);
 
@@ -466,7 +466,7 @@ internal static partial class EvmInstructions
         // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
         if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
 
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
@@ -566,7 +566,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
 
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
@@ -604,7 +604,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         TGasPolicy.Consume(ref gas, GasCostOf.SelfBalance);
 
@@ -736,7 +736,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
@@ -761,7 +761,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
         // Deduct the base gas cost for reading gas.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
 
@@ -796,7 +796,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
         // Deduct the gas cost for blob hash operation.
         TGasPolicy.Consume(ref gas, GasCostOf.BlobHash);
 
@@ -843,7 +843,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
         // Deduct the gas cost for block hash operation.
         TGasPolicy.Consume(ref gas, GasCostOf.BlockHash);
 

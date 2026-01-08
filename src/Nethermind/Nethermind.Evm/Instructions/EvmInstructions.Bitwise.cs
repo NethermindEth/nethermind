@@ -52,7 +52,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
-        if(TOpBitwise.CheckStackUnderflow(ref stack))
+        if (TOpBitwise.CheckStackUnderflow(ref stack))
             goto StackUnderflow;
 
         // Deduct the operation's gas cost.

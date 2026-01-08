@@ -95,7 +95,7 @@ internal static partial class EvmInstructions
         // Increment metrics counter for contract creation operations.
         Metrics.IncrementCreates();
 
-        if(TOpCreate.CheckStackUnderflow(ref stack))
+        if (TOpCreate.CheckStackUnderflow(ref stack))
             goto StackUnderflow;
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).

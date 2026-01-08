@@ -63,7 +63,7 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
-        if(TOpMath.CheckStackUnderflow(ref stack))
+        if (TOpMath.CheckStackUnderflow(ref stack))
         {
             goto StackUnderflow;
         }
@@ -290,7 +290,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackUnderflow(ref stack, 2))
+        if (CheckStackUnderflow(ref stack, 2))
         {
             goto StackUnderflow;
         }

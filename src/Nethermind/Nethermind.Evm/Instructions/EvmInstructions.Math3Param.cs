@@ -27,7 +27,7 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        if(TOpMath.CheckStackUnderflow(ref stack))
+        if (TOpMath.CheckStackUnderflow(ref stack))
         {
             goto StackUnderflow;
         }

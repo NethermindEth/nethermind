@@ -31,7 +31,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if(CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
 
         // Deduct the base gas cost for reading the program counter.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
@@ -80,7 +80,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
 
-        if(CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
 
         // Deduct the gas cost for performing a jump.
         TGasPolicy.Consume(ref gas, GasCostOf.Jump);
@@ -115,7 +115,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        if(CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
 
         // Deduct the high gas cost for a conditional jump.
         TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
