@@ -8,14 +8,19 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Abi;
@@ -28,6 +33,7 @@ namespace Nethermind.Xdc;
 public class XdcModule : Module
 {
     private const string SnapshotDbName = "Snapshots";
+    private const string SignTxRandomizeDbName = "RandomValues";
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -72,15 +78,26 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
+            .AddDatabase(SignTxRandomizeDbName)
+            .AddSingleton<ISignTransactionManager, IDb, ISigner, ITxPool>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
+
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             ;
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler)
     {
         return new SnapshotManager(db, blockTree, penaltyHandler);
+    }
+    private ISignTransactionManager CreateSignTransactionManager([KeyFilter(SignTxRandomizeDbName)] IDb db, ISigner signer, ITxPool txPool)
+    {
+        return new SignTransactionManager(db, signer, txPool);
     }
 
     private IMasternodeVotingContract CreateMasternodeVotingContract(
