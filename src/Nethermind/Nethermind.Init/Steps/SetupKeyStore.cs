@@ -69,8 +69,8 @@ namespace Nethermind.Init.Steps
             if (!string.IsNullOrEmpty(networkConfig.Bootnodes))
             {
                 string publicKeyHex = nodeKey.PublicKey.ToString();
-                string pattern = $",[^,]*{publicKeyHex}[^,]*|[^,]*{publicKeyHex}[^,]*,|^[^,]*{publicKeyHex}[^,]$";
-                networkConfig.Bootnodes = Regex.Replace(networkConfig.Bootnodes, pattern, string.Empty).ToString();
+                string pattern = $",[^,]*{publicKeyHex}[^,]*|[^,]*{publicKeyHex}[^,]*,|^[^,]*{publicKeyHex}[^,]*$";
+                networkConfig.Bootnodes = Regex.Replace(networkConfig.Bootnodes, pattern, string.Empty);
             }
 
             return Task.CompletedTask;

@@ -31,7 +31,7 @@ using System.Threading.Channels;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-public class DiscoveryV5App : IDiscoveryApp
+public sealed class DiscoveryV5App : IDiscoveryApp
 {
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
@@ -212,14 +212,13 @@ public class DiscoveryV5App : IDiscoveryApp
                 {
                     Lantern.Discv5.Enr.Enr enr = ToEnr(kv.Value);
 
-                    if (enrs.Count == 0)
+                    if (enrs.Count is 0)
                     {
                         migrateBatch = _discoveryDb.StartWriteBatch();
                         deleteBatch = _legacyDiscoveryDb.StartWriteBatch();
-
-                        enrs.Add(kv.Value);
                     }
 
+                    enrs.Add(kv.Value);
                     migrateBatch![enr.NodeId] = kv.Value;
                     deleteBatch![kv.Key] = null;
                 }
