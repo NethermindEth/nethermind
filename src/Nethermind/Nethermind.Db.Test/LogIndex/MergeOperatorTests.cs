@@ -15,7 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test.LogIndex;
 
-// TODO: more tests
 [Parallelizable(ParallelScope.All)]
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class MergeOperatorTests
@@ -36,9 +35,50 @@ public class MergeOperatorTests
         "1, 2, 5, 6"
     )]
     [TestCase(
+        "1, 2",
+        new[] { "3, 4", "Reorg:2", "5, 6" },
+        "1, 5, 6"
+    )]
+    [TestCase(
+        "1, 2",
+        new[] { "3, 4", "Reorg:3", "Reorg:4", "5, 6" },
+        "1, 2, 5, 6"
+    )]
+    [TestCase(
+        "1, 2",
+        new[] { "3, 4", "Reorg:4", "Reorg:3", "5, 6" },
+        "1, 2, 5, 6",
+        Ignore = "Subsequent reverse reorgs are not supported."
+    )]
+    [TestCase(
+        "1, 2",
+        new[] { "3, 4", "Reorg:3", "5, 6", "Reorg:5", "6, 7" },
+        "1, 2, 6, 7"
+    )]
+    [TestCase(
         "1, 2, 3",
         new[] { "4, 5", "Truncate:4", "6, 7" },
         "5, 6, 7"
+    )]
+    [TestCase(
+        "1, 2, 3",
+        new[] { "4, 5", "Truncate:3", "6, 7" },
+        "4, 5, 6, 7"
+    )]
+    [TestCase(
+        "1, 2, 3",
+        new[] { "4, 5", "Truncate:3", "Truncate:4", "6, 7" },
+        "5, 6, 7"
+    )]
+    [TestCase(
+        "1, 2, 3",
+        new[] { "4, 5", "Truncate:4", "Truncate:3", "6, 7" },
+        "5, 6, 7"
+    )]
+    [TestCase(
+        "1, 2, 3",
+        new[] { "4, 5", "Truncate:3", "6, 7", "Truncate:6" },
+        "7"
     )]
     public void FullMergeForward(string? existing, string[] operands, string expected)
     {
@@ -48,6 +88,93 @@ public class MergeOperatorTests
         var key = GenerateKey(Address.Size, isBackward: false);
         Assert.That(
             Deserialize(op.FullMerge(key, enumerator)?.ToArray()),
+            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+        );
+    }
+
+    [TestCase(
+        null,
+        new[] { "4", "3", "2, 1" },
+        "4, 3, 2, 1"
+    )]
+    [TestCase(
+        "4",
+        new[] { "3, 2", "1" },
+        "4, 3, 2, 1"
+    )]
+    [TestCase(
+        "7, 6, 5",
+        new[] { "4, 3", "Truncate:4", "2, 1" },
+        "3, 2, 1"
+    )]
+    [TestCase(
+        "7, 6, 5",
+        new[] { "4, 3", "Truncate:5", "2, 1" },
+        "4, 3, 2, 1"
+    )]
+    [TestCase(
+        "7, 6, 5",
+        new[] { "4, 3", "Truncate:5", "Truncate:4", "2, 1" },
+        "3, 2, 1"
+    )]
+    [TestCase(
+        "7, 6, 5",
+        new[] { "4, 3", "Truncate:4", "Truncate:5", "2, 1" },
+        "3, 2, 1"
+    )]
+    [TestCase(
+        "7, 6, 5",
+        new[] { "4, 3", "Truncate:5", "2, 1", "Truncate:2" },
+        "1"
+    )]
+    public void FullMergeBackward(string? existing, string[] operands, string expected)
+    {
+        LogIndexStorage.MergeOperator op = CreateOperator();
+        CreateEnumerator(Serialize(existing), operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
+
+        var key = GenerateKey(Address.Size, isBackward: true);
+        Assert.That(
+            Deserialize(op.FullMerge(key, enumerator)?.ToArray()),
+            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+        );
+    }
+
+    [TestCase(
+        new[] { "1", "2", "3", "4" },
+        "1, 2, 3, 4"
+    )]
+    [TestCase(
+        new[] { "1", "2, 3", "4" },
+        "1, 2, 3, 4"
+    )]
+    public void PartialMergeForward(string[] operands, string expected)
+    {
+        LogIndexStorage.MergeOperator op = CreateOperator();
+        CreateEnumerator(null, operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
+
+        var key = GenerateKey(Address.Size, isBackward: false);
+        Assert.That(
+            Deserialize(op.PartialMerge(key, enumerator)?.ToArray()),
+            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+        );
+    }
+
+    [TestCase(
+        new[] { "4", "3", "2", "1" },
+        "4, 3, 2, 1"
+    )]
+    [TestCase(
+        new[] { "4", "3, 2", "1" },
+        "4, 3, 2, 1"
+    )]
+    public void PartialMergeBackward(string[] operands, string expected)
+    {
+        LogIndexStorage.MergeOperator op = CreateOperator();
+        CreateEnumerator(null, operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
+
+        var key = GenerateKey(Address.Size, isBackward: true);
+        Assert.That(
+            Deserialize(op.PartialMerge(key, enumerator)?.ToArray()),
             Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
         );
     }
