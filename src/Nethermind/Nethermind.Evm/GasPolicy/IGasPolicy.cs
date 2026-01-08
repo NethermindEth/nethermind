@@ -214,6 +214,5 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="isExternalCode">True for EXTCODECOPY (external account code).</param>
     /// <param name="baseCost">Fixed opcode cost.</param>
     /// <param name="dataCost">Per-word copy cost.</param>
-    /// <returns>True if sufficient gas available.</returns>
-    static abstract bool ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, long baseCost, long dataCost);
+    static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, long baseCost, long dataCost);
 }
