@@ -142,6 +142,12 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
+
+        if (CheckStackOverflow(ref stack, 1))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
