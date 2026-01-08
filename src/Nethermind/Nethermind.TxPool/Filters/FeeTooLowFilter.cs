@@ -48,9 +48,7 @@ namespace Nethermind.TxPool.Filters
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
-                return !isLocal ?
-                    AcceptTxResult.FeeTooLow :
-                    AcceptTxResult.FeeTooLow.WithMessage("Affordable gas price is 0");
+                return AcceptTxResult.FeeTooLow;
             }
 
             TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTxs : _txs);
@@ -63,10 +61,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
                 }
 
-                return !isLocal ?
-                    AcceptTxResult.FeeTooLow :
-                    AcceptTxResult.FeeTooLow.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. FeePerGas of rejected tx: {affordableGasPrice}.");
-
+                return AcceptTxResult.FeeTooLow;
             }
 
             return AcceptTxResult.Accepted;

@@ -55,8 +55,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     private OptimismNethermindApi? _api;
     private ILogger _logger;
-    private ManualBlockFinalizationManager? _blockFinalizationManager;
-
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
@@ -108,7 +106,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.FinalizationManager = _blockFinalizationManager = new ManualBlockFinalizationManager();
+        _api.FinalizationManager = new ManualBlockFinalizationManager();
 
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
@@ -127,7 +125,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
-        ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
+        ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
 
         IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
