@@ -1156,7 +1156,6 @@
       "nethermind.txpool": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "(, )",
           "ConcurrentHashSet": "[1.3.0, )",
           "Nethermind.Config": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",

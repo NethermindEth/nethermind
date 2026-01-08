@@ -59,19 +59,20 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
                             if (_retryRequests.TryRemove(item.ResourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? requests))
                             {
-
                                 try
                                 {
-                                    if (!requests.IsEmpty)
-                                    {
-                                        _requestingResources.Set(item.ResourceId);
-                                    }
-
-                                    if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
-
+                                    bool set = false;
 
                                     foreach (IMessageHandler<TMessage> retryHandler in requests)
                                     {
+                                        if (!set)
+                                        {
+                                            _requestingResources.Set(item.ResourceId);
+                                            set = true;
+
+                                            if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
+                                        }
+
                                         try
                                         {
                                             retryHandler.HandleMessage(TMessage.New(item.ResourceId));
