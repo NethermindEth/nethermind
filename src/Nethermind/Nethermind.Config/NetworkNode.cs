@@ -35,7 +35,7 @@ namespace Nethermind.Config
             {
                 try
                 {
-                    if (!Enode.IsEnode(nodeString))
+                    if (!Enode.IsEnode(nodeString, out _))
                     {
                         continue;
                     }

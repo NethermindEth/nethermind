@@ -29,6 +29,9 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
+using ENR = Lantern.Discv5.Enr.Enr;
+
+[assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -47,15 +50,13 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
     public DiscoveryV5App(
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-        IIPResolver? ipResolver,
+        IIPResolver ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         [KeyFilter(DbNames.DiscoveryV5Nodes)] IDb discoveryDb,
         [KeyFilter(DbNames.DiscoveryNodes)] IDb legacyDiscoveryDb,
         ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(ipResolver);
-
         _logger = logManager.GetClassLogger();
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
@@ -79,13 +80,11 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
         _enrFactory = new EnrFactory(new EnrEntryRegistry());
 
-        List<byte[]> storedEnrBytes = LoadStoredEnrs();
-
-        Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(Enode.IsEnode).Select(e => ToEnr(new Enode(e))),
+        ENR[] bootstrapEnrs = [
+            .. bootstrapNodes.Where(e => Enode.IsEnode(e, out _)).Select(e => ToEnr(new Enode(e))),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(ToEnr),
             .. (discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : []),
-            .. storedEnrBytes.Select(ToEnr),
+            .. LoadStoredEnrs(),
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
@@ -119,11 +118,11 @@ public sealed class DiscoveryV5App : IDiscoveryApp
     private static string[] GetDefaultDiscv5Bootnodes() =>
         JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
 
-    private Lantern.Discv5.Enr.Enr ToEnr(string enrString) => _enrFactory.CreateFromString(enrString, _sessionOptions.Verifier!);
+    private ENR ToEnr(string enrString) => _enrFactory.CreateFromString(enrString, _sessionOptions.Verifier!);
 
-    private Lantern.Discv5.Enr.Enr ToEnr(byte[] enrBytes) => _enrFactory.CreateFromBytes(enrBytes, _sessionOptions.Verifier!);
+    private ENR ToEnr(byte[] enrBytes) => _enrFactory.CreateFromBytes(enrBytes, _sessionOptions.Verifier!);
 
-    private Lantern.Discv5.Enr.Enr ToEnr(Enode node) => new EnrBuilder()
+    private ENR ToEnr(Enode node) => new EnrBuilder()
         .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
         .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
         .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
@@ -132,7 +131,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
         .Build();
 
-    private Lantern.Discv5.Enr.Enr ToEnr(Node node) => new EnrBuilder()
+    private ENR ToEnr(Node node) => new EnrBuilder()
         .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
         .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
         .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
@@ -188,9 +187,9 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    private List<byte[]> LoadStoredEnrs()
+    internal List<ENR> LoadStoredEnrs()
     {
-        List<byte[]> enrs = [.. _discoveryDb.GetAllValues()];
+        List<ENR> enrs = [.. _discoveryDb.GetAllValues().Select(ToEnr)];
 
         if (enrs.Count is not 0)
         {
@@ -211,7 +210,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
                 try
                 {
-                    Lantern.Discv5.Enr.Enr enr = ToEnr(kv.Value);
+                    ENR enr = ToEnr(kv.Value);
 
                     if (enrs.Count is 0)
                     {
@@ -219,11 +218,15 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                         deleteBatch = _legacyDiscoveryDb.StartWriteBatch();
                     }
 
-                    enrs.Add(kv.Value);
+                    enrs.Add(enr);
                     migrateBatch![enr.NodeId] = kv.Value;
                     deleteBatch![kv.Key] = null;
                 }
-                catch { }
+                catch
+                {
+                    // The database has enodes only
+                    return [];
+                }
             }
         }
         finally
