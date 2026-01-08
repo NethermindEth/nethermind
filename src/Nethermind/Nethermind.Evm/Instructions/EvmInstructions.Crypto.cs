@@ -23,7 +23,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+        if (CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
 
         // Ensure two 256-bit words are available (memory offset and length).
         stack.PopUInt256(out UInt256 a);
