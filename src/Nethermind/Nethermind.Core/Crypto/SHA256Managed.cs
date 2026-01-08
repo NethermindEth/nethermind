@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace Nethermind.Core.Crypto;
@@ -47,7 +48,6 @@ public sealed class SHA256Managed : SHA256
     {
         InitializeState();
         _buffer.AsSpan().Clear();
-        _w.AsSpan().Clear();
     }
 
     public static new byte[] HashData(ReadOnlySpan<byte> source)
@@ -137,46 +137,63 @@ public sealed class SHA256Managed : SHA256
         _state[7] = 0x5be0cd19;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void SHATransform(Span<uint> w, Span<uint> state, ReadOnlySpan<byte> block)
     {
-        // Load first 16 words from block (big-endian)
+        ref uint wBase = ref MemoryMarshal.GetReference(w);
+        ref byte blockBase = ref MemoryMarshal.GetReference(block);
+
+        // Load first 16 words from block (big-endian) - avoid span slicing
         for (int i = 0; i < 16; i++)
         {
-            w[i] = BinaryPrimitives.ReadUInt32BigEndian(block[(i * 4)..]);
+            Unsafe.Add(ref wBase, i) = BinaryPrimitives.ReverseEndianness(
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref blockBase, i * 4)));
         }
 
         // Expand to 64 words
         for (int i = 16; i < 64; i++)
         {
-            w[i] = Sigma1Small(w[i - 2]) + w[i - 7] + Sigma0Small(w[i - 15]) + w[i - 16];
+            uint w2 = Unsafe.Add(ref wBase, i - 2);
+            uint w7 = Unsafe.Add(ref wBase, i - 7);
+            uint w15 = Unsafe.Add(ref wBase, i - 15);
+            uint w16 = Unsafe.Add(ref wBase, i - 16);
+            Unsafe.Add(ref wBase, i) = Sigma1Small(w2) + w7 + Sigma0Small(w15) + w16;
         }
 
-        uint a = state[0], b = state[1], c = state[2], d = state[3];
-        uint e = state[4], f = state[5], g = state[6], h = state[7];
+        ref uint stateBase = ref MemoryMarshal.GetReference(state);
+        uint a = stateBase;
+        uint b = Unsafe.Add(ref stateBase, 1);
+        uint c = Unsafe.Add(ref stateBase, 2);
+        uint d = Unsafe.Add(ref stateBase, 3);
+        uint e = Unsafe.Add(ref stateBase, 4);
+        uint f = Unsafe.Add(ref stateBase, 5);
+        uint g = Unsafe.Add(ref stateBase, 6);
+        uint h = Unsafe.Add(ref stateBase, 7);
 
-        ReadOnlySpan<uint> k = K;
+        ReadOnlySpan<uint> kSpan = K;
+        ref uint kBase = ref MemoryMarshal.GetReference(kSpan);
 
         // Unrolled loop - process 8 rounds at a time for better performance
         for (int j = 0; j < 64; j += 8)
         {
-            Round(ref a, b, c, ref d, e, f, g, ref h, k[j], w[j]);
-            Round(ref h, a, b, ref c, d, e, f, ref g, k[j + 1], w[j + 1]);
-            Round(ref g, h, a, ref b, c, d, e, ref f, k[j + 2], w[j + 2]);
-            Round(ref f, g, h, ref a, b, c, d, ref e, k[j + 3], w[j + 3]);
-            Round(ref e, f, g, ref h, a, b, c, ref d, k[j + 4], w[j + 4]);
-            Round(ref d, e, f, ref g, h, a, b, ref c, k[j + 5], w[j + 5]);
-            Round(ref c, d, e, ref f, g, h, a, ref b, k[j + 6], w[j + 6]);
-            Round(ref b, c, d, ref e, f, g, h, ref a, k[j + 7], w[j + 7]);
+            Round(ref a, b, c, ref d, e, f, g, ref h, Unsafe.Add(ref kBase, j), Unsafe.Add(ref wBase, j));
+            Round(ref h, a, b, ref c, d, e, f, ref g, Unsafe.Add(ref kBase, j + 1), Unsafe.Add(ref wBase, j + 1));
+            Round(ref g, h, a, ref b, c, d, e, ref f, Unsafe.Add(ref kBase, j + 2), Unsafe.Add(ref wBase, j + 2));
+            Round(ref f, g, h, ref a, b, c, d, ref e, Unsafe.Add(ref kBase, j + 3), Unsafe.Add(ref wBase, j + 3));
+            Round(ref e, f, g, ref h, a, b, c, ref d, Unsafe.Add(ref kBase, j + 4), Unsafe.Add(ref wBase, j + 4));
+            Round(ref d, e, f, ref g, h, a, b, ref c, Unsafe.Add(ref kBase, j + 5), Unsafe.Add(ref wBase, j + 5));
+            Round(ref c, d, e, ref f, g, h, a, ref b, Unsafe.Add(ref kBase, j + 6), Unsafe.Add(ref wBase, j + 6));
+            Round(ref b, c, d, ref e, f, g, h, ref a, Unsafe.Add(ref kBase, j + 7), Unsafe.Add(ref wBase, j + 7));
         }
 
-        state[0] += a;
-        state[1] += b;
-        state[2] += c;
-        state[3] += d;
-        state[4] += e;
-        state[5] += f;
-        state[6] += g;
-        state[7] += h;
+        stateBase += a;
+        Unsafe.Add(ref stateBase, 1) += b;
+        Unsafe.Add(ref stateBase, 2) += c;
+        Unsafe.Add(ref stateBase, 3) += d;
+        Unsafe.Add(ref stateBase, 4) += e;
+        Unsafe.Add(ref stateBase, 5) += f;
+        Unsafe.Add(ref stateBase, 6) += g;
+        Unsafe.Add(ref stateBase, 7) += h;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
