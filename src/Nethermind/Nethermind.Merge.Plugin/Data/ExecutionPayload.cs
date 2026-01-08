@@ -227,6 +227,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
+    Hash256? IExecutionPayloadParams.ParentBeaconBlockRoot => null;
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
