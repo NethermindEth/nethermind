@@ -366,52 +366,6 @@ public ref struct EvmStack
         }
     }
 
-    public void PopUInt256Unchecked(out UInt256 result)
-    {
-        Unsafe.SkipInit(out result);
-        ref byte bytes = ref PopBytesByRef();
-        if (Avx2.IsSupported)
-        {
-            Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
-            Word shuffle = Vector256.Create(
-                0x18191a1b1c1d1e1ful,
-                0x1011121314151617ul,
-                0x08090a0b0c0d0e0ful,
-                0x0001020304050607ul).AsByte();
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-                result = Unsafe.As<Word, UInt256>(ref convert);
-            }
-            else
-            {
-                Word convert = Avx2.Shuffle(data, shuffle);
-                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
-                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
-            }
-        }
-        else
-        {
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
-            {
-                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
-                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
-                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
-            }
-            else
-            {
-                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
-            }
-
-            result = new UInt256(u0, u1, u2, u3);
-        }
-    }
-
     public readonly bool PeekUInt256IsZero()
     {
         int head = Head - 1;
