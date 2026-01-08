@@ -1,0 +1,518 @@
+name: '[Test] Version Upgrade Test'
+
+on:
+  workflow_dispatch:
+    inputs:
+      initial_version:
+        type: string
+        description: "Initial Nethermind version/branch to sync with. Example: 'release/1.25.0' or 'master'"
+        required: true
+      upgrade_version:
+        type: string
+        description: "Nethermind version/branch to upgrade to after sync. Example: 'release/1.26.0' or a Docker image tag"
+        required: true
+      network:
+        description: "Select a network on which to run the node"
+        default: "mainnet"
+        required: true
+        type: choice
+        options:
+          - mainnet
+          - gnosis
+          - sepolia
+          - chiado
+          - hoodi
+      cl_client:
+        description: "Select Consensus Layer Client"
+        default: "lighthouse"
+        required: true
+        type: choice
+        options:
+          - lighthouse
+          - lodestar
+          - prysm
+          - teku
+          - nimbus
+      post_upgrade_wait_minutes:
+        type: string
+        description: "How long to wait after upgrade (in minutes)"
+        default: "30"
+        required: false
+      timeout:
+        type: string
+        description: "How long should node be kept alive (in hours)"
+        default: "48"
+        required: false
+
+jobs:
+  setup_and_create_node:
+    name: Generate SSH key and create node
+    runs-on: ubuntu-latest
+    outputs:
+      ssh_private_key: ${{ steps.generate_ssh_key.outputs.private_key }}
+      ssh_public_key: ${{ steps.generate_ssh_key.outputs.public_key }}
+      clean_initial_ref: ${{ steps.prepare_refs.outputs.clean_initial_ref }}
+      clean_upgrade_ref: ${{ steps.prepare_refs.outputs.clean_upgrade_ref }}
+      base_tag: ${{ steps.set_base_tag.outputs.base_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Generate SSH Key Pair
+        id: generate_ssh_key
+        run: |
+          # Generate a new SSH key pair for this workflow run
+          ssh-keygen -t ed25519 -f /tmp/workflow_ssh_key -N "" -C "version-upgrade-test-${{ github.run_id }}"
+          
+          # Read and encode the keys
+          PRIVATE_KEY=$(cat /tmp/workflow_ssh_key | base64 -w 0)
+          PUBLIC_KEY=$(cat /tmp/workflow_ssh_key.pub)
+          
+          # Save to outputs (private key is base64 encoded for safe transport)
+          echo "private_key=$PRIVATE_KEY" >> $GITHUB_OUTPUT
+          echo "public_key=$PUBLIC_KEY" >> $GITHUB_OUTPUT
+          
+          # Clean up local files
+          rm -f /tmp/workflow_ssh_key /tmp/workflow_ssh_key.pub
+          
+          echo "SSH key pair generated successfully"
+
+      - name: Prepare refs
+        id: prepare_refs
+        run: |
+          # Clean initial version ref
+          INITIAL_REF="${{ inputs.initial_version }}"
+          CLEAN_INITIAL_REF=$(echo "${INITIAL_REF/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "clean_initial_ref=$CLEAN_INITIAL_REF" >> $GITHUB_OUTPUT
+          
+          # Clean upgrade version ref
+          UPGRADE_REF="${{ inputs.upgrade_version }}"
+          CLEAN_UPGRADE_REF=$(echo "${UPGRADE_REF/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "clean_upgrade_ref=$CLEAN_UPGRADE_REF" >> $GITHUB_OUTPUT
+
+      - name: Set BASE_TAG
+        id: set_base_tag
+        run: |
+          BASE_TAG="${{ github.actor:0:1 }}$(shuf -i 1000-9999 -n 1)"
+          echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
+          echo "Generated BASE_TAG: $BASE_TAG"
+
+  create_node:
+    name: Create node with initial version
+    needs: [setup_and_create_node]
+    uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    secrets: inherit
+    with:
+      additional_options: >-
+        {
+          "timeout": "${{ inputs.timeout }}",
+          "default_dockerfile": "Dockerfile",
+          "default_dockerfile_build_type": "release",
+          "ssh_keys": "${{ needs.setup_and_create_node.outputs.ssh_public_key }}",
+          "allowed_ips": "",
+          "custom_machine_type": ""
+        }
+      non_validator_mode: true
+      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
+      nethermind_repo_ref: ${{ inputs.initial_version }}
+      custom_run_id: ${{ github.run_id }}
+      network: ${{ inputs.network }}
+      cl_client: ${{ inputs.cl_client }}
+
+  get_node_details:
+    name: Get node connection details
+    runs-on: ubuntu-latest
+    needs: [setup_and_create_node, create_node]
+    outputs:
+      rpc_url: ${{ steps.process_artifacts.outputs.rpc_url }}
+      node_ip: ${{ steps.extract_ip.outputs.node_ip }}
+    steps:
+      - name: Prepare clean ref
+        run: |
+          REF_NAME=${{ inputs.initial_version }}
+          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+
+      - name: Download RPC Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpc-url___${{ env.CLEAN_REF }}___${{ github.run_id }}
+          path: artifacts
+
+      - name: Process Artifacts Content
+        id: process_artifacts
+        run: |
+          FILE=$(ls artifacts/ | head -n 1)
+          RPC_URL=$(cat "artifacts/$FILE")
+          echo "rpc_url=$RPC_URL" >> $GITHUB_OUTPUT
+          echo "RPC URL: $RPC_URL"
+
+      - name: Extract node IP from RPC URL
+        id: extract_ip
+        run: |
+          RPC_URL="${{ steps.process_artifacts.outputs.rpc_url }}"
+          # Extract IP from URL like http://IP:PORT
+          NODE_IP=$(echo "$RPC_URL" | sed -E 's|https?://([^:/]+).*|\1|')
+          echo "node_ip=$NODE_IP" >> $GITHUB_OUTPUT
+          echo "Node IP: $NODE_IP"
+
+  wait_for_initial_sync:
+    name: Wait for initial sync
+    runs-on: [vpn]
+    needs: [get_node_details]
+    timeout-minutes: 1440
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Wait for the node to sync
+        timeout-minutes: 1440
+        env:
+          RPC_URL: ${{ needs.get_node_details.outputs.rpc_url }}
+        shell: bash
+        run: |
+          set -o pipefail
+
+          # ------------------------------------------------------------
+          # Helper: guarded curl POST with timeouts/retries and JSON header
+          # ------------------------------------------------------------
+          rpc_post() {
+            local url="$1"
+            local payload="$2"
+            curl -sS \
+                 -m 10 --connect-timeout 5 \
+                 --retry 5 --retry-all-errors --retry-connrefused \
+                 -H 'Content-Type: application/json' \
+                 -X POST --data "$payload" "$url"
+          }
+
+          # ------------------------------------------------------------
+          # Function: wait until debug_getSyncStage shows SnapSync or StateNodes
+          # ------------------------------------------------------------
+          check_sync_stage() {
+            local rpc_url="$1"
+            echo "Waiting for SnapSync/StateNodes at $rpc_url ..."
+            while true; do
+              response="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"debug_getSyncStage","params":[],"id":0}')" \
+                || { echo "RPC unreachable at $rpc_url; retrying in 60s"; sleep 60; continue; }
+
+              if ! echo "$response" | jq -e . >/dev/null 2>&1; then
+                echo "Invalid JSON from $rpc_url (debug_getSyncStage): $response"
+                echo "Retrying in 60s..."
+                sleep 60
+                continue
+              fi
+
+              current_stage="$(echo "$response" | jq -r '.result.currentStage // empty')"
+              if [[ -z "$current_stage" || "$current_stage" == "null" ]]; then
+                echo "Current stage not available yet from $rpc_url; retrying in 60s..."
+                sleep 60
+                continue
+              fi
+
+              if echo "$current_stage" | grep -Eq 'SnapSync|StateNodes'; then
+                echo "SnapSync/StateNodes stage reached at $rpc_url (currentStage: $current_stage)."
+                break
+              else
+                echo "Current stage at $rpc_url: $current_stage (not SnapSync/StateNodes). Retrying in 60s..."
+                sleep 60
+              fi
+            done
+          }
+
+          # ------------------------------------------------------------
+          # Function: wait until eth_syncing == false (fully synced)
+          # ------------------------------------------------------------
+          check_eth_syncing() {
+            local rpc_url="$1"
+            echo "Waiting for node to report eth_syncing=false at $rpc_url ..."
+            while true; do
+              response="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}')" \
+                || { echo "RPC unreachable at $rpc_url; retrying in 60s"; sleep 60; continue; }
+
+              if ! echo "$response" | jq -e . >/dev/null 2>&1; then
+                echo "Invalid JSON from $rpc_url (eth_syncing): $response"
+                echo "Retrying in 60s..."
+                sleep 60
+                continue
+              fi
+
+              if echo "$response" | jq -e '.result == false' >/dev/null 2>&1; then
+                echo "Node at $rpc_url reports synced (eth_syncing=false)."
+                break
+              else
+                syncing_summary="$(echo "$response" | jq -c '.result | {startingBlock, currentBlock, highestBlock} // {}' 2>/dev/null)"
+                echo "Still syncing at $rpc_url. Details: ${syncing_summary:-unknown}. Retrying in 60s..."
+                sleep 60
+              fi
+            done
+          }
+
+          # -----------------------------
+          # Warmup (avoid transient boot noise)
+          # -----------------------------
+          echo "Initial warmup sleep (60s)..."
+          sleep 60
+
+          # -----------------------------
+          # Stage check: SnapSync/StateNodes
+          # -----------------------------
+          check_sync_stage "$RPC_URL"
+
+          # -----------------------------
+          # Sync completion (eth_syncing == false)
+          # -----------------------------
+          check_eth_syncing "$RPC_URL"
+
+          # -----------------------------
+          # Extra wait for ~96 blocks after StateHealing
+          # (128 - 32) * 12s = 1152s
+          # -----------------------------
+          echo "Waiting for (128 - 32) Ethereum blocks ≈ 1152 seconds..."
+          sleep 1152
+
+          echo "Initial sync complete!"
+
+  upgrade_node:
+    name: Upgrade node to new version
+    runs-on: [vpn]
+    needs: [setup_and_create_node, get_node_details, wait_for_initial_sync]
+    steps:
+      - name: Decode SSH private key
+        id: decode_key
+        run: |
+          echo "${{ needs.setup_and_create_node.outputs.ssh_private_key }}" | base64 -d > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+
+      - name: Determine upgrade image
+        id: upgrade_image
+        run: |
+          UPGRADE_VERSION="${{ inputs.upgrade_version }}"
+          
+          # Check if it's already a full image reference
+          if [[ "$UPGRADE_VERSION" == *"/"* ]]; then
+            # It's already a full image path like nethermind/nethermind:1.26.0
+            UPGRADE_IMAGE="$UPGRADE_VERSION"
+          else
+            # It's a branch/tag, convert to Docker image format
+            CLEAN_REF=$(echo "${UPGRADE_VERSION/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            UPGRADE_IMAGE="nethermind/nethermind:$CLEAN_REF"
+          fi
+          
+          echo "upgrade_image=$UPGRADE_IMAGE" >> $GITHUB_OUTPUT
+          echo "Upgrade image: $UPGRADE_IMAGE"
+
+      - name: SSH into node and update .env file
+        env:
+          NODE_IP: ${{ needs.get_node_details.outputs.node_ip }}
+          UPGRADE_IMAGE: ${{ steps.upgrade_image.outputs.upgrade_image }}
+        run: |
+          echo "Connecting to node at $NODE_IP..."
+          
+          # SSH and update the .env file
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -i /tmp/ssh_key root@$NODE_IP << EOF
+          
+          echo "Connected to node. Updating .env file..."
+          
+          # Find and update the .env file
+          # Common locations to check
+          ENV_LOCATIONS=(
+            "/root/.env"
+            "/home/sedge/.env"
+            "/opt/sedge/.env"
+            "$(find /root -name '.env' -type f 2>/dev/null | head -1)"
+            "$(find /home -name '.env' -type f 2>/dev/null | head -1)"
+          )
+          
+          ENV_FILE=""
+          for loc in "\${ENV_LOCATIONS[@]}"; do
+            if [[ -n "\$loc" && -f "\$loc" ]]; then
+              ENV_FILE="\$loc"
+              break
+            fi
+          done
+          
+          if [[ -z "\$ENV_FILE" ]]; then
+            echo "Error: Could not find .env file"
+            find / -name '.env' -type f 2>/dev/null || true
+            exit 1
+          fi
+          
+          echo "Found .env file at: \$ENV_FILE"
+          echo "Current contents:"
+          cat "\$ENV_FILE"
+          
+          # Backup the original file
+          cp "\$ENV_FILE" "\$ENV_FILE.bak"
+          
+          # Update the EC_IMAGE_VERSION line
+          sed -i "s|^EC_IMAGE_VERSION=.*|EC_IMAGE_VERSION=$UPGRADE_IMAGE|" "\$ENV_FILE"
+          
+          echo ""
+          echo "Updated contents:"
+          cat "\$ENV_FILE"
+          
+          # Restart the Nethermind service/container
+          echo ""
+          echo "Restarting Nethermind..."
+          
+          # Try docker-compose first, then docker
+          if command -v docker-compose &> /dev/null; then
+            cd "\$(dirname \$ENV_FILE)"
+            docker-compose pull execution || true
+            docker-compose up -d execution
+          elif command -v docker &> /dev/null; then
+            # Find and restart the nethermind container
+            CONTAINER_ID=\$(docker ps --filter "name=execution" --format "{{.ID}}" | head -1)
+            if [[ -n "\$CONTAINER_ID" ]]; then
+              docker pull $UPGRADE_IMAGE || true
+              docker restart "\$CONTAINER_ID"
+            else
+              echo "Warning: Could not find execution container to restart"
+              docker ps
+            fi
+          fi
+          
+          echo "Upgrade triggered successfully!"
+          EOF
+          
+          echo "SSH session completed"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f /tmp/ssh_key
+
+  wait_after_upgrade:
+    name: Wait for post-upgrade sync
+    runs-on: [vpn]
+    needs: [get_node_details, upgrade_node]
+    steps:
+      - name: Wait for node to come back online
+        env:
+          RPC_URL: ${{ needs.get_node_details.outputs.rpc_url }}
+        run: |
+          echo "Waiting for node to restart and respond..."
+          
+          # Wait for the node to become unresponsive (restart) and then responsive again
+          MAX_WAIT=300  # 5 minutes max wait for restart
+          WAIT_COUNT=0
+          
+          # First, wait for potential downtime
+          sleep 30
+          
+          # Then wait for it to come back
+          while true; do
+            response=$(curl -sS -m 10 --connect-timeout 5 \
+                           -H 'Content-Type: application/json' \
+                           -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+                           "$RPC_URL" 2>/dev/null) || response=""
+            
+            if [[ -n "$response" ]] && echo "$response" | jq -e . >/dev/null 2>&1; then
+              echo "Node is responding again!"
+              break
+            fi
+            
+            WAIT_COUNT=$((WAIT_COUNT + 10))
+            if [[ $WAIT_COUNT -ge $MAX_WAIT ]]; then
+              echo "Warning: Node did not respond within $MAX_WAIT seconds, but continuing..."
+              break
+            fi
+            
+            echo "Waiting for node to respond... ($WAIT_COUNT/$MAX_WAIT seconds)"
+            sleep 10
+          done
+
+      - name: Wait for post-upgrade period
+        env:
+          WAIT_MINUTES: ${{ inputs.post_upgrade_wait_minutes }}
+        run: |
+          WAIT_SECONDS=$((WAIT_MINUTES * 60))
+          echo "Waiting for $WAIT_MINUTES minutes ($WAIT_SECONDS seconds) after upgrade..."
+          sleep $WAIT_SECONDS
+          echo "Post-upgrade wait complete!"
+
+      - name: Verify node is still syncing/synced
+        env:
+          RPC_URL: ${{ needs.get_node_details.outputs.rpc_url }}
+        run: |
+          echo "Checking node status after upgrade..."
+          
+          response=$(curl -sS -m 10 --connect-timeout 5 \
+                         -H 'Content-Type: application/json' \
+                         -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+                         "$RPC_URL" 2>/dev/null) || response=""
+          
+          if [[ -z "$response" ]]; then
+            echo "Warning: Node not responding"
+            exit 1
+          fi
+          
+          echo "Node response: $response"
+          
+          if echo "$response" | jq -e '.result == false' >/dev/null 2>&1; then
+            echo "Node is fully synced!"
+          else
+            syncing_summary=$(echo "$response" | jq -c '.result | {currentBlock, highestBlock}' 2>/dev/null)
+            echo "Node is syncing: $syncing_summary"
+          fi
+          
+          # Get client version to confirm upgrade
+          version_response=$(curl -sS -m 10 --connect-timeout 5 \
+                                  -H 'Content-Type: application/json' \
+                                  -X POST --data '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' \
+                                  "$RPC_URL" 2>/dev/null) || version_response=""
+          
+          if [[ -n "$version_response" ]]; then
+            client_version=$(echo "$version_response" | jq -r '.result // "unknown"')
+            echo "Client version: $client_version"
+          fi
+
+  cleanup:
+    name: Cleanup - Remove machine
+    runs-on: ubuntu-latest
+    needs: [setup_and_create_node, create_node, wait_after_upgrade]
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Trigger machine removal
+        run: |
+          echo "Triggering machine removal..."
+          
+          # The post-merge-smoke-tests repo should have a cleanup workflow
+          # If not, the machine will be cleaned up by the timeout
+          
+          BASE_TAG="${{ needs.setup_and_create_node.outputs.base_tag }}"
+          
+          echo "Machine with BASE_TAG=$BASE_TAG will be cleaned up by timeout or manual intervention"
+          echo "To manually clean up, look for machines with tag: $BASE_TAG"
+          
+          # If there's a specific cleanup workflow in post-merge-smoke-tests, trigger it here
+          # curl -X POST \
+          #   -H "Accept: application/vnd.github.v3+json" \
+          #   -H "Authorization: token ${{ steps.gh-app.outputs.token }}" \
+          #   https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/workflows/cleanup.yml/dispatches \
+          #   -d '{"ref":"main","inputs":{"base_tag":"'"$BASE_TAG"'"}}'
+
+      - name: Summary
+        run: |
+          echo "## Version Upgrade Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Initial Version | ${{ inputs.initial_version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Upgrade Version | ${{ inputs.upgrade_version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Network | ${{ inputs.network }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CL Client | ${{ inputs.cl_client }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Post-upgrade Wait | ${{ inputs.post_upgrade_wait_minutes }} minutes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Base Tag | ${{ needs.setup_and_create_node.outputs.base_tag }} |" >> $GITHUB_STEP_SUMMARY
+
