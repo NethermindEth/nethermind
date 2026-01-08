@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -67,9 +68,11 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
+    byte[][]? executionRequests = null,
+    ILogger? logger = null)
     : ExecutionPayloadParams(executionRequests), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
+    private readonly ILogger? _logger = logger;
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
@@ -97,10 +100,34 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
         // Use parentBeaconBlockRoot parameter if provided, otherwise fall back to executionPayload.ParentBeaconBlockRoot
         // This handles cases where op-node sends valid requests with parentBeaconBlockRoot in the payload itself
+
+        // Log when executionPayload has a non-null ParentBeaconBlockRoot
+        if (executionPayload.ParentBeaconBlockRoot is not null)
+        {
+            if (_logger is ILogger logger && logger.IsInfo)
+            {
+                logger.Info($"Execution payload has non-null ParentBeaconBlockRoot: {executionPayload.ParentBeaconBlockRoot}");
+            }
+
+            // Log warning when executionPayload.ParentBeaconBlockRoot doesn't match the input parentBeaconBlockRoot
+            if (parentBeaconBlockRoot is not null && executionPayload.ParentBeaconBlockRoot != parentBeaconBlockRoot)
+            {
+                if (_logger is ILogger loggerWarn && loggerWarn.IsWarn)
+                {
+                    loggerWarn.Warn($"Execution payload ParentBeaconBlockRoot ({executionPayload.ParentBeaconBlockRoot}) does not match input parentBeaconBlockRoot ({parentBeaconBlockRoot})");
+                }
+            }
+        }
+
         Hash256? finalParentBeaconBlockRoot = parentBeaconBlockRoot ?? executionPayload.ParentBeaconBlockRoot;
 
+        // Log error when finalParentBeaconBlockRoot is null
         if (finalParentBeaconBlockRoot is null)
         {
+            if (_logger is ILogger loggerError && loggerError.IsError)
+            {
+                loggerError.Error("finalParentBeaconBlockRoot is null");
+            }
             error = "Parent beacon block root must be set";
             return ValidationResult.Fail;
         }
