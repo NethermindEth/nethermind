@@ -225,9 +225,7 @@ internal static partial class EvmInstructions
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.VmState);
 
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -250,9 +248,7 @@ internal static partial class EvmInstructions
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm);
 
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -275,9 +271,7 @@ internal static partial class EvmInstructions
 
         uint result = TOpEnv.Operation(vm.VmState);
 
-        stack.PushUInt32<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt32<TTracingInst>(result);
     }
 
     /// <summary>
@@ -300,9 +294,7 @@ internal static partial class EvmInstructions
 
         ulong result = TOpEnv.Operation(vm.VmState);
 
-        stack.PushUInt64<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>(result);
     }
 
     /// <summary>
@@ -325,9 +317,7 @@ internal static partial class EvmInstructions
 
         ulong result = TOpEnv.Operation(vm);
 
-        stack.PushUInt64<TTracingInst>(result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>(result);
     }
 
     /// <summary>
@@ -566,9 +556,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -596,9 +584,7 @@ internal static partial class EvmInstructions
 
         // Get balance for currently executing account.
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
-        stack.PushUInt256<TTracingInst>(in result);
-
-        return EvmExceptionType.None;
+        return stack.PushUInt256<TTracingInst>(in result);
     }
 
     /// <summary>
@@ -748,9 +734,7 @@ internal static partial class EvmInstructions
         if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
-        stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
-
-        return EvmExceptionType.None;
+        return stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

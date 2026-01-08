@@ -302,14 +302,14 @@ internal static partial class EvmInstructions
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {
-            stack.PushUInt32<TTracingInst>(2);
+            return stack.PushUInt32<TTracingInst>(2);
         }
         else
         {
             // Otherwise, push the actual code length.
-            stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
+            return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         }
-        return EvmExceptionType.None;
+
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
