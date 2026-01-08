@@ -187,7 +187,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    private List<byte[]> LoadStoredEnrs(EnrFactory enrFactory, IdentityVerifierV4 identityVerifier)
+    private List<byte[]> LoadStoredEnrs()
     {
         List<byte[]> enrs = [.. _discoveryDb.GetAllValues()];
 

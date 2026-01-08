@@ -69,7 +69,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 // Was in `UpdateDiscoveryConfig` step.
                 if (discoveryConfig.Bootnodes != string.Empty)
                 {
-                    if (chainSpec.Bootnodes != null)
+                    if (chainSpec.Bootnodes is not null)
                     {
                         discoveryConfig.Bootnodes += "," + chainSpec.Bootnodes;
                     }
