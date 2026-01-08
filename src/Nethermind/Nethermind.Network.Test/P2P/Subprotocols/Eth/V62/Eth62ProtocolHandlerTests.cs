@@ -405,8 +405,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
-            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null)
+            public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null) where TReq : notnull
             {
                 CancellationTokenSource cts = new();
                 cts.Cancel();
