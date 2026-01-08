@@ -305,14 +305,14 @@ public sealed class GenerateStackOpcodeGenerator : IIncrementalGenerator
     {
         int usedFromCode = Math.Min(code.Length - programCounter, length);
         ref byte start = ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter);
-        if (usedFromCode == Size)
+        if (usedFromCode != Size)
         {
-            // Direct push of a {{info.Size}}-byte value.
-            return stack.Push{{info.Size}}Bytes<TTracingInst>(ref start);
+            return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
         else
         {
-            return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
+            // Direct push of a {{info.Size}}-byte value.
+            return stack.Push{{info.Size}}Bytes<TTracingInst>(ref start);
         }
     }
 }

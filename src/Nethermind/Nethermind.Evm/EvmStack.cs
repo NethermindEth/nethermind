@@ -441,7 +441,7 @@ public ref partial struct EvmStack
         dst = ref Unsafe.Add(ref dst, WordSize - paddingLength);
         CopyUpTo32(ref dst, ref start, (uint)used);
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackOverflow:
         return EvmExceptionType.StackOverflow;
     }
@@ -619,7 +619,7 @@ public ref partial struct EvmStack
     /// <remarks>
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
     /// </remarks>
-
+    [SkipLocalsInit]
     public EvmExceptionType PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
@@ -700,6 +700,7 @@ public ref partial struct EvmStack
     /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
     /// </remarks>
     /// <param name="result">The returned value.</param>
+    [SkipLocalsInit]
     public bool PopUInt256(out UInt256 result)
     {
         Unsafe.SkipInit(out result);
@@ -842,47 +843,57 @@ public ref partial struct EvmStack
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType Dup<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
         int head = Head;
-        if (head < depth) goto StackUnderflow;
+        if (head < depth)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+        // Use nuint to eliminate sign extension; parallel shifts
+        nuint headOffset = (nuint)(uint)head << 5;
+        nuint depthBytes = (nuint)(uint)depth << 5;
 
-        ref byte from = ref Unsafe.Add(ref bytes, (head - depth) * WordSize);
-        ref byte to = ref Unsafe.Add(ref bytes, head * WordSize);
-
-        Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
+        ref byte to = ref Unsafe.Add(ref bytes, headOffset);
+        ref byte from = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
 
         if (TTracingInst.IsActive) Trace(depth);
 
-        if (++head >= MaxStackSize) goto StackOverflow;
+        if (++head >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
 
         Head = head;
-
+        Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    StackOverflow:
-        return EvmExceptionType.StackOverflow;
     }
 
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly EvmExceptionType Swap<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
         int head = Head;
-        if (head < depth) goto StackUnderflow;
+        if (head < depth)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte bottom = ref Unsafe.Add(ref bytes, (head - depth) * WordSize);
-        ref byte top = ref Unsafe.Add(ref bytes, (head - 1) * WordSize);
+        nuint headOffset = (nuint)(uint)head << 5;
+        nuint depthBytes = (nuint)(uint)depth << 5;
+
+        ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
 
         Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
@@ -891,11 +902,10 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly bool Exchange<TTracingInst>(int n, int m)
         where TTracingInst : struct, IFlag
     {
@@ -916,6 +926,7 @@ public ref partial struct EvmStack
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private readonly void Trace(int depth)
     {
         for (int i = depth; i > 0; i--)
