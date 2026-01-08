@@ -13,6 +13,7 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    Hash256? ParentBeaconBlockRoot { get; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -73,7 +74,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     : ExecutionPayloadParams(executionRequests), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     private readonly ILogger? _logger = logger;
+    private readonly Hash256? _parentBeaconBlockRoot = parentBeaconBlockRoot;
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
+    public Hash256? ParentBeaconBlockRoot => _parentBeaconBlockRoot;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
@@ -101,33 +104,10 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         // Use parentBeaconBlockRoot parameter if provided, otherwise fall back to executionPayload.ParentBeaconBlockRoot
         // This handles cases where op-node sends valid requests with parentBeaconBlockRoot in the payload itself
 
-        // Log when executionPayload has a non-null ParentBeaconBlockRoot
-        if (executionPayload.ParentBeaconBlockRoot is not null)
-        {
-            if (_logger is ILogger logger && logger.IsInfo)
-            {
-                logger.Info($"Execution payload has non-null ParentBeaconBlockRoot: {executionPayload.ParentBeaconBlockRoot}");
-            }
+        Hash256? finalParentBeaconBlockRoot = _parentBeaconBlockRoot ?? executionPayload.ParentBeaconBlockRoot;
 
-            // Log warning when executionPayload.ParentBeaconBlockRoot doesn't match the input parentBeaconBlockRoot
-            if (parentBeaconBlockRoot is not null && executionPayload.ParentBeaconBlockRoot != parentBeaconBlockRoot)
-            {
-                if (_logger is ILogger loggerWarn && loggerWarn.IsWarn)
-                {
-                    loggerWarn.Warn($"Execution payload ParentBeaconBlockRoot ({executionPayload.ParentBeaconBlockRoot}) does not match input parentBeaconBlockRoot ({parentBeaconBlockRoot})");
-                }
-            }
-        }
-
-        Hash256? finalParentBeaconBlockRoot = parentBeaconBlockRoot ?? executionPayload.ParentBeaconBlockRoot;
-
-        // Log error when finalParentBeaconBlockRoot is null
         if (finalParentBeaconBlockRoot is null)
         {
-            if (_logger is ILogger loggerError && loggerError.IsError)
-            {
-                loggerError.Error("finalParentBeaconBlockRoot is null");
-            }
             error = "Parent beacon block root must be set";
             return ValidationResult.Fail;
         }
