@@ -687,7 +687,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 double retentionRatio = (double)DirtyMemoryUsedByDirtyCache / memoryUsedByDirtyCache;
                 if (retentionRatio > PruningEfficiencyWarningThreshold)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Pruning cache is too low. Dirty memory reduced by only {(1 - retentionRatio) * 100:0.##}% (from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB). Consider increasing the pruning cache limit.");
+                    if (_logger.IsWarn) _logger.Warn($"Pruning cache is too low. Dirty memory reduced by only {(1 - retentionRatio) * 100:0.##}% (from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB). Consider increasing the pruning cache limit with --Pruning.DirtyCacheMb.");
                 }
             }
 
