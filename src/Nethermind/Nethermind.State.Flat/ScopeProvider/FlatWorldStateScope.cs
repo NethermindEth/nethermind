@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 {
-    private static Histogram _flatScopeTime = DevMetric.Factory.CreateHistogram("flat_scope_time", "aha", new HistogramConfiguration()
+    public static Histogram _flatScopeTime = DevMetric.Factory.CreateHistogram("flat_scope_time", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "isPrewarmer" },
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
@@ -93,6 +93,9 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _storageTreeCreateGetTime = _flatScopeTime.WithLabels("storage_create_get_time", _isPrewarmerLabel);
         _statePrewarmPaused = _flatScopeCounter.WithLabels("state_prewarm_paused", _isPrewarmerLabel);
         _statePrewarmWrongNum = _flatScopeCounter.WithLabels("state_prewarm_wrong_num", _isPrewarmerLabel);
+
+        _stateTreePrewarm = _flatScopeTime.WithLabels("state_tree_prewarm", _isPrewarmerLabel);
+
         _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
         _disableLocalAddressTriewarmerQueue = true;
@@ -102,6 +105,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     private bool _isDisposed = false;
     private readonly Counter.Child _statePrewarmPaused;
     private readonly Counter.Child _statePrewarmWrongNum;
+    private readonly Histogram.Child _stateTreePrewarm;
 
     public void Dispose()
     {
@@ -188,6 +192,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             return false;
         }
 
+        long sw = Stopwatch.GetTimestamp();
         try
         {
             // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
@@ -198,6 +203,10 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         {
             // So there is this highly confusing case where patriciatree attempted to set storage nodes as persisted
             // if its parent is persisted. No idea what is the case, but in this case, we really dont care.
+        }
+        finally
+        {
+            _stateTreePrewarm.Observe(Stopwatch.GetTimestamp() - sw);
         }
 
         return true;
