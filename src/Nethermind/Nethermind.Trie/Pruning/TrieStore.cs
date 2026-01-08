@@ -26,7 +26,7 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public sealed class TrieStore : ITrieStore, IPruningTrieStore
 {
-    private const double PruningEfficiencyWarningThreshold = 0.8;
+    private const double PruningEfficiencyWarningThreshold = 0.9;
     private readonly int _shardedDirtyNodeCount = 256;
     private readonly int _shardBit = 8;
     private readonly int _maxBufferedCommitCount;
@@ -688,7 +688,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 if (retentionRatio > PruningEfficiencyWarningThreshold)
                 {
                     long recommendedCacheMb = (long)(memoryUsedByDirtyCache / 1.MiB() * 1.3);
-                    if (_logger.IsWarn) _logger.Warn($"Pruning cache is too low. Dirty memory reduced by only {(1 - retentionRatio) * 100:0.##}% (from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB). Consider increasing the pruning cache limit with --Pruning.DirtyCacheMb (recommended: {recommendedCacheMb}MB).");
+                    if (_logger.IsWarn) _logger.Warn($"Pruning cache is too low. Dirty memory reduced by only {(1 - retentionRatio) * 100:0.##}% (from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB). Consider increasing the pruning cache limit with --pruning-dirtycachemb (recommended: {recommendedCacheMb}MB).");
                 }
             }
 
