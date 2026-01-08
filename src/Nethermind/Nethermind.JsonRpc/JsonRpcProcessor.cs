@@ -184,6 +184,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 }
                 catch (Exception ex)
                 {
+                    jsonDocument?.Dispose();
+                    collection?.Dispose();
                     deserializationFailureResult = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
                 }
 
@@ -225,7 +227,6 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         break;
                     }
                     JsonRpcBatchResult jsonRpcBatchResult = new((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c));
-                    jsonRpcBatchResult.AddDisposable(() => collection.Dispose());
                     jsonRpcBatchResult.AddDisposable(() => jsonDocument.Dispose());
                     yield return JsonRpcResult.Collection(jsonRpcBatchResult);
                 }
