@@ -441,7 +441,7 @@ public ref partial struct EvmStack
         dst = ref Unsafe.Add(ref dst, WordSize - paddingLength);
         CopyUpTo32(ref dst, ref start, (uint)used);
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackOverflow:
         return EvmExceptionType.StackOverflow;
     }
