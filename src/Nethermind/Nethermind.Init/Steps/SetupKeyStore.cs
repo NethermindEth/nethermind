@@ -70,6 +70,7 @@ namespace Nethermind.Init.Steps
 
             if (!string.IsNullOrWhiteSpace(networkConfig.Bootnodes))
             {
+                // TODO: Rework this check when adding ENR support in NetworkNodes
                 string publicKeyHex = nodeKey.PublicKey.ToString();
                 string pattern = $",[^,]*{publicKeyHex}[^,]*|[^,]*{publicKeyHex}[^,]*,|^[^,]*{publicKeyHex}[^,]*$";
                 networkConfig.Bootnodes = Regex.Replace(networkConfig.Bootnodes, pattern, string.Empty);
