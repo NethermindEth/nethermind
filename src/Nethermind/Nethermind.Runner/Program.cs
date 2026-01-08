@@ -213,10 +213,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
 void AddConfigurationOptions(Command command)
 {
-    static Option CreateOption<T>(string name, Type configType) =>
+    static Option CreateOption<T>(string name, Type configType, string? cliOptionName) =>
         new Option<T>(
             $"--{ConfigExtensions.GetCategoryName(configType)}.{name}",
-            $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
+            cliOptionName is not null ? cliOptionName : $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
 
     IEnumerable<Type> configTypes = TypeDiscovery
         .FindNethermindBasedTypes(typeof(IConfig))
@@ -243,8 +243,8 @@ void AddConfigurationOptions(Command command)
             if (configItemAttribute?.DisabledForCli != true)
             {
                 Option option = prop.PropertyType == typeof(bool)
-                    ? CreateOption<bool>(prop.Name, configType)
-                    : CreateOption<string>(prop.Name, configType);
+                    ? CreateOption<bool>(prop.Name, configType, configItemAttribute?.CliOptionName)
+                    : CreateOption<string>(prop.Name, configType, configItemAttribute?.CliOptionName);
 
                 string? description = configItemAttribute?.Description;
 

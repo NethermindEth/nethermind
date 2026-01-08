@@ -18,5 +18,10 @@ namespace Nethermind.Config
         public string EnvironmentVariable { get; set; }
 
         public bool IsPortOption { get; set; }
+
+        /// <summary>
+        /// Overrides the auto-generated kebab-case CLI option name.
+        /// </summary>
+        public string CliOptionName { get; set; }
     }
 }
