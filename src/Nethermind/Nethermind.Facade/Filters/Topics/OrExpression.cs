@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Filters.Topics
     {
         private readonly TopicExpression[] _subexpressions;
 
-        public IReadOnlyList<TopicExpression> SubExpressions => _subexpressions;
+        public IEnumerable<TopicExpression> SubExpressions => _subexpressions;
         public override bool AcceptsAnyBlock => _subexpressions.Any(static e => e.AcceptsAnyBlock);
 
         public OrExpression(params TopicExpression[] subexpressions)
