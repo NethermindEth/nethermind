@@ -4,9 +4,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
 
@@ -54,72 +56,69 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         }
     }
 
-    public sealed class UnionEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    public sealed class UnionEnumerator(IEnumerable<IEnumerator<int>> enumerators) : IEnumerator<int>
     {
-        // TODO: reduce number of fields?
-        private bool _has1;
-        private bool _has2;
-        private bool _initialized;
+        private readonly IEnumerator<int>[] _enumerators = enumerators as IEnumerator<int>[] ?? [.. enumerators];
+        private DictionarySortedSet<int, List<IEnumerator<int>>>? _sortedSet;
+
+        public UnionEnumerator(params IEnumerator<int>[] enumerators) : this(enumerators.AsEnumerable()) { }
 
         public bool MoveNext()
         {
-            if (!_initialized)
+            _sortedSet ??= Initialize();
+
+            if (_sortedSet.Count == 0)
+                return false;
+
+            (int value, List<IEnumerator<int>> enumerators) = _sortedSet.Min;
+            _sortedSet.Remove(value);
+            Current = value;
+
+            foreach (IEnumerator<int> enumerator in enumerators.Where(static e => e.MoveNext()))
+                AddToSortedSet(enumerator.Current, enumerator);
+
+            return true;
+        }
+
+        private DictionarySortedSet<int, List<IEnumerator<int>>> Initialize()
+        {
+            DictionarySortedSet<int, List<IEnumerator<int>>> sortedSet = [];
+
+            foreach (IEnumerator<int> enumerator in _enumerators)
             {
-                _has1 = e1.MoveNext();
-                _has2 = e2.MoveNext();
-                _initialized = true;
+                if (enumerator.MoveNext())
+                    AddToSortedSet(sortedSet, enumerator.Current, enumerator);
             }
 
-            switch (_has1, _has2)
-            {
-                case (false, false):
-                    return false;
-                case (false, true):
-                    Current = e2.Current;
-                    _has2 = e2.MoveNext();
-                    return true;
-                case (true, false):
-                    Current = e1.Current;
-                    _has1 = e1.MoveNext();
-                    return true;
-            }
+            return sortedSet;
+        }
 
-            var (c1, c2) = (e1.Current, e2.Current);
-            switch (c1.CompareTo(c2))
-            {
-                case < 0:
-                    Current = c1;
-                    _has1 = e1.MoveNext();
-                    return true;
-                case > 0:
-                    Current = c2;
-                    _has2 = e2.MoveNext();
-                    return true;
-                case 0:
-                    Current = c1;
-                    (_has1, _has2) = (e1.MoveNext(), e2.MoveNext());
-                    return true;
-            }
+        private void AddToSortedSet(int value, IEnumerator<int> enumerator) =>
+            AddToSortedSet(_sortedSet!, value, enumerator);
+
+        private static void AddToSortedSet(DictionarySortedSet<int, List<IEnumerator<int>>> sortedSet, int value, IEnumerator<int> enumerator)
+        {
+            if (sortedSet.TryGetValue(value, out List<IEnumerator<int>> list))
+                list.Add(enumerator);
+            else
+                sortedSet.Add(value, [enumerator]);
         }
 
         public void Reset()
         {
-            e1.Reset();
-            e2.Reset();
+            _sortedSet = null;
 
-            _has1 = false;
-            _has2 = false;
-            _initialized = false;
+            foreach (IEnumerator<int> enumerator in _enumerators)
+                enumerator.Reset();
         }
 
         public int Current { get; private set; }
-
         object? IEnumerator.Current => Current;
 
         public void Dispose()
         {
-            e1.Dispose();
-            e2.Dispose();
+            foreach (IEnumerator<int> enumerator in _enumerators)
+                enumerator.Dispose();
         }
     }
 
@@ -136,18 +135,12 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         return addressEnumerator ?? topicEnumerator ?? throw new InvalidOperationException("Provided filter covers whole block range.");
     }
 
-    private IEnumerator<int>? Visit(AddressFilter addressFilter)
+    private IEnumerator<int>? Visit(AddressFilter addressFilter) => addressFilter.Addresses.Count switch
     {
-        IEnumerator<int>? result = null;
-
-        foreach (AddressAsKey address in addressFilter.Addresses)
-        {
-            IEnumerator<int> next = Visit(address);
-            result = result is null ? next : new UnionEnumerator(result, next);
-        }
-
-        return result;
-    }
+        0 => null,
+        1 => Visit(addressFilter.Addresses.First()),
+        _ => new UnionEnumerator(addressFilter.Addresses.Select(a => Visit(a)))
+    };
 
     private IEnumerator<int>? Visit(TopicsFilter topicsFilter)
     {
@@ -173,20 +166,12 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         _ => throw new ArgumentOutOfRangeException($"Unknown topic expression type: {expression.GetType().Name}.")
     };
 
-    private IEnumerator<int>? Visit(int topicIndex, OrExpression orExpression)
+    private IEnumerator<int>? Visit(int topicIndex, OrExpression orExpression) => orExpression.SubExpressions.Count switch
     {
-        IEnumerator<int>? result = null;
-
-        foreach (TopicExpression expression in orExpression.SubExpressions)
-        {
-            if (Visit(topicIndex, expression) is not { } next)
-                continue;
-
-            result = result is null ? next : new UnionEnumerator(result, next);
-        }
-
-        return result;
-    }
+        0 => null,
+        1 => Visit(topicIndex, orExpression.SubExpressions.First()),
+        _ => new UnionEnumerator(orExpression.SubExpressions.Select(t => Visit(topicIndex, t)))
+    };
 
     private IEnumerator<int> Visit(Address address) =>
         storage.GetEnumerator(address, fromBlock, toBlock);
