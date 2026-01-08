@@ -30,8 +30,8 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         {
             Current = new()
             {
-                FromBlock = storage.GetMinBlockNumber(),
-                ToBlock = storage.GetMaxBlockNumber()
+                FromBlock = storage.MinBlockNumber,
+                ToBlock = storage.MaxBlockNumber
             },
             Target = new()
             {

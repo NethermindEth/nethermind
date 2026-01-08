@@ -21,8 +21,8 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
     public long LogsAdded => _logsAdded;
     public long TopicsAdded => _topicsAdded;
 
-    public long? MaxBlockNumber => storage.GetMaxBlockNumber();
-    public long? MinBlockNumber => storage.GetMinBlockNumber();
+    public long? MaxBlockNumber => storage.MaxBlockNumber;
+    public long? MinBlockNumber => storage.MinBlockNumber;
 
     public ExecTimeStats SetReceipts { get; } = new();
     public ExecTimeStats Aggregating { get; } = new();

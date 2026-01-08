@@ -234,7 +234,8 @@ public class MergeOperatorTests
         if (!Enum.TryParse(parts[0], out LogIndexStorage.MergeOp op)) return false;
         if (!int.TryParse(parts[1], out int blockNum)) return false;
 
-        bytes = LogIndexStorage.MergeOps.Create(op, blockNum).ToArray();
+        var buffer = new byte[LogIndexStorage.MergeOps.Size];
+        bytes = LogIndexStorage.MergeOps.Create(op, blockNum, buffer);
         return true;
     }
 

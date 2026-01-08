@@ -219,8 +219,8 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await SetReceiptsAsync(setStorage, [batch], isBackwardsSync: false);
 
-                        Assert.That(setStorage.GetMinBlockNumber(), Is.LessThanOrEqualTo(batch[0].BlockNumber));
-                        Assert.That(setStorage.GetMaxBlockNumber(), Is.EqualTo(batch[^1].BlockNumber));
+                        Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
+                        Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
                     }
                 });
 
@@ -231,8 +231,8 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await SetReceiptsAsync(setStorage, [batch], isBackwardsSync: true);
 
-                        Assert.That(setStorage.GetMinBlockNumber(), Is.EqualTo(batch[^1].BlockNumber));
-                        Assert.That(setStorage.GetMaxBlockNumber(), Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
                     }
                 });
 
@@ -318,7 +318,7 @@ namespace Nethermind.Db.Test.LogIndex
                 await logIndexStorage.ReorgFrom(block);
 
             // Need custom check because Reorg updates the last block even if it's "unexisting"
-            Assert.That(logIndexStorage.GetMaxBlockNumber(), Is.EqualTo(lastBlock - reorgDepth));
+            Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(lastBlock - reorgDepth));
 
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, validateMinMax: false);
         }
@@ -514,7 +514,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             VerifyReceipts(
                 failLogIndexStorage, testData,
-                minBlock: failLogIndexStorage.GetMinBlockNumber() ?? 0, maxBlock: failLogIndexStorage.GetMaxBlockNumber() ?? 0
+                minBlock: failLogIndexStorage.MinBlockNumber ?? 0, maxBlock: failLogIndexStorage.MaxBlockNumber ?? 0
             );
         }
 
@@ -600,8 +600,8 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(logIndexStorage.GetMinBlockNumber(), Is.EqualTo(minBlock));
-                    Assert.That(logIndexStorage.GetMaxBlockNumber(), Is.EqualTo(maxBlock));
+                    Assert.That(logIndexStorage.MinBlockNumber, Is.EqualTo(minBlock));
+                    Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(maxBlock));
                 }
             }
 
@@ -700,7 +700,7 @@ namespace Nethermind.Db.Test.LogIndex
                         var address = random.NextFrom(addresses);
                         var expectedNums = testData.AddressMap[address];
 
-                        if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
+                        if (logIndexStorage.MinBlockNumber is not { } min || logIndexStorage.MaxBlockNumber is not { } max)
                             continue;
 
                         Assert.That(
@@ -715,7 +715,7 @@ namespace Nethermind.Db.Test.LogIndex
                         var (idx, topic) = random.NextFrom(topics);
                         var expectedNums = testData.TopicMap[idx][topic];
 
-                        if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
+                        if (logIndexStorage.MinBlockNumber is not { } min || logIndexStorage.MaxBlockNumber is not { } max)
                             continue;
 
                         Assert.That(

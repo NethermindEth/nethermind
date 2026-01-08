@@ -204,7 +204,7 @@ namespace Nethermind.Facade.Find
             if (!tryUseIndex || !_logIndexStorage.Enabled || filter.AcceptsAnyBlock)
                 return null;
 
-            if (_logIndexStorage.GetMinBlockNumber() is not { } indexFrom || _logIndexStorage.GetMaxBlockNumber() is not { } indexTo)
+            if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)
                 return null;
 
             (int from, int to) range = (

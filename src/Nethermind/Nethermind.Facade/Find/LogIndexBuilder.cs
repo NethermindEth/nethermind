@@ -102,7 +102,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private void StartProcessing(bool isForward)
     {
         // Do not start backward sync if the target is already reached
-        if (!isForward && _logIndexStorage.GetMinBlockNumber() <= MinTargetBlockNumber)
+        if (!isForward && _logIndexStorage.MinBlockNumber <= MinTargetBlockNumber)
         {
             MarkCompleted(false);
             return;
@@ -126,7 +126,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
 
-            TrySetPivot(_logIndexStorage.GetMaxBlockNumber());
+            TrySetPivot(_logIndexStorage.MaxBlockNumber);
             TrySetPivot((int)_blockTree.SyncPivot.BlockNumber);
 
             if (!_pivotTask.IsCompleted && _logger.IsInfo)
@@ -320,7 +320,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         UpdateProgress();
 
-        if (_logIndexStorage.GetMinBlockNumber() <= MinTargetBlockNumber)
+        if (_logIndexStorage.MinBlockNumber <= MinTargetBlockNumber)
             MarkCompleted(false);
     }
 
@@ -400,14 +400,14 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (_progressLoggers.TryGetValue(true, out ProgressLogger forwardProgress) && !forwardProgress.HasEnded)
         {
             forwardProgress.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
-            forwardProgress.Update(_logIndexStorage.GetMaxBlockNumber() is { } max ? max - pivotNumber + 1 : 0);
+            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max ? max - pivotNumber + 1 : 0);
             forwardProgress.CurrentQueued = _processingQueues[true].QueueCount;
         }
 
         if (_progressLoggers.TryGetValue(false, out ProgressLogger backwardProgress) && !backwardProgress.HasEnded)
         {
             backwardProgress.TargetValue = pivotNumber - MinTargetBlockNumber;
-            backwardProgress.Update(_logIndexStorage.GetMinBlockNumber() is { } min ? pivotNumber - min : 0);
+            backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min ? pivotNumber - min : 0);
             backwardProgress.CurrentQueued = _processingQueues[false].QueueCount;
         }
     }
@@ -426,7 +426,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private static int? GetNextBlockNumber(ILogIndexStorage storage, bool isForward)
     {
-        return isForward ? storage.GetMaxBlockNumber() + 1 : storage.GetMinBlockNumber() - 1;
+        return isForward ? storage.MaxBlockNumber + 1 : storage.MinBlockNumber - 1;
     }
 
     private int? GetNextBlockNumber(bool isForward) => GetNextBlockNumber(_logIndexStorage, isForward);

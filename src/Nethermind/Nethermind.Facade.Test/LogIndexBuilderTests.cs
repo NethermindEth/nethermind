@@ -36,9 +36,6 @@ public class LogIndexBuilderTests
         public event EventHandler<int>? NewMaxBlockNumber;
         public event EventHandler<int>? NewMinBlockNumber;
 
-        public int? GetMaxBlockNumber() => _maxBlockNumber;
-        public int? GetMinBlockNumber() => _minBlockNumber;
-
         public int? MinBlockNumber
         {
             get => _minBlockNumber;
@@ -50,12 +47,6 @@ public class LogIndexBuilderTests
             get => _maxBlockNumber;
             init => _maxBlockNumber = value;
         }
-
-        public List<int> GetBlockNumbersFor(Address address, int from, int to) =>
-            throw new NotImplementedException();
-
-        public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
-            throw new NotImplementedException();
 
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
             throw new NotImplementedException();
@@ -207,8 +198,8 @@ public class LogIndexBuilderTests
         {
             Assert.That(builder.LastError, Is.Null);
 
-            Assert.That(storage.GetMinBlockNumber(), Is.EqualTo(expectedMin));
-            Assert.That(storage.GetMaxBlockNumber(), Is.EqualTo(MaxSyncBlock));
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(expectedMin));
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(MaxSyncBlock));
         }
     }
 
@@ -258,7 +249,7 @@ public class LogIndexBuilderTests
 
     private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
     {
-        if (storage.GetMaxBlockNumber() >= blockNumber)
+        if (storage.MaxBlockNumber >= blockNumber)
             return Task.CompletedTask;
 
         return Wait.ForEventCondition<int>(
@@ -271,7 +262,7 @@ public class LogIndexBuilderTests
 
     private static Task WaitMinBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
     {
-        if (storage.GetMinBlockNumber() <= blockNumber)
+        if (storage.MinBlockNumber <= blockNumber)
             return Task.CompletedTask;
 
         return Wait.ForEventCondition<int>(

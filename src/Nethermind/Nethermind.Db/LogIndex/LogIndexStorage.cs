@@ -127,6 +127,9 @@ namespace Nethermind.Db.LogIndex
         private int? _maxBlock;
         private int? _minBlock;
 
+        public int? MaxBlockNumber => _maxBlock;
+        public int? MinBlockNumber => _minBlock;
+
         private Exception? _lastBackgroundError;
         public bool HasBackgroundError => _lastBackgroundError is not null;
 
@@ -329,7 +332,6 @@ namespace Nethermind.Db.LogIndex
                 throw new InvalidOperationException("Log index storage is stopped.");
         }
 
-        // TODO: stop the storage?
         private void OnBackgroundError<TCaller>(Exception error)
         {
             _lastBackgroundError = error;
@@ -442,39 +444,15 @@ namespace Nethermind.Db.LogIndex
         private bool IsBlockNewer(int next, bool isBackwardSync) =>
             IsBlockNewer(next, _minBlock, _maxBlock, isBackwardSync);
 
-        public int? GetMaxBlockNumber() => _maxBlock;
-        public int? GetMinBlockNumber() => _minBlock;
         public string GetDbSize() => _rootDb.GatherMetric().Size.SizeToString(useSi: true, addSpace: true);
 
-        public List<int> GetBlockNumbersFor(Address address, int from, int to) =>
-            GetBlockNumbersFor(null, address.Bytes, from, to);
-
-        public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
-            GetBlockNumbersFor(index, topic.Bytes.ToArray(), from, to);
-
-        private List<int> GetBlockNumbersFor(int? topicIndex, byte[] key, int from, int to)
-        {
-            // TODO: use ArrayPoolList?
-            var timestamp = Stopwatch.GetTimestamp();
-            var result = new List<int>();
-
-            using IEnumerator<int> enumerator = GetBlockNumbersEnumerator(topicIndex, key, from, to);
-            while (enumerator.MoveNext())
-                result.Add(enumerator.Current);
-
-            if (_logger.IsTrace)
-                _logger.Trace($"{nameof(GetBlockNumbersFor)}({topicIndex}, {Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
-
-            return result;
-        }
-
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
-            GetBlockNumbersEnumerator(null, address.Bytes, from, to);
+            GetEnumerator(null, address.Bytes, from, to);
 
         public IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to) =>
-            GetBlockNumbersEnumerator(index, topic.BytesToArray(), from, to);
+            GetEnumerator(index, topic.BytesToArray(), from, to);
 
-        public IEnumerator<int> GetBlockNumbersEnumerator(int? index, byte[] key, int from, int to)
+        public IEnumerator<int> GetEnumerator(int? index, byte[] key, int from, int to)
         {
             IDb db = GetDb(index);
             ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
@@ -483,7 +461,7 @@ namespace Nethermind.Db.LogIndex
             return new LogIndexEnumerator(this, sortedDb, key, from, to);
         }
 
-        // TODO: optimize
+        // TODO: discuss potential optimizations
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
             ThrowIfStopped();
@@ -495,7 +473,6 @@ namespace Nethermind.Db.LogIndex
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
 
-            Span<bool> isTopicBlockNewer = stackalloc bool[MaxTopics];
             var timestamp = Stopwatch.GetTimestamp();
 
             var aggregate = new LogIndexAggregate(batch);

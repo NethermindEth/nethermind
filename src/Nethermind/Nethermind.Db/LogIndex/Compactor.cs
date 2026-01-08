@@ -48,8 +48,8 @@ partial class LogIndexStorage
             if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
             _compactionDistance = compactionDistance;
 
-            _lastAtMin = storage.GetMinBlockNumber();
-            _lastAtMax = storage.GetMaxBlockNumber();
+            _lastAtMin = storage.MinBlockNumber;
+            _lastAtMax = storage.MaxBlockNumber;
 
             _compactionTask = DoCompactAsync();
         }
@@ -62,13 +62,13 @@ partial class LogIndexStorage
             if (_cts.IsCancellationRequested)
                 return false;
 
-            _lastAtMin ??= _storage.GetMinBlockNumber();
-            _lastAtMax ??= _storage.GetMaxBlockNumber();
+            _lastAtMin ??= _storage.MinBlockNumber;
+            _lastAtMax ??= _storage.MaxBlockNumber;
 
             var uncompacted = 0;
-            if (_storage.GetMinBlockNumber() is { } storageMin && storageMin < _lastAtMin)
+            if (_storage.MinBlockNumber is { } storageMin && storageMin < _lastAtMin)
                 uncompacted += _lastAtMin.Value - storageMin;
-            if (_storage.GetMaxBlockNumber() is { } storageMax && storageMax > _lastAtMax)
+            if (_storage.MaxBlockNumber is { } storageMax && storageMax > _lastAtMax)
                 uncompacted += storageMax - _lastAtMax.Value;
 
             if (uncompacted < _compactionDistance)
@@ -77,8 +77,8 @@ partial class LogIndexStorage
             if (!_runOnceEvent.Set())
                 return false;
 
-            _lastAtMin = _storage.GetMinBlockNumber();
-            _lastAtMax = _storage.GetMaxBlockNumber();
+            _lastAtMin = _storage.MinBlockNumber;
+            _lastAtMax = _storage.MaxBlockNumber;
             return true;
         }
 

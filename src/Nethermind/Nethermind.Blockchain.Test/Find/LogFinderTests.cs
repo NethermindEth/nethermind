@@ -416,8 +416,8 @@ public class LogFinderTests
         SetUp(true, chainLength: 10);
 
         _logIndexStorage.Enabled.Returns(true);
-        _logIndexStorage.GetMinBlockNumber().Returns(indexFrom);
-        _logIndexStorage.GetMaxBlockNumber().Returns(indexTo);
+        _logIndexStorage.MinBlockNumber.Returns(indexFrom);
+        _logIndexStorage.MaxBlockNumber.Returns(indexTo);
         _logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
             .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
 

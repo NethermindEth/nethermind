@@ -16,11 +16,9 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     public Task FirstBlockAdded => Task.CompletedTask;
 
     public string GetDbSize() => "0 B";
-    public int? GetMaxBlockNumber() => null;
-    public int? GetMinBlockNumber() => null;
 
-    public List<int> GetBlockNumbersFor(Address address, int from, int to) => throw new NotSupportedException();
-    public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
+    public int? MaxBlockNumber => null;
+    public int? MinBlockNumber => null;
 
     public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
         throw new NotSupportedException();

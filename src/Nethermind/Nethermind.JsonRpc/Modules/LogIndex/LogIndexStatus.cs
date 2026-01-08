@@ -5,7 +5,6 @@ using System;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
-// TODO: add forward/backward sync status?
 public class LogIndexStatus
 {
     public class Range

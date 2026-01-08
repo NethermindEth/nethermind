@@ -55,13 +55,6 @@ partial class LogIndexStorage
             return dbValue;
         }
 
-        // TODO: use ArrayPool?
-        public static Span<byte> Create(MergeOp op, int fromBlock)
-        {
-            var buffer = new byte[Size];
-            return Create(op, fromBlock, buffer);
-        }
-
         public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, int block, bool isBackward)
         {
             // In most cases the searched block will be near or at the end of the operand, if present there

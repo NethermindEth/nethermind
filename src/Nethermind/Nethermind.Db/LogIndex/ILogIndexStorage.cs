@@ -14,11 +14,8 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
     bool Enabled { get; }
 
-    int? GetMaxBlockNumber();
-    int? GetMinBlockNumber();
-
-    List<int> GetBlockNumbersFor(Address address, int from, int to);
-    List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
+    int? MaxBlockNumber { get; }
+    int? MinBlockNumber { get; }
 
     IEnumerator<int> GetEnumerator(Address address, int from, int to);
     IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to);
