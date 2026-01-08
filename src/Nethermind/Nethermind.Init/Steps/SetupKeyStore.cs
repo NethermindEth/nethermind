@@ -22,6 +22,8 @@ namespace Nethermind.Init.Steps
     {
         public Task Execute(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             (IApiWithStores get, IApiWithBlockchain set) = api.ForInit;
 
             IKeyStoreConfig keyStoreConfig = get.Config<IKeyStoreConfig>();
