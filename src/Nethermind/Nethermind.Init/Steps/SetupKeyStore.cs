@@ -66,7 +66,7 @@ namespace Nethermind.Init.Steps
 
             get.LogManager.SetGlobalVariable("enode", enode.ToString());
 
-            if (!string.IsNullOrEmpty(networkConfig.Bootnodes))
+            if (!string.IsNullOrWhiteSpace(networkConfig.Bootnodes))
             {
                 string publicKeyHex = nodeKey.PublicKey.ToString();
                 string pattern = $",[^,]*{publicKeyHex}[^,]*|[^,]*{publicKeyHex}[^,]*,|^[^,]*{publicKeyHex}[^,]*$";
