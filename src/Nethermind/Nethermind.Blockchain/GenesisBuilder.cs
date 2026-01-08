@@ -57,7 +57,7 @@ public class GenesisBuilder(
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
         foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations.OrderBy(static a => a.Key))
         {
-            stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
+            stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce, -1);
 
             if (allocation.Code is not null)
             {
@@ -69,7 +69,7 @@ public class GenesisBuilder(
                 foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                 {
                     stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.WithoutLeadingZeros().ToArray());
+                        storage.Value.WithoutLeadingZeros().ToArray(), -1);
                 }
             }
 
