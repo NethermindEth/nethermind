@@ -172,25 +172,15 @@ namespace Nethermind.Blockchain.Filters
                 return SequenceTopicsFilter.AnyTopic;
             }
 
-            List<TopicExpression> expressions = new();
+            FilterTopic?[] filterTopics = GetFilterTopics(topics) ?? Array.Empty<FilterTopic?>();
+            TopicExpression[] expressions = new TopicExpression[filterTopics.Length];
 
-            foreach (Hash256[]? group in topics)
+            for (int i = 0; i < filterTopics.Length; i++)
             {
-                if (group is null || group.Length == 0)
-                {
-                    expressions.Add(AnyTopic.Instance);
-                }
-                else if (group.Length == 1)
-                {
-                    expressions.Add(new SpecificTopic(group[0]));
-                }
-                else
-                {
-                    expressions.Add(new OrExpression(group.Select(static t => new SpecificTopic(t)).ToArray<TopicExpression>()));
-                }
+                expressions[i] = GetTopicExpression(filterTopics[i]);
             }
 
-            return new SequenceTopicsFilter(expressions.ToArray());
+            return new SequenceTopicsFilter(expressions);
         }
 
         private static AddressFilter GetAddress(AddressAsKey[]? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
