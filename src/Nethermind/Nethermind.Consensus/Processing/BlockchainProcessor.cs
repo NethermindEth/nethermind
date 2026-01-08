@@ -57,7 +57,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
-            SingleReader = true
+            SingleReader = true,
+            AllowSynchronousContinuations = true,
         });
 
     private bool _recoveryComplete = false;
@@ -267,7 +268,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 try
                 {
-                    await _blockQueue.Writer.WriteAsync(blockRef);
+                    await _blockQueue.Writer.WaitToWriteAsync();
+                    // Queue in background
+                    _ = Task.Factory.StartNew((s) => _blockQueue.Writer.WriteAsync((BlockRef)s!), blockRef, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
