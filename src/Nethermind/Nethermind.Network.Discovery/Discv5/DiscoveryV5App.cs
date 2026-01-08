@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin.Secp256k1;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
@@ -205,11 +206,13 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
-        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        Channel<Node> discoveredNodesChannel = Channel.CreateBounded<Node>(1);
 
-        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
+        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, ArrayPoolSpan<byte> nodeId)
         {
-            static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
+            using ArrayPoolSpan<byte> _ = nodeId;
+
+            static int[] GetDistances(byte[] srcNodeId, in ArrayPoolSpan<byte> destNodeId)
             {
                 const int WiderDistanceRange = 3;
 
@@ -243,8 +246,10 @@ public class DiscoveryV5App : IDiscoveryApp
 
                 if (TryGetNodeFromEnr(newEntry, out Node? node2))
                 {
-                    await ch.Writer.WriteAsync(node2!, token);
+                    await discoveredNodesChannel.Writer.WriteAsync(node2!, token);
+
                     if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+
                     _discoveryReport?.NodeFound();
                 }
 
@@ -253,13 +258,11 @@ public class DiscoveryV5App : IDiscoveryApp
                     continue;
                 }
 
-                IEnumerable<IEnr>? newNodesFound = (await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)))?.Where(x => !checkedNodes.Contains(x));
-
-                if (newNodesFound is not null)
+                foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, in nodeId)) ?? [])
                 {
-                    foreach (IEnr? node in newNodesFound)
+                    if (!checkedNodes.Contains(newEnr))
                     {
-                        nodesToCheck.Enqueue(node);
+                        nodesToCheck.Enqueue(newEnr);
                     }
                 }
             }
@@ -272,16 +275,20 @@ public class DiscoveryV5App : IDiscoveryApp
 
         Task discoverTask = Task.Run(async () =>
         {
-            byte[] randomNodeId = new byte[32];
+            using ArrayPoolSpan<byte> selfNodeId = new(32);
+            _discv5Protocol.SelfEnr.NodeId.CopyTo(selfNodeId);
+
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    List<Task> discoverTasks = new List<Task>();
-                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+                    using ArrayPoolList<Task> discoverTasks = new(RandomNodesToLookupCount);
+
+                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), selfNodeId));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
+                        ArrayPoolSpan<byte> randomNodeId = new(32);
                         random.NextBytes(randomNodeId);
                         discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
                     }
@@ -293,11 +300,11 @@ public class DiscoveryV5App : IDiscoveryApp
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
                 }
             }
-        });
+        }, token);
 
         try
         {
-            await foreach (Node node in ch.Reader.ReadAllAsync(token))
+            await foreach (Node node in discoveredNodesChannel.Reader.ReadAllAsync(token))
             {
                 yield return node;
             }
