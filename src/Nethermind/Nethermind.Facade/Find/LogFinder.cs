@@ -96,23 +96,33 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (CanUseLogIndex(filter, fromBlock, toBlock) is not { } indexRange)
+            if (GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange)
                 return FilterLogsWithoutIndex(filter, fromBlock, toBlock, cancellationToken);
 
             // Combine results from regular scanning and index
             IEnumerable<FilterLog>? result = [];
 
             if (indexRange.from > fromBlock.Number)
-                result = result.Concat(FilterLogsWithoutIndex(filter, fromBlock, FindHeader(indexRange.from - 1), cancellationToken));
+            {
+                result = result.Concat(
+                    FilterLogsWithoutIndex(filter, fromBlock, FindHeader(indexRange.from - 1), cancellationToken)
+                );
+            }
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            result = result.Concat(FilterLogsUsingIndex(filter, FindHeader(indexRange.from), FindHeader(indexRange.to), cancellationToken));
+            result = result.Concat(
+                FilterLogsWith(filter, FindHeader(indexRange.from), FindHeader(indexRange.to), FilterBlockNumbersWithLogIndex, cancellationToken)
+            );
 
             cancellationToken.ThrowIfCancellationRequested();
 
             if (indexRange.to < toBlock.Number)
-                result = result.Concat(FilterLogsWithoutIndex(filter, FindHeader(indexRange.to + 1), toBlock, cancellationToken));
+            {
+                result = result.Concat(
+                    FilterLogsWithoutIndex(filter, FindHeader(indexRange.to + 1), toBlock, cancellationToken)
+                );
+            }
 
             return result;
         }
@@ -124,7 +134,7 @@ namespace Nethermind.Facade.Find
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
             bool useBloom = shouldUseBloom && canUseBloom;
             return useBloom
-                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock, cancellationToken)
+                ? FilterLogsWith(filter, fromBlock, toBlock, FilterBlockNumbersWithBloomsIndex, cancellationToken)
                 : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
@@ -146,20 +156,41 @@ namespace Nethermind.Facade.Find
             return block;
         }
 
-        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<long> FilterBlockNumbersWithBloomsIndex(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
         {
-            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
+
+            foreach (Bloom bloom in enumeration)
+            {
+                token.ThrowIfCancellationRequested();
+                if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                {
+                    yield return blockNumber;
+                }
+            }
+        }
+
+        private IEnumerable<long> FilterBlockNumbersWithLogIndex(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+        {
+            foreach (var blockNumber in _logIndexStorage!.EnumerateBlockNumbersFor(f, from, to))
+            {
+                token.ThrowIfCancellationRequested();
+                yield return blockNumber;
+            }
+        }
+
+        private IEnumerable<FilterLog> FilterLogsWith(
+            LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
+            Func<LogFilter, long, long, bool, CancellationToken, IEnumerable<long>> filterBlockNumbers,
+            CancellationToken cancellationToken)
+        {
+            IEnumerable<long> FilterBlocks(LogFilter f, long from, long to, bool runParallel, CancellationToken token)
             {
                 try
                 {
-                    var enumeration = _bloomStorage.GetBlooms(from, to);
-                    foreach (var bloom in enumeration)
+                    foreach (var blockNumber in filterBlockNumbers(f, from, to, runParallel, token))
                     {
-                        token.ThrowIfCancellationRequested();
-                        if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
-                        {
-                            yield return blockNumber;
-                        }
+                        yield return blockNumber;
                     }
                 }
                 finally
@@ -196,7 +227,7 @@ namespace Nethermind.Facade.Find
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHeader(blockNumber, cancellationToken), cancellationToken));
         }
 
-        private (int from, int to)? CanUseLogIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             var tryUseIndex = filter.UseIndex;
             filter.UseIndex = false;
@@ -245,60 +276,6 @@ namespace Nethermind.Facade.Find
             }
 
             return true;
-        }
-
-        // TODO: merge common code with FilterLogsWithBloomsIndex
-        private IEnumerable<FilterLog> FilterLogsUsingIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
-            CancellationToken cancellationToken)
-        {
-            IEnumerable<long> FilterBlocks(LogFilter f, long from, long to, bool runParallel, CancellationToken token)
-            {
-                try
-                {
-                    foreach (var blockNumber in _logIndexStorage!.EnumerateBlockNumbersFor(f, from, to))
-                    {
-                        token.ThrowIfCancellationRequested();
-
-                        yield return blockNumber;
-
-                        // TODO: is this needed?
-                        // if (++count >= _maxBlockDepth)
-                        //     break;
-                    }
-                }
-                finally
-                {
-                    if (runParallel)
-                    {
-                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
-                    }
-
-                    Interlocked.Decrement(ref ParallelExecutions);
-                }
-            }
-
-            // we want to support one parallel eth_getLogs call for maximum performance
-            // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
-            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
-            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
-            bool canRunParallel = parallelLock == 0;
-
-            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel, cancellationToken);
-
-            if (canRunParallel)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-                filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
-                    .AsOrdered() // we want to keep block order
-                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-            }
-
-            return filterBlocks
-                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHeader(blockNumber, cancellationToken), cancellationToken));
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
