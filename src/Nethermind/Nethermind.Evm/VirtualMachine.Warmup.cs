@@ -71,14 +71,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         RunTransactions(processor, state, spec);
     }
 
+    static Address recipient1 = new("0x0000000000000000000000000000000010000000");
+    static Address recipient2 = new("0x0000000000000000000000000000000000000100");
     private static void RunTransactions(TransactionProcessor<TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
     {
-        const int WarmUpIterations = 40;
+        const int WarmUpIterations = 30;
 
         Address sender = Address.SystemUser;
-        Address recipient = new("0x0000000000000000000000000000000000000100");
 
-        state.CreateAccountIfNotExists(recipient, 100.Ether());
+        state.CreateAccountIfNotExists(recipient1, 100.Ether());
+        state.CreateAccountIfNotExists(recipient2, 100.Ether());
 
         List<byte> bytes = [(byte)Instruction.JUMPDEST];
 
@@ -86,7 +88,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         byte[] code = bytes.ToArray();
 
-        state.InsertCode(recipient, code, spec);
+        state.InsertCode(recipient1, code, spec);
+        state.InsertCode(recipient2, code, spec);
         state.Commit(spec);
 
         Transaction tx = new()
@@ -94,12 +97,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             IsServiceTransaction = true,
             GasLimit = 30_000_000,
             SenderAddress = sender,
-            To = recipient
+            To = recipient1
         };
 
-        for (int i = 0; i < WarmUpIterations; i++)
+        RunTransactions(processor, WarmUpIterations, tx);
+        Thread.Sleep(125);
+        RunTransactions(processor, WarmUpIterations, tx);
+
+        static void RunTransactions(TransactionProcessor<TGasPolicy> processor, int WarmUpIterations, Transaction tx)
         {
-            processor.CallAndRestore(tx, NullTxTracer.Instance);
+            for (int i = 0; i < WarmUpIterations; i++)
+            {
+                tx.To = recipient1;
+                processor.CallAndRestore(tx, NullTxTracer.Instance);
+                tx.To = recipient2;
+                processor.CallAndRestore(tx, NullTxTracer.Instance);
+            }
         }
     }
 

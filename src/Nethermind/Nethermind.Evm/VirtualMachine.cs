@@ -1370,6 +1370,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
     {
         if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
