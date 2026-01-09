@@ -58,22 +58,6 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref byte PushBytesNullableRef()
-    {
-        // Workhorse method
-        uint headOffset = (uint)Head;
-        uint newOffset = headOffset + 1;
-        ref byte headRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), headOffset * WordSize);
-        if (newOffset >= MaxStackSize)
-        {
-            return ref Unsafe.NullRef<byte>();
-        }
-
-        Head = (int)newOffset;
-        return ref headRef;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref Word PushedHead()
         => ref Unsafe.As<byte, Word>(ref PushBytesRef());
 
@@ -419,8 +403,15 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             ReportStackPush(ref start, used);
 
-        ref byte dst = ref PushBytesNullableRef();
-        if (Unsafe.IsNullRef(ref dst)) goto StackOverflow;
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref byte dst = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+        Head = (int)newOffset;
+
         // Zeros on both sides.
         if (Vector256.IsHardwareAccelerated)
         {
@@ -441,9 +432,6 @@ public ref partial struct EvmStack
         dst = ref Unsafe.Add(ref dst, WordSize - paddingLength);
         CopyUpTo32(ref dst, ref start, (uint)used);
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackOverflow:
-        return EvmExceptionType.StackOverflow;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -504,11 +492,14 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.OneByteSpan);
 
-        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
-        if (Unsafe.IsNullRef(ref head))
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
+        Head = (int)newOffset;
 
         // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
         // - when viewed as bytes: all zeros except byte[31] == 1
@@ -533,11 +524,14 @@ public ref partial struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
-        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
-        if (Unsafe.IsNullRef(ref head))
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
+        Head = (int)newOffset;
 
         if (Vector256.IsHardwareAccelerated)
         {
@@ -556,11 +550,15 @@ public ref partial struct EvmStack
     public EvmExceptionType PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
-        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
-        if (Unsafe.IsNullRef(ref head))
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
+        Head = (int)newOffset;
+
         if (BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
@@ -586,11 +584,15 @@ public ref partial struct EvmStack
     public EvmExceptionType PushUInt64<TTracingInst>(ulong value)
         where TTracingInst : struct, IFlag
     {
-        ref Word head = ref Unsafe.As<byte, Word>(ref PushBytesNullableRef());
-        if (Unsafe.IsNullRef(ref head))
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
         }
+        Head = (int)newOffset;
+
         if (BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
