@@ -89,10 +89,10 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionCall<TGasPolicy, TOpCall, TTracingInst>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
@@ -144,7 +144,7 @@ internal static partial class EvmInstructions
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.VmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
-            return EvmExceptionType.StaticCallViolation;
+            return new(programCounter, EvmExceptionType.StaticCallViolation);
 
         // Determine caller and target based on the call type.
         Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
@@ -237,7 +237,7 @@ internal static partial class EvmInstructions
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
-            return stack.PushZero<TTracingInst>();
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Take a snapshot of the state for potential rollback.
@@ -252,11 +252,11 @@ internal static partial class EvmInstructions
             EvmExceptionType result = stack.PushOne<TTracingInst>();
             if (result != EvmExceptionType.None)
             {
-                return result;
+                return new(programCounter, result);
             }
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            return FastCall(vm, spec, in transferValue, target);
+            return new(programCounter, FastCall(vm, spec, in transferValue, target));
         }
 
         // Load call data from memory.
@@ -292,7 +292,7 @@ internal static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
-        return EvmExceptionType.Return;
+        return new(programCounter, EvmExceptionType.Return);
 
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
@@ -308,9 +308,9 @@ internal static partial class EvmInstructions
 
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     }
 
     private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
@@ -339,10 +339,10 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // RETURN is not allowed during contract creation.
@@ -365,13 +365,13 @@ internal static partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
 
-        return EvmExceptionType.Return;
+        return new(programCounter, EvmExceptionType.Return);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     BadInstruction:
-        return EvmExceptionType.BadInstruction;
+        return new(programCounter, EvmExceptionType.BadInstruction);
     }
 }

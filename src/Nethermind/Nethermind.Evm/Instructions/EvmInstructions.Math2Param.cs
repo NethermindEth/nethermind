@@ -50,7 +50,7 @@ internal static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
@@ -65,10 +65,10 @@ internal static partial class EvmInstructions
         TOpMath.Operation(in a, in b, out UInt256 result);
 
         // Push the computed result onto the stack.
-        return stack.PushUInt256<TTracingInst>(in result);
+        return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -286,7 +286,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -305,7 +305,7 @@ internal static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            return stack.PushOne<TTracingInst>();
+            return new(programCounter, stack.PushOne<TTracingInst>());
         }
         else
         {
@@ -318,21 +318,21 @@ internal static partial class EvmInstructions
                 ulong value = a.u0;
                 if (value == 0)
                 {
-                    return stack.PushZero<TTracingInst>();
+                    return new(programCounter, stack.PushZero<TTracingInst>());
                 }
                 else if (value == 1)
                 {
-                    return stack.PushOne<TTracingInst>();
+                    return new(programCounter, stack.PushOne<TTracingInst>());
                 }
             }
 
             // Perform exponentiation and push the 256-bit result onto the stack.
             UInt256.Exp(in a, in exponent, out UInt256 result);
-            return stack.PushUInt256<TTracingInst>(in result);
+            return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
         }
 
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

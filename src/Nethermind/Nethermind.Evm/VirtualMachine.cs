@@ -97,7 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] _opcodeMethods;
     private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
@@ -878,16 +878,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
     }
 
-    protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+    protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         => EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
@@ -1216,83 +1216,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>*
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>*
                opcodeMethods = _opcodeMethods)
         {
             // Retrieve the code information and create a read-only span of instructions.
             ICodeInfo codeInfo = VmState.Env.CodeInfo;
             ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
 
-            // Initialize the exception type to "None".
-            EvmExceptionType exceptionType = EvmExceptionType.None;
-#if DEBUG
-            // In debug mode, retrieve a tracer for interactive debugging.
-            DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
-#endif
-            // Set the program counter from the current VM state; it may not be zero if resuming after a call.
-            int programCounter = VmState.ProgramCounter;
-            int opCodeCount = 0;
+            EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods, codeSection);
 
-            ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
-            uint codeLength = (uint)codeSection.Length;
-            // Iterate over the instructions using a while loop because opcodes may modify the program counter.
-            while ((uint)programCounter < codeLength)
+            // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
+            if (exceptionType > EvmExceptionType.Return)
             {
-#if DEBUG
-                // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
-                // Fetch the current instruction from the code section.
-                Instruction instruction = Unsafe.Add(ref code, programCounter);
-
-                // If cancellation is enabled and cancellation has been requested, throw an exception.
-                if (TCancelable.IsActive && _txTracer.IsCancelled)
-                    ThrowOperationCanceledException();
-
-                // If tracing is enabled, start an instruction trace.
-                if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
-
-                // Advance the program counter to point to the next instruction.
-                programCounter++;
-                opCodeCount++;
-
-                // Invoke the opcode method, which may modify the stack, gas, and program counter.
-                // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                exceptionType = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, ref programCounter);
-
-                // If gas is exhausted, jump to the out-of-gas handler.
-                if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                if (exceptionType == EvmExceptionType.Revert)
+                {
+                    goto Revert;
+                }
+                else if (exceptionType == EvmExceptionType.OutOfGas)
                 {
                     goto OutOfGas;
                 }
-                // If an exception occurred, exit the loop.
-                if (exceptionType != EvmExceptionType.None)
-                    break;
-
-                // If tracing is enabled, complete the trace for the current instruction.
-                if (TTracingInst.IsActive)
-                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            }
-            OpCodeCount += opCodeCount;
-
-            // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
-            if (exceptionType <= EvmExceptionType.Return)
-            {
-                // If tracing is enabled, complete the trace for the current instruction.
-                if (TTracingInst.IsActive)
-                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-                UpdateCurrentState(programCounter, in gas, stack.Head);
-            }
-            else
-            {
-                // For any other exception, jump to the failure handling routine.
-                goto ReturnFailure;
+                else
+                {
+                    // For any other exception, jump to the failure handling routine.
+                    goto ReturnFailure;
+                }
             }
 
-            // If the exception indicates a revert, handle it specifically.
-            if (exceptionType == EvmExceptionType.Revert)
-                goto Revert;
             // If return data was produced, jump to the return data processing block.
             if (ReturnData is not null)
                 goto DataReturn;
@@ -1301,10 +1251,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return CallResult.Empty(codeInfo.Version);
 
         DataReturn:
-#if DEBUG
-            // Allow debugging before processing the return data.
-            debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
             // Process the return data based on its runtime type.
             if (ReturnData is VmState<TGasPolicy> state)
             {
@@ -1322,7 +1268,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
         OutOfGas:
-            OpCodeCount += opCodeCount;
             TGasPolicy.SetOutOfGas(ref gas);
             // Set the exception type to OutOfGas if gas has been exhausted.
             exceptionType = EvmExceptionType.OutOfGas;
@@ -1339,6 +1284,86 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 ref Unsafe.As<byte, Instruction>(ref MemoryMarshal.GetReference(codeBytes)),
                 codeBytes.Length);
         }
+    }
+
+    [SkipLocalsInit]
+    private EvmExceptionType InterpreterLoop<TTracingInst, TCancelable>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods,
+        ReadOnlySpan<Instruction> codeSection
+        ) where TTracingInst : struct, IFlag where TCancelable : struct, IFlag
+    {
+#if DEBUG
+        // In debug mode, retrieve a tracer for interactive debugging.
+        DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
+#endif
+        // Initialize the exception type to "None".
+        EvmExceptionType exceptionType = EvmExceptionType.None;
+        // Set the program counter from the current VM state; it may not be zero if resuming after a call.
+        int programCounter = VmState.ProgramCounter;
+        int opCodeCount = 0;
+        ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
+        uint codeLength = (uint)codeSection.Length;
+        // Iterate over the instructions using a while loop because opcodes may modify the program counter.
+        while ((uint)programCounter < codeLength)
+        {
+#if DEBUG
+            // Allow the debugger to inspect and possibly pause execution for debugging purposes.
+            debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+#endif
+            // Fetch the current instruction from the code section.
+            Instruction instruction = Unsafe.Add(ref code, (nuint)(uint)programCounter);
+
+            // If cancellation is enabled and cancellation has been requested, throw an exception.
+            if (TCancelable.IsActive && _txTracer.IsCancelled)
+                ThrowOperationCanceledException();
+
+            // If tracing is enabled, start an instruction trace.
+            if (TTracingInst.IsActive)
+                StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
+
+            // Advance the program counter to point to the next instruction.
+            programCounter++;
+            opCodeCount++;
+
+            // Invoke the opcode method, which may modify the stack, gas, and program counter.
+            // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+            OpcodeResult result = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, programCounter);
+
+            programCounter = result.ProgramCounter;
+            // If gas is exhausted, jump to the out-of-gas handler.
+            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+            {
+                exceptionType = EvmExceptionType.OutOfGas;
+            }
+            else
+            {
+                exceptionType = result.Exception;
+            }
+            // If an exception occurred, exit the loop.
+            if (exceptionType != EvmExceptionType.None)
+                break;
+
+            // If tracing is enabled, complete the trace for the current instruction.
+            if (TTracingInst.IsActive)
+                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+        }
+        OpCodeCount += opCodeCount;
+
+        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
+        if (exceptionType <= EvmExceptionType.Revert)
+        {
+            // If tracing is enabled, complete the trace for the current instruction.
+            if (TTracingInst.IsActive)
+                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            UpdateCurrentState(programCounter, in gas, stack.Head);
+        }
+#if DEBUG
+        // Allow debugging before processing the return data.
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+#endif
+        return exceptionType;
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");

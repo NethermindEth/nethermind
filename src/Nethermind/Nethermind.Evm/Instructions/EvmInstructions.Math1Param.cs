@@ -52,7 +52,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
@@ -70,10 +70,10 @@ internal static partial class EvmInstructions
         // Write the computed result directly back to the stack slot.
         WriteUnaligned(ref bytesRef, result);
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Label for error handling when the stack does not have the required element.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -116,7 +116,7 @@ internal static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -130,25 +130,25 @@ internal static partial class EvmInstructions
         // If the position is out-of-range, push zero.
         if (a >= BigInt32)
         {
-            return stack.PushZero<TTracingInst>();
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
         else
         {
             int adjustedPosition = bytes.Length - 32 + (int)a;
             if (adjustedPosition < 0)
             {
-                return stack.PushZero<TTracingInst>();
+                return new(programCounter, stack.PushZero<TTracingInst>());
             }
             else
             {
                 // Push the extracted byte.
-                return stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
+                return new(programCounter, stack.PushByte<TTracingInst>(bytes[adjustedPosition]));
             }
         }
 
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume(ref gas, GasCostOf.Low);
@@ -169,7 +169,7 @@ internal static partial class EvmInstructions
             // If the index is out-of-range, no extension is needed.
             if (!stack.EnsureDepth(1))
                 goto StackUnderflow;
-            return EvmExceptionType.None;
+            return new(programCounter, EvmExceptionType.None);
         }
 
         int position = 31 - (int)a;
@@ -190,9 +190,9 @@ internal static partial class EvmInstructions
             BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 }
