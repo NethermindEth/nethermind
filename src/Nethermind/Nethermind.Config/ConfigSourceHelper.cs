@@ -101,7 +101,7 @@ namespace Nethermind.Config
         private static bool IsNullString(string valueString) =>
             valueString?.Equals("null", StringComparison.OrdinalIgnoreCase) ?? true;
 
-        public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
+        public static object GetDefault(Type type) => type.IsValueType ? Activator.CreateInstance(type) : null;
 
         private static bool TryFromHex(Type type, string itemValue, out object value)
         {
