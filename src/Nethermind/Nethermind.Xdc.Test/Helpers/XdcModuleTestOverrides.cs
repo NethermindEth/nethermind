@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -18,6 +19,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -47,6 +49,8 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddModule(new XdcModule())
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
+
+            .AddSingleton<IMasternodeVotingContract, XdcTestDepositContract>()
 
             // add missing components
             .AddSingleton<IPenaltyHandler, RandomPenalizer>()

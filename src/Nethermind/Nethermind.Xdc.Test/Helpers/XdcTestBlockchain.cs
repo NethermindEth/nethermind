@@ -178,7 +178,6 @@ public class XdcTestBlockchain : TestBlockchain
                 new XdcTestGenesisBuilder(
                     ctx.Resolve<ISpecProvider>(),
                     ctx.Resolve<IWorldState>(),
-                    ctx.Resolve<ISnapshotManager>(),
                     ctx.Resolve<IEnumerable<IGenesisPostProcessor>>().ToArray(),
                     ctx.Resolve<Configuration>(),
                     MasterNodeCandidates
@@ -314,7 +313,6 @@ public class XdcTestBlockchain : TestBlockchain
     private class XdcTestGenesisBuilder(
         ISpecProvider specProvider,
         IWorldState state,
-        ISnapshotManager snapshotManager,
         IGenesisPostProcessor[] postProcessors,
         Configuration testConfiguration,
         List<PrivateKey> masterNodeCandidates
@@ -350,7 +348,6 @@ public class XdcTestBlockchain : TestBlockchain
             state.CommitTree(0);
             genesisBlock.Header.StateRoot = state.StateRoot;
             genesisBlock.Header.Hash = genesisBlock.Header.CalculateHash();
-            snapshotManager.StoreSnapshot(new Types.Snapshot(genesisBlock.Number, genesisBlock.Hash!, finalSpec.GenesisMasterNodes));
             return genesisBlock;
         }
     }
@@ -396,16 +393,12 @@ public class XdcTestBlockchain : TestBlockchain
     {
         var b = await AddBlockWithoutCommitQc(transactions);
         CreateAndCommitQC((XdcBlockHeader)b.Header);
-
         return b;
     }
 
     public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
         var b = await base.AddBlockFromParent(parent, transactions);
-
-        CheckIfTimeForSnapshot();
-
         CreateAndCommitQC((XdcBlockHeader)b.Header);
 
         return b;
@@ -414,20 +407,7 @@ public class XdcTestBlockchain : TestBlockchain
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
     {
         await base.AddBlock(txs);
-
-        CheckIfTimeForSnapshot();
-
         return BlockTree.Head!;
-    }
-
-    private void CheckIfTimeForSnapshot()
-    {
-        var head = (XdcBlockHeader)BlockTree.Head!.Header;
-        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
-        if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
-        {
-            SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
-        }
     }
 
     public async Task TriggerAndSimulateBlockProposalAndVoting()
