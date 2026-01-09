@@ -17,3 +17,7 @@ jobs:
         uses: actions/setup-dotnet@v5
       - name: Format
         run: dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
+      - name: Check spelling
+        uses: streetsidesoftware/cspell-action@v7
+        with:
+          args: --config ./.cspell.json --no-progress --no-color
