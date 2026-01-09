@@ -100,7 +100,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (parentHeader.ExtraConsensusData is null)
         {
-            error = $"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain migth be corrupt!";
+            error = $"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain might be corrupt!";
             return false;
         }
 

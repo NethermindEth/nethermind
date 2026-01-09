@@ -31,7 +31,7 @@ public class TransactionForRpcDeserializationTests
     {
         get
         {
-            static TestCaseData Make(TxType expectedTxType, string json) => new(json) { TestName = $"Deserilizes into {expectedTxType} from {json}", ExpectedResult = expectedTxType };
+            static TestCaseData Make(TxType expectedTxType, string json) => new(json) { TestName = $"Deserializes into {expectedTxType} from {json}", ExpectedResult = expectedTxType };
 
             yield return Make(TxType.Legacy, """{"nonce":"0x0","to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""");
             yield return Make(TxType.Legacy, """{"nonce":"0x0","to":null,"gasPrice":"0x0","gas":"0x0","input":null}""");
