@@ -764,7 +764,7 @@ internal static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Return;
     // Jump forward to be unpredicted by the branch predictor.
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
@@ -818,7 +818,7 @@ internal static partial class EvmInstructions
 
         vm.ReturnData = deployCodeInfo;
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Return;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -1030,7 +1030,7 @@ internal static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Return;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
