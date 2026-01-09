@@ -1221,7 +1221,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             // Retrieve the code information and create a read-only span of instructions.
             ICodeInfo codeInfo = VmState.Env.CodeInfo;
-            ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
+            ReadOnlySpan<byte> codeSection = codeInfo.CodeSpan;
 
             EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods, codeSection);
 
@@ -1257,7 +1257,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         Revert:
             // Return a CallResult indicating a revert.
             shouldRevert = true;
-
         DataReturn:
             // Process the return data based on its runtime type.
             if (ReturnData is VmState<TGasPolicy> state)
@@ -1277,15 +1276,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Return a failure CallResult based on the remaining gas and the exception type.
             return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
         }
-        // Converts the code section bytes into a read-only span of instructions.
-        // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
-        static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
-        {
-            ReadOnlySpan<byte> codeBytes = codeInfo.CodeSpan;
-            return MemoryMarshal.CreateReadOnlySpan(
-                ref Unsafe.As<byte, Instruction>(ref MemoryMarshal.GetReference(codeBytes)),
-                codeBytes.Length);
-        }
     }
 
     [SkipLocalsInit]
@@ -1294,7 +1284,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ref EvmStack stack,
         ref TGasPolicy gas,
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods,
-        ReadOnlySpan<Instruction> codeSection
+        ReadOnlySpan<byte> codeSection
         ) where TTracingInst : struct, IFlag where TCancelable : struct, IFlag
     {
 #if DEBUG
@@ -1306,7 +1296,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = VmState.ProgramCounter;
         int opCodeCount = 0;
-        ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
+        ref byte code = ref MemoryMarshal.GetReference(codeSection);
         uint codeLength = (uint)codeSection.Length;
         // Iterate over the instructions using a while loop because opcodes may modify the program counter.
         while ((uint)programCounter < codeLength)
@@ -1316,7 +1306,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
             // Fetch the current instruction from the code section.
-            Instruction instruction = Unsafe.Add(ref code, (nuint)(uint)programCounter);
+            Instruction instruction = (Instruction)Unsafe.Add(ref code, (nuint)(uint)programCounter);
 
             // If cancellation is enabled and cancellation has been requested, throw an exception.
             if (TCancelable.IsActive && _txTracer.IsCancelled)
