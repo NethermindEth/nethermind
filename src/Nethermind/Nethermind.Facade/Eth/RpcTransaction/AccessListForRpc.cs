@@ -55,7 +55,7 @@ public class AccessListForRpc
         foreach (Item item in _items)
         {
             builder.AddAddress(item.Address);
-            foreach (UInt256 index in item.StorageKeys ?? [])
+            foreach (UInt256 index in item.StorageKeys ?? Array.Empty<UInt256>())
             {
                 builder.AddStorage(index);
             }
