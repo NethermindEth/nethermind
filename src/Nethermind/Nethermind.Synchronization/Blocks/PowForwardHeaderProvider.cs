@@ -73,7 +73,7 @@ public class PowForwardHeaderProvider(
             IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
             if (headers is not null)
             {
-                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[1].ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[^1].ToString(BlockHeader.Format.Short)}");
                 return headers;
             }
 
