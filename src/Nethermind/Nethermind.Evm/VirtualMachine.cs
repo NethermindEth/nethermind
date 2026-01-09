@@ -1214,29 +1214,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnData = null;
         SectionIndex = VmState.FunctionIndex;
 
-        // Retrieve the code information and create a read-only span of instructions.
-        ICodeInfo codeInfo = VmState.Env.CodeInfo;
-        ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
-
-        // Initialize the exception type to "None".
-        EvmExceptionType exceptionType = EvmExceptionType.None;
-#if DEBUG
-        // In debug mode, retrieve a tracer for interactive debugging.
-        DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
-#endif
-
-        // Set the program counter from the current VM state; it may not be zero if resuming after a call.
-        int programCounter = VmState.ProgramCounter;
-        int opCodeCount = 0;
-
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        var opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>*
-               opcodeMethods = opcodeArray)
+               opcodeMethods = _opcodeMethods)
         {
-            uint codeLength = (uint)codeSection.Length;
+            // Retrieve the code information and create a read-only span of instructions.
+            ICodeInfo codeInfo = VmState.Env.CodeInfo;
+            ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
+
+            // Initialize the exception type to "None".
+            EvmExceptionType exceptionType = EvmExceptionType.None;
+    #if DEBUG
+            // In debug mode, retrieve a tracer for interactive debugging.
+            DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
+    #endif
+            // Set the program counter from the current VM state; it may not be zero if resuming after a call.
+            int programCounter = VmState.ProgramCounter;
+            int opCodeCount = 0;
+
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
+            uint codeLength = (uint)codeSection.Length;
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < codeLength)
             {
@@ -1275,68 +1273,63 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-
-                // If return data has been set, exit the loop to process the returned value.
-                if (ReturnData is not null)
-                    break;
             }
             OpCodeCount += opCodeCount;
+
+            // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
+            if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Return)
+            {
+                // If tracing is enabled, complete the trace for the current instruction.
+                if (TTracingInst.IsActive)
+                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+                UpdateCurrentState(programCounter, in gas, stack.Head);
+
+                // If the exception indicates a revert, handle it specifically.
+                if (exceptionType == EvmExceptionType.Revert)
+                    goto Revert;
+                // If return data was produced, jump to the return data processing block.
+                if (exceptionType == EvmExceptionType.Return)
+                    goto DataReturn;
+            }
+            else
+            {
+                // For any other exception, jump to the failure handling routine.
+                goto ReturnFailure;
+            }
+
+            // If no return data is produced, return an empty call result.
+            return CallResult.Empty(codeInfo.Version);
+
+        DataReturn:
+    #if DEBUG
+            // Allow debugging before processing the return data.
+            debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+    #endif
+            // Process the return data based on its runtime type.
+            if (ReturnData is VmState<TGasPolicy> state)
+            {
+                return new CallResult(state);
+            }
+            else if (ReturnData is EofCodeInfo eofCodeInfo)
+            {
+                return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
+            }
+            // Fall back to returning a CallResult with a byte array as the return data.
+            return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
+
+        Revert:
+            // Return a CallResult indicating a revert.
+            return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
+
+        OutOfGas:
+            OpCodeCount += opCodeCount;
+            TGasPolicy.SetOutOfGas(ref gas);
+            // Set the exception type to OutOfGas if gas has been exhausted.
+            exceptionType = EvmExceptionType.OutOfGas;
+        ReturnFailure:
+            // Return a failure CallResult based on the remaining gas and the exception type.
+            return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
         }
-
-        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
-        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
-        {
-            // If tracing is enabled, complete the trace for the current instruction.
-            if (TTracingInst.IsActive)
-                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            UpdateCurrentState(programCounter, in gas, stack.Head);
-        }
-        else
-        {
-            // For any other exception, jump to the failure handling routine.
-            goto ReturnFailure;
-        }
-
-        // If the exception indicates a revert, handle it specifically.
-        if (exceptionType == EvmExceptionType.Revert)
-            goto Revert;
-        // If return data was produced, jump to the return data processing block.
-        if (ReturnData is not null)
-            goto DataReturn;
-
-        // If no return data is produced, return an empty call result.
-        return CallResult.Empty(codeInfo.Version);
-
-    DataReturn:
-#if DEBUG
-        // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
-        // Process the return data based on its runtime type.
-        if (ReturnData is VmState<TGasPolicy> state)
-        {
-            return new CallResult(state);
-        }
-        else if (ReturnData is EofCodeInfo eofCodeInfo)
-        {
-            return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
-        }
-        // Fall back to returning a CallResult with a byte array as the return data.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
-
-    Revert:
-        // Return a CallResult indicating a revert.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
-
-    OutOfGas:
-        OpCodeCount += opCodeCount;
-        TGasPolicy.SetOutOfGas(ref gas);
-        // Set the exception type to OutOfGas if gas has been exhausted.
-        exceptionType = EvmExceptionType.OutOfGas;
-    ReturnFailure:
-        // Return a failure CallResult based on the remaining gas and the exception type.
-        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
-
         // Converts the code section bytes into a read-only span of instructions.
         // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
         static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
