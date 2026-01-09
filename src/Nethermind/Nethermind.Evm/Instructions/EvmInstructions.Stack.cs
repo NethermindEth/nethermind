@@ -20,7 +20,6 @@ internal static partial class EvmInstructions
 {
     const int PopStackRequiredItemsCount = 1;
 
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CheckStackUnderflow(ref EvmStack stack, int itemsPoppedCount)
     {
