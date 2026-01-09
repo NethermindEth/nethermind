@@ -21,7 +21,7 @@
     "src/Nethermind/Chains/**",
     "src/Nethermind/Nethermind.Runner/configs/**",
     "src/Nethermind/TestResults/**",
-    "src/tests",
+    "src/tests"
   ],
   "ignoreRegExpList": [
     "/0x[0-9a-fA-F]+/g",
@@ -751,7 +751,7 @@
     "zhizhu",
     "zstandard",
     "zstd",
-    "zwcm",
+    "zwcm"
   ],
   "overrides": [
     {
