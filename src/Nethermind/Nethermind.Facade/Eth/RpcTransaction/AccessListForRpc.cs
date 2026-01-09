@@ -46,7 +46,7 @@ public class AccessListForRpc
 
     public static AccessListForRpc FromAccessList(AccessList? accessList) =>
         accessList is null
-        ? new AccessListForRpc([])
+        ? new AccessListForRpc()
         : new AccessListForRpc(accessList.Select(static item => new Item(item.Address, [.. item.StorageKeys])));
 
     public AccessList ToAccessList()
