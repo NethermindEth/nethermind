@@ -156,7 +156,7 @@ namespace Nethermind.Facade.Find
             return block;
         }
 
-        private IEnumerable<long> FilterBlockNumbersWithBloomsIndex(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+        private IEnumerable<long> FilterBlockNumbersWithBloomsIndex(LogFilter f, long @from, long to, CancellationToken token)
         {
             IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
 
@@ -170,7 +170,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        private IEnumerable<long> FilterBlockNumbersWithLogIndex(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+        private IEnumerable<long> FilterBlockNumbersWithLogIndex(LogFilter f, long @from, long to, CancellationToken token)
         {
             foreach (var blockNumber in _logIndexStorage!.EnumerateBlockNumbersFor(f, from, to))
             {
@@ -181,14 +181,14 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsWith(
             LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
-            Func<LogFilter, long, long, bool, CancellationToken, IEnumerable<long>> filterBlockNumbers,
+            Func<LogFilter, long, long, CancellationToken, IEnumerable<long>> filterBlockNumbers,
             CancellationToken cancellationToken)
         {
             IEnumerable<long> FilterBlocks(LogFilter f, long from, long to, bool runParallel, CancellationToken token)
             {
                 try
                 {
-                    foreach (var blockNumber in filterBlockNumbers(f, from, to, runParallel, token))
+                    foreach (var blockNumber in filterBlockNumbers(f, from, to, token))
                     {
                         yield return blockNumber;
                     }
