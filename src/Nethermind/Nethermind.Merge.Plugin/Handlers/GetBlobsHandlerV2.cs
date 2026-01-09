@@ -26,15 +26,6 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
 
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
 
-        int count = txPool.GetBlobCounts(request.BlobVersionedHashes);
-        Metrics.GetBlobsRequestsInBlobpoolTotal += count;
-
-        // quick fail if we don't have some blob (unless partial return is allowed)
-        if (!request.AllowPartialReturn && count != request.BlobVersionedHashes.Length)
-        {
-            return ReturnEmptyArray();
-        }
-
         ArrayPoolList<BlobAndProofV2?> response = new(request.BlobVersionedHashes.Length);
 
         try
@@ -44,6 +35,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
                 if (txPool.TryGetBlobAndProofV1(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
                 {
                     response.Add(new BlobAndProofV2(blob, cellProofs));
+                    Metrics.GetBlobsRequestsInBlobpoolTotal++;
                 }
                 else if (request.AllowPartialReturn)
                 {

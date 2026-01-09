@@ -83,8 +83,6 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
-
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
         public AnnounceResult NoitifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
