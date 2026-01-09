@@ -438,3 +438,6 @@ FodyWeavers.xsd
 ## Nethermind
 keystore/
 /.githooks
+
+# AI
+**/.claude/**
