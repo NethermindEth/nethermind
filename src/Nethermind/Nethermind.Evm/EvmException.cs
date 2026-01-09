@@ -14,6 +14,8 @@ namespace Nethermind.Evm
     {
         Stop = -1,
         None = 0,
+        Revert,
+        Return,
         BadInstruction,
         StackOverflow,
         StackUnderflow,
@@ -29,8 +31,6 @@ namespace Nethermind.Evm
         TransactionCollision,
         NotEnoughBalance,
         Other,
-        Revert,
         InvalidCode,
-        Return
     }
 }
