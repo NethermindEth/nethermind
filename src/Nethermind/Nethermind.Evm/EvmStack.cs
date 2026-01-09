@@ -183,36 +183,42 @@ public ref partial struct EvmStack
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushRightPaddedBytes<TTracingInst>(scoped ReadOnlySpan<byte> span)
+    public EvmExceptionType PushRightPaddedBytes<TTracingInst>(ref byte src, uint length)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
-            ReportStackPush(span);
+            ReportStackPush(ref src, length);
 
-        ref byte dst = ref PushBytesRef();
-        ref byte src = ref MemoryMarshal.GetReference(span);
-
-        if (span.Length == WordSize)
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref byte dst = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize));
+        if (newOffset >= MaxStackSize)
         {
-            if (Vector256.IsHardwareAccelerated)
-            {
-                Unsafe.As<byte, Word>(ref dst) = Unsafe.As<byte, Word>(ref src);
-            }
-            else
-            {
-                Unsafe.As<byte, HalfWord>(ref dst) = Unsafe.ReadUnaligned<HalfWord>(ref src);
-                Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) =
-                    Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
-            }
+            return EvmExceptionType.StackOverflow;
+        }
+        Head = (int)newOffset;
 
-            return;
+        if (length != WordSize)
+        {
+            return PushBytesPartialZeroPadded(ref dst, ref src, length);
         }
 
-        PushBytesPartialZeroPadded(ref dst, ref src, (nuint)span.Length);
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Unsafe.As<byte, Word>(ref dst) = Unsafe.As<byte, Word>(ref src);
+        }
+        else
+        {
+            Unsafe.As<byte, HalfWord>(ref dst) = Unsafe.ReadUnaligned<HalfWord>(ref src);
+            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) =
+                Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
+        }
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private static void PushBytesPartialZeroPadded(ref byte dst, ref byte src, nuint length)
+    private static EvmExceptionType PushBytesPartialZeroPadded(ref byte dst, ref byte src, nuint length)
     {
         nuint q = length >> 3; // full 8-byte chunks: 0..3
         nuint r = length & 7;  // remainder: 0..7
@@ -259,6 +265,8 @@ public ref partial struct EvmStack
             Unsafe.As<byte, HalfWord>(ref dst) = lo.AsByte();
             Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
         }
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
@@ -284,8 +292,9 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly void ReportStackPush(scoped ReadOnlySpan<byte> value)
+    private readonly void ReportStackPush(ref byte span, uint length)
     {
+        ReadOnlySpan<byte> value = MemoryMarshal.CreateReadOnlySpan(ref span, (int)length);
         ZeroPaddedSpan padded = new(value, WordSize - value.Length, PadDirection.Right);
         _tracer.ReportStackPush(padded);
     }
