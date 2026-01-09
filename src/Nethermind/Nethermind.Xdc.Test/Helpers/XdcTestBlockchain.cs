@@ -188,9 +188,9 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton<ISigner>(ctx =>
             {
                 var spec = ctx.Resolve<ISpecProvider>();
-                var logmanager = ctx.Resolve<ILogManager>();
+                var logManager = ctx.Resolve<ILogManager>();
                 //Set the first signer to be a non master node to avoid accidental block proposals
-                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logmanager);
+                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logManager);
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
