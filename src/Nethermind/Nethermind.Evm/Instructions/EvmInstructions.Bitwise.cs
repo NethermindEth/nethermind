@@ -43,7 +43,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
@@ -54,7 +54,7 @@ internal static partial class EvmInstructions
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef))
         {
-            return EvmExceptionType.StackUnderflow;
+            return new(programCounter, EvmExceptionType.StackUnderflow);
         }
         // Read the 256-bit vector from unaligned memory.
         Word aVec = ReadUnaligned<Word>(ref bytesRef);
@@ -63,13 +63,13 @@ internal static partial class EvmInstructions
         bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef))
         {
-            return EvmExceptionType.StackUnderflow;
+            return new(programCounter, EvmExceptionType.StackUnderflow);
         }
         Word bVec = ReadUnaligned<Word>(ref bytesRef);
         // Write the result directly into the memory of the top stack element.
         WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     }
 
     /// <summary>

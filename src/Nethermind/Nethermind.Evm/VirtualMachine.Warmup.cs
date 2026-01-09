@@ -171,7 +171,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 stack.PushOne<TTracingInst>();
                 stack.PushOne<TTracingInst>();
 
-                opcodes[i](vm, ref stack, ref gas, ref pc);
+                opcodes[i](vm, ref stack, ref gas, pc);
                 if (vm.ReturnData is VmState<TGasPolicy> returnState)
                 {
                     returnState.Dispose();

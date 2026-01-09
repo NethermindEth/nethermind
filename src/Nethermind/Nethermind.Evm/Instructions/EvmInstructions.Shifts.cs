@@ -50,7 +50,7 @@ internal static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionShift<TGasPolicy, TOpShift, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
@@ -66,7 +66,7 @@ internal static partial class EvmInstructions
         {
             // Pop the second operand without using its value.
             if (!stack.PopLimbo()) goto StackUnderflow;
-            return stack.PushZero<TTracingInst>();
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
         else
         {
@@ -74,11 +74,11 @@ internal static partial class EvmInstructions
             if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
             // Perform the shift operation using the specific implementation.
             TOpShift.Operation(in a, in b, out UInt256 result);
-            return stack.PushUInt256<TTracingInst>(in result);
+            return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
         }
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -96,7 +96,7 @@ internal static partial class EvmInstructions
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionSar<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -113,12 +113,12 @@ internal static partial class EvmInstructions
             if (As<UInt256, Int256>(ref b).Sign >= 0)
             {
                 // Non-negative value: result is zero.
-                return stack.PushZero<TTracingInst>();
+                return new(programCounter, stack.PushZero<TTracingInst>());
             }
             else
             {
                 // Negative value: result is -1 (all bits set).
-                return stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+                return new(programCounter, stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne));
             }
         }
         else
@@ -126,11 +126,11 @@ internal static partial class EvmInstructions
             // For a valid shift amount (<256), perform an arithmetic right shift.
             As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
             // Convert the signed result back to unsigned representation.
-            return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+            return new(programCounter, stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result)));
         }
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>

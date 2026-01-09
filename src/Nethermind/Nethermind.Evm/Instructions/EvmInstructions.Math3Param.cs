@@ -18,7 +18,7 @@ internal static partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
@@ -29,16 +29,16 @@ internal static partial class EvmInstructions
 
         if (c.IsZero)
         {
-            return stack.PushZero<TTracingInst>();
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
         else
         {
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            return stack.PushUInt256<TTracingInst>(in result);
+            return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
         }
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     public struct OpAddMod : IOpMath3Param

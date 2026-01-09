@@ -21,12 +21,12 @@ internal static unsafe partial class EvmInstructions
     /// <typeparam name="TTracingInst">A struct implementing IFlag used for tracing purposes.</typeparam>
     /// <param name="spec">The release specification containing enabled features and opcode flags.</param>
     /// <returns>An array of function pointers (opcode handlers) indexed by opcode value.</returns>
-    public static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TGasPolicy, TTracingInst>(IReleaseSpec spec)
+    public static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] GenerateOpCodes<TGasPolicy, TTracingInst>(IReleaseSpec spec)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
+        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[byte.MaxValue + 1];
 
         for (int i = 0; i < lookup.Length; i++)
         {
