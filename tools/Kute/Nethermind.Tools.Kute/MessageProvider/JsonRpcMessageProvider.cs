@@ -40,7 +40,6 @@ public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
                     yield return new JsonRpc.Request.Batch(node);
                     break;
                 default:
-                    // TODO: Log potential error
                     break;
             }
         }
