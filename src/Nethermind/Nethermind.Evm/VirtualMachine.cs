@@ -1243,12 +1243,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
             }
 
+            bool shouldRevert = false;
             // If return data was produced, jump to the return data processing block.
             if (ReturnData is not null)
+            {
+                exceptionType = EvmExceptionType.None;
                 goto DataReturn;
+            }
 
             // If no return data is produced, return an empty call result.
             return CallResult.Empty(codeInfo.Version);
+
+        Revert:
+            // Return a CallResult indicating a revert.
+            shouldRevert = true;
 
         DataReturn:
             // Process the return data based on its runtime type.
@@ -1261,16 +1269,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
             }
             // Fall back to returning a CallResult with a byte array as the return data.
-            return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
-
-        Revert:
-            // Return a CallResult indicating a revert.
-            return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
+            return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert, exceptionType);
 
         OutOfGas:
             TGasPolicy.SetOutOfGas(ref gas);
-            // Set the exception type to OutOfGas if gas has been exhausted.
-            exceptionType = EvmExceptionType.OutOfGas;
         ReturnFailure:
             // Return a failure CallResult based on the remaining gas and the exception type.
             return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
