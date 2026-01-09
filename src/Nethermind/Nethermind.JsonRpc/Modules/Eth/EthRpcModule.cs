@@ -637,7 +637,10 @@ public partial class EthRpcModule(
 
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
             if (logFilter is not null && filter is not null)
+            {
                 logFilter.UseIndex = filter.UseIndex;
+                logFilter.UseBloom = filter.UseBloom;
+            }
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 

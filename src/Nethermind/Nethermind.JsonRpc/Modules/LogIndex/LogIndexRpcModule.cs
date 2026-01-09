@@ -1,26 +1,26 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
-public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builder, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge)
+public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builder, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge, ILogFinder logFinder)
     : ILogIndexRpcModule
 {
-    public ResultWrapper<int[]> logIndex_blockNumbers(Filter filter)
+    public ResultWrapper<long[]?> logIndex_blockNumbers(Filter filter)
     {
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock!, filter.ToBlock!, filter.Address, filter.Topics);
+        (logFilter.UseIndex, logFilter.UseBloom) = (filter.UseIndex, filter.UseBloom);
 
-        return ResultWrapper<int[]>.Success(
-            storage.EnumerateBlockNumbersFor(logFilter, GetBlockNumber(logFilter.FromBlock), GetBlockNumber(logFilter.ToBlock)).ToArray()
+        return ResultWrapper<long[]>.Success(
+            logFinder.GetBlockNumbers(logFilter, GetBlockNumber(logFilter.FromBlock), GetBlockNumber(logFilter.ToBlock), CancellationToken.None)
         );
     }
 

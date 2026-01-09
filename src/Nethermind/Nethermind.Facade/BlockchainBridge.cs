@@ -393,6 +393,11 @@ namespace Nethermind.Facade
             return logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
+        public long[]? GetBlockNumbers(LogFilter filter, long fromBlock, long toBlock, CancellationToken token)
+        {
+            return logFinder.GetBlockNumbers(filter, fromBlock, toBlock, token);
+        }
+
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return logFinder.FindLogs(filter, cancellationToken);

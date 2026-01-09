@@ -111,9 +111,11 @@ namespace Nethermind.Facade.Find
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            result = result.Concat(
-                FilterLogsWith(filter, FindHeader(indexRange.from), FindHeader(indexRange.to), FilterBlockNumbersWithLogIndex, cancellationToken)
-            );
+            result = result.Concat(FilterLogsWith(
+                filter, FindHeader(indexRange.from), FindHeader(indexRange.to),
+                filter.UseBloom ? FilterBlockNumbersWithLogIndexAndBloom : FilterBlockNumbersWithLogIndex,
+                cancellationToken
+            ));
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -132,7 +134,7 @@ namespace Nethermind.Facade.Find
         {
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
-            bool useBloom = shouldUseBloom && canUseBloom;
+            bool useBloom = shouldUseBloom && canUseBloom && filter.UseBloom;
             return useBloom
                 ? FilterLogsWith(filter, fromBlock, toBlock, FilterBlockNumbersWithBloomsIndex, cancellationToken)
                 : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
@@ -156,7 +158,20 @@ namespace Nethermind.Facade.Find
             return block;
         }
 
-        private IEnumerable<long> FilterBlockNumbersWithBloomsIndex(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+        public long[]? GetBlockNumbers(LogFilter filter, long fromBlock, long toBlock, CancellationToken token)
+        {
+            IEnumerable<long> enumerable = (filter.UseIndex, filter.UseBloom) switch
+            {
+                (false, false) => null,
+                (true, false) => FilterBlockNumbersWithLogIndex(filter, fromBlock, toBlock, token),
+                (false, true) => FilterBlockNumbersWithBloomsIndex(filter, fromBlock, toBlock, token),
+                (true, true) => FilterBlockNumbersWithLogIndexAndBloom(filter, fromBlock, toBlock, token),
+            };
+
+            return enumerable?.ToArray();
+        }
+
+        private IEnumerable<long> FilterBlockNumbersWithBloomsIndex(LogFilter f, long @from, long to, CancellationToken token)
         {
             IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
 
@@ -170,7 +185,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        private IEnumerable<long> FilterBlockNumbersWithLogIndex(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+        private IEnumerable<long> FilterBlockNumbersWithLogIndex(LogFilter f, long @from, long to, CancellationToken token)
         {
             foreach (var blockNumber in _logIndexStorage!.EnumerateBlockNumbersFor(f, from, to))
             {
@@ -179,16 +194,30 @@ namespace Nethermind.Facade.Find
             }
         }
 
+        private IEnumerable<long> FilterBlockNumbersWithLogIndexAndBloom(LogFilter f, long @from, long to, CancellationToken token)
+        {
+            using var enumerator = new LogIndexFilterVisitor.IntersectEnumerator(
+                FilterBlockNumbersWithBloomsIndex(f, from, to, token).Select(static l => (int)l).GetEnumerator(),
+                FilterBlockNumbersWithLogIndex(f, from, to, token).Select(static l => (int)l).GetEnumerator()
+            );
+
+            while (enumerator.MoveNext())
+            {
+                yield return enumerator.Current;
+                token.ThrowIfCancellationRequested();
+            }
+        }
+
         private IEnumerable<FilterLog> FilterLogsWith(
             LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock,
-            Func<LogFilter, long, long, bool, CancellationToken, IEnumerable<long>> filterBlockNumbers,
+            Func<LogFilter, long, long, CancellationToken, IEnumerable<long>> filterBlockNumbers,
             CancellationToken cancellationToken)
         {
             IEnumerable<long> FilterBlocks(LogFilter f, long from, long to, bool runParallel, CancellationToken token)
             {
                 try
                 {
-                    foreach (var blockNumber in filterBlockNumbers(f, from, to, runParallel, token))
+                    foreach (var blockNumber in filterBlockNumbers(f, from, to, token))
                     {
                         yield return blockNumber;
                     }

@@ -13,5 +13,6 @@ namespace Nethermind.Facade.Find
     {
         IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
+        long[]? GetBlockNumbers(LogFilter filter, long fromBlock, long toBlock, CancellationToken token);
     }
 }

@@ -20,7 +20,7 @@ namespace Nethermind.Facade.Filters;
 /// </summary>
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {
-    internal sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    public sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
     {
         public bool MoveNext()
         {

@@ -23,6 +23,8 @@ public class Filter : IJsonRpcParam
 
     public bool UseIndex { get; set; } = true;
 
+    public bool UseBloom { get; set; } = true;
+
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
         JsonDocument doc = null;
@@ -75,6 +77,16 @@ public class Filter : IJsonRpcParam
                     JsonValueKind.False => false,
                     JsonValueKind.True => true,
                     _ => UseIndex
+                };
+            }
+
+            if (filter.TryGetProperty("useBloom"u8, out JsonElement useBloom))
+            {
+                UseBloom = useBloom.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseBloom
                 };
             }
         }

@@ -9,7 +9,7 @@ namespace Nethermind.JsonRpc.Modules.LogIndex;
 public interface ILogIndexRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Retrieves log index block number for the given filter.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<int[]> logIndex_blockNumbers(
+    ResultWrapper<long[]?> logIndex_blockNumbers(
         [JsonRpcParameter] Filter filter
     );
 

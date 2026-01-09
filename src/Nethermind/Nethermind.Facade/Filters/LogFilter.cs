@@ -20,6 +20,7 @@ namespace Nethermind.Blockchain.Filters
         public BlockParameter FromBlock { get; } = fromBlock;
         public BlockParameter ToBlock { get; } = toBlock;
         public bool UseIndex { get; set; } = true;
+        public bool UseBloom { get; set; } = true;
 
         public bool AcceptsAnyBlock =>
             AddressFilter.Addresses.Count == 0 &&
