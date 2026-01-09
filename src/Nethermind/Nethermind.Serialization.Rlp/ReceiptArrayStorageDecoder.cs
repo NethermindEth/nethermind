@@ -80,9 +80,11 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             return;
         }
 
-        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        bool useCompactEncoding = compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0;
+        int totalLength = GetContentLength(items, rlpBehaviors);
+
+        if (useCompactEncoding)
         {
-            int totalLength = GetContentLength(items, rlpBehaviors);
             stream.WriteByte(CompactEncoding);
             stream.StartSequence(totalLength - 1);
 
@@ -93,7 +95,6 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
         else
         {
-            int totalLength = GetContentLength(items, rlpBehaviors);
             stream.StartSequence(totalLength);
 
             for (int i = 0; i < items.Length; i++)
