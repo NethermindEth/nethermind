@@ -4,17 +4,23 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
 
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+
 namespace Nethermind.Facade.Filters;
 
+/// <summary>
+/// Converts <see cref="LogFilter"/> tree and block range into a block numbers enumerator.
+/// </summary>
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {
-    public sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    internal sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
     {
         public bool MoveNext()
         {
@@ -54,7 +60,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         }
     }
 
-    public sealed class UnionEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    internal sealed class UnionEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
     {
         // TODO: reduce number of fields?
         private bool _has1;
