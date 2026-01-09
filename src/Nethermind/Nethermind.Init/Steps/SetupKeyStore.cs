@@ -27,56 +27,60 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public async Task Execute(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken cancellationToken)
         {
-            (IApiWithStores get, IApiWithBlockchain set) = _api.ForInit;
-            // why is the await Task.Run here?
-            await Task.Run(() =>
+            if (cancellationToken.IsCancellationRequested)
             {
-                IKeyStoreConfig keyStoreConfig = get.Config<IKeyStoreConfig>();
-                INetworkConfig networkConfig = get.Config<INetworkConfig>();
+                return Task.FromCanceled(cancellationToken);
+            }
 
-                AesEncrypter encrypter = new(keyStoreConfig, get.LogManager);
+            (IApiWithStores get, IApiWithBlockchain set) = _api.ForInit;
 
-                IKeyStore? keyStore = set.KeyStore = new FileKeyStore(
-                    keyStoreConfig,
-                    get.EthereumJsonSerializer,
-                    encrypter,
-                    get.CryptoRandom,
-                    get.LogManager,
-                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
+            IKeyStoreConfig keyStoreConfig = get.Config<IKeyStoreConfig>();
+            INetworkConfig networkConfig = get.Config<INetworkConfig>();
 
-                set.Wallet = get.Config<IInitConfig>() switch
-                {
-                    { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: true } => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
-                    { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: false } => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
-                    _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(get.CryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
-                        get.Timestamper, get.LogManager),
-                };
+            AesEncrypter encrypter = new(keyStoreConfig, get.LogManager);
 
-                new AccountUnlocker(keyStoreConfig, get.Wallet, get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))
-                    .UnlockAccounts();
+            IKeyStore? keyStore = set.KeyStore = new FileKeyStore(
+                keyStoreConfig,
+                get.EthereumJsonSerializer,
+                encrypter,
+                get.CryptoRandom,
+                get.LogManager,
+                new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
 
-                BasePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
-                    .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
+            set.Wallet = get.Config<IInitConfig>() switch
+            {
+                { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: true } => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
+                { EnableUnsecuredDevWallet: true, KeepDevWalletInMemory: false } => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
+                _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(get.CryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
+                    get.Timestamper, get.LogManager),
+            };
 
-                INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
-                IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
+            new AccountUnlocker(keyStoreConfig, get.Wallet, get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))
+                .UnlockAccounts();
 
-                IMiningConfig miningConfig = get.Config<IMiningConfig>();
-                //Don't load the local key if an external signer is configured
-                if (string.IsNullOrEmpty(miningConfig.Signer))
-                {
-                    set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                }
+            BasePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
+                .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
 
-                IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
-                IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
+            IProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
-                get.LogManager.SetGlobalVariable("enode", enode.ToString());
+            IMiningConfig miningConfig = get.Config<IMiningConfig>();
+            //Don't load the local key if an external signer is configured
+            if (string.IsNullOrEmpty(miningConfig.Signer))
+            {
+                set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+            }
 
-                _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(nodeKey.PublicKey) ?? false).ToArray() ?? [];
-            }, cancellationToken);
+            IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
+            IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
+
+            get.LogManager.SetGlobalVariable("enode", enode.ToString());
+
+            _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(nodeKey.PublicKey) ?? false).ToArray() ?? [];
+
+            return Task.CompletedTask;
         }
     }
 }
