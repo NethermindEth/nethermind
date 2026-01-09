@@ -1225,10 +1225,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             // Initialize the exception type to "None".
             EvmExceptionType exceptionType = EvmExceptionType.None;
-    #if DEBUG
+#if DEBUG
             // In debug mode, retrieve a tracer for interactive debugging.
             DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
-    #endif
+#endif
             // Set the program counter from the current VM state; it may not be zero if resuming after a call.
             int programCounter = VmState.ProgramCounter;
             int opCodeCount = 0;
@@ -1277,19 +1277,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             OpCodeCount += opCodeCount;
 
             // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
-            if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Return)
+            if (exceptionType <= EvmExceptionType.Return)
             {
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
                 UpdateCurrentState(programCounter, in gas, stack.Head);
-
-                // If the exception indicates a revert, handle it specifically.
-                if (exceptionType == EvmExceptionType.Revert)
-                    goto Revert;
-                // If return data was produced, jump to the return data processing block.
-                if (exceptionType == EvmExceptionType.Return)
-                    goto DataReturn;
             }
             else
             {
@@ -1297,14 +1290,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 goto ReturnFailure;
             }
 
+            // If the exception indicates a revert, handle it specifically.
+            if (exceptionType == EvmExceptionType.Revert)
+                goto Revert;
+            // If return data was produced, jump to the return data processing block.
+            if (ReturnData is not null)
+                goto DataReturn;
+
             // If no return data is produced, return an empty call result.
             return CallResult.Empty(codeInfo.Version);
 
         DataReturn:
-    #if DEBUG
+#if DEBUG
             // Allow debugging before processing the return data.
             debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-    #endif
+#endif
             // Process the return data based on its runtime type.
             if (ReturnData is VmState<TGasPolicy> state)
             {
