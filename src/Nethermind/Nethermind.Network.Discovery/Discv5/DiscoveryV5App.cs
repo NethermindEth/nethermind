@@ -208,7 +208,7 @@ public class DiscoveryV5App : IDiscoveryApp
     {
         Channel<Node> discoveredNodesChannel = Channel.CreateBounded<Node>(1);
 
-        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, ArrayPoolSpan<byte> nodeId, bool disposeNodeId = false)
+        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, ArrayPoolSpan<byte> nodeId, bool disposeNodeId = true)
         {
             try
             {
@@ -292,13 +292,13 @@ public class DiscoveryV5App : IDiscoveryApp
                 {
                     using ArrayPoolList<Task> discoverTasks = new(RandomNodesToLookupCount);
 
-                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), selfNodeId));
+                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), selfNodeId, false));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
                         ArrayPoolSpan<byte> randomNodeId = new(32);
                         random.NextBytes(randomNodeId);
-                        discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId, true));
+                        discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
                     }
 
                     await Task.WhenAll(discoverTasks);
