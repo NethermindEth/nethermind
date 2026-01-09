@@ -242,22 +242,11 @@ Can vote if ALL of:
 
 **Purpose**: Manage validator set transitions at epoch boundaries
 
-**Epoch Structure**:
-// This figure is not clear for me, let's add more explanation
-```
-Epoch N                    Epoch N+1
-├────────────────────┤     ├────────────────────┤
-│                    │     │                    │
-│  Regular Blocks    │     │  Regular Blocks    │
-│  (EpochLength-Gap) │     │                    │
-│                    │     │                    │
-├────────────────────┤     │                    │
-│                    │     │                    │
-│  Gap (Snapshot)    │────▶│  New Validators    │
-│  Block N*EpochLen  │     │  Applied Here      │
-│  -Gap              │     │                    │
-│                    │     │                    │
-└────────────────────┘     └────────────────────┘
+**Gap Number Detection**:
+```csharp
+IsTimeforSnapshot(blockNumber, spec):
+  - Is it a gap block? → TRUE
+Pull master node candidates from master node contract and save a snapshot
 ```
 
 **Epoch Switch Detection**:
@@ -406,7 +395,7 @@ Phase 4: QC AGGREGATION
 Phase 5: QC COMMITMENT
 ───────────────────────
 ┌────────────────────────────────┐
-│ ProcessQC()                    │ // I wouldn't call CommitCertificate() since commit usually means finalize
+│ CommitQC()                     │
 │ 1. Update HighestQC            │
 │ 2. Check 3-chain rule          │
 │ 3. Finalize grandparent?       │
@@ -709,7 +698,6 @@ Round   Leader Index    Leader
 Commit grandparent when three consecutive rounds exist:
 
 ```
-// proposedBlock corresponds to the ProposedBlockInfo in incomingQC
 CommitBlock(proposedBlock, proposedRound, proposedQC, incomingQC):
   1. parent = proposedBlock.parent
   2. grandparent = parent.parent
@@ -780,7 +768,7 @@ Calculate next validator set:
 CalculateNextEpochMasternodes(blockNumber, parentHash):
   1. Load previous snapshot (gap block)
   2. Get candidates from snapshot
-  3. Calculate penalties // forensics does not mean this, so remove the word "forensics"
+  3. Calculate penalties
   4. masterodes = candidates - penalties
   5. Enforce maximum: Take(MaxMasternodes)
   6. Return (masternodes, penalties)
@@ -818,7 +806,6 @@ Minimum: 2f + 1 = ⌈2N/3⌉
 ### 2. Fork Prevention
 
 ```
-// The Suggest() function is not familiar to me, can you provide the Golang code location?
 XdcBlockTree.Suggest():
   1. Check if new block builds on finalized chain
   2. Search up to MaxSearchDepth (1024 blocks)
@@ -996,7 +983,7 @@ T+10.1s  TCManager             SendTimeout
 T+10.5s  TCManager             Collect TCs
 T+11s    TCManager             Threshold reached
         └─▶ Create TC
-T+11.1s  TCManager             ProcessTC
+T+11.1s  TCManager             Process TC
         └─▶ Update HighestTC
 T+11.2s  XdcConsensusContext   SetNewRound(N+1)
 ```
