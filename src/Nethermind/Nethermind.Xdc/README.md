@@ -559,7 +559,7 @@ XdcBlockHeader {
     Hash256 ParentHash
     Address Beneficiary
     Hash256 StateRoot
-    long Number // in Golang, it's `*big.Int`. Is it okay to use `long` here?
+    long Number
     ulong Timestamp
     ...
     
