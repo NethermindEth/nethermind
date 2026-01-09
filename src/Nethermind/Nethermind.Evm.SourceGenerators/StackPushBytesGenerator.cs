@@ -167,6 +167,7 @@ public sealed class StackPushBytesGenerator : IIncrementalGenerator
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
@@ -332,35 +333,38 @@ if ({{tracingTpName}}.IsActive)
         }
 
         sb.AppendBlock(indent + 1, """
-
-ref Vector256<byte> head = ref Unsafe.As<byte, Vector256<byte>>(ref PushBytesNullableRef());
-if (!Unsafe.IsNullRef(ref head))
+uint headOffset = (uint)Head;
+uint newOffset = headOffset + 1;
+ref Vector256<byte> head = ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+if (newOffset >= MaxStackSize)
 {
+    return EvmExceptionType.StackOverflow;
+}
+
+Head = (int)newOffset;
 """);
 
         // Emit the actual word build.
         if (size == 32)
         {
             // full 32 bytes, no padding
-            sb.Indent(indent + 2).AppendLine($$"""head = Unsafe.ReadUnaligned<Vector256<byte>>(ref {{valueName}});""");
+            sb.Indent(indent + 1).AppendLine($$"""head = Unsafe.ReadUnaligned<Vector256<byte>>(ref {{valueName}});""");
         }
         else
         {
             if (pad == (byte)1) // PadDirection.Left: payload right-aligned (EVM PUSH)
             {
-                EmitPadLeftBody(sb, indent + 2, size, isByteValue, valueName);
+                EmitPadLeftBody(sb, indent + 1, size, isByteValue, valueName);
             }
             else // PadDirection.Right: payload left-aligned
             {
-                EmitPadRightBody(sb, indent + 2, size, isByteValue, valueName);
+                EmitPadRightBody(sb, indent + 1, size, isByteValue, valueName);
             }
         }
 
-        sb.AppendBlock(indent + 1, """
+        sb.AppendBlock(indent, """
     return EvmExceptionType.None;
-}
 """);
-        sb.Indent(indent + 1).AppendLine("return EvmExceptionType.StackOverflow;");
         sb.Indent(indent).AppendLine("}");
         sb.AppendLine();
     }
