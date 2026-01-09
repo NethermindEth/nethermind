@@ -1287,6 +1287,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private EvmExceptionType InterpreterLoop<TTracingInst, TCancelable>(
         ref EvmStack stack,
         ref TGasPolicy gas,
