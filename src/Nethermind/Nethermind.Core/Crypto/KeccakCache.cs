@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
@@ -15,7 +16,7 @@ namespace Nethermind.Core.Crypto;
 /// <summary>
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
-/// It allocates only 12MB of memory to store 128k of entries.
+/// It allocates only 16MB of memory to store 128k of entries.
 /// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
 /// Requires a single CAS to lock and <see cref="Volatile.Write(ref int,int)"/> to unlock.
 /// On a lock failure, it just moves on with execution.
@@ -34,7 +35,7 @@ public static unsafe class KeccakCache
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
-
+    private const int CacheLineSizeBytes = 64;
     private static readonly Entry* Memory;
 
     static KeccakCache()
@@ -69,8 +70,14 @@ public static unsafe class KeccakCache
         Debug.Assert(index < Count);
 
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
+        if (Sse.IsSupported)
+        {
+            // This would be a GC hole if was managed memory, but it's native.
+            // Regardless, prefetch is non-faulting so it's safe.
+            Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + CacheLineSizeBytes);
+        }
 
-        // Half the hash his encoded in the bucket so we only need half of it and can use other half for length.
+        // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
         uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
@@ -174,10 +181,9 @@ public static unsafe class KeccakCache
     private struct Entry
     {
         /// <summary>
-        /// The size will make it 1.5 CPU cache entry or 0.75 which may result in some collisions.
-        /// Still, it's better to save these 32 bytes per entry and have a bigger cache.
+        /// The size will make it 2 CPU cache entries.
         /// </summary>
-        public const int Size = 96;
+        public const int Size = 128;
 
         private const int PayloadStart = sizeof(uint);
         private const int ValueStart = Size - ValueHash256.MemorySize;
