@@ -283,7 +283,6 @@ namespace Nethermind.Core
                 if (obj.GetType() != typeof(Transaction))
                     return false;
 
-                obj.ClearPreHash();
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
