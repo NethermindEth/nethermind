@@ -26,18 +26,18 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private sealed class ProcessingQueue
     {
         private readonly TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> _aggregateBlock;
-        private readonly ActionBlock<LogIndexAggregate> _setReceiptsBlock;
+        private readonly ActionBlock<LogIndexAggregate> _addReceiptsBlock;
 
-        public int QueueCount => _aggregateBlock.InputCount + _setReceiptsBlock.InputCount;
+        public int QueueCount => _aggregateBlock.InputCount + _addReceiptsBlock.InputCount;
         public Task WriteAsync(IReadOnlyList<BlockReceipts> batch, CancellationToken cancellation) => _aggregateBlock.SendAsync(batch, cancellation);
-        public Task Completion => Task.WhenAll(_aggregateBlock.Completion, _setReceiptsBlock.Completion);
+        public Task Completion => Task.WhenAll(_aggregateBlock.Completion, _addReceiptsBlock.Completion);
 
         public ProcessingQueue(
             TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock,
-            ActionBlock<LogIndexAggregate> setReceiptsBlock)
+            ActionBlock<LogIndexAggregate> addReceiptsBlock)
         {
             _aggregateBlock = aggregateBlock;
-            _setReceiptsBlock = setReceiptsBlock;
+            _addReceiptsBlock = addReceiptsBlock;
         }
     }
 
@@ -264,8 +264,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             }
         );
 
-        var setReceiptsBlock = new ActionBlock<LogIndexAggregate>(
-            aggr => SetReceiptsAsync(aggr, isForward),
+        var addReceiptsBlock = new ActionBlock<LogIndexAggregate>(
+            aggr => AddReceiptsAsync(aggr, isForward),
             new()
             {
                 BoundedCapacity = _config.MaxSavingQueueSize,
@@ -276,10 +276,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         );
 
         aggregateBlock.Completion.ContinueWith(t => HandleExceptionAsync(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
-        setReceiptsBlock.Completion.ContinueWith(t => HandleExceptionAsync(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+        addReceiptsBlock.Completion.ContinueWith(t => HandleExceptionAsync(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
 
-        aggregateBlock.LinkTo(setReceiptsBlock, new() { PropagateCompletion = true });
-        return new(aggregateBlock, setReceiptsBlock);
+        aggregateBlock.LinkTo(addReceiptsBlock, new() { PropagateCompletion = true });
+        return new(aggregateBlock, addReceiptsBlock);
     }
 
     private async Task HandleExceptionAsync(Exception? exception, bool isStopping = false)
@@ -310,12 +310,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         return _logIndexStorage.Aggregate(batch, !isForward, _stats);
     }
 
-    private async Task SetReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
+    private async Task AddReceiptsAsync(LogIndexAggregate aggregate, bool isForward)
     {
         if (GetNextBlockNumber(_logIndexStorage, isForward) is { } next && next != aggregate.FirstBlockNum)
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
-        await _logIndexStorage.SetReceiptsAsync(aggregate, _stats);
+        await _logIndexStorage.AddReceiptsAsync(aggregate, _stats);
         LastUpdate = DateTimeOffset.Now;
 
         UpdateProgress();

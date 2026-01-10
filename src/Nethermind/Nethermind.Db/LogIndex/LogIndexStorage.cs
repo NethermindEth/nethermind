@@ -35,7 +35,7 @@ namespace Nethermind.Db.LogIndex
             // Any ordered prefix seeking will start on it
             public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BlockNumSize).ToArray();
 
-            // Any ordered prefix seeking will end on it.
+            // Any ordered prefix seeking will end on it
             public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumSize).ToArray();
 
             // Exclusive upper bound for iterator seek, so that ForwardMerge will be the last key
@@ -122,7 +122,7 @@ namespace Nethermind.Db.LogIndex
         private readonly ICompactor _compactor;
         private readonly CompressionAlgorithm _compressionAlgorithm;
 
-        private readonly Lock _rangeInitLock = new(); // May not be needed, but added for safety
+        private readonly Lock _rangeInitLock = new();
 
         private int? _maxBlock;
         private int? _minBlock;
@@ -136,7 +136,7 @@ namespace Nethermind.Db.LogIndex
         /// <summary>
         /// Whether a first batch was already added.
         /// </summary>
-        private bool WasInitialized => _minBlock is not null || _maxBlock is not null;
+        private bool FirstBlockAdded => _minBlock is not null || _maxBlock is not null;
 
         /// <summary>
         /// Guarantees initialization won't be run concurrently
@@ -148,7 +148,7 @@ namespace Nethermind.Db.LogIndex
         /// Used for blocking concurrent executions and
         /// ensuring the current iteration is completed before stopping/disposing.
         /// </summary>
-        private readonly Dictionary<bool, SemaphoreSlim> _setReceiptsSemaphores = new()
+        private readonly Dictionary<bool, SemaphoreSlim> _writeSemaphores = new()
         {
             { false, new(1, 1) },
             { true, new(1, 1) }
@@ -188,7 +188,7 @@ namespace Nethermind.Db.LogIndex
                 _metaDb = GetMetaDb(_rootDb);
                 _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
                 _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
-                _compressionAlgorithm = SelectCompressionAlgo(config.CompressionAlgorithm);
+                _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
 
@@ -207,7 +207,7 @@ namespace Nethermind.Db.LogIndex
             (IColumnsDb<LogIndexColumns> root, IDb meta) = CreateDb();
 
             if (reset)
-                return ResetAndCreateNew(root, "Log index storage: resetting data per configuration...");
+                return ResetAndCreateNew(root, "Log index: resetting data per configuration...");
 
             var versionBytes = meta.Get(SpecialKey.Version);
             if (versionBytes is null) // DB is empty
@@ -218,7 +218,7 @@ namespace Nethermind.Db.LogIndex
 
             return versionBytes.SequenceEqual(VersionBytes)
                 ? root
-                : ResetAndCreateNew(root, $"Log index storage: version is incorrect: {versionBytes[0]} < {VersionBytes}, resetting data...");
+                : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} < {VersionBytes}, resetting data...");
 
             IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
             {
@@ -246,10 +246,8 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private CompressionAlgorithm SelectCompressionAlgo(string? configAlgoName)
+        private CompressionAlgorithm SelectCompressionAlgorithm(string? configAlgoName)
         {
-            IDb meta = GetMetaDb(_rootDb);
-
             CompressionAlgorithm? configAlgo = null;
             if (configAlgoName is not null && !CompressionAlgorithm.Supported.TryGetValue(configAlgoName, out configAlgo))
             {
@@ -258,14 +256,14 @@ namespace Nethermind.Db.LogIndex
                 );
             }
 
-            var algoBytes = meta.Get(SpecialKey.CompressionAlgo);
+            var algoBytes = _metaDb.Get(SpecialKey.CompressionAlgo);
             if (algoBytes is null) // DB is empty
             {
                 KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
                     ? KeyValuePair.Create(configAlgoName, configAlgo)
                     : CompressionAlgorithm.Best;
 
-                meta.Set(SpecialKey.CompressionAlgo, Encoding.ASCII.GetBytes(selected.Key));
+                _metaDb.Set(SpecialKey.CompressionAlgo, Encoding.ASCII.GetBytes(selected.Key));
                 return selected.Value;
             }
 
@@ -301,8 +299,8 @@ namespace Nethermind.Db.LogIndex
             if (_stopped)
                 return;
 
-            await _setReceiptsSemaphores[false].WaitAsync();
-            await _setReceiptsSemaphores[true].WaitAsync();
+            await _writeSemaphores[false].WaitAsync();
+            await _writeSemaphores[true].WaitAsync();
 
             try
             {
@@ -321,8 +319,8 @@ namespace Nethermind.Db.LogIndex
             }
             finally
             {
-                _setReceiptsSemaphores[false].Release();
-                _setReceiptsSemaphores[true].Release();
+                _writeSemaphores[false].Release();
+                _writeSemaphores[true].Release();
             }
         }
 
@@ -353,8 +351,8 @@ namespace Nethermind.Db.LogIndex
 
             await StopAsync();
 
-            await _setReceiptsSemaphores[false].WaitAsync();
-            await _setReceiptsSemaphores[true].WaitAsync();
+            await _writeSemaphores[false].WaitAsync();
+            await _writeSemaphores[true].WaitAsync();
 
             if (_disposed)
                 return;
@@ -366,8 +364,8 @@ namespace Nethermind.Db.LogIndex
 
         private void DisposeCore()
         {
-            _setReceiptsSemaphores[false].Dispose();
-            _setReceiptsSemaphores[true].Dispose();
+            _writeSemaphores[false].Dispose();
+            _writeSemaphores[true].Dispose();
             _compressor?.Dispose();
             DBColumns?.DisposeItems();
             _rootDb?.Dispose();
@@ -381,9 +379,9 @@ namespace Nethermind.Db.LogIndex
 
         private void UpdateRange(int minBlock, int maxBlock, bool isBackwardSync)
         {
-            if (!WasInitialized)
+            if (!FirstBlockAdded)
             {
-                using Lock.Scope _ = _rangeInitLock.EnterScope();
+                using Lock.Scope _ = _rangeInitLock.EnterScope(); // May not be needed, but added for safety
                 (_minBlock, _maxBlock) = (minBlock, maxBlock);
                 return;
             }
@@ -527,17 +525,17 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        public async Task ReorgFrom(BlockReceipts block)
+        public async Task RemoveReorgedAsync(BlockReceipts block)
         {
             ThrowIfStopped();
             ThrowIfHasError();
 
-            if (!WasInitialized)
+            if (!FirstBlockAdded)
                 return;
 
             const bool isBackwardSync = false;
 
-            SemaphoreSlim semaphore = _setReceiptsSemaphores[isBackwardSync];
+            SemaphoreSlim semaphore = _writeSemaphores[isBackwardSync];
             await LockRunAsync(semaphore);
 
             byte[]? keyArray = null, valueArray = null;
@@ -623,7 +621,7 @@ namespace Nethermind.Db.LogIndex
                 _logger.Info($"Log index forced compaction finished in {Stopwatch.GetElapsedTime(timestamp)}, DB size: {GetDbSize()} {stats:d}");
         }
 
-        public async Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
+        public async Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
             ThrowIfHasError();
@@ -631,10 +629,10 @@ namespace Nethermind.Db.LogIndex
             long totalTimestamp = Stopwatch.GetTimestamp();
 
             var isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
-            SemaphoreSlim semaphore = _setReceiptsSemaphores[isBackwardSync];
+            SemaphoreSlim semaphore = _writeSemaphores[isBackwardSync];
             await LockRunAsync(semaphore);
 
-            var wasInitialized = WasInitialized;
+            var wasInitialized = FirstBlockAdded;
             if (!wasInitialized)
                 await _initSemaphore.WaitAsync();
 
@@ -651,7 +649,7 @@ namespace Nethermind.Db.LogIndex
                     // Add addresses
                     foreach ((Address address, List<int> blockNums) in aggregate.Address)
                     {
-                        SaveBlockNumbersByKey(batches.Address, address.Bytes, blockNums, isBackwardSync, stats);
+                        MergeBlockNumbers(batches.Address, address.Bytes, blockNums, isBackwardSync, stats);
                     }
 
                     // Add topics
@@ -660,10 +658,10 @@ namespace Nethermind.Db.LogIndex
                         Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
 
                         foreach ((Hash256 topic, List<int> blockNums) in topics)
-                            SaveBlockNumbersByKey(batches.Topics[topicIndex], topic.Bytes, blockNums, isBackwardSync, stats);
+                            MergeBlockNumbers(batches.Topics[topicIndex], topic.Bytes, blockNums, isBackwardSync, stats);
                     }
 
-                    stats?.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
+                    stats?.Merging.Include(Stopwatch.GetElapsedTime(timestamp));
                 }
 
                 timestamp = Stopwatch.GetTimestamp();
@@ -690,18 +688,18 @@ namespace Nethermind.Db.LogIndex
 
             foreach (MergeOperator mergeOperator in _mergeOperators.Values)
                 stats?.Combine(mergeOperator.GetAndResetStats());
-            stats?.PostMergeProcessing.Combine(_compressor.GetAndResetStats());
+            stats?.Compressing.Combine(_compressor.GetAndResetStats());
             stats?.Compacting.Combine(_compactor.GetAndResetStats());
-            stats?.SetReceipts.Include(Stopwatch.GetElapsedTime(totalTimestamp));
+            stats?.Adding.Include(Stopwatch.GetElapsedTime(totalTimestamp));
         }
 
-        public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
             LogIndexAggregate aggregate = Aggregate(batch, isBackwardSync, stats);
-            return SetReceiptsAsync(aggregate, stats);
+            return AddReceiptsAsync(aggregate, stats);
         }
 
-        protected virtual void SaveBlockNumbersByKey(
+        protected virtual void MergeBlockNumbers(
             IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums,
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
@@ -723,7 +721,7 @@ namespace Nethermind.Db.LogIndex
                 // - FlushOnTooManyWrites
                 // - atomic flushing
                 dbBatch.Merge(dbKey, newValue);
-                stats?.CallingMerge.Include(Stopwatch.GetElapsedTime(timestamp));
+                stats?.DBMerging.Include(Stopwatch.GetElapsedTime(timestamp));
             }
             finally
             {

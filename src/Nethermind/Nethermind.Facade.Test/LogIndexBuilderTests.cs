@@ -59,12 +59,12 @@ public class LogIndexBuilderTests
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
             new(batch);
 
-        public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
-            return SetReceiptsAsync(Aggregate(batch, isBackwardSync, stats), stats);
+            return AddReceiptsAsync(Aggregate(batch, isBackwardSync, stats), stats);
         }
 
-        public virtual Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
+        public virtual Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             var min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
             var max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
@@ -90,7 +90,7 @@ public class LogIndexBuilderTests
             return Task.CompletedTask;
         }
 
-        public Task ReorgFrom(BlockReceipts block) => Task.CompletedTask;
+        public Task RemoveReorgedAsync(BlockReceipts block) => Task.CompletedTask;
 
         public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) => Task.CompletedTask;
 
@@ -103,10 +103,10 @@ public class LogIndexBuilderTests
     {
         private int _callCount;
 
-        public override Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
+        public override Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             return Interlocked.Increment(ref _callCount) <= failAfter
-                ? base.SetReceiptsAsync(aggregate, stats)
+                ? base.AddReceiptsAsync(aggregate, stats)
                 : throw exception;
         }
     }

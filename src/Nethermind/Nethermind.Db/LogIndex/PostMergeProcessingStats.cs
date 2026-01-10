@@ -5,25 +5,25 @@ namespace Nethermind.Db.LogIndex;
 
 public class PostMergeProcessingStats
 {
-    public ExecTimeStats GettingValue { get; set; } = new();
+    public ExecTimeStats DBReading { get; set; } = new();
     public ExecTimeStats CompressingValue { get; set; } = new();
-    public ExecTimeStats PuttingValues { get; set; } = new();
+    public ExecTimeStats DBSaving { get; set; } = new();
     public int QueueLength { get; set; }
 
     public long CompressedAddressKeys;
     public long CompressedTopicKeys;
 
-    public ExecTimeStats Execution { get; } = new();
+    public ExecTimeStats Total { get; } = new();
 
     public void Combine(PostMergeProcessingStats other)
     {
-        GettingValue.Combine(other.GettingValue);
+        DBReading.Combine(other.DBReading);
         CompressingValue.Combine(other.CompressingValue);
-        PuttingValues.Combine(other.PuttingValues);
+        DBSaving.Combine(other.DBSaving);
 
         CompressedAddressKeys += other.CompressedAddressKeys;
         CompressedTopicKeys += other.CompressedTopicKeys;
 
-        Execution.Combine(other.Execution);
+        Total.Combine(other.Total);
     }
 }

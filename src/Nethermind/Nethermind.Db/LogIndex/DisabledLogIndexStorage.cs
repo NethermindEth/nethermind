@@ -29,13 +29,13 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
-    public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
+    public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
-    public Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) =>
+    public Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
-    public Task ReorgFrom(BlockReceipts block) =>
+    public Task RemoveReorgedAsync(BlockReceipts block) =>
         throw new NotSupportedException();
 
     public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) =>

@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
-        public ILogIndexConfig LogIndexConfig => new LogIndexConfig();
+        public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =

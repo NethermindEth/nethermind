@@ -24,21 +24,21 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
     public long? MaxBlockNumber => storage.MaxBlockNumber;
     public long? MinBlockNumber => storage.MinBlockNumber;
 
-    public ExecTimeStats SetReceipts { get; } = new();
+    public ExecTimeStats Adding { get; } = new();
     public ExecTimeStats Aggregating { get; } = new();
-    public ExecTimeStats Processing { get; } = new();
+    public ExecTimeStats Merging { get; } = new();
 
-    public ExecTimeStats CallingMerge { get; } = new();
+    public ExecTimeStats DBMerging { get; } = new();
     public ExecTimeStats UpdatingMeta { get; } = new();
     public ExecTimeStats CommitingBatch { get; } = new();
-    public ExecTimeStats InMemoryMerging { get; } = new();
+    public ExecTimeStats BackgroundMerging { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
 
     public ExecTimeStats QueueingAddressCompression { get; } = new();
     public ExecTimeStats QueueingTopicCompression { get; } = new();
 
-    public PostMergeProcessingStats PostMergeProcessing { get; } = new();
+    public PostMergeProcessingStats Compressing { get; } = new();
     public CompactingStats Compacting { get; } = new();
 
     public ExecTimeStats LoadingReceipts { get; } = new();
@@ -50,19 +50,19 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
         _logsAdded += other._logsAdded;
         _topicsAdded += other._topicsAdded;
 
-        SetReceipts.Combine(other.SetReceipts);
+        Adding.Combine(other.Adding);
         Aggregating.Combine(other.Aggregating);
-        Processing.Combine(other.Processing);
+        Merging.Combine(other.Merging);
         UpdatingMeta.Combine(other.UpdatingMeta);
-        CallingMerge.Combine(other.CallingMerge);
+        DBMerging.Combine(other.DBMerging);
         CommitingBatch.Combine(other.CommitingBatch);
-        InMemoryMerging.Combine(other.InMemoryMerging);
+        BackgroundMerging.Combine(other.BackgroundMerging);
         KeysCount.Combine(other.KeysCount);
 
         QueueingAddressCompression.Combine(other.QueueingAddressCompression);
         QueueingTopicCompression.Combine(other.QueueingTopicCompression);
 
-        PostMergeProcessing.Combine(other.PostMergeProcessing);
+        Compressing.Combine(other.Compressing);
         Compacting.Combine(other.Compacting);
 
         LoadingReceipts.Combine(other.LoadingReceipts);
@@ -87,24 +87,24 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
                {tab}Logs: +{LogsAdded:N0}
                {tab}Topics: +{TopicsAdded:N0}
 
-               {tab}Loading receipts: {LoadingReceipts}
-
                {tab}Keys per batch: {KeysCount:N0}
-               {tab}SetReceipts: {SetReceipts}
+
+               {tab}Loading receipts: {LoadingReceipts}
                {tab}Aggregating: {Aggregating}
-               {tab}Processing: {Processing}
 
-               {tab}Merge call: {CallingMerge}
-               {tab}Updating metadata: {UpdatingMeta}
-               {tab}Commiting batch: {CommitingBatch}
-               {tab}In-memory merging: {InMemoryMerging}
+               {tab}Adding receipts: {Adding}
+               {tab}{tab}Merging: {Merging} (DB: {DBMerging})
+               {tab}{tab}Updating metadata: {UpdatingMeta}
+               {tab}{tab}Commiting batch: {CommitingBatch}
 
-               {tab}Post-merge processing: {PostMergeProcessing.Execution}
-               {tab}{tab}DB getting: {PostMergeProcessing.GettingValue}
-               {tab}{tab}Compressing: {PostMergeProcessing.CompressingValue}
-               {tab}{tab}Putting: {PostMergeProcessing.PuttingValues}
-               {tab}{tab}Compressed keys: {PostMergeProcessing.CompressedAddressKeys:N0} address, {PostMergeProcessing.CompressedTopicKeys:N0} topic
-               {tab}{tab}In queue: {PostMergeProcessing.QueueLength:N0}
+               {tab}Background merging: {BackgroundMerging}
+
+               {tab}Post-merge compression: {Compressing.Total}
+               {tab}{tab}DB reading: {Compressing.DBReading}
+               {tab}{tab}Compressing: {Compressing.CompressingValue}
+               {tab}{tab}DB saving: {Compressing.DBSaving}
+               {tab}{tab}Keys compressed: {Compressing.CompressedAddressKeys:N0} address, {Compressing.CompressedTopicKeys:N0} topic
+               {tab}{tab}Keys in queue: {Compressing.QueueLength:N0}
 
                {tab}Compacting: {Compacting.Total}
                """;

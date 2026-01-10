@@ -117,7 +117,7 @@ partial class LogIndexStorage
             {
                 if (!success) result?.Dispose();
 
-                _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
+                _stats.BackgroundMerging.Include(Stopwatch.GetElapsedTime(timestamp));
             }
         }
 

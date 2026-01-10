@@ -8,6 +8,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public abstract class TopicsFilter
     {
+        public abstract IEnumerable<TopicExpression> Expressions { get; }
+        public abstract bool AcceptsAnyBlock { get; }
+
         public abstract bool Accepts(LogEntry entry);
 
         public abstract bool Accepts(ref LogEntryStructRef entry);
@@ -15,9 +18,5 @@ namespace Nethermind.Blockchain.Filters.Topics
         public abstract bool Matches(Bloom bloom);
 
         public abstract bool Matches(ref BloomStructRef bloom);
-
-        public abstract bool AcceptsAnyBlock { get; }
-
-        public abstract IEnumerable<TopicExpression> Expressions { get; }
     }
 }

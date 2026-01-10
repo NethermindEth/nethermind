@@ -41,7 +41,7 @@ partial class LogIndexStorage
         private readonly ManualResetEventSlim _startEvent = new(false);
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
 
-        private int _processingCount = 0;
+        private int _processingCount;
         private PostMergeProcessingStats _stats = new();
 
         public PostMergeProcessingStats GetAndResetStats()
@@ -104,7 +104,7 @@ partial class LogIndexStorage
 
                 var timestamp = Stopwatch.GetTimestamp();
                 Span<byte> dbValue = db.Get(dbKey);
-                _stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
+                _stats.DBReading.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Do not compress blocks that can be reorged, as compressed data is immutable
                 if (!UseBackwardSyncFor(dbKey))
@@ -140,14 +140,14 @@ partial class LogIndexStorage
                     batch.Merge(dbKey, truncateOp);
                 }
 
-                _stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
+                _stats.DBSaving.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 if (topicIndex is null)
                     Interlocked.Increment(ref _stats.CompressedAddressKeys);
                 else
                     Interlocked.Increment(ref _stats.CompressedTopicKeys);
 
-                _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
+                _stats.Total.Include(Stopwatch.GetElapsedTime(execTimestamp));
             }
             catch (Exception ex)
             {

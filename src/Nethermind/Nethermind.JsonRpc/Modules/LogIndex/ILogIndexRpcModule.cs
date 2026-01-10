@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
@@ -9,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.LogIndex;
 public interface ILogIndexRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Retrieves log index block number for the given filter.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<int[]> logIndex_blockNumbers(
+    ResultWrapper<IEnumerable<int>> logIndex_blockNumbers(
         [JsonRpcParameter] Filter filter
     );
 

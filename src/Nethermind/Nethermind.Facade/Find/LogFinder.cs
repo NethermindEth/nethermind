@@ -99,7 +99,7 @@ namespace Nethermind.Facade.Find
             if (GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange)
                 return FilterLogsWithoutIndex(filter, fromBlock, toBlock, cancellationToken);
 
-            // Combine results from regular scanning and index
+            // Combine results from indexed and non-indexed scans
             IEnumerable<FilterLog>? result = [];
 
             if (indexRange.from > fromBlock.Number)

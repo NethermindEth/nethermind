@@ -8,6 +8,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Db.LogIndex;
 
+/// <summary>
+/// Set of in-memory dictionaries mapping each address/topic to a sequence of block numbers
+/// from the <paramref name="firstBlockNum"/> - <paramref name="lastBlockNum"/> range.
+/// </summary>
 public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
 {
     private Dictionary<Address, List<int>>? _address;
