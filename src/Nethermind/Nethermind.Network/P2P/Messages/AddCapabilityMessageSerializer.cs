@@ -17,12 +17,13 @@ namespace Nethermind.Network.P2P.Messages
 
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
-            int totalLength = GetLength(msg, out int contentLength);
+            string protocolCode = msg.Capability.ProtocolCode.ToLowerInvariant();
+            int totalLength = GetLength(protocolCode, msg.Capability.Version, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
-            stream.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
+            stream.Encode(protocolCode);
             stream.Encode(msg.Capability.Version);
         }
 
@@ -35,10 +36,10 @@ namespace Nethermind.Network.P2P.Messages
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }
-        private static int GetLength(AddCapabilityMessage msg, out int contentLength)
+        private static int GetLength(string protocolCode, int version, out int contentLength)
         {
-            contentLength = Rlp.LengthOf(msg.Capability.ProtocolCode.ToLowerInvariant());
-            contentLength += Rlp.LengthOf(msg.Capability.Version);
+            contentLength = Rlp.LengthOf(protocolCode);
+            contentLength += Rlp.LengthOf(version);
 
             return Rlp.LengthOfSequence(contentLength);
         }
