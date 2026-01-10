@@ -1216,14 +1216,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>*
-               opcodeMethods = _opcodeMethods)
+        fixed (byte* pOpcodeMethods = &MemoryMarshal.GetArrayDataReference(_opcodeMethods))
         {
+            var opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>*)pOpcodeMethods;
+
             // Retrieve the code information and create a read-only span of instructions.
             ICodeInfo codeInfo = VmState.Env.CodeInfo;
-            ReadOnlySpan<byte> codeSection = codeInfo.CodeSpan;
 
-            EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods, codeSection);
+            EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods, codeInfo);
 
             // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
             if (exceptionType > EvmExceptionType.Return)
@@ -1258,23 +1258,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Return a CallResult indicating a revert.
             shouldRevert = true;
         DataReturn:
+            object? returnData = ReturnData;
             // Process the return data based on its runtime type.
-            if (ReturnData is VmState<TGasPolicy> state)
+            if (returnData is VmState<TGasPolicy> state)
             {
                 return new CallResult(state);
             }
-            else if (ReturnData is EofCodeInfo eofCodeInfo)
+            else if (returnData is byte[] array)
             {
-                return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
+                return new CallResult(null, array, null, codeInfo.Version, shouldRevert, exceptionType);
             }
-            // Fall back to returning a CallResult with a byte array as the return data.
-            return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert, exceptionType);
+            return ReturnEof(codeInfo);
 
         OutOfGas:
             TGasPolicy.SetOutOfGas(ref gas);
         ReturnFailure:
             // Return a failure CallResult based on the remaining gas and the exception type.
             return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        CallResult ReturnEof(ICodeInfo codeInfo)
+        {
+            return new CallResult((EofCodeInfo)ReturnData, ReturnDataBuffer, null, codeInfo.Version);
         }
     }
 
@@ -1284,20 +1290,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ref EvmStack stack,
         ref TGasPolicy gas,
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods,
-        ReadOnlySpan<byte> codeSection
+        ICodeInfo codeInfo
         ) where TTracingInst : struct, IFlag where TCancelable : struct, IFlag
     {
 #if DEBUG
         // In debug mode, retrieve a tracer for interactive debugging.
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
+        ReadOnlySpan<byte> codeSection = codeInfo.CodeSpan;
+        ref byte code = ref MemoryMarshal.GetReference(codeSection);
+        uint codeLength = (uint)codeSection.Length;
         // Initialize the exception type to "None".
         EvmExceptionType exceptionType = EvmExceptionType.None;
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = VmState.ProgramCounter;
         int opCodeCount = 0;
-        ref byte code = ref MemoryMarshal.GetReference(codeSection);
-        uint codeLength = (uint)codeSection.Length;
         // Iterate over the instructions using a while loop because opcodes may modify the program counter.
         while ((uint)programCounter < codeLength)
         {

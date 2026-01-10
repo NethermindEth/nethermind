@@ -42,7 +42,7 @@ namespace Nethermind.Evm
         public readonly ulong _data;
         public readonly int ProgramCounter
         {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 return (int)(uint)_data;
@@ -51,7 +51,7 @@ namespace Nethermind.Evm
 
         public readonly EvmExceptionType Exception
         {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 return (EvmExceptionType)(_data >> 32);
