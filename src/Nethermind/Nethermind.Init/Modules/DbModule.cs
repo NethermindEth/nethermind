@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -13,6 +14,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Init.Modules;
@@ -56,11 +58,6 @@ public class DbModule(
                     throw new InvalidOperationException($"{nameof(IKeyValueStore)}:{key} is not of type {nameof(ISortedKeyValueStore)}");
                 return sortedKeyValue;
             })
-
-            // Monitoring use these to track active db. We intercept db factory to keep them lazy. Does not
-            // track db that is not created by db factory though...
-            .AddSingleton<DbTracker>()
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
 
             .AddDatabase(DbNames.State)
             .AddDatabase(DbNames.Code)
@@ -128,5 +125,34 @@ public class DbModule(
         {
             return baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
         }
+    }
+}
+
+public class DbMonitoringModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        // Intercept created db to publish metric.
+        // Dont use constructor injection to get all db because that would resolve all db
+        // making them not lazy.
+        builder
+            .AddSingleton<DbTracker>()
+            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
+
+            // Intercept block processing by checking the queue and pausing the metrics when that happen.
+            // Dont use constructor injection because this would prevent the metric from being updated before
+            // the block processing chain is constructed, eg: verifytrie or import jobs.
+            .Intercept<IBlockProcessingQueue>((processingQueue, ctx) =>
+            {
+                if (!ctx.Resolve<IMetricsConfig>().PauseDbMetricDuringBlockProcessing) return;
+
+                // Do not update db metrics while processing a block
+                DbTracker updater = ctx.Resolve<DbTracker>();
+                processingQueue.BlockAdded += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
+                processingQueue.BlockRemoved += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
+            })
+            ;
     }
 }
