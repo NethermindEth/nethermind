@@ -112,4 +112,23 @@ public class Eip7918Tests : VirtualMachineTestsBase
 
         Assert.That(result, Is.EqualTo(expected));
     }
+
+    [Test]
+    public void TryCalculateFeePerBlobGas_Should_Be_Consistent()
+    {
+        IReleaseSpec spec = Osaka.Instance;
+        int blobsUsed = (int)spec.TargetBlobCount + 1;
+
+        // null ExcessBlobGas treated as 0, floor applies
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(blobsUsed))
+            .WithExcessBlobGas(null)
+            .WithBaseFee(1_000_000_000)
+            .TestObject;
+
+        BlobGasCalculator.TryCalculateFeePerBlobGas(parentHeader, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(0, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas2);
+
+        Assert.That(feePerBlobGas, Is.EqualTo(feePerBlobGas2));
+    }
 }
