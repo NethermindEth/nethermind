@@ -253,6 +253,7 @@ public class FlatWorldStateScopeProviderTests
         UInt256 slotIndex = 1;
         byte[] olderSlotValue = { 0x01, 0x02 };
         byte[] middleSlotValue = { 0x03, 0x04, 0x05 };
+        byte[] newerSlotValue = { 0x06, 0x07, 0x08, 0x09 };
 
         Account account = TestItem.GenerateRandomAccount();
         ctx.PersistenceReader.GetAccount(testAddress).Returns(account);
@@ -260,13 +261,37 @@ public class FlatWorldStateScopeProviderTests
         // Add slots to multiple snapshots - newer should shadow older
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(olderSlotValue));
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(middleSlotValue));
-        ctx.AddSnapshot(content => { });
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(newerSlotValue));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
         byte[] result = storageTree.Get(slotIndex);
 
         // Should return the newest value
-        Assert.That(result, Is.EqualTo(middleSlotValue));
+        Assert.That(result, Is.EqualTo(newerSlotValue));
+    }
+
+    [Test]
+    public void TestGetSlotFromLastSnapshot()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slotIndex = 1;
+        byte[] slotValue = { 0xAA, 0xBB, 0xCC };
+
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(account);
+
+        // Add empty first snapshots, then add slot to last snapshot
+        ctx.AddSnapshot(content => { });
+        ctx.AddSnapshot(content => { });
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue));
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        byte[] result = storageTree.Get(slotIndex);
+
+        Assert.That(result, Is.EqualTo(slotValue));
     }
 
     [Test]
@@ -487,6 +512,134 @@ public class FlatWorldStateScopeProviderTests
         bool found = ctx.LastCommittedSnapshot!.TryGetStorage(testAddress, slotIndex, out SlotValue? committedSlot);
         Assert.That(found, Is.True);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
+    }
+
+    // ===== COMPREHENSIVE SELFDESTRUCT BLOCKING TESTS =====
+
+    [Test]
+    public void TestSelfDestructBlocksAllEarlierSnapshots()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slotIndex = 1;
+        byte[] slotValue1 = { 0x01 };
+        byte[] slotValue2 = { 0x02 };
+        byte[] slotValue3 = { 0x03 };
+
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(account);
+
+        // Create multiple layers of snapshots with slot values
+        // Snapshot 0: First slot value
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue1));
+        
+        // Snapshot 1: Updated slot value
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue2));
+        
+        // Snapshot 2: Another update
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue3));
+        
+        // Snapshot 3: Empty snapshot
+        ctx.AddSnapshot(content => { });
+        
+        // Snapshot 4: SELFDESTRUCT - this should block ALL earlier snapshots
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
+        
+        // Snapshot 5: Empty snapshot after selfdestruct
+        ctx.AddSnapshot(content => { });
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        byte[] result = storageTree.Get(slotIndex);
+
+        // Should return zero bytes - ALL earlier snapshot values are blocked by selfdestruct
+        Assert.That(result, Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
+    [Test]
+    public void TestSelfDestructBlocksPersistedSlotValue()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slotIndex = 1;
+        byte[] persistedSlotValue = { 0xDE, 0xAD, 0xBE, 0xEF };
+
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(account);
+
+        // Setup persistence to return a slot value
+        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue)!.Value;
+        ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
+            .Returns(x => {
+                x[2] = outValue;
+                return true;
+            });
+
+        // Add several empty snapshots
+        ctx.AddSnapshot(content => { });
+        ctx.AddSnapshot(content => { });
+        ctx.AddSnapshot(content => { });
+        
+        // Add selfdestruct in the last snapshot - should block persistence
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        byte[] result = storageTree.Get(slotIndex);
+
+        // Should return zero bytes - persisted value is blocked by selfdestruct
+        Assert.That(result, Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
+    [Test]
+    public void TestSelfDestructBlocksEarlySnapshotAndPersistence()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slotIndex = 1;
+        byte[] persistedSlotValue = { 0xAA, 0xBB, 0xCC, 0xDD };
+        byte[] snapshot0Value = { 0x11, 0x22 };
+        byte[] snapshot1Value = { 0x33, 0x44 };
+        byte[] snapshot2Value = { 0x55, 0x66 };
+
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(account);
+
+        // Setup persistence to return a slot value
+        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue)!.Value;
+        ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
+            .Returns(x => {
+                x[2] = outValue;
+                return true;
+            });
+
+        // Snapshot 0: Slot value
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(snapshot0Value));
+        
+        // Snapshot 1: Updated slot value
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(snapshot1Value));
+        
+        // Snapshot 2: Another update
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(snapshot2Value));
+        
+        // Snapshot 3: Empty
+        ctx.AddSnapshot(content => { });
+        
+        // Snapshot 4: SELFDESTRUCT - blocks both snapshots AND persistence
+        ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
+        
+        // Snapshot 5: Empty after selfdestruct
+        ctx.AddSnapshot(content => { });
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        byte[] result = storageTree.Get(slotIndex);
+
+        // Should return zero bytes - neither snapshot values nor persistence value should appear
+        Assert.That(result, Is.EqualTo(StorageTree.ZeroBytes));
     }
 
 
