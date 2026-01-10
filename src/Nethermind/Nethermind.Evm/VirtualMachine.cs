@@ -1298,8 +1298,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         while (result.Value < codeLength)
         {
 #if DEBUG
+            int programCounter = result.ProgramCounter;
             // Allow the debugger to inspect and possibly pause execution for debugging purposes.
             debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+            result = new(programCounter);
 #endif
             // Fetch the current instruction from the code section.
             Instruction instruction = (Instruction)Unsafe.Add(ref code, (nuint)result.Value);
@@ -1341,8 +1343,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UpdateCurrentState(result.ProgramCounter, in gas, stack.Head);
         }
 #if DEBUG
+        int programCounter0 = result.ProgramCounter;
         // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+        debugger?.TryWait(ref _currentState, ref programCounter0, ref gas, ref stack.Head);
 #endif
         return exception;
 
