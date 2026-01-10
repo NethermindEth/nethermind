@@ -65,7 +65,7 @@ internal class XdcSealValidatorTests
             Build.A.XdcBlockHeader()
             .TestObject;
         header.Beneficiary = TestItem.AddressA;
-        yield return new TestCaseData(header, new byte[0]);
+        yield return new TestCaseData(header, Array.Empty<byte>());
         yield return new TestCaseData(header, new byte[65]);
         yield return new TestCaseData(header, new byte[66]);
         byte[] extraLongSignature = new byte[66];
