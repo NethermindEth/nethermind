@@ -316,6 +316,42 @@ public class HistoryPrunerTests
             LimboLogs.Instance));
     }
 
+    [Test]
+    public async Task Should_not_get_stuck_when_block_is_already_removed_by_manual_pruner()
+    {        
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 100,
+            PruningInterval = 0
+        };
+
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        var blockTree = testBlockchain.BlockTree;
+
+        for (int i = 0; i < 2; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+        
+        testBlockchain.BlockTree.SyncPivot = (2, Hash256.Zero);
+        
+        long initialPointer = historyPruner.OldestBlockHeader.Number;
+        
+        // simulate what manual pruning may do
+        blockTree.DeleteOldBlock(1, blockTree.FindHeader(1).Hash);
+        
+        // Run pruner
+        historyPruner.TryPruneHistory(CancellationToken.None);
+        
+        long finalPointer = historyPruner.OldestBlockHeader.Number;
+        
+        // Without fix: Might be stuck at 1
+        Assert.That(finalPointer, Is.GreaterThan(1), 
+            $"Delete pointer stuck at {finalPointer}. Should advance past missing block 1.");
+    }
+
     private static void CheckGenesisPreserved(BasicTestBlockchain testBlockchain, Hash256 genesisHash)
     {
         using (Assert.EnterMultipleScope())
