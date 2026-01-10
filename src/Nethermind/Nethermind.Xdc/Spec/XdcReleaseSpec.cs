@@ -12,6 +12,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }
     public int Gap { get; set; }
+    public long Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }              // v2 max masternodes
@@ -31,6 +32,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
+    public Address FoundationWallet { get; set; }
+    public Address MasternodeVotingContract { get; set; }
+    public Address BlockSignerContract { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -79,6 +83,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
 {
     public int EpochLength { get; }
     public int Gap { get; }
+    public long Reward { get; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
@@ -97,5 +102,9 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
+    Address FoundationWallet { get; set; }
+    Address MasternodeVotingContract { get; set; }
+    Address BlockSignerContract { get; set; }
+
     public void ApplyV2Config(ulong round);
 }

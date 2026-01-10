@@ -241,7 +241,7 @@ namespace Nethermind.Trie
                     }
                 }
 
-                return nonEmptyNodes > 2;
+                return false;
             }
         }
 
@@ -641,7 +641,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public bool IsChildDirty(int i)
+        public bool TryGetDirtyChild(int i, [NotNullWhen(true)] out TrieNode? dirtyChild)
         {
             if (IsExtension)
             {
@@ -651,20 +651,24 @@ namespace Nethermind.Trie
             ref var data = ref _nodeData[i];
             if (data is null)
             {
+                dirtyChild = null;
                 return false;
             }
 
             if (ReferenceEquals(data, _nullNode))
             {
+                dirtyChild = null;
                 return false;
             }
 
             if (data is Hash256)
             {
+                dirtyChild = null;
                 return false;
             }
 
-            return ((TrieNode)data)!.IsDirty;
+            dirtyChild = (TrieNode)data;
+            return dirtyChild.IsDirty;
         }
 
         public TrieNode? this[int i]

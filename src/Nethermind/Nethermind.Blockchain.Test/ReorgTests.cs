@@ -91,11 +91,11 @@ public class ReorgTests
             transactionComparerProvider.GetDefaultComparer());
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
-        VirtualMachine virtualMachine = new(
+        EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
             LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,

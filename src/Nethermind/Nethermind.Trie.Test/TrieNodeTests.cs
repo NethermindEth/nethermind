@@ -481,7 +481,7 @@ public class TrieNodeTests
     public void Is_child_dirty_on_extension_when_child_is_null_returns_false()
     {
         TrieNode node = new(NodeType.Extension);
-        Assert.That(node.IsChildDirty(0), Is.False);
+        Assert.That(node.TryGetDirtyChild(0, out TrieNode? childNode), Is.False);
     }
 
     [Test]
@@ -489,7 +489,7 @@ public class TrieNodeTests
     {
         TrieNode node = new(NodeType.Extension);
         node.SetChild(0, null);
-        Assert.That(node.IsChildDirty(0), Is.False);
+        Assert.That(node.TryGetDirtyChild(0, out TrieNode? dirtyChild), Is.False);
     }
 
     [Test]
@@ -498,7 +498,7 @@ public class TrieNodeTests
         TrieNode node = new(NodeType.Extension);
         TrieNode cleanChild = new(NodeType.Leaf, Keccak.Zero);
         node.SetChild(0, cleanChild);
-        Assert.That(node.IsChildDirty(0), Is.False);
+        Assert.That(node.TryGetDirtyChild(0, out TrieNode? dirtyChild), Is.False);
     }
 
     [Test]
@@ -507,7 +507,7 @@ public class TrieNodeTests
         TrieNode node = new(NodeType.Extension);
         TrieNode dirtyChild = new(NodeType.Leaf);
         node.SetChild(0, dirtyChild);
-        Assert.That(node.IsChildDirty(0), Is.True);
+        Assert.That(node.TryGetDirtyChild(0, out TrieNode? _), Is.True);
     }
 
     [Test]
@@ -797,7 +797,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        trieNode.IsChildDirty(0).Should().Be(false);
+        trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild).Should().Be(false);
     }
 
     [TestCase(true)]

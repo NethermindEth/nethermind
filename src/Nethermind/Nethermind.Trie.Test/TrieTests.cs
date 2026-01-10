@@ -1119,7 +1119,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    accounts[i] = TestItem.GenerateRandomAccount();
+                    accounts[i] = TestItem.GenerateRandomAccount(_random);
                 }
 
                 addresses[i] = TestItem.GetRandomAddress(_random);

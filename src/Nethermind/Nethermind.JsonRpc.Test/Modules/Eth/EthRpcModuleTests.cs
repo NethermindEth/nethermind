@@ -33,6 +33,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -579,9 +580,9 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(createCodeTx);
 
-        string getLogsSerialized = await test.TestEthRpc("eth_getLogs", $"{{\"fromBlock\":\"{blockHash}\"}}");
+        string getLogsSerialized = await test.TestEthRpc("eth_getLogs", $"{{\"blockHash\":\"{blockHash}\"}}");
 
-        using JsonRpcResponse? newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", new { fromBlock = blockHash });
+        using JsonRpcResponse? newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", new { blockHash = blockHash });
 
         Assert.That(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse, Is.True);
 
@@ -591,13 +592,13 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase("{}", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"0x2","toBlock":"latest","address":"0x00000000000000000001","topics":["0x00000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"earliest","toBlock":"pending","address":["0x00000000000000000001", "0x00000000000000000001"],"topics":["0x00000000000000000000000000000001", "0x00000000000000000000000000000002"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"topics":[null, ["0x00000000000000000000000000000001", "0x00000000000000000000000000000002"]]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"0x10","toBlock":"latest","address":"0x00000000000000000001","topics":["0x00000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid block range params"},"id":67}""")]
-    [TestCase("""{"fromBlock":"0x2","toBlock":"0x11","address":"0x00000000000000000001","topics":["0x00000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"0x2","toBlock":"0x1","address":"0x00000000000000000001","topics":["0x00000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid block range params"},"id":67}""")]
-    [TestCase("""{"fromBlock":"0x11","toBlock":"0x12","address":"0x00000000000000000001","topics":["0x00000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[],"id":67}""")]
+    [TestCase("""{"fromBlock":"0x2","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
+    [TestCase("""{"fromBlock":"earliest","toBlock":"pending","address":["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000001"],"topics":["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
+    [TestCase("""{"topics":[null, ["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
+    [TestCase("""{"fromBlock":"0x10","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""")]
+    [TestCase("""{"fromBlock":"0x2","toBlock":"0x3","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
+    [TestCase("""{"fromBlock":"0x2","toBlock":"0x1","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid block range params"},"id":67}""")]
+    [TestCase("""{"fromBlock":"0x11","toBlock":"0x12","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""")]
     public async Task Eth_get_logs(string parameter, string expected)
     {
         using Context ctx = await Context.Create();
@@ -773,7 +774,6 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_protocol_version()
     {
-        // TODO: test case when eth/69 is added dynamically
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_protocolVersion");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x44\",\"id\":67}"));
@@ -820,11 +820,19 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_proof_withTrimmedStorageKey()
+    public async Task Eth_get_proof_withTrimmedAndDuplicatedStorageKey()
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), "[\"0x1\"]", "0x2");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountProof\":[\"0xf8718080808080a0fc8311b2cabe1a1b33ea04f1865132a44aa0c17c567acd233422f9cfb516877480808080a0be8ea164b2fb1567e2505295dae6d8a9fe5f09e9c5ac854a7da23b2bc5f8523ca053692ab7cdc9bb02a28b1f45afe7be86cb27041ea98586e6ff05d98c9b0667138080808080\",\"0xf8518080808080a00dd1727b2abb59c0a6ac75c01176a9d1a276b0049d5fe32da3e1551096549e258080808080808080a038ca33d3070331da1ccf804819da57fcfc83358cadbef1d8bde89e1a346de5098080\",\"0xf872a020227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5eb84ff84d01893635c9adc5de9fadf7a0475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72ba0dbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\"],\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"balance\":\"0x3635c9adc5de9fadf7\",\"codeHash\":\"0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\",\"nonce\":\"0x1\",\"storageHash\":\"0x475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72b\",\"storageProof\":[{\"key\":\"0x1\",\"proof\":[\"0xe7a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf68483abcdef\"],\"value\":\"0xabcdef\"}]},\"id\":67}"), serialized.Replace("\"", "\\\""));
+    }
+
+    [Test]
+    public async Task Eth_get_proof_withTooManyKeys()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), $"[{string.Join(", ", Enumerable.Range(1, EthRpcModule.GetProofStorageKeyLimit + 1).Select(i => "\"" + i.ToHexString() + "\""))}]", "0x2");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"storageKeys: 1001 is over the query limit 1000.\"},\"id\":67}"));
     }
 
     [Test]
@@ -1665,7 +1673,7 @@ public partial class EthRpcModuleTests
                     var cutBlock = blockNumber;
                     config.AncientBodiesBarrier = cutBlock;
                     config.AncientReceiptsBarrier = cutBlock;
-                    config.PivotNumber = cutBlock.ToString();
+                    config.PivotNumber = cutBlock;
                     config.SnapSync = true;
                     return config;
                 });

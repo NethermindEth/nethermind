@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private UInt256 TryGetPivotTotalDifficulty(Hash256 headerHash)
         {
-            if (_pivotNumber == LongConverter.FromString(_syncConfig.PivotNumber))
+            if (_pivotNumber == _syncConfig.PivotNumber)
                 return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
 
             // Got from header

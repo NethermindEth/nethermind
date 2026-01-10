@@ -82,10 +82,10 @@ public static class BlobGasCalculator
                     return true;
                 }
 
-                accumulator = updatedAccumulator / multipliedDenominator;
+                accumulator = multipliedDenominator.IsZero ? default : updatedAccumulator / multipliedDenominator;
             }
 
-            feePerBlobGas = output / denominator;
+            feePerBlobGas = denominator.IsZero ? default : output / denominator;
             return false;
         }
 
