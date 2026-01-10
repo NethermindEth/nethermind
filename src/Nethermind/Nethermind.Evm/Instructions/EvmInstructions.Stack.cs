@@ -59,7 +59,7 @@ internal static partial class EvmInstructions
         /// <param name="programCounter">The program counter.</param>
         /// <param name="code">The code segment containing the immediate data.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        abstract static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        abstract static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
             where TTracingInst : struct, IFlag;
     }
 
@@ -76,7 +76,7 @@ internal static partial class EvmInstructions
         /// Push operation for zero
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
             where TTracingInst : struct, IFlag
         {
             return stack.PushZero<TTracingInst>();
@@ -96,9 +96,10 @@ internal static partial class EvmInstructions
         /// If exactly one byte is available, it is pushed; otherwise, zero is pushed.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
             where TTracingInst : struct, IFlag
         {
+            ReadOnlySpan<byte> code = stack.CodeSection;
             // Determine how many bytes can be used from the code.
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
@@ -123,7 +124,7 @@ internal static partial class EvmInstructions
         public static int Count => 2;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
             where TTracingInst : struct, IFlag
         {
             throw new NotSupportedException($"Use the {nameof(InstructionPush2)} opcode instead");
@@ -142,7 +143,7 @@ internal static partial class EvmInstructions
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        ReadOnlySpan<byte> code = stack.CodeSection;
 
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
@@ -341,10 +342,8 @@ internal static partial class EvmInstructions
     {
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
-        // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
-        EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
+        EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter);
         // Advance the program counter by the number of bytes consumed.
         programCounter += TOpCount.Count;
         return new(programCounter, result);

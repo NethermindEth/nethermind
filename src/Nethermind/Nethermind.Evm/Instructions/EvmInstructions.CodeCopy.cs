@@ -28,7 +28,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vm">The virtual machine instance providing execution context.</param>
         /// <returns>A read-only span of bytes containing the code.</returns>
-        abstract static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm);
+        abstract static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm, ref EvmStack stack);
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ internal static partial class EvmInstructions
                 goto OutOfGas;
 
             // Obtain the code slice with zero-padding if needed.
-            ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
+            ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm, ref stack).SliceWithZeroPadding(in b, (int)result);
             // Save the slice into memory at the destination offset.
             if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
 
@@ -105,7 +105,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm)
+        public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
             => vm.VmState.Env.InputData.Span;
     }
 
@@ -116,8 +116,8 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm)
-            => vm.VmState.Env.CodeInfo.CodeSpan;
+        public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
+            => stack.CodeSection;
     }
 
     /// <summary>
@@ -244,7 +244,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
+        ReadOnlySpan<byte> codeSection = stack.CodeSection;
         if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
