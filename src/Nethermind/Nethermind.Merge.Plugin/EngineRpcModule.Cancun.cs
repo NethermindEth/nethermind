@@ -21,7 +21,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Cancun);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
-        NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Cancun);
+        NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, null, _logger), EngineApiVersions.Cancun);
 
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
         _getPayloadHandlerV3.HandleAsync(payloadId);
