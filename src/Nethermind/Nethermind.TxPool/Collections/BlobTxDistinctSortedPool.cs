@@ -54,27 +54,24 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             byte[] blobHash = requestedBlobVersionedHashes[i];
 
-            if (!BlobIndex.TryGetValue(blobHash, out List<Hash256>? txHashes))
-            {
-                results.Add(null);
-                continue;
-            }
-
             bool found = false;
-            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
+            if (BlobIndex.TryGetValue(blobHash, out List<Hash256>? txHashes))
             {
-                if (!TryGetValueNonLocked(hash, out Transaction? blobTx) || blobTx.BlobVersionedHashes is null)
-                    continue;
-
-                int blobIndex = FindBlobIndex(blobTx.BlobVersionedHashes, blobHash);
-                if (blobIndex < 0)
-                    continue;
-
-                if (blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.Version == requiredVersion)
+                foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
                 {
-                    results.Add(createResult(wrapper, blobIndex));
-                    found = true;
-                    break;
+                    if (TryGetValueNonLocked(hash, out Transaction? blobTx)
+                        && blobTx.BlobVersionedHashes is not null
+                        && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+                        && wrapper.Version == requiredVersion)
+                    {
+                        int blobIndex = FindBlobIndex(blobTx.BlobVersionedHashes, blobHash);
+                        if (blobIndex >= 0)
+                        {
+                            results.Add(createResult(wrapper, blobIndex));
+                            found = true;
+                            break;
+                        }
+                    }
                 }
             }
 

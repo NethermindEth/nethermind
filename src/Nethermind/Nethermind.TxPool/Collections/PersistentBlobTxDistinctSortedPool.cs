@@ -130,35 +130,33 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
             {
                 byte[] blobHash = requestedBlobVersionedHashes[i];
 
-                if (!BlobIndex.TryGetValue(blobHash, out List<Hash256>? txHashes))
-                {
-                    results.Add(null);
-                    continue;
-                }
-
                 bool found = false;
-                foreach (Hash256 txHash in CollectionsMarshal.AsSpan(txHashes))
+                if (BlobIndex.TryGetValue(blobHash, out List<Hash256>? txHashes))
                 {
-                    if (!base.TryGetValueNonLocked(txHash, out Transaction? lightTx) || lightTx.BlobVersionedHashes is null)
-                        continue;
-
-                    int blobIndex = FindBlobIndex(lightTx.BlobVersionedHashes!, blobHash);
-                    if (blobIndex < 0)
-                        continue;
-
-                    if (_blobTxCache.TryGet(txHash, out Transaction? fullTx) &&
-                        fullTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper &&
-                        wrapper.Version == requiredVersion)
+                    foreach (Hash256 txHash in CollectionsMarshal.AsSpan(txHashes))
                     {
-                        results.Add(createResult(wrapper, blobIndex));
-                        found = true;
-                        break;
-                    }
+                        if (base.TryGetValueNonLocked(txHash, out Transaction? lightTx)
+                            && lightTx.BlobVersionedHashes is not null)
+                        {
+                            int blobIndex = FindBlobIndex(lightTx.BlobVersionedHashes!, blobHash);
+                            if (blobIndex >= 0)
+                            {
+                                if (_blobTxCache.TryGet(txHash, out Transaction fullTx)
+                                    && fullTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+                                    && wrapper.Version == requiredVersion)
+                                {
+                                    results.Add(createResult(wrapper, blobIndex));
+                                    found = true;
+                                }
+                                else
+                                {
+                                    dbLoadItems.Add(new DbLoadItem(i, txHash, lightTx, blobIndex));
+                                }
 
-                    dbLoadItems.Add(new DbLoadItem(i, txHash, lightTx, blobIndex));
-                    results.Add(null);
-                    found = true;
-                    break;
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 if (!found)
