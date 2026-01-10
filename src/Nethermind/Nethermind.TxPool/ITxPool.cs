@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool
 {
@@ -47,12 +49,8 @@ namespace Nethermind.TxPool
         bool IsKnown(Hash256 hash);
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
-        bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[]? proof);
-        bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs);
+        void TryGetBlobsAndProofsV1(byte[][] blobVersionedHashes, ArrayPoolList<BlobAndProofV1?> results);
+        void TryGetBlobsAndProofsV2(byte[][] blobVersionedHashes, ArrayPoolList<BlobAndProofV2?> results);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

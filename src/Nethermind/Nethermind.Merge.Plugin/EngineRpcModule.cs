@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Merge.Plugin;
 

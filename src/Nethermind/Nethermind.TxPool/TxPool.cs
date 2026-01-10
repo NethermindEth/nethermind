@@ -214,21 +214,17 @@ namespace Nethermind.TxPool
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
 
+        public void TryGetBlobsAndProofsV1(byte[][] blobVersionedHashes, ArrayPoolList<BlobAndProofV1?> results)
+            => _blobTransactions.TryGetBlobsAndProofsV1(blobVersionedHashes, results);
 
-        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
-
-        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
+        public void TryGetBlobsAndProofsV2(byte[][] blobVersionedHashes, ArrayPoolList<BlobAndProofV2?> results)
+            => _blobTransactions.TryGetBlobsAndProofsV2(blobVersionedHashes, results);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
         }
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)

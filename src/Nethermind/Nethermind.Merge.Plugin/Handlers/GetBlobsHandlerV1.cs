@@ -3,16 +3,18 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpecProvider) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
+public class GetBlobsHandlerV1(ITxPool txPool, IChainHeadSpecProvider chainHeadSpecProvider) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
 {
     private const int MaxRequest = 128;
+    private static string _overMaxRequestError = $"The number of requested blobs must not exceed {MaxRequest}";
 
     public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(byte[][] request)
     {
@@ -21,31 +23,27 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
             return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         }
 
-        if (request.Length > MaxRequest)
+        int length = request.Length;
+        if (length > MaxRequest)
         {
-            var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(_overMaxRequestError, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
-    }
+        Metrics.NumberOfRequestedBlobs += length;
 
-    private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
-    {
+        ArrayPoolList<BlobAndProofV1?> response = new(length);
+        txPool.TryGetBlobsAndProofsV1(request, response);
+
         bool allBlobsAvailable = true;
-        Metrics.NumberOfRequestedBlobs += request.Length;
-
-        foreach (byte[] requestedBlobVersionedHash in request)
+        for (int i = 0; i < response.Count; i++)
         {
-            if (txPool.TryGetBlobAndProofV0(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
+            if (response[i] is not null)
             {
                 Metrics.NumberOfSentBlobs++;
-                yield return new BlobAndProofV1(blob, proof);
             }
             else
             {
                 allBlobsAvailable = false;
-                yield return null;
             }
         }
 
@@ -57,5 +55,7 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
         {
             Metrics.GetBlobsRequestsFailureTotal++;
         }
+
+        return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(response);
     }
 }

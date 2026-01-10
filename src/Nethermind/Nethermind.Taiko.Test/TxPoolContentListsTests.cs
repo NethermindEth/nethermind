@@ -7,6 +7,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Taiko.Rpc;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core;

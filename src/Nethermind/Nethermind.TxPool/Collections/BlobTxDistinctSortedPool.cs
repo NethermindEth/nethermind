@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using CkzgLib;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -12,7 +11,6 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.TxPool.Collections;
@@ -27,54 +25,74 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public bool TryGetBlobAndProofV0(
-       byte[] requestedBlobVersionedHash,
-       [NotNullWhen(true)] out byte[]? blob,
-       [NotNullWhen(true)] out byte[]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V0,
-           static (proofs, index) => proofs[index]);
+    public void TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes, ArrayPoolList<BlobAndProofV1?> results) =>
+        TryGetBlobsAndProofsCore(
+            requestedBlobVersionedHashes,
+            results,
+            ProofVersion.V0,
+            static (wrapper, blobIndex) => new BlobAndProofV1(wrapper.Blobs[blobIndex], wrapper.Proofs[blobIndex]));
 
-    public bool TryGetBlobAndProofV1(
-       byte[] requestedBlobVersionedHash,
-       [NotNullWhen(true)] out byte[]? blob,
-       [NotNullWhen(true)] out byte[][]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1,
-           static (proofs, index) => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)]);
+    public void TryGetBlobsAndProofsV2(byte[][] requestedBlobVersionedHashes, ArrayPoolList<BlobAndProofV2?> results) =>
+        TryGetBlobsAndProofsCore(
+            requestedBlobVersionedHashes,
+            results,
+            ProofVersion.V1,
+            static (wrapper, blobIndex) => new BlobAndProofV2(
+                wrapper.Blobs[blobIndex],
+                [.. wrapper.Proofs.Slice(Ckzg.CellsPerExtBlob * blobIndex, Ckzg.CellsPerExtBlob)]));
 
-    private bool TryGetBlobAndProof<TProof>(
-        byte[] requestedBlobVersionedHash,
-        [NotNullWhen(true)] out byte[]? blob,
-        [NotNullWhen(true)] out TProof? proof,
+    protected virtual void TryGetBlobsAndProofsCore<TResult>(
+        byte[][] requestedBlobVersionedHashes,
+        ArrayPoolList<TResult?> results,
         ProofVersion requiredVersion,
-        Func<byte[][], int, TProof> proofSelector)
+        Func<ShardBlobNetworkWrapper, int, TResult> createResult)
+        where TResult : struct
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
 
-        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
+        for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
         {
+            byte[] blobHash = requestedBlobVersionedHashes[i];
+
+            if (!BlobIndex.TryGetValue(blobHash, out List<Hash256>? txHashes))
+            {
+                results.Add(null);
+                continue;
+            }
+
+            bool found = false;
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
-                if (TryGetValueNonLocked(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
+                if (!TryGetValueNonLocked(hash, out Transaction? blobTx) || blobTx.BlobVersionedHashes is null)
+                    continue;
+
+                int blobIndex = FindBlobIndex(blobTx.BlobVersionedHashes, blobHash);
+                if (blobIndex < 0)
+                    continue;
+
+                if (blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.Version == requiredVersion)
                 {
-                    for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
-                    {
-                        if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
-                            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-                        {
-                            if (wrapper is null || wrapper.Version != requiredVersion)
-                            {
-                                break;
-                            }
-                            blob = wrapper.Blobs[indexOfBlob];
-                            proof = proofSelector(wrapper.Proofs, indexOfBlob)!;
-                            return true;
-                        }
-                    }
+                    results.Add(createResult(wrapper, blobIndex));
+                    found = true;
+                    break;
                 }
             }
-        }
 
-        blob = default;
-        proof = default;
-        return false;
+            if (!found)
+            {
+                results.Add(null);
+            }
+        }
+    }
+
+    protected static int FindBlobIndex(byte[]?[] blobVersionedHashes, byte[] targetHash)
+    {
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            if (blobVersionedHashes[i] is not null && Bytes.AreEqual(blobVersionedHashes[i], targetHash))
+                return i;
+        }
+        return -1;
     }
 
     protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)

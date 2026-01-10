@@ -20,6 +20,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Core.Collections;
 using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
@@ -865,9 +866,12 @@ namespace Nethermind.TxPool.Test
 
                     blobPool.TryInsert(tx.Hash, tx, out _).Should().BeTrue();
 
+                    using ArrayPoolList<BlobAndProofV1?> results = new(1);
                     for (int j = 0; j < 100; j++)
                     {
-                        blobPool.TryGetBlobAndProofV0(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
+                        results.Clear();
+                        blobPool.TryGetBlobsAndProofsV1([expectedBlobVersionedHash], results);
+                        results[0].Should().NotBeNull();
                     }
 
                     // removing 50% of txs

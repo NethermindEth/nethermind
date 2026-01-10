@@ -29,6 +29,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
 

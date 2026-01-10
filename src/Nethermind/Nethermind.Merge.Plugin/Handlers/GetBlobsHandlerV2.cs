@@ -5,58 +5,47 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>
 {
     private const int MaxRequest = 128;
+    private static string _overMaxRequestError = $"The number of requested blobs must not exceed {MaxRequest}";
 
     private static readonly Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> NotFound = Task.FromResult(ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(null));
 
     public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> HandleAsync(GetBlobsHandlerV2Request request)
     {
-        if (request.BlobVersionedHashes.Length > MaxRequest)
+        int length = request.BlobVersionedHashes.Length;
+
+        if (length > MaxRequest)
         {
-            var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Fail(_overMaxRequestError, MergeErrorCodes.TooLargeRequest);
         }
 
-        Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
+        Metrics.GetBlobsRequestsTotal += length;
 
-        ArrayPoolList<BlobAndProofV2?> response = new(request.BlobVersionedHashes.Length);
+        ArrayPoolList<BlobAndProofV2?> response = new(length);
+        txPool.TryGetBlobsAndProofsV2(request.BlobVersionedHashes, response);
 
-        try
+        for (int i = 0; i < response.Count; i++)
         {
-            foreach (byte[] requestedBlobVersionedHash in request.BlobVersionedHashes)
+            if (response[i] is not null)
             {
-                if (txPool.TryGetBlobAndProofV1(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
-                {
-                    response.Add(new BlobAndProofV2(blob, cellProofs));
-                    Metrics.GetBlobsRequestsInBlobpoolTotal++;
-                }
-                else if (request.AllowPartialReturn)
-                {
-                    response.Add(null);
-                }
-                else
-                {
-                    // fail if we were not able to collect full blob data
-                    response.Dispose();
-                    return ReturnEmptyArray();
-                }
+                Metrics.GetBlobsRequestsInBlobpoolTotal++;
             }
+            else if (!request.AllowPartialReturn)
+            {
+                response.Dispose();
+                return ReturnEmptyArray();
+            }
+        }
 
-            Metrics.GetBlobsRequestsSuccessTotal++;
-            return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(response);
-        }
-        catch
-        {
-            response.Dispose();
-            throw;
-        }
+        Metrics.GetBlobsRequestsSuccessTotal++;
+        return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(response);
     }
 
     private Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> ReturnEmptyArray()

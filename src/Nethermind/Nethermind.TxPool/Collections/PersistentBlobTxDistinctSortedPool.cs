@@ -5,9 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections;
@@ -104,5 +110,80 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         }
 
         return false;
+    }
+
+    private readonly record struct DbLoadItem(int ResultIndex, ValueHash256 TxHash, Transaction LightTx, int BlobIndex);
+
+    protected override void TryGetBlobsAndProofsCore<TResult>(
+        byte[][] requestedBlobVersionedHashes,
+        ArrayPoolList<TResult?> results,
+        ProofVersion requiredVersion,
+        Func<ShardBlobNetworkWrapper, int, TResult> createResult)
+        where TResult : struct
+    {
+        int length = requestedBlobVersionedHashes.Length;
+
+        using ArrayPoolList<DbLoadItem> dbLoadItems = new(length);
+        using (Lock.Acquire())
+        {
+            for (int i = 0; i < length; i++)
+            {
+                byte[] blobHash = requestedBlobVersionedHashes[i];
+
+                if (!BlobIndex.TryGetValue(blobHash, out List<Hash256>? txHashes))
+                {
+                    results.Add(null);
+                    continue;
+                }
+
+                bool found = false;
+                foreach (Hash256 txHash in CollectionsMarshal.AsSpan(txHashes))
+                {
+                    if (!base.TryGetValueNonLocked(txHash, out Transaction? lightTx) || lightTx.BlobVersionedHashes is null)
+                        continue;
+
+                    int blobIndex = FindBlobIndex(lightTx.BlobVersionedHashes!, blobHash);
+                    if (blobIndex < 0)
+                        continue;
+
+                    if (_blobTxCache.TryGet(txHash, out Transaction? fullTx) &&
+                        fullTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper &&
+                        wrapper.Version == requiredVersion)
+                    {
+                        results.Add(createResult(wrapper, blobIndex));
+                        found = true;
+                        break;
+                    }
+
+                    dbLoadItems.Add(new DbLoadItem(i, txHash, lightTx, blobIndex));
+                    results.Add(null);
+                    found = true;
+                    break;
+                }
+
+                if (!found)
+                {
+                    results.Add(null);
+                }
+            }
+        }
+
+        int dbLoadCount = dbLoadItems.Count;
+        if (dbLoadCount > 0)
+        {
+            Parallel.For(0, dbLoadCount, j =>
+            {
+                DbLoadItem item = dbLoadItems[j];
+
+                if (_blobTxStorage.TryGet(item.TxHash, item.LightTx.SenderAddress!, item.LightTx.Timestamp, out Transaction? fullTx))
+                {
+                    _blobTxCache.Set(item.TxHash, fullTx);
+                    if (fullTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.Version == requiredVersion)
+                    {
+                        results[item.ResultIndex] = createResult(wrapper, item.BlobIndex);
+                    }
+                }
+            });
+        }
     }
 }
