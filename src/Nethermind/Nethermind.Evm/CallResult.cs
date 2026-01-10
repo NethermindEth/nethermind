@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 
@@ -23,7 +24,16 @@ public partial class VirtualMachine<TGasPolicy>
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow);
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
-        public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
+        public static CallResult Empty(int fromVersion)
+        {
+            CallResult result = default;
+            if (fromVersion > 0)
+            {
+                Unsafe.AsRef(in result._fromVersion) = fromVersion;
+            }
+
+            return result;
+        }
 
         public CallResult(VmState<TGasPolicy> stateToExecute)
         {
@@ -41,7 +51,7 @@ public partial class VirtualMachine<TGasPolicy>
             PrecompileSuccess = precompileSuccess;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
-            FromVersion = fromVersion;
+            _fromVersion = fromVersion;
         }
 
         public CallResult(ICodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
@@ -51,7 +61,7 @@ public partial class VirtualMachine<TGasPolicy>
             PrecompileSuccess = precompileSuccess;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
-            FromVersion = fromVersion;
+            _fromVersion = fromVersion;
         }
 
         private CallResult(EvmExceptionType exceptionType)
@@ -71,7 +81,8 @@ public partial class VirtualMachine<TGasPolicy>
         public bool IsReturn => StateToExecute is null;
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
-        public int FromVersion { get; }
+        private readonly int _fromVersion;
+        public int FromVersion => _fromVersion;
         public string? SubstateError { get; init; }
     }
 }

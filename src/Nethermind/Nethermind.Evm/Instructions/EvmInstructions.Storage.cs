@@ -65,7 +65,7 @@ internal static partial class EvmInstructions
         return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return new(programCounter, EvmExceptionType.OutOfGas)   ;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
         return new(programCounter, EvmExceptionType.StackUnderflow);
     }

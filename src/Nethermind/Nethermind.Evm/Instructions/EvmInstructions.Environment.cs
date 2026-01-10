@@ -676,7 +676,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Otherwise, push the standard code hash.
-                return new (programCounter, stack.Push32Bytes<TTracingInst>(in state.GetCodeHash(address)));
+                return new(programCounter, stack.Push32Bytes<TTracingInst>(in state.GetCodeHash(address)));
             }
         }
 
