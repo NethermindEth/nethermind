@@ -17,6 +17,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -514,6 +516,211 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
     }
 
+    // ===== TRIE/STORAGE ROOT TESTS =====
+
+    [Test]
+    public void TestStorageRootAfterSingleSlotSet()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slotIndex = 1;
+        byte[] slotValue = { 0xAB, 0xCD };
+
+        Account initialAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
+
+        // Set a single slot
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Dispose();
+        }
+
+        // Commit to update storage root
+        scope.Commit(1);
+
+        // Compute expected storage root using standalone StorageTree
+        TestMemDb testDb = new TestMemDb();
+        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
+        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        expectedTree.Set(slotIndex, slotValue);
+        expectedTree.UpdateRootHash();
+        Hash256 expectedRoot = expectedTree.RootHash;
+
+        // Verify actual storage root matches expected
+        Account? resultAccount = scope.Get(testAddress);
+        Assert.That(resultAccount, Is.Not.Null);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void TestStorageRootAfterMultipleSlotsSingleCommit()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 slot3 = 100;
+        byte[] value1 = { 0x01, 0x02 };
+        byte[] value2 = { 0xAA, 0xBB, 0xCC };
+        byte[] value3 = { 0xFF };
+
+        Account initialAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
+
+        // Set multiple slots in single commit
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 3);
+            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot3, value3);
+            storageBatch.Dispose();
+        }
+
+        scope.Commit(1);
+
+        // Compute expected storage root
+        TestMemDb testDb = new TestMemDb();
+        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
+        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        expectedTree.Set(slot1, value1);
+        expectedTree.Set(slot2, value2);
+        expectedTree.Set(slot3, value3);
+        expectedTree.UpdateRootHash();
+        Hash256 expectedRoot = expectedTree.RootHash;
+
+        // Verify
+        Account? resultAccount = scope.Get(testAddress);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void TestStorageRootAfterMultipleCommits()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        byte[] value1 = { 0x11 };
+        byte[] value2 = { 0x22 };
+
+        Account initialAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
+
+        // First commit - set slot1
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot1, value1);
+            storageBatch.Dispose();
+        }
+        scope.Commit(1);
+
+        // Second commit - set slot2
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value2);
+            storageBatch.Dispose();
+        }
+        scope.Commit(2);
+
+        // Compute expected storage root with both slots
+        TestMemDb testDb = new TestMemDb();
+        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
+        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        expectedTree.Set(slot1, value1);
+        expectedTree.Set(slot2, value2);
+        expectedTree.UpdateRootHash();
+        Hash256 expectedRoot = expectedTree.RootHash;
+
+        // Verify
+        Account? resultAccount = scope.Get(testAddress);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void TestStorageRootAfterSelfDestructAndNewSlots()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        byte[] value1 = { 0xAA };
+        byte[] value2 = { 0xBB };
+
+        Account initialAccount = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
+
+        // Set initial slot
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot1, value1);
+            storageBatch.Dispose();
+        }
+        scope.Commit(1);
+
+        // SelfDestruct - should clear storage
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 0);
+            storageBatch.Clear();
+            storageBatch.Dispose();
+        }
+        scope.Commit(2);
+
+        // Set new slot after selfdestruct
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value2);
+            storageBatch.Dispose();
+        }
+        scope.Commit(3);
+
+        // Expected: only slot2 should exist (storage was cleared)
+        TestMemDb testDb = new TestMemDb();
+        RawScopedTrieStore trieStore = new RawScopedTrieStore(testDb);
+        StorageTree expectedTree = new StorageTree(trieStore, LimboLogs.Instance);
+        expectedTree.Set(slot2, value2);
+        expectedTree.UpdateRootHash();
+        Hash256 expectedRoot = expectedTree.RootHash;
+
+        // Verify
+        Account? resultAccount = scope.Get(testAddress);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void TestEmptyStorageRootWhenNoSlots()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+
+        Account initialAccount = new Account(0, 0);
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
+
+        // Don't set any slots, just get the account
+        Account? resultAccount = scope.Get(testAddress);
+
+        // Verify storage root is EmptyTreeHash
+        Assert.That(resultAccount, Is.Not.Null);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+    }
+
     // ===== COMPREHENSIVE SELFDESTRUCT BLOCKING TESTS =====
 
     [Test]
@@ -534,19 +741,19 @@ public class FlatWorldStateScopeProviderTests
         // Create multiple layers of snapshots with slot values
         // Snapshot 0: First slot value
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue1));
-        
+
         // Snapshot 1: Updated slot value
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue2));
-        
+
         // Snapshot 2: Another update
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(slotValue3));
-        
+
         // Snapshot 3: Empty snapshot
         ctx.AddSnapshot(content => { });
-        
+
         // Snapshot 4: SELFDESTRUCT - this should block ALL earlier snapshots
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
-        
+
         // Snapshot 5: Empty snapshot after selfdestruct
         ctx.AddSnapshot(content => { });
 
@@ -582,7 +789,7 @@ public class FlatWorldStateScopeProviderTests
         ctx.AddSnapshot(content => { });
         ctx.AddSnapshot(content => { });
         ctx.AddSnapshot(content => { });
-        
+
         // Add selfdestruct in the last snapshot - should block persistence
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
 
@@ -619,19 +826,19 @@ public class FlatWorldStateScopeProviderTests
 
         // Snapshot 0: Slot value
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(snapshot0Value));
-        
+
         // Snapshot 1: Updated slot value
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(snapshot1Value));
-        
+
         // Snapshot 2: Another update
         ctx.AddSnapshot(content => content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(snapshot2Value));
-        
+
         // Snapshot 3: Empty
         ctx.AddSnapshot(content => { });
-        
+
         // Snapshot 4: SELFDESTRUCT - blocks both snapshots AND persistence
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
-        
+
         // Snapshot 5: Empty after selfdestruct
         ctx.AddSnapshot(content => { });
 

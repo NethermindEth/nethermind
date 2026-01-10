@@ -270,11 +270,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             {
                 storageTree.RootHash = Keccak.EmptyTreeHash;
             }
-            else
-            {
-                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-                _hasSelfDestruct = true;
-            }
+
+            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _hasSelfDestruct = true;
         }
 
         public void Dispose()
