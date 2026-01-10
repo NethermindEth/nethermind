@@ -18,8 +18,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
-using RocksDbSharp;
-using ZstdSharp.Unsafe;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -37,6 +35,8 @@ public class FlatWorldStateScopeProviderTests
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
         public ArrayPoolList<Snapshot> ReadOnlySnapshots => field ??= Container.Resolve<ArrayPoolList<Snapshot>>();
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
+        public Snapshot? LastCommittedSnapshot { get; set; }
+        public CachedResource? LastCreatedCachedResource { get; set; }
 
         public TestContext(FlatDbConfig? config = null)
         {
@@ -55,8 +55,17 @@ public class FlatWorldStateScopeProviderTests
                                 Snapshot snapshot = (Snapshot)c[0];
                                 CachedResource cachedResource = (CachedResource)c[1];
 
-                                resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
-                                snapshot.Dispose();
+                                if (LastCommittedSnapshot is not null)
+                                {
+                                    LastCommittedSnapshot.Dispose();
+                                }
+                                LastCommittedSnapshot = snapshot;
+
+                                if (LastCreatedCachedResource is not null)
+                                {
+                                    resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
+                                }
+                                LastCreatedCachedResource = cachedResource;
                             });
 
                         return flatDiff;
@@ -96,6 +105,10 @@ public class FlatWorldStateScopeProviderTests
         public void Dispose()
         {
             _cancellationTokenSource.Cancel();
+
+            LastCommittedSnapshot?.Dispose();
+            if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, LastCreatedCachedResource);
+
             _container?.Dispose();
             _cancellationTokenSource.Dispose();
         }
@@ -126,14 +139,20 @@ public class FlatWorldStateScopeProviderTests
 
 
     [Test]
-    public void TestGetAccountFromReadonlySnapshot()
+    public void TestGetAccountFromReadonlySnapshotWillReturnLastAccount()
     {
         using TestContext ctx = new TestContext();
 
+        Address testAddress = TestItem.AddressA;
+        Account persistenceAccount = TestItem.GenerateRandomAccount();
+        Account olderAccount = TestItem.GenerateRandomAccount();
         Account testAccount = TestItem.GenerateRandomAccount();
-        ctx.AddSnapshot(content => content.Accounts[TestItem.AddressA] = testAccount);
 
-        Assert.That(ctx.Scope.Get(TestItem.AddressA), Is.EqualTo(testAccount));
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(persistenceAccount);
+        ctx.AddSnapshot(content => content.Accounts[testAddress] = olderAccount);
+        ctx.AddSnapshot(content => content.Accounts[testAddress] = testAccount);
+
+        Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(testAccount));
     }
 
     [Test]
@@ -141,10 +160,12 @@ public class FlatWorldStateScopeProviderTests
     {
         using TestContext ctx = new TestContext();
 
+        Address testAddress = TestItem.AddressA;
         Account testAccount = TestItem.GenerateRandomAccount();
-        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(testAccount);
 
-        Assert.That(ctx.Scope.Get(TestItem.AddressA), Is.EqualTo(testAccount));
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(testAccount);
+
+        Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(testAccount));
     }
 
     [Test]
@@ -153,18 +174,49 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = new TestContext();
         FlatWorldStateScope scope = ctx.Scope;
 
+        Address testAddress = TestItem.AddressA;
         Account testAccount = TestItem.GenerateRandomAccount();
+        Account persistenceAccount = TestItem.GenerateRandomAccount();
+        Account olderAccount = TestItem.GenerateRandomAccount();
+
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(persistenceAccount);
+        ctx.AddSnapshot(content => content.Accounts[testAddress] = olderAccount);
+
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
-            writeBatch.Set(TestItem.AddressA, testAccount);
+            writeBatch.Set(testAddress, testAccount);
         }
 
-        Assert.That(ctx.Scope.Get(TestItem.AddressA), Is.EqualTo(testAccount));
+        Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(testAccount));
+    }
+
+
+    [Test]
+    public void TestGetAccountAfterCommit()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        Account testAccount = TestItem.GenerateRandomAccount();
+        Account persistenceAccount = TestItem.GenerateRandomAccount();
+        Account olderAccount = TestItem.GenerateRandomAccount();
+
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(persistenceAccount);
+        ctx.AddSnapshot(content => content.Accounts[testAddress] = olderAccount);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(testAddress, testAccount);
+        }
 
         // After commit check
         scope.Commit(1);
 
-        Assert.That(ctx.Scope.Get(TestItem.AddressA), Is.EqualTo(testAccount));
+        Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(testAccount));
+        ctx.LastCommittedSnapshot!.TryGetAccount(testAddress, out Account? committedAccount);
+        Assert.That(committedAccount, Is.EqualTo(testAccount));
     }
+
 
 }
