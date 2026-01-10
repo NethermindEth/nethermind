@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.TxPool.Collections;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -65,22 +67,16 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[]? proof)
+        public void TryGetBlobsAndProofsV1(byte[][] blobVersionedHashes, ArrayPoolList<BlobAndProofV1?> results)
         {
-            blob = null;
-            proof = null;
-            return false;
+            for (int i = 0; i < blobVersionedHashes.Length; i++)
+                results.Add(default);
         }
 
-        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
+        public void TryGetBlobsAndProofsV2(byte[][] blobVersionedHashes, ArrayPoolList<BlobAndProofV2?> results)
         {
-            blob = null;
-            cellProofs = null;
-            return false;
+            for (int i = 0; i < blobVersionedHashes.Length; i++)
+                results.Add(default);
         }
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;

@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool.Collections;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -602,8 +603,8 @@ public partial class EngineModuleTests
         ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data.Select(static b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        result.Data.Select(static b => b!.Value.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data.Select(static b => b!.Value.Proof).Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]
@@ -673,8 +674,8 @@ public partial class EngineModuleTests
         {
             if (i % 10 == 0)
             {
-                resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
-                resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
+                resultBlobsAndProofs[i]!.Value.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
+                resultBlobsAndProofs[i]!.Value.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
             }
             else
             {

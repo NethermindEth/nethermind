@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Merge.Plugin;
 

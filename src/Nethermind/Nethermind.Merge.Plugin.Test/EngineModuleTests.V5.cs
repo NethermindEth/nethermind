@@ -16,6 +16,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -104,9 +105,9 @@ public partial class EngineModuleTests
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
         result.Data.Should().NotBeNull();
-        result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
-        result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+        result.Data!.Select(static b => b!.Value.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data!.Select(static b => b!.Value.Proofs!.Length).Should().HaveCount(numberOfBlobs);
+        result.Data!.Select(static b => b!.Value.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
     }
 
     [Test]
@@ -173,9 +174,9 @@ public partial class EngineModuleTests
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
             result.Data.Should().NotBeNull();
-            result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-            result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
-            result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+            result.Data!.Select(static b => b!.Value.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+            result.Data!.Select(static b => b!.Value.Proofs!.Length).Should().HaveCount(numberOfBlobs);
+            result.Data!.Select(static b => b!.Value.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
         }
     }
 
@@ -224,8 +225,8 @@ public partial class EngineModuleTests
             if (shouldBeFound)
             {
                 result.Data!.ElementAt(i).Should().NotBeNull();
-                result.Data!.ElementAt(i)!.Blob.Should().BeEquivalentTo(wrapper.Blobs[foundIndex]);
-                result.Data!.ElementAt(i)!.Proofs.Should().BeEquivalentTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128));
+                result.Data!.ElementAt(i)!.Value.Blob.Should().BeEquivalentTo(wrapper.Blobs[foundIndex]);
+                result.Data!.ElementAt(i)!.Value.Proofs.Should().BeEquivalentTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128));
                 foundIndex++;
             }
             else

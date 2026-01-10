@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Merge.Plugin;
 
