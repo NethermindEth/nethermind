@@ -141,19 +141,18 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
                             int blobIndex = FindBlobIndex(lightTx.BlobVersionedHashes!, blobHash);
                             if (blobIndex >= 0)
                             {
-                                if (_blobTxCache.TryGet(txHash, out Transaction fullTx)
-                                    && fullTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                                    && wrapper.Version == requiredVersion)
+                                if (!_blobTxCache.TryGet(txHash, out Transaction fullTx))
+                                {
+                                    dbLoadItems.Add(new DbLoadItem(i, txHash, lightTx, blobIndex));
+                                    break;
+                                }
+
+                                if (fullTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.Version == requiredVersion)
                                 {
                                     results.Add(createResult(wrapper, blobIndex));
                                     found = true;
+                                    break;
                                 }
-                                else
-                                {
-                                    dbLoadItems.Add(new DbLoadItem(i, txHash, lightTx, blobIndex));
-                                }
-
-                                break;
                             }
                         }
                     }
