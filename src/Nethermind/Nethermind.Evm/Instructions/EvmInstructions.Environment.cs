@@ -52,7 +52,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
         /// <param name="vm">The current virtual machine instance.</param>
-        abstract static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm);
+        abstract static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm, ref EvmStack stack);
     }
 
     /// <summary>
@@ -118,7 +118,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as a UInt32.
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
-        abstract static uint Operation(VmState<TGasPolicy> vmState);
+        abstract static uint Operation(VmState<TGasPolicy> vmState, ref EvmStack stack);
     }
 
     /// <summary>
@@ -269,7 +269,7 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, TOpEnv.GasCost);
 
-        uint result = TOpEnv.Operation(vm.VmState);
+        uint result = TOpEnv.Operation(vm.VmState, ref stack);
 
         return new(programCounter, stack.PushUInt32<TTracingInst>(result));
     }
@@ -338,7 +338,7 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, TOpEnv.GasCost);
 
-        ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
+        ref readonly ValueHash256 result = ref TOpEnv.Operation(vm, ref stack);
 
         return new(programCounter, stack.Push32Bytes<TTracingInst>(in result));
     }
@@ -350,7 +350,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint Operation(VmState<TGasPolicy> vmState)
+        public static uint Operation(VmState<TGasPolicy> vmState, ref EvmStack stack)
             => (uint)vmState.Env.InputData.Length;
     }
 
@@ -361,8 +361,8 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint Operation(VmState<TGasPolicy> vmState)
-            => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
+        public static uint Operation(VmState<TGasPolicy> vmState, ref EvmStack stack)
+            => (uint)stack.CodeSection.Length;
     }
 
     /// <summary>
@@ -500,7 +500,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
+        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
             => ref vm.TxExecutionContext.Origin;
     }
 
@@ -522,7 +522,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
+        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
             => ref vm.ChainId;
     }
 

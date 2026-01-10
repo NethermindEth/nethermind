@@ -300,9 +300,10 @@ public sealed class GenerateStackOpcodeGenerator : IIncrementalGenerator
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+    public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
         where TTracingInst : struct, IFlag
     {
+        ReadOnlySpan<byte> code = stack.CodeSection;
         int usedFromCode = Math.Min(code.Length - programCounter, length);
         ref byte start = ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter);
         if (usedFromCode != Size)

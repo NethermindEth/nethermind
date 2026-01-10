@@ -169,6 +169,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
+        stack.CodeSection = vmState.Env.CodeInfo.CodeSpan;
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 

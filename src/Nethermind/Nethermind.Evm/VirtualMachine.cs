@@ -1244,31 +1244,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
 
             bool shouldRevert = false;
-            // If return data was produced, jump to the return data processing block.
-            if (ReturnData is not null)
-            {
-                exceptionType = EvmExceptionType.None;
-                goto DataReturn;
-            }
-
-            // If no return data is produced, return an empty call result.
-            return CallResult.Empty(codeInfo.Version);
-
+            exceptionType = EvmExceptionType.None;
+            goto DataReturn;
         Revert:
             // Return a CallResult indicating a revert.
             shouldRevert = true;
         DataReturn:
-            object? returnData = ReturnData;
-            // Process the return data based on its runtime type.
-            if (returnData is VmState<TGasPolicy> state)
+
+            return ReturnData switch
             {
-                return new CallResult(state);
-            }
-            else if (returnData is byte[] array)
-            {
-                return new CallResult(null, array, null, codeInfo.Version, shouldRevert, exceptionType);
-            }
-            return ReturnEof(codeInfo);
+                null => CallResult.Empty(codeInfo.Version),
+                byte[] array => new CallResult(null, array, null, codeInfo.Version, shouldRevert, exceptionType),
+                VmState<TGasPolicy> state => new CallResult(state),
+                _ => ReturnEof(codeInfo),
+            };
 
         OutOfGas:
             TGasPolicy.SetOutOfGas(ref gas);
@@ -1298,6 +1287,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSpan;
+        stack.CodeSection = codeSection;
         ref byte code = ref MemoryMarshal.GetReference(codeSection);
         uint codeLength = (uint)codeSection.Length;
         // Initialize the exception type to "None".
