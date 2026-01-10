@@ -523,4 +523,6 @@ public class DbConfig : IDbConfig
         get { return field; }
         set { field = value; }
     } = "";
+
+    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }

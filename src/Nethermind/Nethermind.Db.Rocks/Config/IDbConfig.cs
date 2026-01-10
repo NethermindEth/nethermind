@@ -154,4 +154,5 @@ public interface IDbConfig : IConfig
     string? FlatStorageTopNodesNodesDbAdditionalRocksDbOptions { get; set; }
     ulong PreimageDbWriteBufferSize { get; set; }
     string? PreimageDbRocksDbOptions { get; set; }
+    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }
