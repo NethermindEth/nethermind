@@ -721,6 +721,147 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
+    // ===== ACCOUNT SNAPSHOT COMMIT TESTS =====
+
+    [Test]
+    public void TestAccountCommittedInSnapshot()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        Account testAccount = new Account(100, 5000);
+
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(new Account(0, 0));
+
+        // Set a single account
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(testAddress, testAccount);
+        }
+
+        // Commit
+        scope.Commit(1);
+
+        // Verify account is in the committed snapshot
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(testAddress, out Account? committedAccount), Is.True);
+        Assert.That(committedAccount, Is.EqualTo(testAccount));
+    }
+
+    [Test]
+    public void TestMultipleAccountsCommittedInSnapshot()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address1 = TestItem.AddressA;
+        Address address2 = TestItem.AddressB;
+        Address address3 = TestItem.AddressC;
+        Account account1 = new Account(100, 1000);
+        Account account2 = new Account(200, 2000);
+        Account account3 = new Account(300, 3000);
+
+        ctx.PersistenceReader.GetAccount(address1).Returns(new Account(0, 0));
+        ctx.PersistenceReader.GetAccount(address2).Returns(new Account(0, 0));
+        ctx.PersistenceReader.GetAccount(address3).Returns(new Account(0, 0));
+
+        // Set multiple accounts in one commit
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(3))
+        {
+            writeBatch.Set(address1, account1);
+            writeBatch.Set(address2, account2);
+            writeBatch.Set(address3, account3);
+        }
+
+        scope.Commit(1);
+
+        // Verify all accounts are in snapshot
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address1, out Account? acc1), Is.True);
+        Assert.That(acc1, Is.EqualTo(account1));
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address2, out Account? acc2), Is.True);
+        Assert.That(acc2, Is.EqualTo(account2));
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address3, out Account? acc3), Is.True);
+        Assert.That(acc3, Is.EqualTo(account3));
+    }
+
+    [Test]
+    public void TestAccountUpdatesOverwritePreviousValues()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        Account account1 = new Account(100, 1000);
+        Account account2 = new Account(200, 2000);
+
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(new Account(0, 0));
+
+        // First commit - set account
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(testAddress, account1);
+        }
+        scope.Commit(1);
+
+        Snapshot snapshot1 = ctx.LastCommittedSnapshot!;
+
+        // Second commit - update account
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(testAddress, account2);
+        }
+        scope.Commit(2);
+
+        Snapshot snapshot2 = ctx.LastCommittedSnapshot!;
+
+        // Verify first snapshot has account1
+        Assert.That(snapshot1.TryGetAccount(testAddress, out Account? acc1), Is.True);
+        Assert.That(acc1, Is.EqualTo(account1));
+
+        // Verify second snapshot has account2 (not account1)
+        Assert.That(snapshot2.TryGetAccount(testAddress, out Account? acc2), Is.True);
+        Assert.That(acc2, Is.EqualTo(account2));
+    }
+
+    [Test]
+    public void TestMultipleCommitsAccumulateAccounts()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address1 = TestItem.AddressA;
+        Address address2 = TestItem.AddressB;
+        Account account1 = new Account(100, 1000);
+        Account account2 = new Account(200, 2000);
+
+        ctx.PersistenceReader.GetAccount(address1).Returns(new Account(0, 0));
+        ctx.PersistenceReader.GetAccount(address2).Returns(new Account(0, 0));
+
+        // First commit
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address1, account1);
+        }
+        scope.Commit(1);
+
+        // Second commit
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address2, account2);
+        }
+        scope.Commit(2);
+
+        // Only the second commit's snapshot should have account2
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetAccount(address2, out Account? acc2), Is.True);
+        Assert.That(acc2, Is.EqualTo(account2));
+
+        // But reading from scope should see both (from current snapshot + previous snapshots)
+        Assert.That(scope.Get(address1), Is.EqualTo(account1));
+        Assert.That(scope.Get(address2), Is.EqualTo(account2));
+    }
+
     // ===== COMPREHENSIVE SELFDESTRUCT BLOCKING TESTS =====
 
     [Test]
