@@ -39,13 +39,13 @@ namespace Nethermind.Evm
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct OpcodeResult
     {
-        public readonly ulong _data;
+        public readonly ulong Value;
         public readonly int ProgramCounter
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return (int)(uint)_data;
+                return (int)(uint)Value;
             }
         }
 
@@ -54,14 +54,20 @@ namespace Nethermind.Evm
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return (EvmExceptionType)(_data >> 32);
+                return (EvmExceptionType)(Value >> 32);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public OpcodeResult(int pc, EvmExceptionType ex)
         {
-            _data = ((ulong)(uint)ex << 32) | (uint)pc;
+            Value = ((ulong)(uint)ex << 32) | (uint)pc;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public OpcodeResult(int pc)
+        {
+            Value = (uint)pc;
         }
     }
 }
