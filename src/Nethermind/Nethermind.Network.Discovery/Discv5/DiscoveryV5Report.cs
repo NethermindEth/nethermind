@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.WireProtocol;
@@ -6,14 +6,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-internal class DiscoveryReport
+internal class DiscoveryV5Report
 {
     int RecentlyChecked = 0;
     int TotalChecked = 0;
 
-    public DiscoveryReport(IDiscv5Protocol discv5Protocol, ILogManager logManager, CancellationToken token)
+    public DiscoveryV5Report(IDiscv5Protocol discv5Protocol, ILogManager logManager, CancellationToken token)
     {
-        ILogger logger = logManager.GetClassLogger<DiscoveryReport>();
+        ILogger logger = logManager.GetClassLogger<DiscoveryV5Report>();
         if (!logger.IsDebug)
         {
             return;
