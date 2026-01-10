@@ -41,9 +41,8 @@ public static class BlobGasCalculator
 
     public static bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
     {
-        feePerBlobGas = UInt256.MaxValue;
-        return header.ExcessBlobGas is not null
-            && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out feePerBlobGas);
+        // null ExcessBlobGas treated as 0 for consistency with CalculateExcessBlobGas
+        return TryCalculateFeePerBlobGas(header.ExcessBlobGas ?? 0, blobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
     public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
