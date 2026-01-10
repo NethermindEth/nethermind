@@ -56,6 +56,16 @@ public class SnapshotCompactor
                 if (blockNumber % _compactEveryBlockNum != 0) return;
             }
 
+            // Release the compacted state first so that its in the resourcce pool
+            if (stateId.blockNumber % _compactSize != 0)
+            {
+                // Save memory
+                foreach (var id in _flatDiffRepository.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
+                {
+                    _flatDiffRepository.RemoveAndReleaseCompactedKnownState(id);
+                }
+            }
+
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
             long sw = Stopwatch.GetTimestamp();
             Snapshot compactedSnapshot;
@@ -143,15 +153,6 @@ public class SnapshotCompactor
             _flatdiffimes.WithLabels("compaction", "add_and_measure").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
 
-            if (stateId.blockNumber % _compactSize != 0)
-            {
-                // Save memory
-                foreach (var id in _flatDiffRepository.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
-                {
-                    _flatDiffRepository.RemoveAndReleaseCompactedKnownState(id);
-                }
-            }
-
             _flatdiffimes.WithLabels("compaction", "cleanup_compacted").Observe(Stopwatch.GetTimestamp() - sw);
         }
         catch (Exception e)
@@ -165,7 +166,11 @@ public class SnapshotCompactor
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, IFlatDiffRepository.SnapshotBundleUsage.Compactor);
+        IFlatDiffRepository.SnapshotBundleUsage usage = (to.blockNumber % _compactSize == 0)
+            ? IFlatDiffRepository.SnapshotBundleUsage.Compactor
+            : IFlatDiffRepository.SnapshotBundleUsage.MidCompactor;
+
+        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
         ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> storages = snapshot.Content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;

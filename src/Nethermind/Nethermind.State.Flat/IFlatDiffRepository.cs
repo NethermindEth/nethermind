@@ -28,6 +28,7 @@ public interface IFlatDiffRepository
         PostMainBlockProcessing,
         StateReader,
         ReadOnlyProcessingEnv,
+        MidCompactor,
         Compactor,
     }
 }

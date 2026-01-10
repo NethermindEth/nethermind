@@ -149,32 +149,7 @@ public class TrieNodeCache
             }
         }
 
-        void AddToCache(Hash256? address, in TreePath path, TrieNode newNode)
-        {
-            (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
-            AddToCacheWithHashCode(shardIdx, hashCode, newNode);
-        }
-
-        foreach (var kv in snapshot.StateNodes)
-        {
-            kv.Value.PrunePersistedRecursively(1);
-            AddToCache(null, kv.Key, kv.Value);
-            (int, int) shardAndHashCode = GetShardAndHashCode(null, kv.Key);
-            cachedResource.Nodes.ClearCachedNode(shardAndHashCode.Item1, shardAndHashCode.Item2);
-        }
-
         long sw = Stopwatch.GetTimestamp();
-
-        foreach (var kv in snapshot.StorageNodes)
-        {
-            kv.Value.PrunePersistedRecursively(1);
-            AddToCache(kv.Key.Item1, kv.Key.Item2, kv.Value);
-            (int, int) shardAndHashCode = GetShardAndHashCode(kv.Key.Item1, kv.Key.Item2);
-            cachedResource.Nodes.ClearCachedNode(shardAndHashCode.Item1, shardAndHashCode.Item2);
-        }
-        _times.WithLabels("storagenodes").Observe(Stopwatch.GetTimestamp() - sw);
-
-        sw = Stopwatch.GetTimestamp();
 
         _times.WithLabels("statenodes").Observe(Stopwatch.GetTimestamp() - sw);
         sw = Stopwatch.GetTimestamp();

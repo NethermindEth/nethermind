@@ -63,22 +63,21 @@ public class ResourcePool(IFlatDbConfig flatConfig)
 
     }
 
-    private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ConcurrentQueuePool<SnapshotContent>> _snapshotPools = new()
+    private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ConcurrentStackPool<SnapshotContent>> _snapshotPools = new()
     {
-        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new ConcurrentQueuePool<SnapshotContent>(flatConfig.CompactSize + 8) },
-        { IFlatDiffRepository.SnapshotBundleUsage.PostMainBlockProcessing , new ConcurrentQueuePool<SnapshotContent>(1) },
-        { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new ConcurrentQueuePool<SnapshotContent>(Environment.ProcessorCount * 4) },
-        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new ConcurrentQueuePool<SnapshotContent>(1) },
-        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new ConcurrentQueuePool<SnapshotContent>(4) },
+        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new ConcurrentStackPool<SnapshotContent>(flatConfig.CompactSize + 8) },
+        { IFlatDiffRepository.SnapshotBundleUsage.PostMainBlockProcessing , new ConcurrentStackPool<SnapshotContent>(1) },
+        { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new ConcurrentStackPool<SnapshotContent>(Environment.ProcessorCount * 4) },
+        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new ConcurrentStackPool<SnapshotContent>(1) },
+        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new ConcurrentStackPool<SnapshotContent>(4) },
+        { IFlatDiffRepository.SnapshotBundleUsage.MidCompactor , new ConcurrentStackPool<SnapshotContent>(2) },
     };
 
     private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ConcurrentStackPool<CachedResource>> _cachedResourcePools = new()
     {
-        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new ConcurrentStackPool<CachedResource>(4) },
+        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new ConcurrentStackPool<CachedResource>(2) },
         { IFlatDiffRepository.SnapshotBundleUsage.PostMainBlockProcessing , new ConcurrentStackPool<CachedResource>(1) },
         { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new ConcurrentStackPool<CachedResource>(Environment.ProcessorCount * 4) },
-        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new ConcurrentStackPool<CachedResource>(1) },
-        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new ConcurrentStackPool<CachedResource>(1) }
     };
 
     private static Counter _createdSnapshotContent = DevMetric.Factory.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");

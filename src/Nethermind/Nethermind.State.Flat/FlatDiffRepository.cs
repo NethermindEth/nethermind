@@ -483,12 +483,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         }
         else
         {
-            while (!_populateTrieNodeCacheJob.Writer.TryWrite(cachedResource))
+            if (!_populateTrieNodeCacheJob.Writer.TryWrite(cachedResource))
             {
-                if (_processExitSource.Token.IsCancellationRequested) break; // When cancelled the queue stop
-
-                _logger.Warn("Trie node cache job stall");
-                _populateTrieNodeCacheJob.Writer.WaitToWriteAsync().Wait();
+                // Ignore it, just dispose
+                cachedResource.Dispose();
             }
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))

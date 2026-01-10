@@ -400,18 +400,14 @@ public sealed class SnapshotBundle : IDisposable
 
     private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer, long sw, out TrieNode? node)
     {
-        if (selfDestructStateIdx == -1)
+        if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
-            // If no self destruct idx, check node cache first
-            if (_trieNodeCache.TryGet(address, path, hash, out node))
-            {
-                _findStorageNodeNodeCache.Observe(Stopwatch.GetTimestamp() - sw);
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                _nodeGetTrieCache.Inc();
-                return true;
-            }
-            _findStorageNodeNodeCacheMiss.Observe(Stopwatch.GetTimestamp() - sw);
+            _findStorageNodeNodeCache.Observe(Stopwatch.GetTimestamp() - sw);
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _nodeGetTrieCache.Inc();
+            return true;
         }
+        _findStorageNodeNodeCacheMiss.Observe(Stopwatch.GetTimestamp() - sw);
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
         if (selfDestructStateIdx == -1 || currentBundleSelfDestructIdx >= 0)
@@ -455,6 +451,7 @@ public sealed class SnapshotBundle : IDisposable
         long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
         _changedStateNodes[path] = newNode;
+        _cachedResource.UpdateStateNode(path, newNode);
         _setStateNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
@@ -467,6 +464,7 @@ public sealed class SnapshotBundle : IDisposable
         long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
         _changedStorageNodes[(addr, path)] = newNode;
+        _cachedResource.UpdateStorageNode(addr, path, newNode);
         _setStorageNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
