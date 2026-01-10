@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.ExecutionRequest;
+
+using SHA256 =
+#if ZKVM
+    SHA256Managed;
+#else
+    System.Security.Cryptography.SHA256;
+#endif
 
 public static class ExecutionRequestExtensions
 {
@@ -23,8 +27,6 @@ public static class ExecutionRequestExtensions
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
     public const int MaxRequestsCount = 3;
-
-
 
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
