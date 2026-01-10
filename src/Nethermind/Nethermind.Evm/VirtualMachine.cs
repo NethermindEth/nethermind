@@ -1291,20 +1291,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         uint codeLength = (uint)codeSection.Length;
         stack.Code = ref code;
         stack.CodeLength = (int)codeLength;
-        // Initialize the exception type to "None".
-        EvmExceptionType exceptionType = EvmExceptionType.None;
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
-        int programCounter = VmState.ProgramCounter;
+        OpcodeResult result = new(VmState.ProgramCounter);
         int opCodeCount = 0;
         // Iterate over the instructions using a while loop because opcodes may modify the program counter.
-        while ((uint)programCounter < codeLength)
+        while (result.Value < codeLength)
         {
 #if DEBUG
             // Allow the debugger to inspect and possibly pause execution for debugging purposes.
             debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
             // Fetch the current instruction from the code section.
-            Instruction instruction = (Instruction)Unsafe.Add(ref code, (nuint)(uint)programCounter);
+            Instruction instruction = (Instruction)Unsafe.Add(ref code, (nuint)result.Value);
 
             // If cancellation is enabled and cancellation has been requested, throw an exception.
             if (TCancelable.IsActive && _txTracer.IsCancelled)
@@ -1312,49 +1310,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             // If tracing is enabled, start an instruction trace.
             if (TTracingInst.IsActive)
-                StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
+                StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), result.ProgramCounter, in stack);
 
-            // Advance the program counter to point to the next instruction.
-            programCounter++;
             opCodeCount++;
 
             // Invoke the opcode method, which may modify the stack, gas, and program counter.
             // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-            OpcodeResult result = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, programCounter);
+            result = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, result.ProgramCounter + 1);
 
-            programCounter = result.ProgramCounter;
             // If gas is exhausted, jump to the out-of-gas handler.
             if (TGasPolicy.GetRemainingGas(in gas) < 0)
             {
-                exceptionType = EvmExceptionType.OutOfGas;
-            }
-            else
-            {
-                exceptionType = result.Exception;
+                result = new OpcodeResult(0, EvmExceptionType.OutOfGas);
             }
             // If an exception occurred, exit the loop.
-            if (exceptionType != EvmExceptionType.None)
-                break;
 
             // If tracing is enabled, complete the trace for the current instruction.
-            if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive && result.Exception == EvmExceptionType.None)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
         }
         OpCodeCount += opCodeCount;
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
-        if (exceptionType <= EvmExceptionType.Revert)
+        EvmExceptionType exception = result.Exception;
+        if (exception <= EvmExceptionType.Revert)
         {
             // If tracing is enabled, complete the trace for the current instruction.
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-            UpdateCurrentState(programCounter, in gas, stack.Head);
+            UpdateCurrentState(result.ProgramCounter, in gas, stack.Head);
         }
 #if DEBUG
         // Allow debugging before processing the return data.
         debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
-        return exceptionType;
+        return exception;
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
