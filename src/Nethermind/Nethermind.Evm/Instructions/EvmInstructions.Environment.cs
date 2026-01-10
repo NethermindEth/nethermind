@@ -362,7 +362,7 @@ internal static partial class EvmInstructions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint Operation(VmState<TGasPolicy> vmState, ref EvmStack stack)
-            => (uint)stack.CodeSection.Length;
+            => (uint)stack.CodeLength;
     }
 
     /// <summary>
