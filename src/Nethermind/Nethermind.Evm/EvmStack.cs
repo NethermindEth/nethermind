@@ -43,12 +43,8 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
     {
-        // Workhorse method
         int head = Head;
-        if ((Head = head + 1) >= MaxStackSize)
-        {
-            ThrowEvmStackOverflowException();
-        }
+        Head = head + 1;
 
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
@@ -70,7 +66,6 @@ public ref struct EvmStack
         if (value.Length != WordSize)
         {
             ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
             Unsafe.As<byte, Word>(ref bytes) = default;
             value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
         }
@@ -197,6 +192,7 @@ public ref struct EvmStack
         ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
         ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
 
+        // Single 32-byte store
         head = Vector256.Create(default, lane1, lane2, lane3).AsByte();
     }
 
@@ -212,7 +208,6 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.TraceWord(in value);
 
-        // Single 32-byte store
         PushedHead() = value;
     }
 
@@ -262,7 +257,7 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
-        // Single 32-byte store: Zero 
+        // Single 32-byte store: Zero
         PushedHead() = default;
     }
 
@@ -302,7 +297,6 @@ public ref struct EvmStack
     /// <remarks>
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
     /// </remarks>
-
     public void PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
@@ -359,14 +353,9 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PopLimbo()
+    public void PopLimbo()
     {
-        if (Head-- == 0)
-        {
-            return false;
-        }
-
-        return true;
+        Head--;
     }
 
     /// <summary>
@@ -377,11 +366,10 @@ public ref struct EvmStack
     /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
     /// </remarks>
     /// <param name="result">The returned value.</param>
-    public bool PopUInt256(out UInt256 result)
+    public void PopUInt256(out UInt256 result)
     {
         Unsafe.SkipInit(out result);
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) return false;
 
         if (Avx2.IsSupported)
         {
@@ -424,18 +412,11 @@ public ref struct EvmStack
 
             result = new UInt256(u0, u1, u2, u3);
         }
-
-        return true;
     }
 
     public readonly bool PeekUInt256IsZero()
     {
-        int head = Head;
-        if (head-- == 0)
-        {
-            return false;
-        }
-
+        int head = Head - 1;
         ref byte bytes = ref _bytes[head * WordSize];
         return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
     }
@@ -443,87 +424,53 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly ref byte PeekBytesByRef()
     {
-        int head = Head;
-        if (head-- == 0)
-        {
-            return ref Unsafe.NullRef<byte>();
-        }
+        int head = Head - 1;
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public readonly Span<byte> PeekWord256()
     {
-        int head = Head;
-        if (head-- == 0)
-        {
-            ThrowEvmStackUnderflowException();
-        }
-
+        int head = Head - 1;
         return _bytes.Slice(head * WordSize, WordSize);
     }
 
-    public Address? PopAddress() => Head-- == 0 ? null : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+    public Address? PopAddress()
+        => new Address(_bytes.Slice((--Head) * WordSize + WordSize - AddressSize, AddressSize).ToArray());
 
-    public bool PopAddress(out Address address)
+    public void PopAddress(out Address address)
     {
-        if (Head-- == 0)
-        {
-            address = null;
-            return false;
-        }
-
+        Head--;
         address = new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
-        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PopBytesByRef()
     {
-        int head = Head;
-        if (head == 0)
-        {
-            return ref Unsafe.NullRef<byte>();
-        }
-        head--;
+        int head = Head - 1;
         Head = head;
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public Span<byte> PopWord256()
+        => MemoryMarshal.CreateSpan(ref PopBytesByRef(), WordSize);
+
+    public void PopWord256(out Span<byte> word)
     {
-        ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
-
-        return MemoryMarshal.CreateSpan(ref bytes, WordSize);
-    }
-
-    public bool PopWord256(out Span<byte> word)
-    {
-        if (Head-- == 0)
-        {
-            word = default;
-            return false;
-        }
-
+        Head--;
         word = _bytes.Slice(Head * WordSize, WordSize);
-        return true;
     }
 
     public byte PopByte()
     {
         ref byte bytes = ref PopBytesByRef();
-
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
-
         return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
     }
 
     [SkipLocalsInit]
-    public EvmExceptionType Dup<TTracingInst>(int depth)
+    public void Dup<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
         int head = Head;
-        if (head < depth) goto StackUnderflow;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -534,27 +481,17 @@ public ref struct EvmStack
 
         if (TTracingInst.IsActive) Trace(depth);
 
-        if (++head >= MaxStackSize) goto StackOverflow;
-
-        Head = head;
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    StackOverflow:
-        return EvmExceptionType.StackOverflow;
+        Head = head + 1;
     }
 
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
     [SkipLocalsInit]
-    public readonly EvmExceptionType Swap<TTracingInst>(int depth)
+    public readonly void Swap<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
         int head = Head;
-        if (head < depth) goto StackUnderflow;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -566,18 +503,12 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref top, buffer);
 
         if (TTracingInst.IsActive) Trace(depth);
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 
-    public readonly bool Exchange<TTracingInst>(int n, int m)
+    public readonly void Exchange<TTracingInst>(int n, int m)
         where TTracingInst : struct, IFlag
     {
         int maxDepth = Math.Max(n, m);
-        if (!EnsureDepth(maxDepth)) return false;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -589,8 +520,6 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref second, buffer);
 
         if (TTracingInst.IsActive) Trace(maxDepth);
-
-        return true;
     }
 
     private readonly void Trace(int depth)
