@@ -261,9 +261,7 @@ public class SnapProviderTests
             st.Commit();
         }
 
-        IStateReader stateRootTracker = Substitute.For<IStateReader>();
-        stateRootTracker.HasStateForBlock(Build.A.BlockHeader.WithStateRoot(st.RootHash).TestObject).Returns(true);
-        var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), stateRootTracker, LimboLogs.Instance);
+        var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
         return (ss, st.RootHash);
     }
 }
