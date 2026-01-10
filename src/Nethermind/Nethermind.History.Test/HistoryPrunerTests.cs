@@ -318,7 +318,7 @@ public class HistoryPrunerTests
 
     [Test]
     public async Task Should_not_get_stuck_when_block_is_already_removed_by_manual_pruner()
-    {        
+    {
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Rolling,
@@ -334,21 +334,21 @@ public class HistoryPrunerTests
         {
             await testBlockchain.AddBlock();
         }
-        
+
         testBlockchain.BlockTree.SyncPivot = (2, Hash256.Zero);
-        
+
         long initialPointer = historyPruner.OldestBlockHeader.Number;
-        
+
         // simulate what manual pruning may do
         blockTree.DeleteOldBlock(1, blockTree.FindHeader(1).Hash);
-        
+
         // Run pruner
         historyPruner.TryPruneHistory(CancellationToken.None);
-        
+
         long finalPointer = historyPruner.OldestBlockHeader.Number;
-        
+
         // Without fix: Might be stuck at 1
-        Assert.That(finalPointer, Is.GreaterThan(1), 
+        Assert.That(finalPointer, Is.GreaterThan(1),
             $"Delete pointer stuck at {finalPointer}. Should advance past missing block 1.");
     }
 

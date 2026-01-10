@@ -462,13 +462,13 @@ public class HistoryPruner : IHistoryPruner
             if (CutoffBlockNumber is not null)
             {
                 long expectedLast = Math.Min(CutoffBlockNumber.Value, _blockTree.SyncPivot.BlockNumber) - 1;
-                
+
                 if (_deletePointer - 1 < expectedLast)
                 {
                     // some block already pruned
                     // could happen when a manual pruning took place
                     UpdateDeletePointer(expectedLast + 1, true);
-                }                
+                }
             }
         }
         finally
