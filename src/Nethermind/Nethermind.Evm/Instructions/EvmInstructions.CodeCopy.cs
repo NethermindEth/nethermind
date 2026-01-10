@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
@@ -117,7 +118,7 @@ internal static partial class EvmInstructions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
-            => stack.CodeSection;
+            => MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength);
     }
 
     /// <summary>
@@ -244,7 +245,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = stack.CodeSection;
+        ReadOnlySpan<byte> codeSection = MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength);
         if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;

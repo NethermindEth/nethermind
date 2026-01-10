@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -169,7 +170,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
-        stack.CodeSection = vmState.Env.CodeInfo.CodeSpan;
+        ReadOnlySpan<byte> codeSection = vmState.Env.CodeInfo.CodeSpan;
+        stack.Code = ref MemoryMarshal.GetReference(codeSection);
+        stack.CodeLength = codeSection.Length;
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 

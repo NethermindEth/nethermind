@@ -303,9 +303,8 @@ public sealed class GenerateStackOpcodeGenerator : IIncrementalGenerator
     public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
         where TTracingInst : struct, IFlag
     {
-        ReadOnlySpan<byte> code = stack.CodeSection;
-        int usedFromCode = Math.Min(code.Length - programCounter, length);
-        ref byte start = ref Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter);
+        int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
+        ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
         if (usedFromCode != Size)
         {
             return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);

@@ -1287,9 +1287,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSpan;
-        stack.CodeSection = codeSection;
         ref byte code = ref MemoryMarshal.GetReference(codeSection);
         uint codeLength = (uint)codeSection.Length;
+        stack.Code = ref code;
+        stack.CodeLength = (int)codeLength;
         // Initialize the exception type to "None".
         EvmExceptionType exceptionType = EvmExceptionType.None;
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.

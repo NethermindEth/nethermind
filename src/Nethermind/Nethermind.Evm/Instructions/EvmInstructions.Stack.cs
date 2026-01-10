@@ -99,14 +99,12 @@ internal static partial class EvmInstructions
         public static EvmExceptionType Push<TTracingInst>(int length, ref EvmStack stack, int programCounter)
             where TTracingInst : struct, IFlag
         {
-            ReadOnlySpan<byte> code = stack.CodeSection;
             // Determine how many bytes can be used from the code.
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
+            int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             if (usedFromCode == Size)
             {
                 // Directly push the single byte.
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                return stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
+                return stack.PushByte<TTracingInst>(Add(ref stack.Code, programCounter));
             }
             else
             {
@@ -143,10 +141,8 @@ internal static partial class EvmInstructions
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = stack.CodeSection;
-
-        ref byte bytes = ref MemoryMarshal.GetReference(code);
-        int remainingCode = code.Length - programCounter;
+        ref byte bytes = ref stack.Code;
+        int remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
         if (!TTracingInst.IsActive &&
             remainingCode > Size &&
