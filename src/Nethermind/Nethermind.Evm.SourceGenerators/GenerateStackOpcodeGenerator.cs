@@ -20,7 +20,7 @@ public sealed class GenerateStackOpcodeGenerator : IIncrementalGenerator
     private const string AttributeMetadataName = "Nethermind.Evm.CodeAnalysis.GenerateStackOpcodeAttribute";
 
     private static readonly DiagnosticDescriptor MustBePartial = new(
-        id: "NMSTACKSOG001",
+        id: "NM_STACK_SOG_001",
         title: "GenerateStackOpcode requires a partial struct",
         messageFormat: "Type '{0}' must be declared partial to use [GenerateStackOpcode]",
         category: "Nethermind.Evm.SourceGenerators",
@@ -28,7 +28,7 @@ public sealed class GenerateStackOpcodeGenerator : IIncrementalGenerator
         isEnabledByDefault: true);
 
     private static readonly DiagnosticDescriptor InvalidSize = new(
-        id: "NMSTACKSOG002",
+        id: "NM_STACK_SOG_002",
         title: "GenerateStackOpcode size must be between 1 and 32",
         messageFormat: "Type '{0}': size '{1}' is invalid. Expected a constant integer between 1 and 32.",
         category: "Nethermind.Evm.SourceGenerators",
@@ -36,7 +36,7 @@ public sealed class GenerateStackOpcodeGenerator : IIncrementalGenerator
         isEnabledByDefault: true);
 
     private static readonly DiagnosticDescriptor NestedTypeRequiresPartialContainers = new(
-        id: "NMSTACKSOG003",
+        id: "NM_STACK_SOG_003",
         title: "GenerateStackOpcode cannot emit into a non-partial containing type",
         messageFormat: "Type '{0}' is nested inside '{1}', but '{1}' is not partial. Make all containing types partial or move the opcode type to top-level.",
         category: "Nethermind.Evm.SourceGenerators",

@@ -17,7 +17,7 @@ namespace Nethermind.Evm.SourceGenerators;
 public sealed class StackPushBytesGenerator : IIncrementalGenerator
 {
     private static readonly DiagnosticDescriptor InvalidUsage = new(
-        id: "NMSTACKPUSH001",
+        id: "NM_STACK_PUSH_001",
         title: "Invalid GenerateStackPushBytes usage",
         messageFormat: "{0}",
         category: "Nethermind.Evm.SourceGenerators",
