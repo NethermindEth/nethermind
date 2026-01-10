@@ -7,16 +7,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.State.Flat;
 using Nethermind.Trie;
 using Prometheus;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
-namespace Nethermind.State;
+namespace Nethermind.State.Flat;
 
 public class ResourcePool(IFlatDbConfig flatConfig)
 {
-
     private class ConcurrentQueuePool<T>(int maxCapacity = 16) where T : notnull, IDisposable, IResettable
     {
         private ConcurrentQueue<T> _queue = new ConcurrentQueue<T>();

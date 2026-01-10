@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Prometheus;
@@ -37,8 +38,9 @@ public class TrieNodeCache
 
     private readonly ILogger _logger;
 
-    public TrieNodeCache(long maxCacheMemoryThreshold, ILogManager logManager)
+    public TrieNodeCache(IFlatDbConfig flatDbConfig, ILogManager logManager)
     {
+        long maxCacheMemoryThreshold = flatDbConfig.TrieCacheMemoryTarget;
         long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
 
         // [Optimization] Round bucket size up to Power of 2 for fast AND masking

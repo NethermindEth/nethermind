@@ -83,21 +83,14 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         IPersistence persistedPersistence,
         ResourcePool resourcePool,
         IProcessExitSource processExitSource,
+        TrieNodeCache trieNodeCache,
         ILogManager logManager,
         Configuration? config = null)
     {
         if (config is null) config = new Configuration();
-        _compactSize = config.CompactSize;
-        _inlineCompaction = config.InlineCompaction;
-        _resourcePool = resourcePool;
-        _processExitSource = processExitSource;
+
+        _trieNodeCache = trieNodeCache;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
-
-        if (config.WarmUpPersistence)
-        {
-            persistedPersistence.WarmUpWhole(processExitSource.Token);
-        }
-
         _persistenceManager = new PersistenceManager(
             this,
             config,
@@ -107,11 +100,19 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             logManager);
         _snapshotCompactor = new SnapshotCompactor(this, config, resourcePool, logManager);
 
+        _compactSize = config.CompactSize;
+        _inlineCompaction = config.InlineCompaction;
+        _resourcePool = resourcePool;
+        _processExitSource = processExitSource;
+
+        if (config.WarmUpPersistence)
+        {
+            persistedPersistence.WarmUpWhole(processExitSource.Token);
+        }
+
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _populateTrieNodeCacheJob = Channel.CreateBounded<CachedResource>(1);
         _persistenceJob = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
-
-        _trieNodeCache = new TrieNodeCache(config.TrieCacheMemoryTarget, logManager);
 
         _compactorTask = RunCompactor(exitSource.Token);
         _populateTrieNodeCacheTask = RunTrieCachePopulator(exitSource.Token);
@@ -406,7 +407,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             // Special case for pregenesis. Note: nethermind always try to generate genesis.
             return new SnapshotBundle(
                 readOnlySnapshotBundle,
-                new ArrayPoolList<Snapshot>(1),
                 _trieNodeCache,
                 _resourcePool,
                 usage: usage);
@@ -416,7 +416,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         var res = new SnapshotBundle(
             readOnlySnapshotBundle,
-            new ArrayPoolList<Snapshot>(1),
             _trieNodeCache,
             _resourcePool,
             usage: usage);

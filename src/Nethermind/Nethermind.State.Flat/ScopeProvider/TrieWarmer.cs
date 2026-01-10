@@ -18,7 +18,7 @@ using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class TrieWarmer : ITrieWarmer
+public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024;
@@ -226,7 +226,8 @@ public sealed class TrieWarmer : ITrieWarmer
 
     private void WaitForExecutionSlot()
     {
-        _executionSlots.WaitOne();
+        // Some wait but not forever so that it exit properly
+        _executionSlots.WaitOne(100);
     }
 
     private void MainWarmerIdle(WarmerWorkers warmerWorkers)
@@ -322,5 +323,11 @@ public sealed class TrieWarmer : ITrieWarmer
 
         _mainWarmer?.WakeUp();
         _mainWarmer = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_warmerJob is not null) await _warmerJob;
+        _executionSlots.Dispose();
     }
 }

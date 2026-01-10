@@ -51,7 +51,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
-    private readonly ResourcePool _resourcePool;
     private readonly string _isPrewarmerLabel;
 
     public FlatWorldStateScope(
@@ -61,7 +60,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
         ITrieWarmer trieCacheWarmer,
-        ResourcePool resourcePool,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -69,7 +67,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _snapshotBundle = snapshotBundle;
         _codeDb = codeDb;
         _flatDiffRepository = flatDiffRepository;
-        _resourcePool = resourcePool;
         _isPrewarmerLabel = (_warmer is NoopTrieWarmer).ToString();
 
         _concurrencyQuota = new ConcurrencyQuota(); // Used during tree commit.

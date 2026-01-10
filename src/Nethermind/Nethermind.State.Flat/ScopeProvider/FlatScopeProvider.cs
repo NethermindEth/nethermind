@@ -68,10 +68,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             _flatDiffRepository,
             _configuration,
             warmer,
-            _resourcePool,
-            _logManager,
-            _isReadOnly
-        );
+            _logManager);
     }
 
     public void WarmUpOutOfScope(Address address, UInt256? slot)

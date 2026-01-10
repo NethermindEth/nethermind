@@ -40,6 +40,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddSingleton<ResourcePool>()
             .AddSingleton<Importer>()
+            .AddSingleton<TrieNodeCache>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<ITrieWarmer, TrieWarmer>()
 

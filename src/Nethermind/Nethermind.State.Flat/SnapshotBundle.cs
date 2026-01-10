@@ -36,8 +36,6 @@ public sealed class SnapshotBundle : IDisposable
     // Notably it holds loaded caches from trie warmer.
     private CachedResource _cachedResource = null!;
 
-    public int SnapshotCount => _snapshots.Count;
-
     internal ArrayPoolList<Snapshot> _snapshots;
     private readonly TrieNodeCache _trieNodeCache;
     private bool _isPrewarmer;
@@ -90,17 +88,14 @@ public sealed class SnapshotBundle : IDisposable
 
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        ArrayPoolList<Snapshot> snapshots,
         TrieNodeCache trieNodeCache,
         ResourcePool resourcePool,
-        IFlatDiffRepository.SnapshotBundleUsage usage,
-        bool isPrewarmer = false)
+        IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
-        _snapshots = snapshots;
+        _snapshots = new ArrayPoolList<Snapshot>(1);
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
-        _isPrewarmer = isPrewarmer;
         _usage = usage;
         SetupMetric();
 
@@ -564,6 +559,8 @@ public sealed class SnapshotBundle : IDisposable
         {
             CachedResource cachedResource = _cachedResource;
 
+            // Main block processing only commit once. For optimization we switch the usage so that the used resource
+            // is from a different pool that will essentially be empty all the time.
             if (_usage == IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing)
             {
                 _usage = IFlatDiffRepository.SnapshotBundleUsage.PostMainBlockProcessing;
