@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.TxPool;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
 using P2P = Nethermind.Network.P2P.Messages;
 using V62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -120,5 +124,44 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V69.StatusMessage69, V69.StatusMessageSerializer69>()
 
             ;
+
+        builder.Register(ctx =>
+            {
+                return new ProtocolValidator(
+                    ctx.Resolve<INodeStatsManager>(),
+                    ctx.Resolve<IBlockTree>(),
+                    ctx.Resolve<IForkInfo>(),
+                    ctx.Resolve<IPeerManager>(),
+                    ctx.Resolve<INetworkConfig>(),
+                    ctx.Resolve<ILogManager>());
+            })
+            .As<IProtocolValidator>()
+            .SingleInstance();
+
+        builder.Register(ctx =>
+            {
+                var api = ctx.Resolve<INethermindApi>();
+
+                return new ProtocolsManager(
+                    api.SyncPeerPool!,
+                    api.SyncServer!,
+                    api.BackgroundTaskScheduler,
+                    api.TxPool!,
+                    ctx.Resolve<IDiscoveryApp>(),
+                    api.MessageSerializationService,
+                    api.RlpxPeer,
+                    ctx.Resolve<INodeStatsManager>(),
+                    ctx.Resolve<IProtocolValidator>(),
+                    ctx.ResolveKeyed<INetworkStorage>(DbNames.PeersDb),
+                    ctx.Resolve<IForkInfo>(),
+                    api.GossipPolicy,
+                    api.WorldStateManager!,
+                    api.LogManager,
+                    ctx.Resolve<ITxPoolConfig>(),
+                    api.SpecProvider!,
+                    api.TxGossipPolicy);
+            })
+            .As<IProtocolsManager>()
+            .SingleInstance();
     }
 }
