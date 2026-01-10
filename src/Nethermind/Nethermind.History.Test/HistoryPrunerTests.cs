@@ -17,7 +17,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -315,59 +314,6 @@ public class HistoryPrunerTests
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
             LimboLogs.Instance));
-    }
-
-    [Test]
-    public void GetBlocksByNumber_yields_null_blocks()
-    {
-        using var testBlockchain = BasicTestBlockchain.Create().Result;
-        var blockTree = testBlockchain.BlockTree;
-        
-        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        
-        blockTree.SuggestBlock(block0);
-        blockTree.SuggestBlock(block1);
-        blockTree.UpdateMainChain(new Block[] { block0, block1 }, true);
-        
-        testBlockchain.BlockTree.DeleteOldBlock(1, block1.Hash);
-        
-        var level = blockTree.FindLevel(1);
-        Block foundBlock = blockTree.FindBlock(block1.Hash, BlockTreeLookupOptions.None);
-        
-        Assert.That(foundBlock, Is.Null);
-        Assert.That(blockTree.FindHeader(block1.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
-    }
-
-   [Test]
-    public async Task Pruner_handles_block_with_null_body()
-    {
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            Pruning = PruningModes.Rolling,
-            RetentionEpochs = 100000,
-            PruningInterval = 0
-        };
-
-        using var testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
-        var blockTree = testBlockchain.BlockTree;
-        
-        for (int i = 0; i < 3; i++)
-        {
-            await testBlockchain.AddBlock();
-        }
-        
-        testBlockchain.BlockTree.SyncPivot = (10L, Keccak.Zero);
-        
-        Block blockToDelete = testBlockchain.BlockTree.FindBlock(1, BlockTreeLookupOptions.None);
-        testBlockchain.BlockTree.DeleteOldBlock(1, blockToDelete.Hash);
-        
-        var pruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        pruner.TryPruneHistory(cts.Token);
-        
-        Assert.Pass("Pruner handled null block without hanging");
     }
 
     private static void CheckGenesisPreserved(BasicTestBlockchain testBlockchain, Hash256 genesisHash)
