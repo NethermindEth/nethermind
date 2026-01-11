@@ -192,7 +192,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_encode_decode_with_missing_excess_blob_gass()
+    public void Can_encode_decode_with_missing_excess_blob_gas()
     {
         BlockHeader header = Build.A.BlockHeader
                 .WithHash(new Hash256("0x3d8b9cc98eee58243461bd5a83663384b50293cd1e459a6841cb005296305590"))
