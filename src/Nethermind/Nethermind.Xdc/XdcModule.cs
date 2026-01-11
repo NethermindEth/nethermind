@@ -33,7 +33,6 @@ namespace Nethermind.Xdc;
 public class XdcModule : Module
 {
     private const string SnapshotDbName = "Snapshots";
-    private const string SignTxRandomizeDbName = "RandomValues";
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -78,8 +77,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
-            .AddDatabase(SignTxRandomizeDbName)
-            .AddSingleton<ISignTransactionManager, IDb, ISigner, ITxPool>(CreateSignTransactionManager)
+            .AddSingleton<ISignTransactionManager, ISigner, ITxPool>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -95,9 +93,9 @@ public class XdcModule : Module
     {
         return new SnapshotManager(db, blockTree, penaltyHandler);
     }
-    private ISignTransactionManager CreateSignTransactionManager([KeyFilter(SignTxRandomizeDbName)] IDb db, ISigner signer, ITxPool txPool)
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool)
     {
-        return new SignTransactionManager(db, signer, txPool);
+        return new SignTransactionManager(signer, txPool);
     }
 
     private IMasternodeVotingContract CreateMasternodeVotingContract(
