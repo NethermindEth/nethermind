@@ -66,6 +66,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
+        base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
         _op = opcode;
     }
 

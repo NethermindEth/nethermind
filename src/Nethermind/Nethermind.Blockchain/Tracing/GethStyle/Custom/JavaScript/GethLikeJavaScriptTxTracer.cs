@@ -108,6 +108,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
+        base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
         _log.pc = pc + env.CodeInfo.PcOffset();
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
@@ -118,7 +119,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         // skip functionDepth
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    protected override void OnOperationRemainingGas(long gas)
     {
         _log.gasCost ??= _log.gas - gas;
         if (_functions.HasFlag(TracerFunctions.postStep))
