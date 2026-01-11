@@ -19,7 +19,7 @@ public interface IWorldStateScopeProvider
 
     // Warm up out of scope the specific slot. If the slot is null, then warmup the account.
     // This method may be called in concurrently.
-    void WarmUpOutOfScope(Address address, UInt256? slot) { }
+    void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite) { }
 
     public interface IScope : IDisposable
     {

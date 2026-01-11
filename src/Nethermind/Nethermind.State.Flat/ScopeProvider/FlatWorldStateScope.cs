@@ -144,7 +144,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _snapshotBundle.SetAccount(address, account);
         if (!_disableLocalAddressTriewarmerQueue)
         {
-            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId);
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId, false);
         }
     }
 
@@ -152,29 +152,29 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     {
         if (!_disableLocalAddressTriewarmerQueue)
         {
-            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId);
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId, true);
         }
     }
 
-    public void WarmUpOutOfScope(Address address, UInt256? slot)
+    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
     {
         if (_isDisposed) return;
         if (_pausePrewarmer) return;
 
         if (slot is null)
         {
-            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushJobMulti(this, address, null, null, _hintSequenceId);
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushJobMulti(this, address, null, null, _hintSequenceId, isWrite);
         }
         else
         {
-            CreateStorageTreeImpl(address).QueueOutOfScopeWarmup(slot.Value);
+            CreateStorageTreeImpl(address).QueueOutOfScopeWarmup(slot.Value, isWrite);
         }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
-    public bool WarmUpStateTrie(Address address, int sequenceId)
+    public bool WarmUpStateTrie(Address address, int sequenceId, bool isWrite)
     {
         if (_hintSequenceId != sequenceId)
         {
@@ -192,7 +192,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         {
             // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
             // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, true, true);
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, isWrite);
         }
         catch (AbstractMinimalTrieStore.UnsupportedOperationException)
         {
@@ -240,6 +240,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
+        _warmer.WaitUntilEmpty();
+
         // Invalidates trie node warmer tasks at this point. Write batch already do things in parallel.
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }

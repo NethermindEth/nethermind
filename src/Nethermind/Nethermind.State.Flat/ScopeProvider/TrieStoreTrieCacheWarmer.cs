@@ -12,40 +12,51 @@ public interface ITrieWarmer
         FlatStorageTree storageTree,
         Address path,
         in UInt256? index,
-        int sequenceId);
+        int sequenceId,
+        bool isWrite);
 
     public void PushAddressJob(
         FlatWorldStateScope scope,
         Address? path,
-        int sequenceId);
+        int sequenceId,
+        bool isWrite);
 
     public void PushJobMulti(
         FlatWorldStateScope scope,
         Address? path,
         FlatStorageTree? storageTree,
         in UInt256? index,
-        int sequenceId);
+        int sequenceId,
+        bool isWrite);
 
     void OnNewScope();
+    void WaitUntilEmpty();
 }
 
 public class NoopTrieWarmer : ITrieWarmer
 {
     public void PushSlotJob(FlatStorageTree storageTree, Address path, in UInt256? index,
-        int sequenceId)
+        int sequenceId,
+        bool isWrite)
     {
     }
 
-    public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId)
+    public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId,
+        bool isWrite)
     {
     }
 
     public void PushJobMulti(FlatWorldStateScope scope, Address? path, FlatStorageTree? storageTree, in UInt256? index,
-        int sequenceId)
+        int sequenceId,
+        bool isWrite)
     {
     }
 
     public void OnNewScope()
+    {
+    }
+
+    public void WaitUntilEmpty()
     {
     }
 }

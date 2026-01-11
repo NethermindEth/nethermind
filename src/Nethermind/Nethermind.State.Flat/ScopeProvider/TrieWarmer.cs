@@ -35,7 +35,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         Address? path,
         UInt256 index,
         int sequenceId,
-        long startTime);
+        long startTime,
+        bool isWrite);
 
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = DevMetric.Factory.CreateCounter("triestore_trie_warmer", "hit rate", "type");
@@ -60,9 +61,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private bool TryDequeue(out Job job)
     {
-        return _addressJob.TryDequeue(out job)
-               || _slotJobBuffer.TryDequeue(out job)
-               || _jobBufferMulti.TryDequeue(out job);
+        return
+               _slotJobBuffer.TryDequeue(out job)
+               || _jobBufferMulti.TryDequeue(out job)
+               || _addressJob.TryDequeue(out job)
+               ;
     }
 
     private int EstimatedJobCount => (int)(_addressJob.EstimatedJobCount +
@@ -106,7 +109,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             Address? address,
             UInt256 index,
             int sequenceId,
-            long startTime) = job;
+            long startTime,
+            bool isWrite) = job;
 
         long sw = Stopwatch.GetTimestamp();
         try
@@ -114,7 +118,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             if (scopeOrStorageTree is FlatWorldStateScope scope)
             {
                 _serviceTimeHistogram.WithLabels(isMain.ToString(), "state").Observe(sw - startTime);
-                if (scope.WarmUpStateTrie(address!, sequenceId))
+                if (scope.WarmUpStateTrie(address!, sequenceId, isWrite))
                 {
                     _workTime.WithLabels(isMain.ToString(), "state").Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("state").Inc();
@@ -129,7 +133,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             {
                 _serviceTimeHistogram.WithLabels(isMain.ToString(), "storage").Observe(sw - startTime);
                 FlatStorageTree storageTree = (FlatStorageTree)scopeOrStorageTree;
-                if (storageTree.WarUpStorageTrie(index, sequenceId))
+                if (storageTree.WarUpStorageTrie(index, sequenceId, isWrite))
                 {
                     _workTime.WithLabels(isMain.ToString(), "storage").Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("storage").Inc();
@@ -237,15 +241,22 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void MaybeWakeOpOtherWorker()
     {
-        if (EstimatedJobCount > 0 && _slots < Math.Min(EstimatedJobCount, _workerCount))
+        int estimatedJobCount = EstimatedJobCount;
+        long delta = Math.Min(estimatedJobCount, _workerCount) - _slots;
+        if (delta > 0)
         {
-            try
+            while (delta > 0)
             {
-                Interlocked.Increment(ref _slots);
-                _executionSlots.Release();
-            }
-            catch (SemaphoreFullException)
-            {
+                try
+                {
+                    Interlocked.Increment(ref _slots);
+                    _executionSlots.Release();
+                    delta--;
+                }
+                catch (SemaphoreFullException)
+                {
+                    break;
+                }
             }
         }
     }
@@ -261,9 +272,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId)
+    public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId, bool isWrite)
     {
-        if (!_addressJob.TryEnqueue(new Job(scope, path, default, sequenceId, Stopwatch.GetTimestamp())))
+        if (!_addressJob.TryEnqueue(new Job(scope, path, default, sequenceId, Stopwatch.GetTimestamp(), isWrite)))
         {
             _bufferFull.Inc();
         }
@@ -273,9 +284,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushSlotJob(FlatStorageTree storageTree, Address path, in UInt256? index,
-        int sequenceId)
+        int sequenceId, bool isWrite)
     {
-        if (!_slotJobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp())))
+        if (!_slotJobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp(), isWrite)))
         {
             _bufferFull.Inc();
         }
@@ -284,18 +295,18 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     }
 
     public void PushJobMulti(FlatWorldStateScope scope, Address? path, FlatStorageTree? storageTree, in UInt256? index,
-        int sequenceId)
+        int sequenceId, bool isWrite)
     {
         if (storageTree is null)
         {
-            if (!_addressJob.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp())))
+            if (!_addressJob.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp(), isWrite)))
             {
                 _bufferFull.Inc();
             }
         }
         else
         {
-            if (!_jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp())))
+            if (!_jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp(), isWrite)))
             {
                 _bufferFull.Inc();
             }
@@ -323,6 +334,18 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         _mainWarmer?.WakeUp();
         _mainWarmer = null;
+    }
+
+    public void WaitUntilEmpty()
+    {
+        /*
+        SpinWait sw = new SpinWait();
+        while (EstimatedJobCount > 0)
+        {
+            sw.SpinOnce();
+        }
+        Thread.Sleep(1);
+        */
     }
 
     public async ValueTask DisposeAsync()

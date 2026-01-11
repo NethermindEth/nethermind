@@ -371,7 +371,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode, bool reRegisterNodeInTrieStore)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode)
         {
             byte[]? array = null;
             try
@@ -387,7 +387,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode, reRegisterNodeInTrieStore);
+                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode);
             }
             catch (TrieException e)
             {
@@ -925,7 +925,7 @@ namespace Nethermind.Trie
         }
 
         // Dedicated warm up code
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode, bool reRegisterNodeInTrieStore)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode)
         {
             int originalPathLength = path.Length;
 
@@ -939,7 +939,7 @@ namespace Nethermind.Trie
                         return;
                     }
 
-                    if (reRegisterNodeInTrieStore && node.IsSealed && node.Keccak is not null) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
+                    if (node.IsSealed && node.Keccak is not null) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     node.ResolveNode(TrieStore, path);
 
                     if (node.IsLeaf || node.IsExtension)
@@ -949,7 +949,7 @@ namespace Nethermind.Trie
                         {
                             if (node.IsLeaf)
                             {
-                                // Um..... leaf cannot have child
+                                // Done
                                 return;
                             }
 

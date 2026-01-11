@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using NonBlocking;
 using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -108,34 +109,34 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         // a lot. Setting the setted slot have a measurable net negative impact on performance.
         // Trying to set this value async through trie warmer proved to be hard to pull of and result in random invalid
         // block.
-        WarmUpSlot(index);
+        WarmUpSlot(index, false);
     }
 
     public void HintSet(in UInt256 index)
     {
         // TODO: The effect is... very hard to notice. Evaluate if we should disable this for the 0.2% overhead that it cost.
-        WarmUpSlot(index);
+        WarmUpSlot(index, true);
     }
 
-    private void WarmUpSlot(UInt256 index)
+    private void WarmUpSlot(UInt256 index, bool isWrite)
     {
         if (_scope._disableLocalSlotTriewarmerQueue) return;
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            _trieCacheWarmer.PushSlotJob(this, _address, index, _scope.HintSequenceId);
+            _trieCacheWarmer.PushSlotJob(this, _address, index, _scope.HintSequenceId, isWrite);
         }
     }
 
-    public void QueueOutOfScopeWarmup(UInt256 index)
+    public void QueueOutOfScopeWarmup(UInt256 index, bool isWrite)
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            _trieCacheWarmer.PushJobMulti(_scope, _address, this, index, _scope.HintSequenceId);
+             _trieCacheWarmer.PushJobMulti(_scope, _address, this, index, _scope.HintSequenceId, isWrite);
         }
     }
 
     // Called by trie warmer.
-    public bool WarUpStorageTrie(UInt256 index, int sequenceId)
+    public bool WarUpStorageTrie(UInt256 index, int sequenceId, bool isWrite)
     {
         if (_scope.HintSequenceId != sequenceId)
         {
@@ -152,7 +153,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
 
         long sw = Stopwatch.GetTimestamp();
-        _warmupStorageTree.WarmUpPath(key.BytesAsSpan, false, true);
+        _warmupStorageTree.WarmUpPath(key.BytesAsSpan, isWrite);
         _storageTreePrewarm.Observe(Stopwatch.GetTimestamp() - sw);
         return true;
     }

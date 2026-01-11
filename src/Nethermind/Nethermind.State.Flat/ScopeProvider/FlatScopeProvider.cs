@@ -71,8 +71,8 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             _logManager);
     }
 
-    public void WarmUpOutOfScope(Address address, UInt256? slot)
+    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
     {
-        _lastScope?.WarmUpOutOfScope(address, slot);
+        _lastScope?.WarmUpOutOfScope(address, slot, isWrite);
     }
 }

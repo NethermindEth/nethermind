@@ -34,9 +34,9 @@ public class PrewarmerScopeProvider(
         return new ScopeWrapper(baseProvider.BeginScope(baseBlock), outerScopeProvider, preBlockCaches, populatePreBlockCache);
     }
 
-    public void WarmUpOutOfScope(Address address, UInt256? slot)
+    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
     {
-        baseProvider.WarmUpOutOfScope(address, slot);
+        baseProvider.WarmUpOutOfScope(address, slot, isWrite);
     }
 
     public PreBlockCaches? Caches => preBlockCaches;
@@ -99,7 +99,7 @@ public class PrewarmerScopeProvider(
                 long priorReads = Metrics.ThreadLocalStateTreeReads;
                 Account? account = preBlockCache.GetOrAdd(address, GetFromBaseTree);
 
-                outerScopeProvider.WarmUpOutOfScope(address, null);
+                outerScopeProvider.WarmUpOutOfScope(address, null, false);
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
                     _addressGetHit.Observe(Stopwatch.GetTimestamp() - sw);
@@ -141,7 +141,7 @@ public class PrewarmerScopeProvider(
         {
             long sw = Stopwatch.GetTimestamp();
             baseScope.HintSet(address);
-            outerScopeProvider?.WarmUpOutOfScope(address, null);
+            outerScopeProvider?.WarmUpOutOfScope(address, null, true);
             _addressSetHint.Observe(Stopwatch.GetTimestamp() - sw);
         }
 
@@ -175,7 +175,7 @@ public class PrewarmerScopeProvider(
 
                 byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
 
-                outerWorldStateScopeProvider.WarmUpOutOfScope(storageCell.Address, storageCell.Index);
+                outerWorldStateScopeProvider.WarmUpOutOfScope(storageCell.Address, storageCell.Index, true);
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
@@ -219,7 +219,7 @@ public class PrewarmerScopeProvider(
         {
             long sw = Stopwatch.GetTimestamp();
             baseStorageTree.HintSet(in index);
-            outerWorldStateScopeProvider?.WarmUpOutOfScope(address, index);
+            outerWorldStateScopeProvider?.WarmUpOutOfScope(address, index, true);
             _slotSetHint.Observe(Stopwatch.GetTimestamp() - sw);
         }
 

@@ -321,17 +321,16 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         TrieNode? node;
-        long sw1 = Stopwatch.GetTimestamp();
-
         if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            _findStorageNodeChangedNodes.Observe(Stopwatch.GetTimestamp() - sw1);
+            _findStorageNodeChangedNodes.Observe(Stopwatch.GetTimestamp() - sw);
+            _cachedResource.UpdateStorageNode((Hash256AsKey)address, path, node);
         }
         else if (_cachedResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            _findStorageNodeLoadedNodes.Observe(Stopwatch.GetTimestamp() - sw1);
+            _findStorageNodeLoadedNodes.Observe(Stopwatch.GetTimestamp() - sw);
             node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
         }
         else
