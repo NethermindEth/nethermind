@@ -124,9 +124,9 @@ public partial class LogIndexStorage
             }
             else
             {
-                length = viewValue.Length / BlockNumSize;
+                length = viewValue.Length / BlockNumberSize;
                 _value = new(capacity: length, count: length);
-                ReadBlockNums(viewValue, _value.AsSpan());
+                ReadBlockNumbers(viewValue, _value.AsSpan());
             }
 
             ReverseBlocksIfNeeded(_value.AsSpan());

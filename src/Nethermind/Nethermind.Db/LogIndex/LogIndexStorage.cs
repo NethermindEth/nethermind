@@ -33,13 +33,13 @@ namespace Nethermind.Db.LogIndex
         public static class SpecialPostfix
         {
             // Any ordered prefix seeking will start on it
-            public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BlockNumSize).ToArray();
+            public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BlockNumberSize).ToArray();
 
             // Any ordered prefix seeking will end on it
-            public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumSize).ToArray();
+            public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, BlockNumberSize).ToArray();
 
             // Exclusive upper bound for iterator seek, so that ForwardMerge will be the last key
-            public static readonly byte[] UpperBound = Enumerable.Repeat(byte.MaxValue, BlockNumSize).Concat([byte.MinValue]).ToArray();
+            public static readonly byte[] UpperBound = Enumerable.Repeat(byte.MaxValue, BlockNumberSize).Concat([byte.MinValue]).ToArray();
         }
 
         private struct DbBatches : IDisposable
@@ -91,9 +91,9 @@ namespace Nethermind.Db.LogIndex
 
         public bool Enabled { get; }
 
-        public const int BlockNumSize = sizeof(int);
+        public const int BlockNumberSize = sizeof(int);
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
-        private const int MaxDbKeyLength = MaxKeyLength + BlockNumSize;
+        private const int MaxDbKeyLength = MaxKeyLength + BlockNumberSize;
 
         private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
 
@@ -374,7 +374,7 @@ namespace Nethermind.Db.LogIndex
         private int? LoadRangeBound(ReadOnlySpan<byte> key)
         {
             var value = _metaDb.Get(key);
-            return value is { Length: > 0 } ? GetValBlockNum(value) : null;
+            return value is { Length: > 0 } ? ReadBlockNumber(value) : null;
         }
 
         private void UpdateRange(int minBlock, int maxBlock, bool isBackwardSync)
@@ -394,12 +394,12 @@ namespace Nethermind.Db.LogIndex
 
         private static int SaveRangeBound(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
         {
-            var bufferArr = Pool.Rent(BlockNumSize);
-            Span<byte> buffer = bufferArr.AsSpan(..BlockNumSize);
+            var bufferArr = Pool.Rent(BlockNumberSize);
+            Span<byte> buffer = bufferArr.AsSpan(..BlockNumberSize);
 
             try
             {
-                SetValBlockNum(buffer, value);
+                WriteBlockNumber(buffer, value);
                 dbBatch.PutSpan(key, buffer);
                 return value;
             }
@@ -543,7 +543,7 @@ namespace Nethermind.Db.LogIndex
             try
             {
                 keyArray = Pool.Rent(MaxDbKeyLength);
-                valueArray = Pool.Rent(BlockNumSize + 1);
+                valueArray = Pool.Rent(BlockNumberSize + 1);
 
                 using IColumnsWriteBatch<LogIndexColumns>? batch = _rootDb.StartWriteBatch();
 
@@ -735,7 +735,7 @@ namespace Nethermind.Db.LogIndex
             return buffer[..key.Length];
         }
 
-        private static ReadOnlySpan<byte> ExtractKey(ReadOnlySpan<byte> dbKey) => dbKey[..^BlockNumSize];
+        private static ReadOnlySpan<byte> ExtractKey(ReadOnlySpan<byte> dbKey) => dbKey[..^BlockNumberSize];
 
         /// <summary>
         /// Generates a key consisting of the <c>key || block-number</c> byte array.
@@ -743,9 +743,9 @@ namespace Nethermind.Db.LogIndex
         private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
         {
             key = WriteKey(key, buffer);
-            SetKeyBlockNum(buffer[key.Length..], blockNumber);
+            WriteKeyBlockNumber(buffer[key.Length..], blockNumber);
 
-            var length = key.Length + BlockNumSize;
+            var length = key.Length + BlockNumberSize;
             return buffer[..length];
         }
 
@@ -766,7 +766,7 @@ namespace Nethermind.Db.LogIndex
 
         // RocksDB uses big-endian (lexicographic) ordering
         // +1 is needed as 0 is used for the backward-merge key
-        private static void SetKeyBlockNum(Span<byte> dbKeyEnd, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, blockNumber + 1);
+        private static void WriteKeyBlockNumber(Span<byte> dbKeyEnd, int number) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, number + 1);
 
         private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.EndsWith(SpecialPostfix.BackwardMerge);
 
@@ -798,27 +798,27 @@ namespace Nethermind.Db.LogIndex
             return len > 0;
         }
 
-        private static void SetValBlockNum(Span<byte> destination, int blockNum) => BinaryPrimitives.WriteInt32LittleEndian(destination, blockNum);
-        private static int GetValBlockNum(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
-        private static int GetValLastBlockNum(ReadOnlySpan<byte> source) => GetValBlockNum(source[^BlockNumSize..]);
+        private static void WriteBlockNumber(Span<byte> destination, int number) => BinaryPrimitives.WriteInt32LittleEndian(destination, number);
+        private static int ReadBlockNumber(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
+        private static int ReadLastBlockNumber(ReadOnlySpan<byte> source) => ReadBlockNumber(source[^BlockNumberSize..]);
 
-        private static void SetValBlockNums(Span<byte> destination, IEnumerable<int> blockNums)
+        private static void WriteBlockNumbers(Span<byte> destination, IEnumerable<int> numbers)
         {
             var shift = 0;
-            foreach (var blockNum in blockNums)
+            foreach (var number in numbers)
             {
-                SetValBlockNum(destination[shift..], blockNum);
-                shift += BlockNumSize;
+                WriteBlockNumber(destination[shift..], number);
+                shift += BlockNumberSize;
             }
         }
 
-        private static void ReadBlockNums(ReadOnlySpan<byte> source, Span<int> buffer)
+        private static void ReadBlockNumbers(ReadOnlySpan<byte> source, Span<int> buffer)
         {
-            if (source.Length % BlockNumSize != 0)
+            if (source.Length % BlockNumberSize != 0)
                 throw new LogIndexStateException("Invalid length for array of block numbers.");
 
-            if (buffer.Length < source.Length / BlockNumSize)
-                throw new ArgumentException($"Buffer is too small to hold {source.Length / BlockNumSize} block numbers.", nameof(buffer));
+            if (buffer.Length < source.Length / BlockNumberSize)
+                throw new ArgumentException($"Buffer is too small to hold {source.Length / BlockNumberSize} block numbers.", nameof(buffer));
 
             if (BitConverter.IsLittleEndian)
             {
@@ -827,15 +827,15 @@ namespace Nethermind.Db.LogIndex
             }
             else
             {
-                for (var i = 0; i < source.Length; i += BlockNumSize)
-                    buffer[i / BlockNumSize] = GetValBlockNum(source[i..]);
+                for (var i = 0; i < source.Length; i += BlockNumberSize)
+                    buffer[i / BlockNumberSize] = ReadBlockNumber(source[i..]);
             }
         }
 
         private static byte[] CreateDbValue(IReadOnlyList<int> blockNums)
         {
-            var value = new byte[blockNums.Count * BlockNumSize];
-            SetValBlockNums(value, blockNums);
+            var value = new byte[blockNums.Count * BlockNumberSize];
+            WriteBlockNumbers(value, blockNums);
             return value;
         }
 
@@ -847,16 +847,16 @@ namespace Nethermind.Db.LogIndex
         {
             if (IsCompressed(data, out _))
                 throw new LogIndexStateException("Attempt to compress already compressed data.", key);
-            if (data.Length % BlockNumSize != 0)
+            if (data.Length % BlockNumberSize != 0)
                 throw new LogIndexStateException($"Invalid length of data to compress: {data.Length}.", key);
 
-            var buffer = Pool.Rent(data.Length + BlockNumSize);
+            var buffer = Pool.Rent(data.Length + BlockNumberSize);
 
             try
             {
-                WriteCompressionMarker(buffer, data.Length / BlockNumSize);
-                var compressedLen = Compress(data, buffer.AsSpan(BlockNumSize..)).Length;
-                return buffer[..(BlockNumSize + compressedLen)];
+                WriteCompressionMarker(buffer, data.Length / BlockNumberSize);
+                var compressedLen = Compress(data, buffer.AsSpan(BlockNumberSize..)).Length;
+                return buffer[..(BlockNumberSize + compressedLen)];
             }
             finally
             {
@@ -872,7 +872,7 @@ namespace Nethermind.Db.LogIndex
             if (buffer.Length < len)
                 throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            _ = _compressionAlgorithm.Decompress(data[BlockNumSize..], (nuint)len, buffer);
+            _ = _compressionAlgorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
         }
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
@@ -890,7 +890,7 @@ namespace Nethermind.Db.LogIndex
 
         private static void ReverseBlocksIfNeeded(Span<byte> data)
         {
-            if (data.Length != 0 && GetValBlockNum(data) > GetValLastBlockNum(data))
+            if (data.Length != 0 && ReadBlockNumber(data) > ReadLastBlockNumber(data))
                 MemoryMarshal.Cast<byte, int>(data).Reverse();
         }
 
@@ -905,22 +905,22 @@ namespace Nethermind.Db.LogIndex
             if (operand.IsEmpty)
                 return 0;
 
-            var i = operand.Length - BlockNumSize;
-            for (; i >= 0; i -= BlockNumSize)
+            var i = operand.Length - BlockNumberSize;
+            for (; i >= 0; i -= BlockNumberSize)
             {
-                var currentBlock = GetValBlockNum(operand[i..]);
+                var currentBlock = ReadBlockNumber(operand[i..]);
                 if (currentBlock == block)
                     return i;
 
                 if (isBackward)
                 {
                     if (currentBlock > block)
-                        return i + BlockNumSize;
+                        return i + BlockNumberSize;
                 }
                 else
                 {
                     if (currentBlock < block)
-                        return i + BlockNumSize;
+                        return i + BlockNumberSize;
                 }
             }
 

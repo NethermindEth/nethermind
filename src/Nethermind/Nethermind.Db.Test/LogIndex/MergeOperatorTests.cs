@@ -212,7 +212,7 @@ public class MergeOperatorTests
     }
 
     private static byte[] GenerateKey(int prefixSize, bool isBackward) => Random.Shared
-        .NextBytes(prefixSize + LogIndexStorage.BlockNumSize)
+        .NextBytes(prefixSize + LogIndexStorage.BlockNumberSize)
         .Concat(isBackward ? LogIndexStorage.SpecialPostfix.BackwardMerge : LogIndexStorage.SpecialPostfix.ForwardMerge)
         .ToArray();
 

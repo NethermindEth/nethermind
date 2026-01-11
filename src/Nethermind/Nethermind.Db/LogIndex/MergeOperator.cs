@@ -35,8 +35,8 @@ partial class LogIndexStorage
             if (value.Length == 0)
                 return;
 
-            var nextBlock = GetValBlockNum(value);
-            var lastBlock = result.Count > 0 ? GetValLastBlockNum(result.AsSpan()) : (int?)null;
+            var nextBlock = ReadBlockNumber(value);
+            var lastBlock = result.Count > 0 ? ReadLastBlockNumber(result.AsSpan()) : (int?)null;
 
             if (!IsBlockNewer(next: nextBlock, last: lastBlock, isBackwards))
                 throw new LogIndexStateException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backwards: {isBackwards}).", key);
@@ -100,7 +100,7 @@ partial class LogIndexStorage
                     AddEnsureSorted(key, result, operand, isBackwards);
                 }
 
-                if (result.Count % BlockNumSize != 0)
+                if (result.Count % BlockNumberSize != 0)
                     throw new LogIndexStateException($"Invalid data length post-merge: {result.Count}.", key);
 
                 compressor.TryEnqueue(topicIndex, key, result.AsSpan());

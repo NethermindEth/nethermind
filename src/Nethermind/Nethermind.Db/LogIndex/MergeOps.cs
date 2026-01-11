@@ -24,7 +24,7 @@ partial class LogIndexStorage
 
     public static class MergeOps
     {
-        public const int Size = BlockNumSize + 1;
+        public const int Size = BlockNumberSize + 1;
 
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand)
         {
@@ -35,7 +35,7 @@ partial class LogIndexStorage
         {
             if (operand.Length == Size && operand[0] == (byte)op)
             {
-                fromBlock = GetValLastBlockNum(operand);
+                fromBlock = ReadLastBlockNumber(operand);
                 return true;
             }
 
@@ -51,7 +51,7 @@ partial class LogIndexStorage
         {
             Span<byte> dbValue = buffer[..Size];
             dbValue[0] = (byte)op;
-            SetValBlockNum(dbValue[1..], fromBlock);
+            WriteBlockNumber(dbValue[1..], fromBlock);
             return dbValue;
         }
 
@@ -71,7 +71,7 @@ partial class LogIndexStorage
             {
                 if (i < 0) return operand;
                 if (i >= operand.Length) return Span<byte>.Empty;
-                return operand[(i + BlockNumSize)..];
+                return operand[(i + BlockNumberSize)..];
             }
 
             throw new ArgumentOutOfRangeException(nameof(op), op, "Unsupported merge operation.");

@@ -54,7 +54,7 @@ partial class LogIndexStorage
         {
             _storage = storage;
 
-            MinLengthToCompress = compressionDistance * BlockNumSize;
+            MinLengthToCompress = compressionDistance * BlockNumberSize;
 
             if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
             _processing = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
@@ -113,16 +113,16 @@ partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return;
 
-                var truncateBlock = GetValLastBlockNum(dbValue);
+                var truncateBlock = ReadLastBlockNumber(dbValue);
 
                 ReverseBlocksIfNeeded(dbValue);
 
-                var postfixBlock = GetValBlockNum(dbValue);
+                var postfixBlock = ReadBlockNumber(dbValue);
 
                 ReadOnlySpan<byte> key = ExtractKey(dbKey);
-                Span<byte> dbKeyComp = stackalloc byte[key.Length + BlockNumSize];
+                Span<byte> dbKeyComp = stackalloc byte[key.Length + BlockNumberSize];
                 key.CopyTo(dbKeyComp);
-                SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);
+                WriteKeyBlockNumber(dbKeyComp[key.Length..], postfixBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
                 dbValue = _storage.CompressDbValue(dbKey, dbValue);
