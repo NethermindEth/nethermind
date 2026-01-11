@@ -26,19 +26,19 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
     IWitnessGeneratingBlockProcessingEnvScope CreateScope();
 }
 
+public sealed class ExecutionRecordingScope(ILifetimeScope envLifetimeScope) : IWitnessGeneratingBlockProcessingEnvScope
+{
+    public IWitnessGeneratingBlockProcessingEnv Env { get; } = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
+
+    public void Dispose() => envLifetimeScope.Dispose();
+}
+
 public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IReadOnlyTrieStore readOnlyTrieStore,
     IDbProvider dbProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory
 {
-    private sealed class Scope(ILifetimeScope envLifetimeScope) : IWitnessGeneratingBlockProcessingEnvScope
-    {
-        public IWitnessGeneratingBlockProcessingEnv Env { get; } = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
-
-        public void Dispose() => envLifetimeScope.Dispose();
-    }
-
     public IWitnessGeneratingBlockProcessingEnvScope CreateScope()
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
@@ -60,6 +60,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     builder.Resolve<IHeaderStore>(),
                     logManager)));
 
-        return new Scope(envLifetimeScope);
+        return new ExecutionRecordingScope(envLifetimeScope);
     }
 }
