@@ -576,7 +576,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NoitifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
+        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
             (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
                 AnnounceResult.Delayed :
                 _retryCache.Announced(hash, retryHandler);
