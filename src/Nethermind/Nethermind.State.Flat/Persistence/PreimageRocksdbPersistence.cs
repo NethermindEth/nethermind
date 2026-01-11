@@ -182,7 +182,7 @@ public class PreimageRocksdbPersistence : IPersistence
     ) : BasePersistence.IFlatWriteBatch
         where TWriteBatch : struct, BasePersistence.IHashedFlatWriteBatch
     {
-        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        internal AccountDecoder _accountDecoder = AccountDecoder.Slim;
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public int SelfDestruct(Address addr)
@@ -290,7 +290,7 @@ public class PreimageRocksdbPersistence : IPersistence
     ) : BasePersistence.IFlatReader
         where TFlatReader : struct, BasePersistence.IHashedFlatReader
     {
-        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        internal AccountDecoder _accountDecoder = AccountDecoder.Slim;
         private int _accountSpanBufferSize = 256;
 
         public Account? GetAccount(Address address)
