@@ -43,6 +43,11 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
+    public long TIP2019Block { get; internal set; }
+    public long MergeSignRange { get; internal set; }
+    public Address[] BlackListedAddresses { get; internal set; }
+    public long BlackListHFNumber { get; internal set; }
+
     private static void CheckConfig(List<V2ConfigParams> list)
     {
         if (list.Count == 0 || list[0].SwitchRound != 0)

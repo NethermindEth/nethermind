@@ -365,12 +365,6 @@ public class XdcTestBlockchain : TestBlockchain
             state.InsertCode(finalSpec.BlockSignerContract, dummyCodeHashcode, dummyCode, genesisSpec!, true);
             state.InsertCode(finalSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true);
 
-
-            foreach (var nodeAddress in finalSpec.GenesisMasterNodes)
-            {
-                state.CreateAccount(nodeAddress, testConfiguration.AccountInitialValue);
-            }
-
             XdcBlockHeaderBuilder xdcBlockHeaderBuilder = new();
 
             var genesisBlock = new Block(xdcBlockHeaderBuilder

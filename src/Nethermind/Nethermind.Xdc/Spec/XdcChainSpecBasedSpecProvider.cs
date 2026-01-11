@@ -27,6 +27,18 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
 
+        releaseSpec.BlackListHFNumber = chainSpecEngineParameters.BlackListHFNumber;
+        releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
+        releaseSpec.TIP2019Block = chainSpecEngineParameters.TIP2019Block;
+        releaseSpec.BlackListedAddresses = chainSpecEngineParameters.BlackListedAddresses;
+
+        releaseSpec.RandomizeSMCBinary = chainSpecEngineParameters.RandomizeSMCBinary;
+
+        releaseSpec.XDCXLendingFinalizedTradeAddressBinary = chainSpecEngineParameters.XDCXLendingFinalizedTradeAddressBinary;
+        releaseSpec.XDCXLendingAddressBinary = chainSpecEngineParameters.XDCXLendingAddressBinary;
+        releaseSpec.XDCXAddressBinary = chainSpecEngineParameters.XDCXAddressBinary;
+        releaseSpec.TradingStateAddressBinary = chainSpecEngineParameters.TradingStateAddressBinary;    
+
         releaseSpec.ApplyV2Config(0);
 
         return releaseSpec;

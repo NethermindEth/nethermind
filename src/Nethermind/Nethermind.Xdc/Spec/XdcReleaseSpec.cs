@@ -33,12 +33,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 
     public Address[] GenesisMasterNodes { get; set; }
     public long BlackListHFNumber { get; set; }
-    public long EpochBlockOpening { get; set; }
-    public long EpochBlockRandomize { get; set; }
     public long MergeSignRange { get; set; }
     public long TIP2019Block { get; set; }
     public Address[] BlackListedAddresses { get; set; }
-    public long EpochBlockSecret { get; set; }
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
     public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
@@ -115,8 +112,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
     long BlackListHFNumber { get; set; }
-    long EpochBlockOpening { get; set; }
-    long EpochBlockRandomize { get; set; }
     long MergeSignRange { get; set; }
     long TIP2019Block { get; set; }
 
@@ -128,8 +123,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public Address TradingStateAddressBinary { get; set; }
 
     Address[] BlackListedAddresses { get; set; }
-    long EpochBlockSecret { get; set; }
-
     Address FoundationWallet { get; set; }
     Address MasternodeVotingContract { get; set; }
 
