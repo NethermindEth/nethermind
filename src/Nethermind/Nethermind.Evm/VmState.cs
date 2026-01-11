@@ -5,7 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -277,13 +279,48 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
-    public void InitializeStacks()
+    public Span<byte> InitializeStacks()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         if (DataStack is null)
         {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
         }
+        return AsAlignedSpan(DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength);
+    }
+
+    private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsSpan(offset, size);
+    }
+    
+    public Memory<byte> MemoryStacks()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        return AsAlignedMemory(DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength);
+    }
+
+    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsMemory(offset, size);
+    }
+
+    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
+
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+
+        uint mask = alignment - 1;
+        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
+        uint adjustment = (uint)((-(nint)address) & mask);
+
+        return (int)adjustment;
     }
 
     public void CommitToParent(VmState<TGasPolicy> parentState)
