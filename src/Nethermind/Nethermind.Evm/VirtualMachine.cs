@@ -1116,7 +1116,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             ReadOnlyMemory<byte> callResult = _previousCallResult.GetValueOrDefault();
             stack.PushBytes<TTracingInst>(callResult.Span);
-        
+
             if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
@@ -1130,7 +1130,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             ref readonly UInt256 localPreviousDest = ref _previousCallOutputDestination;
             bool success = TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (uint)outputLength, vmState)
                          && vmState.Memory.TrySave(in localPreviousDest, previousCallOutput);
-        
+
             if (!success)
             {
                 return CallResult.OutOfGasException;
