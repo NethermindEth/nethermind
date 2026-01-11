@@ -18,7 +18,10 @@ internal class StateTrieStoreAdapter(
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node =  bundle.FindStateNodeOrUnknown(path, hash, isTrieWarmer);
+        TrieNode node = isTrieWarmer
+            ? bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash)
+            : bundle.FindStateNodeOrUnknown(path, hash);
+
         if (node.Keccak != hash)
         {
             throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
@@ -60,7 +63,9 @@ internal class StorageTrieStoreAdapter(
 
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node = bundle.FindStorageNodeOrUnknown(addressHash, path, hash, SelfDestructKnownStateIdx, isTrieWarmer);
+        TrieNode node = isTrieWarmer
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash, SelfDestructKnownStateIdx)
+            : bundle.FindStorageNodeOrUnknown(addressHash, path, hash, SelfDestructKnownStateIdx);
         if (node.Keccak != hash)
         {
             throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");

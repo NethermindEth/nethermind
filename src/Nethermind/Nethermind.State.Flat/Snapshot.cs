@@ -96,20 +96,20 @@ public class Snapshot(
     }
 }
 
-public sealed record SnapshotContent(
+public sealed class SnapshotContent() : IDisposable, IResettable
+{
     // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
-    ConcurrentDictionary<AddressAsKey, Account?> Accounts,
-    ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages,
+    public readonly ConcurrentDictionary<AddressAsKey, Account?> Accounts = new();
+    public readonly ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages = new();
 
     // Bool is true if this is a new account also
-    ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses,
+    public readonly ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses = new ();
 
     // Use of a separate dictionary just for state have a small but measurable impact
-    ConcurrentDictionary<TreePath, TrieNode> StateNodes,
+    public readonly ConcurrentDictionary<TreePath, TrieNode> StateNodes = new();
 
-    ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
-) : IDisposable, IResettable
-{
+    public readonly ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes = new ();
+
     public void Reset()
     {
         Accounts.NoResizeClear();

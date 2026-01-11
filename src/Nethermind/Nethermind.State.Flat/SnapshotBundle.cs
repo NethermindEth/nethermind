@@ -63,17 +63,18 @@ public sealed class SnapshotBundle : IDisposable
     private Histogram.Child _findStateNode = null!;
     private Histogram.Child _findStorageNodeLoadedNodes = null!;
     private Histogram.Child _findStorageNodeChangedNodes = null!;
-    private Histogram.Child _findStorageNodeSnapshots = null!;
-    private Histogram.Child _findStorageNodeNodeCache = null!;
     private Histogram.Child _findStateNodeTrieWarmer = null!;
     private Histogram.Child _findStorageNode = null!;
-    private Histogram.Child _findStorageNodeInitializer = null!;
     private Histogram.Child _findStorageNodeTrieWarmer = null!;
     private Histogram.Child _setStateNodesTime = null!;
     private Histogram.Child _setStorageNodesTime = null!;
     private Histogram.Child _setSlotTime = null!;
     private Histogram.Child _setSlotToZeroTime = null!;
     private Histogram.Child _setAccountTime = null!;
+    private Histogram.Child _loadStateRlpTrieWarmer = null!;
+    private Histogram.Child _loadStateRlp = null!;
+    private Histogram.Child _loadStorageRlpTrieWarmer = null!;
+    private Histogram.Child _loadStorageRlp = null!;
 
     private Counter.Child _accountGet = null!;
     private Counter.Child _slotGet = null!;
@@ -81,10 +82,6 @@ public sealed class SnapshotBundle : IDisposable
     internal IFlatDiffRepository.SnapshotBundleUsage _usage;
     private Histogram.Child _snapshotAccountHit = null!;
     private Histogram.Child _snapshotAccountMiss = null!;
-    private Histogram.Child _snapshotStorageHit = null!;
-    private Histogram.Child _snapshotStorageMiss = null!;
-    private Histogram.Child _snapshotStorageSelfDestructIdx = null!;
-    private Histogram.Child _findStorageNodeNodeCacheMiss = null!;
 
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
@@ -135,19 +132,12 @@ public sealed class SnapshotBundle : IDisposable
 
         _snapshotAccountHit = _snapshotBundleTimes.WithLabels("snapshot_account_hit", _isPrewarmer.ToString());
         _snapshotAccountMiss = _snapshotBundleTimes.WithLabels("snapshot_account_miss", _isPrewarmer.ToString());
-        _snapshotStorageHit = _snapshotBundleTimes.WithLabels("snapshot_storage_hit", _isPrewarmer.ToString());
-        _snapshotStorageMiss = _snapshotBundleTimes.WithLabels("snapshot_storage_miss", _isPrewarmer.ToString());
-        _snapshotStorageSelfDestructIdx = _snapshotBundleTimes.WithLabels("snapshot_storage_selfdestruct_idx", _isPrewarmer.ToString());
 
         _findStorageNodeLoadedNodes = _snapshotBundleTimes.WithLabels("find_storage_node_loaded_nodes", _isPrewarmer.ToString());
         _findStorageNodeChangedNodes = _snapshotBundleTimes.WithLabels("find_storage_node_changed_nodes", _isPrewarmer.ToString());;
-        _findStorageNodeSnapshots = _snapshotBundleTimes.WithLabels("find_storage_node_snapshots", _isPrewarmer.ToString());;
-        _findStorageNodeNodeCache = _snapshotBundleTimes.WithLabels("find_storage_node_node_cache", _isPrewarmer.ToString());;
-        _findStorageNodeNodeCacheMiss = _snapshotBundleTimes.WithLabels("find_storage_node_node_cache_miss", _isPrewarmer.ToString());;
 
         _findStateNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_state_node_trie_warmer", _isPrewarmer.ToString());
         _findStorageNode = _snapshotBundleTimes.WithLabels("find_storage_node", _isPrewarmer.ToString());
-        _findStorageNodeInitializer = _snapshotBundleTimes.WithLabels("find_storage_node_initializer", _isPrewarmer.ToString());
         _findStorageNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_storage_node_trie_warmer", _isPrewarmer.ToString());
         _setSlotTime = _snapshotBundleTimes.WithLabels("set_slot", _isPrewarmer.ToString());
         _setSlotToZeroTime = _snapshotBundleTimes.WithLabels("set_slot_zero", _isPrewarmer.ToString());
@@ -155,6 +145,11 @@ public sealed class SnapshotBundle : IDisposable
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
         _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
+
+        _loadStateRlpTrieWarmer = _snapshotBundleTimes.WithLabels("load_state_rlp_trie_warmer", _isPrewarmer.ToString());
+        _loadStateRlp = _snapshotBundleTimes.WithLabels("load_state_rlp", _isPrewarmer.ToString());
+        _loadStorageRlpTrieWarmer = _snapshotBundleTimes.WithLabels("load_storage_rlp_trie_warmer", _isPrewarmer.ToString());
+        _loadStorageRlp = _snapshotBundleTimes.WithLabels("load_storage_rlp", _isPrewarmer.ToString());
     }
 
     public bool TryGetAccount(Address address, out Account? acc)
@@ -170,9 +165,9 @@ public sealed class SnapshotBundle : IDisposable
 
         if (!excludeChanged && _changedAccounts.TryGetValue(address, out acc)) return true;
 
-        AddressAsKey key = address;
-
         long sw = Stopwatch.GetTimestamp();
+
+        AddressAsKey key = address;
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetAccount(key, out acc))
@@ -188,18 +183,11 @@ public sealed class SnapshotBundle : IDisposable
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
-        // Node: need to add the _readOnlySnapshotBundle.SnapshotCount to get the actual index
-        if (_selfDestructedAccountAddresses.ContainsKey(address))
-        {
-            return _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
-        }
+        if (_selfDestructedAccountAddresses.ContainsKey(address)) return _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].HasSelfDestruct(address))
-            {
-                return i + _readOnlySnapshotBundle.SnapshotCount;
-            }
+            if (_snapshots[i].HasSelfDestruct(address)) return i + _readOnlySnapshotBundle.SnapshotCount;
         }
 
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
@@ -213,14 +201,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
         {
-            if (slotValue is null)
-            {
-                value = null;
-            }
-            else
-            {
-                value = slotValue.Value.ToEvmBytes();
-            }
+            value = slotValue is null ? null : slotValue.Value.ToEvmBytes();
             return true;
         }
 
@@ -235,29 +216,18 @@ public sealed class SnapshotBundle : IDisposable
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
         if (selfDestructStateIdx == -1 || currentBundleSelfDestructIdx >= 0)
         {
-            long sw = Stopwatch.GetTimestamp();
             for (int i = _snapshots.Count - 1; i >= 0; i--)
             {
                 if (_snapshots[i].TryGetStorage(address, index, out slotValue))
                 {
-                    _snapshotStorageHit.Observe(Stopwatch.GetTimestamp() - sw);
-                    if (slotValue is null)
-                    {
-                        value = null;
-                    }
-                    else
-                    {
-                        value = slotValue.Value.ToEvmBytes();
-                    }
+                    value = slotValue is null ? null : slotValue.Value.ToEvmBytes();
                     return true;
                 }
 
                 if (i <= currentBundleSelfDestructIdx)
                 {
                     // This is the snapshot with selfdestruct
-                    _snapshotStorageSelfDestructIdx.Observe(Stopwatch.GetTimestamp() - sw);
                     value = null;
-                    _snapshotStorageMiss.Observe(Stopwatch.GetTimestamp() - sw);
                     return true;
                 }
             }
@@ -266,58 +236,65 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryGetSlot(address, index, selfDestructStateIdx, out value);
     }
 
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
+    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
+        GuardDispose();
+
         TrieNode? node;
         long sw = Stopwatch.GetTimestamp();
 
-        if (!isTrieWarmer)
+        if (_changedStateNodes.TryGetValue(path, out node))
         {
-            // _changedStateNodes is really hot, so we dont touch it during prewarmer.
-            if (_changedStateNodes.TryGetValue(path, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                _nodeGetChanged.Inc();
-                return node;
-            }
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _nodeGetChanged.Inc();
         }
+        else if (_cachedResource.TryGetStateNode(path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _nodeGetChanged.Inc();
+            node = _changedStateNodes.GetOrAdd(path, node);
+        }
+        else
+        {
+            node = _changedStateNodes.GetOrAdd(path,
+                DoFindStateNodeExternal(path, hash, out node) ?
+                    node :
+                    new TrieNode(NodeType.Unknown, hash));
+        }
+
+        _findStateNode.Observe(Stopwatch.GetTimestamp() - sw);
+
+        return node;
+    }
+
+    public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
+    {
+        // TrieWarmer only touch `_cachedResource`
+        GuardDispose();
+
+        TrieNode? node;
+        long sw = Stopwatch.GetTimestamp();
 
         if (_cachedResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-
-            // if (!isTrieWarmer) _changedStateNodes.TryAdd(path, node);
             _nodeGetChanged.Inc();
-            return node;
-        }
-
-        if (!DoFindStateNodeExternal(path, hash, out node))
-        {
-            // The map to holds the unknown nodes is different for trie warmer and the main tries. This prevent
-            // random invalid block.
-            node = _cachedResource.GetOrAddStateNode(path, new TrieNode(NodeType.Unknown, hash));
         }
         else
         {
-            _cachedResource.UpdateStateNode(path, node);
+            node = _cachedResource.GetOrAddStateNode(path,
+                DoFindStateNodeExternal(path, hash, out node)
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
         }
 
-        if (isTrieWarmer)
-        {
-            _findStateNodeTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else
-        {
-            _findStateNode.Observe(Stopwatch.GetTimestamp() - sw);
-        }
+        _findStateNodeTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
 
         return node;
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        GuardDispose();
-
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
@@ -338,76 +315,69 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
     }
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer, bool storageInitializer = false)
+    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructStateIdx)
     {
         long sw = Stopwatch.GetTimestamp();
-        var res = DoFindStorageNodeOrUnknown(address, path, hash, selfDestructStateIdx, isTrieWarmer);
-
-        if (isTrieWarmer)
-        {
-            _findStorageNodeTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else
-        {
-            if (storageInitializer)
-            {
-                _findStorageNodeInitializer.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            else
-            {
-                _findStorageNode.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-        }
-
-        return res;
-    }
-
-    private TrieNode DoFindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer)
-    {
         GuardDispose();
 
         TrieNode? node;
-        long sw = Stopwatch.GetTimestamp();
+        long sw1 = Stopwatch.GetTimestamp();
 
-        if (!isTrieWarmer)
-        {
-            if (_changedStorageNodes.TryGetValue((address, path), out node))
-            {
-                if (!isTrieWarmer) _findStorageNodeChangedNodes.Observe(Stopwatch.GetTimestamp() - sw);
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return node;
-            }
-        }
-
-        if (_cachedResource.TryGetStorageNode(address, path, hash, out node))
+        if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            if (!isTrieWarmer) _findStorageNodeLoadedNodes.Observe(Stopwatch.GetTimestamp() - sw);
-            return node;
+            _findStorageNodeChangedNodes.Observe(Stopwatch.GetTimestamp() - sw1);
         }
-
-        if (!DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, isTrieWarmer, sw, out node) || node is null)
+        else if (_cachedResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
-            node = _cachedResource.GetOrAddStorageNode(address, path, new TrieNode(NodeType.Unknown, hash));
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _findStorageNodeLoadedNodes.Observe(Stopwatch.GetTimestamp() - sw1);
+            node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
         }
         else
         {
-            _cachedResource.UpdateStorageNode(address, path, node);
+            node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
+                (DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, selfDestructStateIdx, out node) && node is not null)
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
         }
+
+        _findStorageNode.Observe(Stopwatch.GetTimestamp() - sw);
 
         return node;
     }
 
-    private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer, long sw, out TrieNode? node)
+
+    public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash, int selfDestructStateIdx)
+    {
+        long sw = Stopwatch.GetTimestamp();
+        GuardDispose();
+
+        TrieNode? node;
+        if (_cachedResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+        }
+        else
+        {
+            node = _cachedResource.GetOrAddStorageNode((Hash256AsKey)address, path,
+                (DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, selfDestructStateIdx, out node) && node is not null)
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
+        }
+
+        _findStorageNodeTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
+        return node;
+    }
+
+    private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
-            _findStorageNodeNodeCache.Observe(Stopwatch.GetTimestamp() - sw);
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             _nodeGetTrieCache.Inc();
             return true;
         }
-        _findStorageNodeNodeCacheMiss.Observe(Stopwatch.GetTimestamp() - sw);
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
         if (selfDestructStateIdx == -1 || currentBundleSelfDestructIdx >= 0)
@@ -416,7 +386,6 @@ public sealed class SnapshotBundle : IDisposable
             {
                 if (_snapshots[i].TryGetStorageNode(address, path, out node))
                 {
-                    if (!isTrieWarmer) _findStorageNodeSnapshots.Observe(Stopwatch.GetTimestamp() - sw);
                     Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                     _nodeGetSnapshots.Inc();
                     return true;
@@ -424,7 +393,6 @@ public sealed class SnapshotBundle : IDisposable
 
                 if (i >= currentBundleSelfDestructIdx)
                 {
-                    if (!isTrieWarmer) _findStorageNodeSnapshots.Observe(Stopwatch.GetTimestamp() - sw);
                     Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                     node = null;
                     return true;
@@ -439,7 +407,24 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        return _readOnlySnapshotBundle.TryLoadRlp(address, path, hash, flags);
+        long sw = Stopwatch.GetTimestamp();
+        byte[]? value = _readOnlySnapshotBundle.TryLoadRlp(address, path, hash, flags);
+        if (address is null)
+        {
+            if (isTrieWarmer)
+                _loadStateRlpTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
+            else
+                _loadStateRlp.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            if (isTrieWarmer)
+                _loadStorageRlpTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
+            else
+                _loadStorageRlp.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+
+        return value;
     }
 
     // This is called only during trie commit
