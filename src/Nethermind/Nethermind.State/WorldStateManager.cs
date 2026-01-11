@@ -20,8 +20,9 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
-    private readonly BlockingVerifyTrie? _blockingVerifyTrie;
+    private readonly BlockingVerifyTrie _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
+    private readonly ISnapServer? _snapServer;
 
     public WorldStateManager(
         IWorldStateScopeProvider worldState,
@@ -42,6 +43,9 @@ public class WorldStateManager : IWorldStateManager
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
+        _snapServer = _trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? null
+            : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
@@ -56,7 +60,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
+    public ISnapServer? SnapServer => _snapServer;
 
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
@@ -70,7 +74,7 @@ public class WorldStateManager : IWorldStateManager
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
-        return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
+        return _blockingVerifyTrie.VerifyTrie(stateAtBlock, cancellationToken);
     }
 
     public void FlushCache(CancellationToken cancellationToken)
