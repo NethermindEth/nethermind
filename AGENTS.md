@@ -89,12 +89,24 @@ The codebase in [src/Nethermind](./src/Nethermind/) is organized into three inde
   - [Nethermind.Flashbots](./src/Nethermind/Nethermind.Flashbots/): Flashbots integration
   - [Nethermind.Optimism](./src/Nethermind/Nethermind.Optimism/): Optimism network (OP Stack) support
   - [Nethermind.Taiko](./src/Nethermind/Nethermind.Taiko/): Taiko network support
+- **Tests**
+  - Test suites reside in Nethermind.\*.Test directories
 
 ## Pull request guidelines
 
 Before creating a pull request:
 
-- Add tests covering your changes and ensure they pass
 - Ensure the code compiles
-- Ensure the code is well-formatted: `dotnet format whitespace src/Nethermind/ --folder`
+- Add tests covering your changes and ensure they pass:
+  ```bash
+  dotnet test --project path/to/.csproj -c release -- --filter FullyQualifiedName~TestName
+  ```
+- Ensure the code is well-formatted:
+  ```bash
+  dotnet format whitespace src/Nethermind/ --folder
+  ```
 - Use the [pull_request_template.md](.github/pull_request_template.md)
+
+## Prerequisites
+
+See the [global.json](./global.json) for the required .NET SDK version.
