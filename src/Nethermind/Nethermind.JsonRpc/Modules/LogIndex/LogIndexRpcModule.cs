@@ -19,10 +19,10 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
     {
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock!, filter.ToBlock!, filter.Address, filter.Topics);
 
-        if (GetBlockNumber(logFilter.FromBlock) is not {} from)
+        if (GetBlockNumber(logFilter.FromBlock) is not { } from)
             return ResultWrapper<IEnumerable<int>>.Fail($"Block {logFilter.FromBlock} is not found.", ErrorCodes.UnknownBlockError);
 
-        if (GetBlockNumber(logFilter.FromBlock) is not {} to)
+        if (GetBlockNumber(logFilter.FromBlock) is not { } to)
             return ResultWrapper<IEnumerable<int>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
         return ResultWrapper<IEnumerable<int>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
