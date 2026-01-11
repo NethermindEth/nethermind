@@ -4,13 +4,15 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Unicode;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Collections;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -78,11 +80,12 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public TransactionSubstate(long refund,
         IHashSetEnumerableCollection<Address> destroyList,
         IToArrayCollection<LogEntry> logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        ITxTracer tracer,
         (ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         EvmExceptionType evmExceptionType = default)
     {
@@ -100,15 +103,17 @@ public readonly ref struct TransactionSubstate
         }
 
         Error = Revert;
-
-        if (!isTracerConnected)
+        if (Output.Bytes.IsEmpty || !tracer.IsTracing)
             return;
 
-        if (Output.Bytes.IsEmpty)
-            return;
+        Error = DecodeErrorMessage();
+    }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private string? DecodeErrorMessage()
+    {
         ReadOnlySpan<byte> span = Output.Bytes.Span;
-        Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
+        return TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>

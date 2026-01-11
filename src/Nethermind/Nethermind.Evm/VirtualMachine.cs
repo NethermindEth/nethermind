@@ -234,7 +234,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        TransactionSubstate substate = HandleException<TTracingActions>(currentState, in callResult, ref previousCallOutput, out bool terminate);
                         if (terminate)
                         {
                             _currentState = null;
@@ -292,7 +292,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     else
                     {
                         // Revert state changes for the previous call frame when a revert condition is signaled.
-                        HandleRevert(previousState, in callResult, ref previousCallOutput);
+                        HandleRevert<TTracingActions>(previousState, in callResult, ref previousCallOutput);
                     }
                 }
             }
@@ -558,7 +558,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             currentState.AccessTracker.DestroyList,
             currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
-            isTracerConnected: _txTracer.IsTracing,
+            tracer: _txTracer,
             output: callResult.Output,
             evmExceptionType: callResult.ExceptionType);
     }
@@ -581,7 +581,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// padded to match the expected length.
     /// </param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected void HandleRevert(VmState<TGasPolicy> previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    protected void HandleRevert<TTracingActions>(VmState<TGasPolicy> previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+        where TTracingActions : struct, IFlag
     {
         // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
@@ -609,7 +610,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
-        if (_txTracer.IsTracingActions)
+        if (TTracingActions.IsActive)
         {
             _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
         }
@@ -741,19 +742,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleException<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+        where TTracingActions : struct, IFlag
     {
-        // Cache the tracer to minimize repeated field accesses.
-        ITxTracer txTracer = _txTracer;
-
         // Report the error for action-level tracing if enabled.
-        if (txTracer.IsTracingActions)
+        if (TTracingActions.IsActive)
         {
-            txTracer.ReportActionError(callResult.ExceptionType);
+            _txTracer.ReportActionError(callResult.ExceptionType);
         }
 
         // Restore the world state to its snapshot before the current call execution.
-        _worldState.Restore(_currentState.Snapshot);
+        _worldState.Restore(currentState.Snapshot);
 
         // Revert any modifications that might have been applied due to the Parity touch bug.
         RevertParityTouchBugAccount();
@@ -762,7 +761,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (_currentState.IsTopLevel)
         {
             shouldExit = true;
-            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
+            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
         }
 
         // For nested calls, mark the previous call result as a failure code based on the call's EOF semantics.
@@ -776,9 +775,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         // Clean up the current failing state and pop the parent call frame from the state stack.
-        _currentState.Dispose();
-        _currentState = _stateStack.Pop();
-        _currentState.IsContinuation = true;
+        currentState.Dispose();
+        _currentState = currentState = _stateStack.Pop();
+        currentState.IsContinuation = true;
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         shouldExit = false;
