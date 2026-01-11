@@ -105,16 +105,11 @@ internal class SpecialTransactionsTests
         do
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            await Task.Delay(blockChain.SpecProvider.GetXdcSpec(head!).MinePeriod.Seconds()); // to avoid tight loop
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
         while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number - 1));
 
-
-
         Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(mergeSignBlockRange + 1));
-
-        await Task.Delay(((XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec()).MinePeriod.Seconds()); // to avoid tight loop
 
         Transaction[] pendingTxs = blockChain.TxPool.GetPendingTransactions();
 
@@ -150,14 +145,9 @@ internal class SpecialTransactionsTests
         do
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            await Task.Delay(blockChain.SpecProvider.GetXdcSpec(head!).MinePeriod.Seconds()); // to avoid tight loop
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
         while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number + 1));
-
-        // await blockChain.StopHotStuffModule();
-
-        await Task.Delay(((XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec()).MinePeriod.Seconds()); // to avoid tight loop
 
         var receipts = blockChain.TxPool.GetPendingTransactions();
 
@@ -198,7 +188,6 @@ internal class SpecialTransactionsTests
             }
 
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            await Task.Delay(blockChain.SpecProvider.GetXdcSpec(head!).MinePeriod.Seconds()); // to avoid tight loop
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
 
