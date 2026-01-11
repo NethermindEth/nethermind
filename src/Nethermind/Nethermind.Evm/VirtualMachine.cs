@@ -17,9 +17,9 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -192,31 +192,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         while (true)
         {
-            VmState<TGasPolicy> currentState = _currentState; // local cache
+            VmState<TGasPolicy> currentState = _currentState;
 
             if (!currentState.IsContinuation)
             {
                 ReturnDataBuffer = Array.Empty<byte>();
             }
 
-            Exception? failure;
-            string? substateError;
-
             try
             {
                 CallResult callResult;
-
                 if (currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile<TTracingActions>(currentState, out failure, out substateError);
-                    if (failure is not null)
+                    callResult = ExecutePrecompile<TTracingActions>(currentState, out Exception? precompileFailure, out string? substateError);
+                    if (precompileFailure is not null)
                     {
-                        goto Failure;
+                        if (currentState.IsTopLevel)
+                        {
+                            substate = HandleTopLevelPrecompileFailure<TTracingInst, TTracingActions>(currentState, precompileFailure, substateError);
+                            return;
+                        }
+                        previousCallOutput = default;
+                        HandlePrecompileFailure<TTracingInst, TTracingActions>(currentState, precompileFailure);
+                        continue;
                     }
                 }
                 else
                 {
-                    // Keep tracing in source - it will fold away when TTracingActions.IsActive is false.
                     if (TTracingActions.IsActive && !currentState.IsContinuation)
                     {
                         TraceTransactionActionStart(currentState);
@@ -228,118 +230,105 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                     if (!callResult.IsReturn)
                     {
-                        // Important: do NOT clear previousCallOutput here.
-                        // PrepareNextCallFrame may rely on the incoming value to stitch output correctly.
                         PrepareNextCallFrame(in callResult, ref previousCallOutput);
                         continue;
                     }
-
-                    if (callResult.IsException)
-                    {
-                        // Yes, this assigns even if terminate == false - but this is an exceptional path.
-                        // The win is: no local TransactionSubstate in the loop frame, so the prolog stays small.
-                        substate = HandleException<TTracingActions>(
-                            currentState,
-                            in callResult,
-                            ref previousCallOutput,
-                            out bool terminate);
-
-                        if (terminate)
-                        {
-                            _currentState = null;
-                            return;
-                        }
-
-                        continue;
-                    }
                 }
 
+                // Single top-level check for all terminal outcomes
                 if (currentState.IsTopLevel)
                 {
-                    if (TTracingActions.IsActive)
+                    if (callResult.IsException)
                     {
-                        TraceTransactionActionEnd(currentState, in callResult);
+                        substate = HandleTopLevelException<TTracingActions>(currentState, in callResult);
+                        return;
                     }
-
-                    _currentState = null;
-
-                    // This is the whole point: the JIT can usually forward the destination buffer
-                    // for 'out substate' straight into PrepareTopLevelSubstate's hidden retbuf.
-                    substate = PrepareTopLevelSubstate(currentState, in callResult);
+                    substate = PrepareTopLevelSubstate<TTracingActions>(currentState, in callResult);
                     return;
                 }
 
-                using (VmState<TGasPolicy> previous = currentState)
+                if (callResult.IsException)
                 {
-                    VmState<TGasPolicy> previousState = previous;
+                    HandleException<TTracingActions>(currentState, in callResult, ref previousCallOutput);
+                    continue;
+                }
 
-                    _currentState = currentState = _stateStack.Pop();
-                    currentState.IsContinuation = true;
+                VmState<TGasPolicy> previousState = currentState;
+                try
+                {
+                    VmState<TGasPolicy> previous = previousState;
+                    VmState<TGasPolicy> current = _currentState = _stateStack.Pop();
+                    current.IsContinuation = true;
 
-                    TGasPolicy.Refund(ref currentState.Gas, in previousState.Gas);
+                    TGasPolicy.Refund(ref current.Gas, in previous.Gas);
 
                     if (!callResult.ShouldRevert)
                     {
-                        long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
+                        long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previous.Gas);
                         bool previousStateSucceeded = true;
 
-                        if (previousState.ExecutionType.IsAnyCreate())
+                        ExecutionType executionType = previous.ExecutionType;
+                        if (executionType.IsAnyCreate())
                         {
                             previousCallOutput = default;
                             previousStateSucceeded = ExecuteCreate<TTracingActions>(
-                                callResult,
-                                previousState,
-                                gasAvailableForCodeDeposit);
+                                in callResult,
+                                previous,
+                                gasAvailableForCodeDeposit,
+                                executionType);
                         }
                         else
                         {
                             previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(
                                 in callResult,
-                                previousState);
+                                previous);
                         }
 
                         if (previousStateSucceeded)
                         {
-                            previousState.CommitToParent(currentState);
+                            previous.CommitToParent(current);
                         }
                     }
                     else
                     {
-                        HandleRevert<TTracingActions>(previousState, in callResult, ref previousCallOutput);
+                        HandleRevert<TTracingActions>(previous, in callResult, ref previousCallOutput);
                     }
                 }
+                finally
+                {
+                    previousState.Dispose();
+                    currentState = _currentState;
+                }
             }
-            catch (Exception ex) when (ex is EvmException or OverflowException)
+            catch (EvmException)
             {
-                failure = ex;
-                substateError = null;
-                goto Failure;
+                goto RecoverableFailure;
+            }
+            catch (OverflowException)
+            {
+                goto RecoverableFailure;
             }
 
             continue;
 
-        Failure:
-            // Same deal here - write directly to the out buffer.
-            substate = HandleFailure<TTracingInst, TTracingActions>(
-                failure,
-                substateError,
-                ref previousCallOutput,
-                out bool shouldExit);
-
-            if (shouldExit)
+        RecoverableFailure:
+            if (currentState.IsTopLevel)
             {
-                _currentState = null;
+                substate = HandleTopLevelFailure<TTracingInst>(currentState);
                 return;
             }
+
+            previousCallOutput = default;
+            HandleFailure<TTracingInst, TTracingActions>(currentState);
         }
     }
 
-    private bool ExecuteCreate<TTracingActions>(in CallResult callResult, VmState<TGasPolicy> previousState, long gasAvailableForCodeDeposit)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool ExecuteCreate<TTracingActions>(in CallResult callResult, VmState<TGasPolicy> previousState, long gasAvailableForCodeDeposit, ExecutionType executionType)
             where TTracingActions : struct, IFlag
     {
         PrepareCreateData(previousState);
-        ExecutionType execType = previousState.ExecutionType;
-        if (!execType.IsAnyCreateLegacy())
+        if (!executionType.IsAnyCreateLegacy())
         {
             return HandleEofCreate<TTracingActions>(
                 in callResult,
@@ -567,8 +556,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return success;
     }
 
-    protected TransactionSubstate PrepareTopLevelSubstate(VmState<TGasPolicy> currentState, scoped in CallResult callResult)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected TransactionSubstate PrepareTopLevelSubstate<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult)
+        where TTracingActions : struct, IFlag
     {
+        if (TTracingActions.IsActive)
+        {
+            TraceTransactionActionEnd(currentState, in callResult);
+        }
+
+        _currentState = null;
+
         return new TransactionSubstate(
             currentState.Refund,
             currentState.AccessTracker.DestroyList,
@@ -649,18 +647,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected TransactionSubstate HandleFailure<TTracingInst, TTracingActions>(Exception failure, string? substateError, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleTopLevelPrecompileFailure<TTracingInst, TTracingActions>(VmState<TGasPolicy> currentState, Exception failure, string? substateError)
         where TTracingInst : struct, IFlag
         where TTracingActions : struct, IFlag
     {
+        _currentState = null;
         // Log the exception if trace logging is enabled.
         if (_logger.IsTrace)
         {
-            _logger.Trace($"exception ({failure.GetType().Name}) in {_currentState.ExecutionType} at depth {_currentState.Env.CallDepth} - restoring snapshot");
+            _logger.Trace($"exception ({failure.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
         }
 
         // Revert the world state to the snapshot taken at the start of the current state's execution.
-        _worldState.Restore(_currentState.Snapshot);
+        _worldState.Restore(currentState.Snapshot);
 
         // Revert any modifications specific to the Parity touch bug, if applicable.
         RevertParityTouchBugAccount();
@@ -685,33 +684,124 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             txTracer.ReportActionError(errorType);
         }
 
-        // For a top-level call, immediately return a final transaction substate.
-        if (_currentState.IsTopLevel)
+        // For an OverflowException, force the error type to a generic Other error.
+        EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+        return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void HandlePrecompileFailure<TTracingInst, TTracingActions>(VmState<TGasPolicy> currentState, Exception failure)
+        where TTracingInst : struct, IFlag
+        where TTracingActions : struct, IFlag
+    {
+        // Log the exception if trace logging is enabled.
+        if (_logger.IsTrace)
         {
-            // For an OverflowException, force the error type to a generic Other error.
-            EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
-            shouldExit = true;
-            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError);
+            _logger.Trace($"exception ({failure.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
+        }
+
+        // Revert the world state to the snapshot taken at the start of the current state's execution.
+        _worldState.Restore(currentState.Snapshot);
+
+        // Revert any modifications specific to the Parity touch bug, if applicable.
+        RevertParityTouchBugAccount();
+
+        // Cache the transaction tracer for local use.
+        ITxTracer txTracer = _txTracer;
+
+        // Attempt to cast the exception to EvmException to extract a specific error type.
+        EvmException? evmException = failure as EvmException;
+        EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
+
+        // If the tracing instructions flag is active, report zero remaining gas and log the error.
+        if (TTracingInst.IsActive)
+        {
+            txTracer.ReportOperationRemainingGas(0);
+            txTracer.ReportOperationError(errorType);
+        }
+
+        // If action-level tracing is enabled, report the error associated with the action.
+        if (TTracingActions.IsActive)
+        {
+            txTracer.ReportActionError(errorType);
         }
 
         // For nested call frames, prepare to revert to the parent frame.
         // Set the previous call result to a failure code depending on the call type.
-        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+        _previousCallResult = currentState.ExecutionType.IsAnyCallEof()
             ? EofStatusCode.FailureBytes
             : StatusCode.FailureBytes;
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
-        previousCallOutput = ZeroPaddedSpan.Empty;
 
         // Dispose of the current failing state and restore the previous call frame from the stack.
-        _currentState.Dispose();
-        _currentState = _stateStack.Pop();
-        _currentState.IsContinuation = true;
+        currentState.Dispose();
+        _currentState = currentState = _stateStack.Pop();
+        currentState.IsContinuation = true;
+    }
 
-        shouldExit = false;
-        return default;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private TransactionSubstate HandleTopLevelFailure<TTracingInst>(VmState<TGasPolicy> currentState)
+        where TTracingInst : struct, IFlag
+    {
+        _currentState = null;
+        // Revert the world state to the snapshot taken at the start of the current state's execution.
+        _worldState.Restore(currentState.Snapshot);
+        // Revert any modifications specific to the Parity touch bug, if applicable.
+        RevertParityTouchBugAccount();
+        // If the tracing instructions flag is active, report zero remaining gas and log the error.
+        if (TTracingInst.IsActive)
+        {
+            ITxTracer txTracer = _txTracer;
+            txTracer.ReportOperationRemainingGas(0);
+            txTracer.ReportOperationError(EvmExceptionType.Other);
+            // If action-level tracing is enabled, report the error associated with the action.
+            txTracer.ReportActionError(EvmExceptionType.Other);
+        }
+        return new TransactionSubstate(EvmExceptionType.Other);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void HandleFailure<TTracingInst, TTracingActions>(VmState<TGasPolicy> currentState)
+        where TTracingInst : struct, IFlag
+        where TTracingActions : struct, IFlag
+    {
+        // Revert the world state to the snapshot taken at the start of the current state's execution.
+        _worldState.Restore(currentState.Snapshot);
+        // Revert any modifications specific to the Parity touch bug, if applicable.
+        RevertParityTouchBugAccount();
+        // Attempt to cast the exception to EvmException to extract a specific error type.
+        EvmExceptionType errorType = EvmExceptionType.Other;
+
+        // If the tracing instructions flag is active, report zero remaining gas and log the error.
+        if (TTracingInst.IsActive)
+        {
+            ITxTracer txTracer = _txTracer;
+            txTracer.ReportOperationRemainingGas(0);
+            txTracer.ReportOperationError(errorType);
+        }
+        // If action-level tracing is enabled, report the error associated with the action.
+        if (TTracingActions.IsActive)
+        {
+            // If action-level tracing is enabled, report the error associated with the action.
+            _txTracer.ReportActionError(errorType);
+        }
+
+        // For nested call frames, prepare to revert to the parent frame.
+        // Set the previous call result to a failure code depending on the call type.
+        _previousCallResult = currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        // Reset output destination and return data.
+        _previousCallOutputDestination = default;
+        ReturnDataBuffer = Array.Empty<byte>();
+        // Dispose of the current failing state and restore the previous call frame from the stack.
+        currentState.Dispose();
+        _currentState = currentState = _stateStack.Pop();
+        currentState.IsContinuation = true;
     }
 
     /// <summary>
@@ -758,7 +848,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected TransactionSubstate HandleException<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected void HandleException<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput)
         where TTracingActions : struct, IFlag
     {
         // Report the error for action-level tracing if enabled.
@@ -772,13 +862,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Revert any modifications that might have been applied due to the Parity touch bug.
         RevertParityTouchBugAccount();
-
-        // If this is the top-level call, return a final transaction substate encapsulating the error.
-        if (_currentState.IsTopLevel)
-        {
-            shouldExit = true;
-            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
-        }
 
         // For nested calls, mark the previous call result as a failure code based on the call's EOF semantics.
         _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
@@ -794,10 +877,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         currentState.Dispose();
         _currentState = currentState = _stateStack.Pop();
         currentState.IsContinuation = true;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected TransactionSubstate HandleTopLevelException<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult)
+        where TTracingActions : struct, IFlag
+    {
+        _currentState = null;
+        // Report the error for action-level tracing if enabled.
+        if (TTracingActions.IsActive)
+        {
+            _txTracer.ReportActionError(callResult.ExceptionType);
+        }
 
-        // Return null to indicate that the failure was handled and execution should continue in the parent frame.
-        shouldExit = false;
-        return default;
+        // Restore the world state to its snapshot before the current call execution.
+        _worldState.Restore(currentState.Snapshot);
+
+        // Revert any modifications that might have been applied due to the Parity touch bug.
+        RevertParityTouchBugAccount();
+
+        // If this is the top-level call, return a final transaction substate encapsulating the error.
+        return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
     }
 
     /// <summary>

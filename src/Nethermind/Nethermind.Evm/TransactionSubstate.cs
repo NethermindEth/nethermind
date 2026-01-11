@@ -58,6 +58,17 @@ public readonly ref struct TransactionSubstate
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
+    public TransactionSubstate(EvmExceptionType exceptionType)
+    {
+        Error = SomeError;
+        SubstateError = null;
+        EvmExceptionType = exceptionType;
+        Refund = 0;
+        _destroyList = _emptyDestroyList;
+        _logs = _emptyLogs;
+        ShouldRevert = false;
+    }
+
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
         Error = isTracerConnected ? exceptionType.ToString() : SomeError;
