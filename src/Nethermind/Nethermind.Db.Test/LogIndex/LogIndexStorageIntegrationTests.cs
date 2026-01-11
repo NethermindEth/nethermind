@@ -698,14 +698,14 @@ namespace Nethermind.Db.Test.LogIndex
                     if (addresses.Count != 0)
                     {
                         var address = random.NextFrom(addresses);
-                        var expectedNums = testData.AddressMap[address];
+                        var expectedBlocks = testData.AddressMap[address];
 
                         if (logIndexStorage.MinBlockNumber is not { } min || logIndexStorage.MaxBlockNumber is not { } max)
                             continue;
 
                         Assert.That(
                             logIndexStorage.GetBlockNumbersFor(address, min, max),
-                            Is.EqualTo(expectedNums.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
+                            Is.EqualTo(expectedBlocks.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
                             $"Address: {address}, available: {min} - {max}"
                         );
                     }
@@ -713,14 +713,14 @@ namespace Nethermind.Db.Test.LogIndex
                     if (topics.Count != 0)
                     {
                         var (idx, topic) = random.NextFrom(topics);
-                        var expectedNums = testData.TopicMap[idx][topic];
+                        var expectedBlocks = testData.TopicMap[idx][topic];
 
                         if (logIndexStorage.MinBlockNumber is not { } min || logIndexStorage.MaxBlockNumber is not { } max)
                             continue;
 
                         Assert.That(
                             logIndexStorage.GetBlockNumbersFor(idx, topic, min, max),
-                            Is.EqualTo(expectedNums.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
+                            Is.EqualTo(expectedBlocks.SkipWhile(i => i < min).TakeWhile(i => i <= max)),
                             $"Topic: [{idx}] {topic}, available: {min} - {max}"
                         );
                     }
@@ -983,16 +983,16 @@ namespace Nethermind.Db.Test.LogIndex
 
             private int _count;
 
-            protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats? stats)
+            protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> numbers, bool isBackwardSync, LogIndexUpdateStats? stats)
             {
                 var isFailBlock =
-                    FailOnBlock >= Math.Min(blockNums[0], blockNums[^1]) &&
-                    FailOnBlock <= Math.Max(blockNums[0], blockNums[^1]);
+                    FailOnBlock >= Math.Min(numbers[0], numbers[^1]) &&
+                    FailOnBlock <= Math.Max(numbers[0], numbers[^1]);
 
                 if (isFailBlock && Interlocked.Increment(ref _count) >= FailOnCallN)
                     throw new(FailMessage);
 
-                base.MergeBlockNumbers(dbBatch, key, blockNums, isBackwardSync, stats);
+                base.MergeBlockNumbers(dbBatch, key, numbers, isBackwardSync, stats);
             }
         }
     }

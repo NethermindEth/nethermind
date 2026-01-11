@@ -700,7 +700,7 @@ namespace Nethermind.Db.LogIndex
         }
 
         protected virtual void MergeBlockNumbers(
-            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums,
+            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> numbers,
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
         {
@@ -710,7 +710,7 @@ namespace Nethermind.Db.LogIndex
             {
                 ReadOnlySpan<byte> dbKey = CreateMergeDbKey(key, dbKeyArray, isBackwardSync);
 
-                var newValue = CreateDbValue(blockNums);
+                var newValue = CreateDbValue(numbers);
 
                 var timestamp = Stopwatch.GetTimestamp();
 
