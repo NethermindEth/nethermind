@@ -12,13 +12,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
 public readonly ref struct TransactionSubstate
 {
-    private readonly ILogger _logger;
     private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
     private static readonly IToArrayCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
 
@@ -80,16 +78,14 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = true;
     }
 
-    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
-        long refund,
+    public TransactionSubstate(long refund,
         IHashSetEnumerableCollection<Address> destroyList,
         IToArrayCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
-        EvmExceptionType evmExceptionType = default,
-        ILogger logger = default)
+        (ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+        EvmExceptionType evmExceptionType = default)
     {
-        _logger = logger;
         Output = output;
         Refund = refund;
         _destroyList = destroyList;
@@ -167,9 +163,8 @@ public readonly ref struct TransactionSubstate
         {
             return GetErrorMessage(span);
         }
-        catch (Exception e) // shouldn't happen, just for being safe
+        catch
         {
-            if (_logger.IsError == true) _logger.Error("Couldn't parse revert message", e);
             return null;
         }
     }

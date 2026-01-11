@@ -155,35 +155,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ITxTracer txTracer)
         where TTracingInst : struct, IFlag
     {
-        if (txTracer.IsTracingActions)
-        {
-            return ExecuteTransaction<TTracingInst, OnFlag>(vmState, worldState, txTracer);
-        }
-        return ExecuteTransaction<TTracingInst, OffFlag>(vmState, worldState, txTracer);
-    }
-
-    [SkipLocalsInit]
-    private TransactionSubstate ExecuteTransaction<TTracingInst, TTracingActions>(
-        VmState<TGasPolicy> vmState,
-        IWorldState worldState,
-        ITxTracer txTracer)
-        where TTracingInst : struct, IFlag
-        where TTracingActions : struct, IFlag
-    {
         // Initialize dependencies for transaction tracing and state access.
-        _txTracer = txTracer;
         _worldState = worldState;
+        _txTracer = txTracer;
+        _currentState = vmState;
+        // Initialize the code repository and set up the initial execution state.
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
+        _previousCallResult = null;
+        _previousCallOutputDestination = default;
+        OpCodeCount = 0;
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
-        OpCodeCount = 0;
-        // Initialize the code repository and set up the initial execution state.
-        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
-        _currentState = vmState;
-        _previousCallResult = null;
-        _previousCallOutputDestination = default;
-        ZeroPaddedSpan previousCallOutput = default;
+        if (txTracer.IsTracingActions)
+        {
+            return ExecuteTransaction<TTracingInst, OnFlag>(spec);
+        }
+        return ExecuteTransaction<TTracingInst, OffFlag>(spec);
+    }
 
+    [SkipLocalsInit]
+    private TransactionSubstate ExecuteTransaction<TTracingInst, TTracingActions>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TTracingActions : struct, IFlag
+    {
+        ZeroPaddedSpan previousCallOutput = default;
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
         {
@@ -275,10 +271,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
                         bool previousStateSucceeded = true;
-                        previousCallOutput = default;
                         // Process contract creation calls differently from regular calls.
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
+                            previousCallOutput = default;
                             previousStateSucceeded = ExecuteCreate<TTracingActions>(callResult, previousState, gasAvailableForCodeDeposit);
                         }
                         else
@@ -558,14 +554,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected TransactionSubstate PrepareTopLevelSubstate(VmState<TGasPolicy> currentState, scoped in CallResult callResult)
     {
         return new TransactionSubstate(
-            callResult.Output,
             currentState.Refund,
             currentState.AccessTracker.DestroyList,
             currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
-            callResult.ExceptionType,
-            _logger);
+            output: callResult.Output,
+            evmExceptionType: callResult.ExceptionType);
     }
 
     /// <summary>
