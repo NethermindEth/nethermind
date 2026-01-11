@@ -23,7 +23,7 @@ namespace Nethermind.Xdc;
 
 internal class SignTransactionManager(ISigner signer, ITxPool txPool) : ISignTransactionManager
 {
-    public async Task CreateTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
+    public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignerContract, signer.Address);

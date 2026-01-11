@@ -8,5 +8,5 @@ namespace Nethermind.Xdc;
 
 internal interface ISignTransactionManager
 {
-    Task CreateTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec);
+    Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec);
 }

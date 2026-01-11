@@ -248,7 +248,7 @@ namespace Nethermind.Xdc
 
                 if ((roundParent.Number % spec.MergeSignRange == 0) || roundParent.Number < spec.TIP2019Block)
                 {
-                    await _signTransactionManager.CreateTransactionSign(roundParent, spec);
+                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
                 }
             }
 
