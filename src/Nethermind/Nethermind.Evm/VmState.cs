@@ -294,7 +294,7 @@ public class VmState<TGasPolicy> : IDisposable
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsSpan(offset, size);
     }
-    
+
     public Memory<byte> MemoryStacks()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
