@@ -304,6 +304,10 @@ public class DiscoveryV5App : IDiscoveryApp
                     await Task.WhenAll(discoverTasks);
                     await Task.Delay(TimeSpan.FromSeconds(2), token);
                 }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Discovery has been stopped.");
+                }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
