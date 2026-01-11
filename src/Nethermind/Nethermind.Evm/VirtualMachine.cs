@@ -167,24 +167,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
+
+        // Trampoline via out to reduce stack size in the main loop.
+        TransactionSubstate substate;
         if (txTracer.IsTracingActions)
         {
-            return ExecuteTransaction<TTracingInst, OnFlag>(spec);
+            ExecuteTransaction<TTracingInst, OnFlag>(spec, out substate);
         }
-        return ExecuteTransaction<TTracingInst, OffFlag>(spec);
+        else
+        {
+            ExecuteTransaction<TTracingInst, OffFlag>(spec, out substate);
+        }
+        return substate;
     }
 
     [SkipLocalsInit]
-    private TransactionSubstate ExecuteTransaction<TTracingInst, TTracingActions>(IReleaseSpec spec)
+    private void ExecuteTransaction<TTracingInst, TTracingActions>(
+        IReleaseSpec spec,
+        out TransactionSubstate substate)
         where TTracingInst : struct, IFlag
         where TTracingActions : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput = default;
-        // Main execution loop: processes call frames until the top-level transaction completes.
+
         while (true)
         {
-            VmState<TGasPolicy> currentState = _currentState;  // Local cache
-            // For non-continuation frames, clear any previously stored return data.
+            VmState<TGasPolicy> currentState = _currentState; // local cache
+
             if (!currentState.IsContinuation)
             {
                 ReturnDataBuffer = Array.Empty<byte>();
@@ -192,98 +201,103 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             Exception? failure;
             string? substateError;
+
             try
             {
                 CallResult callResult;
 
-                // If the current state represents a precompiled contract, handle it separately.
                 if (currentState.IsPrecompile)
                 {
                     callResult = ExecutePrecompile<TTracingActions>(currentState, out failure, out substateError);
                     if (failure is not null)
                     {
-                        // Jump to the failure handler if a precompile error occurred.
                         goto Failure;
                     }
                 }
                 else
                 {
-                    // Start transaction tracing for non-continuation frames if tracing is enabled.
+                    // Keep tracing in source - it will fold away when TTracingActions.IsActive is false.
                     if (TTracingActions.IsActive && !currentState.IsContinuation)
                     {
                         TraceTransactionActionStart(currentState);
                     }
 
-                    // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
-                    if (currentState.Env.CodeInfo is not null)
-                    {
-                        callResult = ExecuteCall<TTracingInst>(spec, in previousCallOutput);
-                    }
-                    else
-                    {
-                        callResult = CallResult.InvalidCodeException;
-                    }
+                    callResult = currentState.Env.CodeInfo is not null
+                        ? ExecuteCall<TTracingInst>(spec, in previousCallOutput)
+                        : CallResult.InvalidCodeException;
 
-                    // If the call did not finish with a return, set up the next call frame and continue.
                     if (!callResult.IsReturn)
                     {
+                        // Important: do NOT clear previousCallOutput here.
+                        // PrepareNextCallFrame may rely on the incoming value to stitch output correctly.
                         PrepareNextCallFrame(in callResult, ref previousCallOutput);
                         continue;
                     }
 
-                    // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate substate = HandleException<TTracingActions>(currentState, in callResult, ref previousCallOutput, out bool terminate);
+                        // Yes, this assigns even if terminate == false - but this is an exceptional path.
+                        // The win is: no local TransactionSubstate in the loop frame, so the prolog stays small.
+                        substate = HandleException<TTracingActions>(
+                            currentState,
+                            in callResult,
+                            ref previousCallOutput,
+                            out bool terminate);
+
                         if (terminate)
                         {
                             _currentState = null;
-                            return substate;
+                            return;
                         }
-                        // Continue execution if the exception did not immediately finalize the transaction.
+
                         continue;
                     }
                 }
 
-                // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (currentState.IsTopLevel)
                 {
                     if (TTracingActions.IsActive)
                     {
                         TraceTransactionActionEnd(currentState, in callResult);
                     }
+
                     _currentState = null;
-                    return PrepareTopLevelSubstate(currentState, in callResult);
+
+                    // This is the whole point: the JIT can usually forward the destination buffer
+                    // for 'out substate' straight into PrepareTopLevelSubstate's hidden retbuf.
+                    substate = PrepareTopLevelSubstate(currentState, in callResult);
+                    return;
                 }
 
-                // For nested call frames, merge the results and restore the previous execution state.
                 using (VmState<TGasPolicy> previous = currentState)
                 {
-                    // Take local copy of previous state in reg as using forces it to stack.
                     VmState<TGasPolicy> previousState = previous;
-                    // Restore the previous state from the stack and mark it as a continuation.
+
                     _currentState = currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
-                    // Refund the remaining gas from the completed call frame.
+
                     TGasPolicy.Refund(ref currentState.Gas, in previousState.Gas);
 
                     if (!callResult.ShouldRevert)
                     {
                         long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
                         bool previousStateSucceeded = true;
-                        // Process contract creation calls differently from regular calls.
+
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
                             previousCallOutput = default;
-                            previousStateSucceeded = ExecuteCreate<TTracingActions>(callResult, previousState, gasAvailableForCodeDeposit);
+                            previousStateSucceeded = ExecuteCreate<TTracingActions>(
+                                callResult,
+                                previousState,
+                                gasAvailableForCodeDeposit);
                         }
                         else
                         {
-                            // Process a standard call return.
-                            previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(in callResult, previousState);
+                            previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(
+                                in callResult,
+                                previousState);
                         }
 
-                        // Commit the changes from the completed call frame if execution was successful.
                         if (previousStateSucceeded)
                         {
                             previousState.CommitToParent(currentState);
@@ -291,12 +305,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
-                        // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert<TTracingActions>(previousState, in callResult, ref previousCallOutput);
                     }
                 }
             }
-            // Handle specific EVM or overflow exceptions by routing to the failure handling block.
             catch (Exception ex) when (ex is EvmException or OverflowException)
             {
                 failure = ex;
@@ -304,16 +316,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 goto Failure;
             }
 
-            // Continue with the next iteration of the execution loop.
             continue;
 
-        // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate failSubstate = HandleFailure<TTracingInst, TTracingActions>(failure, substateError, ref previousCallOutput, out bool shouldExit);
+            // Same deal here - write directly to the out buffer.
+            substate = HandleFailure<TTracingInst, TTracingActions>(
+                failure,
+                substateError,
+                ref previousCallOutput,
+                out bool shouldExit);
+
             if (shouldExit)
             {
                 _currentState = null;
-                return failSubstate;
+                return;
             }
         }
     }
