@@ -205,10 +205,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInst>(
-                            _previousCallResult,
-                            previousCallOutput,
-                            _previousCallOutputDestination);
+                        callResult = ExecuteCall<TTracingInst>(spec, previousCallOutput);
                     }
                     else
                     {
@@ -1086,95 +1083,88 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     [SkipLocalsInit]
     protected CallResult ExecuteCall<TTracingInst>(
-        ReadOnlyMemory<byte>? previousCallResult,
-        ZeroPaddedSpan previousCallOutput,
-        scoped in UInt256 previousCallOutputDestination)
+        IReleaseSpec spec,
+        ZeroPaddedSpan previousCallOutput)
         where TTracingInst : struct, IFlag
     {
         VmState<TGasPolicy> vmState = _currentState;
-        // Obtain a reference to the execution environment for convenience.
         ExecutionEnvironment env = vmState.Env;
 
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
-            IReleaseSpec spec = BlockExecutionContext.Spec;
-            // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
-
-            // For contract creation calls, increment the nonce if the specification requires it.
-            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
-            {
-                _worldState.IncrementNonce(env.ExecutingAccount);
-            }
+            PrepareTopLevel(spec, vmState, env);
         }
 
-        // If no machine code is present, treat the call as empty.
-        if (env.CodeInfo.CodeSpan.Length == 0)
+        ICodeInfo codeInfo = env.CodeInfo;
+        ReadOnlySpan<byte> codeSpan = codeInfo.CodeSpan;
+        if (codeSpan.Length == 0)
         {
-            // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
             {
                 Metrics.IncrementEmptyCalls();
             }
-            goto Empty;
+            return CallResult.Empty(codeInfo.Version);
         }
 
         // Initialize the internal stacks for the current call frame.
-        vmState.InitializeStacks();
-
+        Span<byte> stackSpan = vmState.InitializeStacks();
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
-
-        // Cache the available gas from the state for local use.
-        TGasPolicy gas = vmState.Gas;
-
-        // If a previous call result exists, push its bytes onto the stack.
-        if (previousCallResult is not null)
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, stackSpan);
+        // HasValue is a direct field load vs pattern match overhead
+        if (_previousCallResult.HasValue)
         {
-            stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
-
-            // Report the remaining gas if tracing instructions are enabled.
+            ReadOnlyMemory<byte> callResult = _previousCallResult.GetValueOrDefault();
+            stack.PushBytes<TTracingInst>(callResult.Span);
+        
             if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
             }
         }
 
-        // If there is previous call output, update the memory cost and save the output.
-        if (previousCallOutput.Length > 0)
+        TGasPolicy gas = vmState.Gas;
+        int outputLength = previousCallOutput.Length;
+        if (outputLength > 0)
         {
-            // Use a local variable for the destination to simplify passing it by reference.
-            UInt256 localPreviousDest = previousCallOutputDestination;
-
-            // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            ref readonly UInt256 localPreviousDest = ref _previousCallOutputDestination;
+            bool success = TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (uint)outputLength, vmState)
+                         && vmState.Memory.TrySave(in localPreviousDest, previousCallOutput);
+        
+            if (!success)
             {
-                goto OutOfGas;
+                return CallResult.OutOfGasException;
             }
-
-            // Save the previous call's output into the VM state's memory.
-            if (!vmState.Memory.TrySave(in localPreviousDest, previousCallOutput)) goto OutOfGas;
         }
 
+        // Store the code reference and length in the stack for execution.
+        ref byte code = ref MemoryMarshal.GetReference(codeSpan);
+        stack.Code = ref code;
+        stack.CodeLength = codeSpan.Length;
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
         // - OffFlag is used when cancellation is not needed.
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
-        return _txTracer.IsCancelable switch
+        // Use if rather than pattern match as it generates better asm for a large struct return.
+        if (_txTracer.IsCancelable)
         {
-            false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
-            true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
-        };
+            return RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas);
+        }
 
-    Empty:
-        // Return an empty CallResult if there is no machine code to execute.
-        return CallResult.Empty(vmState.Env.CodeInfo.Version);
+        return RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas);
 
-    OutOfGas:
-        // Return an out-of-gas CallResult if updating the memory cost fails.
-        return CallResult.OutOfGasException;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void PrepareTopLevel(IReleaseSpec spec, VmState<TGasPolicy> vmState, ExecutionEnvironment env)
+        {
+            // Ensure the executing account has sufficient balance and exists in the world state.
+            // For contract creation calls, increment the nonce if the specification requires it.
+            _worldState.AddToBalanceAndCreateIfNotExists(
+                env.ExecutingAccount,
+                env.TransferValue,
+                spec,
+                incrementNonce: vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched);
+        }
     }
 
     /// <summary>
@@ -1223,7 +1213,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Retrieve the code information and create a read-only span of instructions.
             ICodeInfo codeInfo = VmState.Env.CodeInfo;
 
-            EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods, codeInfo);
+            EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods);
 
             // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
             if (exceptionType > EvmExceptionType.Return)
@@ -1278,19 +1268,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private EvmExceptionType InterpreterLoop<TTracingInst, TCancelable>(
         ref EvmStack stack,
         ref TGasPolicy gas,
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods,
-        ICodeInfo codeInfo
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods
         ) where TTracingInst : struct, IFlag where TCancelable : struct, IFlag
     {
 #if DEBUG
         // In debug mode, retrieve a tracer for interactive debugging.
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
-        ReadOnlySpan<byte> codeSection = codeInfo.CodeSpan;
-        ref byte code = ref MemoryMarshal.GetReference(codeSection);
-        uint codeLength = (uint)codeSection.Length;
-        stack.Code = ref code;
-        stack.CodeLength = (int)codeLength;
+        ref byte code = ref stack.Code;
+        uint codeLength = (uint)stack.CodeLength;
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         OpcodeResult result = new(VmState.ProgramCounter);
         int opCodeCount = 0;
@@ -1401,37 +1387,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = AsAlignedMemory(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
+            Memory<byte> stackMemory = vmState.MemoryStacks();
             _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
-    }
-
-    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
-    {
-        ArgumentNullException.ThrowIfNull(array);
-        ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
-
-        // The input array should be pinned and we are just using the Pointer to
-        // calculate alignment, not using data so not creating memory hole.
-        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
-
-        uint mask = alignment - 1;
-        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
-        uint adjustment = (uint)((-(nint)address) & mask);
-
-        return (int)adjustment;
-    }
-
-    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
-    {
-        int offset = GetAlignmentOffset(array, alignment);
-        return array.AsSpan(offset, size);
-    }
-
-    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
-    {
-        int offset = GetAlignmentOffset(array, alignment);
-        return array.AsMemory(offset, size);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
