@@ -436,6 +436,10 @@ public sealed class SnapshotBundle : IDisposable
         long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
         _changedStateNodes[path] = newNode;
+
+        // Note to self:
+        // Skipping the cached resource update and doing it in background in TrieNodeCache barely make a dent
+        // to block processing time but increase the trie node add time by 3x.
         _cachedResource.UpdateStateNode(path, newNode);
         _setStateNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
