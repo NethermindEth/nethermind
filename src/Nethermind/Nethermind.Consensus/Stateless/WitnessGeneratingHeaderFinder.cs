@@ -1,5 +1,3 @@
-
-
 using System;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;

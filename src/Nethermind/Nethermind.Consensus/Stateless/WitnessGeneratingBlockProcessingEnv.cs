@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Stateless;
 
 public interface IWitnessGeneratingBlockProcessingEnv
 {
-    WitnessCollector CreateWitnessCollector();
+    IWitnessCollector CreateWitnessCollector();
 }
 
 public class WitnessGeneratingBlockProcessingEnv(
@@ -44,7 +44,7 @@ public class WitnessGeneratingBlockProcessingEnv(
         return new TransactionProcessor<EthereumGasPolicy>(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 
-    public WitnessCollector CreateWitnessCollector()
+    public IWitnessCollector CreateWitnessCollector()
     {
         WitnessGeneratingWorldState state = new(baseWorldState);
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);

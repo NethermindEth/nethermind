@@ -417,7 +417,7 @@ namespace Nethermind.Facade
         {
             RecoverTxSenders(block);
             using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
-            WitnessCollector witnessCollector = scope.Env.CreateWitnessCollector();
+            IWitnessCollector witnessCollector = scope.Env.CreateWitnessCollector();
             return witnessCollector.GetWitness(parent, block);
         }
 
