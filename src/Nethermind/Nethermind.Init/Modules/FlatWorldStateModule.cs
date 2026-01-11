@@ -91,11 +91,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     return ctx.Resolve<RocksdbPersistence>();
                 }
 
-                if (flatDbConfig.Layout == FlatLayout.FlatTruncatedLeaf)
-                {
-                    return ctx.Resolve<NoLeafValueRocksdbPersistence>();
-                }
-
                 if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
                 {
                     return ctx.Resolve<PreimageRocksdbPersistence>();
@@ -122,7 +117,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 return new SegmentedBloom(bloomPath, bloom_capacity, bloom_bits_per_key, enabled: flatDbConfig.EnableFlatBloom);
             })
 
-            .AddSingleton<NoLeafValueRocksdbPersistence>()
             .AddSingleton<IStateReader, FlatStateReader>()
 
             .AddDecorator<IRocksDbConfigFactory, FlatBlockCacheAdjuster>()
