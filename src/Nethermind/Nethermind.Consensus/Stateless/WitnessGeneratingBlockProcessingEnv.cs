@@ -29,6 +29,7 @@ public interface IWitnessGeneratingBlockProcessingEnv
 public class WitnessGeneratingBlockProcessingEnv(
     ISpecProvider specProvider,
     WorldState baseWorldState,
+    IStateReader stateReader,
     WitnessCapturingTrieStore witnessCapturingTrieStore,
     IReadOnlyBlockTree blockTree,
     ISealValidator sealValidator,
@@ -46,7 +47,7 @@ public class WitnessGeneratingBlockProcessingEnv(
 
     public IWitnessCollector CreateWitnessCollector()
     {
-        WitnessGeneratingWorldState state = new(baseWorldState);
+        WitnessGeneratingWorldState state = new(baseWorldState, stateReader);
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
         TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =

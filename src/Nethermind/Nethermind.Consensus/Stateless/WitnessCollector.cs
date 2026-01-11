@@ -27,13 +27,13 @@ public class WitnessCollector(
             (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
                 NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
 
-            (byte[][] codes, byte[][] keys) = worldState.GetWitness();
+            (byte[][] stateNodes, byte[][] codes, byte[][] keys) = worldState.GetWitness(parentHeader, trieStore.TouchedNodesRlp);
 
             return new Witness()
             {
                 Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash),
                 Codes = codes,
-                State = trieStore.TouchedNodesRlp,
+                State = stateNodes,
                 Keys = keys
             };
         }

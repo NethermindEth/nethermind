@@ -13,17 +13,39 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
+public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
 
-    public (byte[][] Codes, byte[][] Keys) GetWitness()
+    public (byte[][] stateNodes, byte[][] Codes, byte[][] Keys) GetWitness(BlockHeader parentHeader, byte[][] capturedNodes)
     {
+
+        // Build state nodes
+        //
+        // The purpose of adding this tree visitor over the captured keys is for capturing trie nodes that
+        // were modified but reset to their original value within a block processing. Otherwise, the
+        // WitnessCapturingTrie only would not capture these nodes and they would not be included in the witness.
+        // For example, these nodes are captured in geth. But this solution might capture additional nodes not
+        // necessarily needed for the witness. There might be a better solution.
+        HashSet<byte[]> stateNodes = new();
+        stateNodes.UnionWith(capturedNodes);
+        foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
+        {
+            AccountProofCollector accountProofCollector = new(account, slots.ToArray());
+            stateReader.RunTreeVisitor(accountProofCollector, parentHeader);
+            AccountProof accountProof = accountProofCollector.BuildResult();
+
+            stateNodes.AddRange(accountProof.Proof);
+            stateNodes.AddRange(accountProof.StorageProofs.SelectMany(storageProof => storageProof.Proof));
+        }
+
+        // Build keys
         int totalKeysCount = 0;
         foreach (var kvp in _storageSlots)
         {
@@ -42,7 +64,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
                 keys[i++] = slot.ToBigEndian();
         }
 
-        return (_bytecodes.Values.ToArray(), keys);
+        return (stateNodes.ToArray(), _bytecodes.Values.ToArray(), keys);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
