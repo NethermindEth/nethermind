@@ -176,7 +176,7 @@ public class LogIndexFilterVisitorTests
     [TestCaseSource(nameof(FilterTestData))]
     public void FilterEnumerator_Dispose(string name, LogFilter filter, List<int> _)
     {
-        int[] mockedNums = [1, 2, 3, 4, 5];
+        int[] blockNumbers = [1, 2, 3, 4, 5];
         List<IEnumerator<int>> enumerators = [];
 
         ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
@@ -189,7 +189,7 @@ public class LogIndexFilterVisitorTests
 
         IEnumerator<int> MockEnumerator()
         {
-            IEnumerator<int>? enumerator = Substitute.ForPartsOf<EnumeratorWrapper>(mockedNums);
+            IEnumerator<int>? enumerator = Substitute.ForPartsOf<EnumeratorWrapper>(blockNumbers);
             enumerators.Add(enumerator);
             return enumerator;
         }

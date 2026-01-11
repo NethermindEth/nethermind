@@ -491,20 +491,20 @@ namespace Nethermind.Db.LogIndex
                     {
                         stats?.IncrementLogs();
 
-                        List<int> addressNums = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
+                        List<int> addressBlocks = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
 
-                        if (addressNums.Count == 0 || addressNums[^1] != blockNumber)
-                            addressNums.Add(blockNumber);
+                        if (addressBlocks.Count == 0 || addressBlocks[^1] != blockNumber)
+                            addressBlocks.Add(blockNumber);
 
                         var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
                         for (byte topicIndex = 0; topicIndex < topicsLength; topicIndex++)
                         {
                             stats?.IncrementTopics();
 
-                            List<int> topicNums = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
+                            List<int> topicBlocks = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
 
-                            if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
-                                topicNums.Add(blockNumber);
+                            if (topicBlocks.Count == 0 || topicBlocks[^1] != blockNumber)
+                                topicBlocks.Add(blockNumber);
                         }
                     }
                 }
@@ -647,9 +647,9 @@ namespace Nethermind.Db.LogIndex
                     timestamp = Stopwatch.GetTimestamp();
 
                     // Add addresses
-                    foreach ((Address address, List<int> blockNums) in aggregate.Address)
+                    foreach ((Address address, List<int> blocks) in aggregate.Address)
                     {
-                        MergeBlockNumbers(batches.Address, address.Bytes, blockNums, isBackwardSync, stats);
+                        MergeBlockNumbers(batches.Address, address.Bytes, blocks, isBackwardSync, stats);
                     }
 
                     // Add topics
@@ -657,8 +657,8 @@ namespace Nethermind.Db.LogIndex
                     {
                         Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
 
-                        foreach ((Hash256 topic, List<int> blockNums) in topics)
-                            MergeBlockNumbers(batches.Topics[topicIndex], topic.Bytes, blockNums, isBackwardSync, stats);
+                        foreach ((Hash256 topic, List<int> blocks) in topics)
+                            MergeBlockNumbers(batches.Topics[topicIndex], topic.Bytes, blocks, isBackwardSync, stats);
                     }
 
                     stats?.Merging.Include(Stopwatch.GetElapsedTime(timestamp));
@@ -832,10 +832,10 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static byte[] CreateDbValue(IReadOnlyList<int> blockNums)
+        private static byte[] CreateDbValue(IReadOnlyList<int> blockNumbers)
         {
-            var value = new byte[blockNums.Count * BlockNumberSize];
-            WriteBlockNumbers(value, blockNums);
+            var value = new byte[blockNumbers.Count * BlockNumberSize];
+            WriteBlockNumbers(value, blockNumbers);
             return value;
         }
 
