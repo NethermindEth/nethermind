@@ -575,7 +575,7 @@ namespace Nethermind.Db.LogIndex
 
                 batches.Commit();
 
-                // Postpone values update until batch is commited
+                // Postpone values update until batch is committed
                 UpdateRange(minBlock, maxBlock, isBackwardSync);
             }
             finally
@@ -671,7 +671,7 @@ namespace Nethermind.Db.LogIndex
                 // Submit batches
                 timestamp = Stopwatch.GetTimestamp();
                 batches.Commit();
-                stats?.CommitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
+                stats?.CommittingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 UpdateRange(addressRange, topicRanges, isBackwardSync);
 

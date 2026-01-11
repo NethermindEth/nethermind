@@ -30,7 +30,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
 
     public ExecTimeStats DBMerging { get; } = new();
     public ExecTimeStats UpdatingMeta { get; } = new();
-    public ExecTimeStats CommitingBatch { get; } = new();
+    public ExecTimeStats CommittingBatch { get; } = new();
     public ExecTimeStats BackgroundMerging { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
@@ -55,7 +55,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
         Merging.Combine(other.Merging);
         UpdatingMeta.Combine(other.UpdatingMeta);
         DBMerging.Combine(other.DBMerging);
-        CommitingBatch.Combine(other.CommitingBatch);
+        CommittingBatch.Combine(other.CommittingBatch);
         BackgroundMerging.Combine(other.BackgroundMerging);
         KeysCount.Combine(other.KeysCount);
 
@@ -95,7 +95,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
                {tab}Adding receipts: {Adding}
                {tab}{tab}Merging: {Merging} (DB: {DBMerging})
                {tab}{tab}Updating metadata: {UpdatingMeta}
-               {tab}{tab}Commiting batch: {CommitingBatch}
+               {tab}{tab}Committing batch: {CommittingBatch}
 
                {tab}Background merging: {BackgroundMerging}
 

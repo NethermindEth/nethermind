@@ -26,13 +26,13 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 
     /// <summary>
     /// Gets enumerator of block numbers between <paramref name="from"/> and <paramref name="to"/>
-    /// where given <paramref name="address"/> has occured.
+    /// where given <paramref name="address"/> has occurred.
     /// </summary>
     IEnumerator<int> GetEnumerator(Address address, int from, int to);
 
     /// <summary>
     /// Gets enumerator of block numbers between <paramref name="from"/> and <paramref name="to"/>
-    /// where given <paramref name="topic"/> has occured at the given <paramref name="index"/>.
+    /// where given <paramref name="topic"/> has occurred at the given <paramref name="index"/>.
     /// </summary>
     IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to);
 
