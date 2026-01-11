@@ -243,6 +243,8 @@ public class DbConfig : IDbConfig
         "max_write_batch_group_size_bytes=4000000;" +
 
         "optimize_filters_for_hits=true;" +
+        "ttl=0;" +
+        "periodic_compaction_seconds=0;" +
 
         "";
 
@@ -334,6 +336,9 @@ public class DbConfig : IDbConfig
         // Hard to decide. No compression is lower latency. But it means bigger db, which means worst cache is at os
         // level. TODO: Measure how much the db size change.
         // "compression=kNoCompression;" +
+
+        "ttl=0;" +
+        "periodic_compaction_seconds=0;" +
 
         // Make writes a tiny bit faster... please
         // "wal_bytes_per_sync:10000000;" +
@@ -436,6 +441,9 @@ public class DbConfig : IDbConfig
     // Largely the same as statedb, but more write focused.
 
     public string? FlatDbCommonTrieOptions { get; set; } =
+
+        "ttl=0;" +
+        "periodic_compaction_seconds=0;" +
 
         // This is actually feasable. Use direct reads to prevent taking up os cache space from flat.
         // "use_direct_reads=true;" +
