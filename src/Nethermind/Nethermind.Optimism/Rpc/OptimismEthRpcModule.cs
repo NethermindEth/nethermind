@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -55,6 +56,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
         IForkInfo forkInfo,
+        ILogIndexConfig logIndexConfig,
         ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
@@ -76,6 +78,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        feeHistoryOracle,
        protocolsManager,
        forkInfo,
+       logIndexConfig,
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;
