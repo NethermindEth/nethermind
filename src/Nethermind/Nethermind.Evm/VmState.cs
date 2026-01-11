@@ -230,6 +230,7 @@ public class VmState<TGasPolicy> : IDisposable
     public ref EvmPooledMemory Memory => ref _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public void Dispose()
     {
         Debug.Assert(!_isDisposed);
