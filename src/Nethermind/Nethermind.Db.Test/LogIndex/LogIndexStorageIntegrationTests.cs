@@ -303,7 +303,7 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
-        public async Task Set_ReorgUnexisting_Get_Test(
+        public async Task Set_ReorgNonexistent_Get_Test(
             [Values(1, 5)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
         )
@@ -317,7 +317,7 @@ namespace Nethermind.Db.Test.LogIndex
             foreach (BlockReceipts block in reorgBlocks)
                 await logIndexStorage.RemoveReorgedAsync(block);
 
-            // Need custom check because Reorg updates the last block even if it's "unexisting"
+            // Need custom check because Reorg updates the last block even if it's "nonexistent"
             Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(lastBlock - reorgDepth));
 
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, validateMinMax: false);
@@ -605,31 +605,31 @@ namespace Nethermind.Db.Test.LogIndex
                 }
             }
 
-            foreach (var (address, nums) in testData.AddressMap)
+            foreach (var (address, blocks) in testData.AddressMap)
             {
-                IEnumerable<int> expectedNums = nums;
+                IEnumerable<int> expectedBlocks = blocks;
 
                 if (excludedAddresses != null && excludedAddresses.TryGetValue(address, out HashSet<int> addressExcludedBlocks))
-                    expectedNums = expectedNums.Except(addressExcludedBlocks);
+                    expectedBlocks = expectedBlocks.Except(addressExcludedBlocks);
 
                 if (addedAddresses != null && addedAddresses.TryGetValue(address, out HashSet<int> addressAddedBlocks))
-                    expectedNums = expectedNums.Concat(addressAddedBlocks);
+                    expectedBlocks = expectedBlocks.Concat(addressAddedBlocks);
 
-                expectedNums = expectedNums.Order();
+                expectedBlocks = expectedBlocks.Order();
 
                 if (minBlock > testData.Batches[0][0].BlockNumber)
-                    expectedNums = expectedNums.SkipWhile(b => b < minBlock);
+                    expectedBlocks = expectedBlocks.SkipWhile(b => b < minBlock);
 
                 if (maxBlock < testData.Batches[^1][^1].BlockNumber)
-                    expectedNums = expectedNums.TakeWhile(b => b <= maxBlock);
+                    expectedBlocks = expectedBlocks.TakeWhile(b => b <= maxBlock);
 
-                expectedNums = expectedNums.ToArray();
+                expectedBlocks = expectedBlocks.ToArray();
 
                 foreach (var (from, to) in testData.Ranges)
                 {
                     Assert.That(
                         logIndexStorage.GetBlockNumbersFor(address, from, to),
-                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
+                        Is.EqualTo(expectedBlocks.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
                         $"Address: {address}, from {from} to {to}"
                     );
                 }
@@ -637,31 +637,31 @@ namespace Nethermind.Db.Test.LogIndex
 
             foreach (var (idx, byTopic) in testData.TopicMap)
             {
-                foreach (var (topic, nums) in byTopic)
+                foreach (var (topic, blocks) in byTopic)
                 {
-                    IEnumerable<int> expectedNums = nums;
+                    IEnumerable<int> expectedBlocks = blocks;
 
                     if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
-                        expectedNums = expectedNums.Except(topicExcludedBlocks);
+                        expectedBlocks = expectedBlocks.Except(topicExcludedBlocks);
 
                     if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<int> topicAddedBlocks))
-                        expectedNums = expectedNums.Concat(topicAddedBlocks);
+                        expectedBlocks = expectedBlocks.Concat(topicAddedBlocks);
 
-                    expectedNums = expectedNums.Order();
+                    expectedBlocks = expectedBlocks.Order();
 
                     if (minBlock > testData.Batches[0][0].BlockNumber)
-                        expectedNums = expectedNums.SkipWhile(b => b < minBlock);
+                        expectedBlocks = expectedBlocks.SkipWhile(b => b < minBlock);
 
                     if (maxBlock < testData.Batches[^1][^1].BlockNumber)
-                        expectedNums = expectedNums.TakeWhile(b => b <= maxBlock);
+                        expectedBlocks = expectedBlocks.TakeWhile(b => b <= maxBlock);
 
-                    expectedNums = expectedNums.ToArray();
+                    expectedBlocks = expectedBlocks.ToArray();
 
                     foreach (var (from, to) in testData.Ranges)
                     {
                         Assert.That(
                             logIndexStorage.GetBlockNumbersFor(idx, topic, from, to),
-                            Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
+                            Is.EqualTo(expectedBlocks.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
                             $"Topic: [{idx}] {topic}, {from} - {to}"
                         );
                     }

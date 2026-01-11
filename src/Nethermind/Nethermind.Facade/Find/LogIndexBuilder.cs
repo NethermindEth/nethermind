@@ -213,25 +213,25 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private bool TrySetPivot(int? blockNumber)
     {
-        if (blockNumber is not { } num || num is 0)
+        if (blockNumber is not { } number || number is 0)
             return false;
 
         if (_pivotSource.Task.IsCompleted)
             return false;
 
-        num = Math.Max(MinTargetBlockNumber, num);
-        num = Math.Min(MaxTargetBlockNumber, num);
+        number = Math.Max(MinTargetBlockNumber, number);
+        number = Math.Min(MaxTargetBlockNumber, number);
 
-        if (num is 0)
+        if (number is 0)
             return false;
 
-        if (GetBlockReceipts(num) == default)
+        if (GetBlockReceipts(number) == default)
             return false;
 
-        if (!_pivotSource.TrySetResult(num))
+        if (!_pivotSource.TrySetResult(number))
             return false;
 
-        _logger.Info($"{GetLogPrefix()}: using block {num} as pivot.");
+        _logger.Info($"{GetLogPrefix()}: using block {number} as pivot.");
         return true;
     }
 
