@@ -16,6 +16,7 @@ namespace Nethermind.Evm.GasPolicy;
 /// <summary>
 /// Standard Ethereum single-dimensional gas.Value policy.
 /// </summary>
+[SkipLocalsInit]
 public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     public long Value;
