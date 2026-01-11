@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 using static Nethermind.Trie.BranchData;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
@@ -503,10 +504,24 @@ namespace Nethermind.Trie
             if (rlp.IsNull || IsDirty)
             {
                 SpanSource oldRlp = rlp.IsNotNull ? rlp : SpanSource.Empty;
-                SpanSource fullRlp = NodeType == NodeType.Branch
-                    ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                        canBeParallel: isRoot && canBeParallel)
-                    : RlpEncode(tree, ref path, bufferPool);
+                SpanSource fullRlp;
+
+                if (path.Length == 0)
+                {
+                    long sw = Stopwatch.GetTimestamp();
+                    fullRlp = NodeType == NodeType.Branch
+                        ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                            canBeParallel: isRoot && canBeParallel)
+                        : RlpEncode(tree, ref path, bufferPool);
+                    EncodeTime.Inc(Stopwatch.GetTimestamp() - sw);
+                }
+                else
+                {
+                    fullRlp = NodeType == NodeType.Branch
+                        ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                            canBeParallel: isRoot && canBeParallel)
+                        : RlpEncode(tree, ref path, bufferPool);
+                }
 
                 if (oldRlp.IsNotNullOrEmpty)
                 {
@@ -522,11 +537,19 @@ namespace Nethermind.Trie
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
+                long sw = Stopwatch.GetTimestamp();
+                Hash256? res = Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
+                ComputeKeccakTime.Inc(Stopwatch.GetTimestamp() - sw);
+                return res;
             }
 
             return null;
         }
+
+        private static Counter ComputeKeccakTime =
+            DevMetric.Factory.CreateCounter("trienode_compute_keccak_time", "compute time");
+        private static Counter EncodeTime =
+            DevMetric.Factory.CreateCounter("trienode_encode_time", "compute time");
 
         internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
