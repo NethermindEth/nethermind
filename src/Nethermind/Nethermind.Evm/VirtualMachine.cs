@@ -1153,18 +1153,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         return RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas);
+    }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void PrepareTopLevel(IReleaseSpec spec, VmState<TGasPolicy> vmState, ExecutionEnvironment env)
-        {
-            // Ensure the executing account has sufficient balance and exists in the world state.
-            // For contract creation calls, increment the nonce if the specification requires it.
-            _worldState.AddToBalanceAndCreateIfNotExists(
-                env.ExecutingAccount,
-                env.TransferValue,
-                spec,
-                incrementNonce: vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched);
-        }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void PrepareTopLevel(IReleaseSpec spec, VmState<TGasPolicy> vmState, ExecutionEnvironment env)
+    {
+        // Ensure the executing account has sufficient balance and exists in the world state.
+        // For contract creation calls, increment the nonce if the specification requires it.
+        _worldState.AddToBalanceAndCreateIfNotExists(
+            env.ExecutingAccount,
+            env.TransferValue,
+            spec,
+            incrementNonce: vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched);
     }
 
     /// <summary>
@@ -1387,7 +1387,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.MemoryStacks();
+            Memory<byte> stackMemory = vmState.MemoryStacks(stackValue.Head);
             _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }
