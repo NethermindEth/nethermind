@@ -45,10 +45,10 @@ public struct EvmPooledMemory : IEvmMemory
 
     public bool TrySaveByte(in UInt256 location, byte value)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out _, out bool outOfGas);
-        if (outOfGas) return false;
+        CheckMemoryAccessViolation(in location, 1, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
 
-        UpdateSize(location.u0 + 1);
+        UpdateSize(newLength);
 
         _memory![(long)location] = value;
         return true;
@@ -61,8 +61,8 @@ public struct EvmPooledMemory : IEvmMemory
             return true;
         }
 
-        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool outOfGas);
-        if (outOfGas) return false;
+        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
 
         UpdateSize(newLength);
 
@@ -70,36 +70,41 @@ public struct EvmPooledMemory : IEvmMemory
         return true;
     }
 
-    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool outOfGas)
+    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool isViolation)
     {
         if (length.IsLargerThanULong())
         {
-            outOfGas = true;
+            isViolation = true;
             newLength = 0;
             return;
         }
 
-        CheckMemoryAccessViolation(in location, length.u0, out newLength, out outOfGas);
+        CheckMemoryAccessViolation(in location, length.u0, out newLength, out isViolation);
     }
 
-    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool outOfGas)
+    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool isViolation)
     {
-        if (location.IsLargerThanULong() || length > long.MaxValue)
+        // Check for overflow and ensure the word-aligned size fits in int.
+        // Word alignment can add up to 31 bytes, so we use (int.MaxValue - WordSize + 1) as the limit.
+        // This ensures that after word alignment, the size still fits in int for .NET array operations.
+        const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
+
+        if (location.IsLargerThanULong() || length > MaxMemorySize)
         {
-            outOfGas = true;
+            isViolation = true;
             newLength = 0;
             return;
         }
 
         ulong totalSize = location.u0 + length;
-        if (totalSize < location.u0 || totalSize > long.MaxValue)
+        if (totalSize < location.u0 || totalSize > MaxMemorySize)
         {
-            outOfGas = true;
+            isViolation = true;
             newLength = 0;
             return;
         }
 
-        outOfGas = false;
+        isViolation = false;
         newLength = totalSize;
     }
 
@@ -111,8 +116,8 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool outOfGas);
-        if (outOfGas) return false;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
 
         UpdateSize(newLength);
 
@@ -129,10 +134,10 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool outOfGas);
-        outOfGas |= location.u0 > int.MaxValue;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
+        isViolation |= location.u0 > int.MaxValue;
 
-        if (outOfGas) return false;
+        if (isViolation) return false;
 
         UpdateSize(newLength);
 
@@ -152,8 +157,8 @@ public struct EvmPooledMemory : IEvmMemory
 
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool outOfGas);
-        if (outOfGas)
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool isViolation);
+        if (isViolation)
         {
             data = default;
             return false;
@@ -172,8 +177,8 @@ public struct EvmPooledMemory : IEvmMemory
             return true;
         }
 
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool outOfGas);
-        if (outOfGas)
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool isViolation);
+        if (isViolation)
         {
             data = default;
             return false;
@@ -192,8 +197,8 @@ public struct EvmPooledMemory : IEvmMemory
             return true;
         }
 
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool outOfGas);
-        if (outOfGas)
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool isViolation);
+        if (isViolation)
         {
             data = default;
             return false;

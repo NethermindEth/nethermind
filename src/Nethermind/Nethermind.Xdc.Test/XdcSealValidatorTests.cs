@@ -68,10 +68,10 @@ internal class XdcSealValidatorTests
         yield return new TestCaseData(header, new byte[0]);
         yield return new TestCaseData(header, new byte[65]);
         yield return new TestCaseData(header, new byte[66]);
-        byte[] extralongSignature = new byte[66];
+        byte[] extraLongSignature = new byte[66];
         var keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
-        keyASig.CopyTo(extralongSignature, 0);
-        yield return new TestCaseData(header, extralongSignature);
+        keyASig.CopyTo(extraLongSignature, 0);
+        yield return new TestCaseData(header, extraLongSignature);
         var keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig);
     }

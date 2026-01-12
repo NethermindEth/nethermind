@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     public class GetReceiptsMessageTests
     {
         [Test]
-        public void Sets_values_from_contructor_argument()
+        public void Sets_values_from_constructor_argument()
         {
             ArrayPoolList<Hash256> hashes = new(2) { TestItem.KeccakA, TestItem.KeccakB };
             using GetReceiptsMessage message = new(hashes);

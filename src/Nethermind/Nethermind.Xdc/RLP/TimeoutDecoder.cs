@@ -49,7 +49,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             if (rlpStream.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in {nameof(Vote)}");
+                throw new RlpException($"Invalid signature length in {nameof(Timeout)}");
             signature = new(rlpStream.DecodeByteArray());
         }
 

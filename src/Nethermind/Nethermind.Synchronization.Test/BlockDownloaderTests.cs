@@ -589,7 +589,7 @@ public partial class BlockDownloaderTests
         {
             FastSync = true,
             StateMinDistanceFromHead = fastSyncLag,
-            PivotNumber = syncPivot.Number.ToString(),
+            PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
         };
 

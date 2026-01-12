@@ -35,22 +35,14 @@ namespace Nethermind.JsonRpc.Modules
 
             blockParameter ??= BlockParameter.Latest;
 
-            BlockHeader header;
-            if (blockParameter.RequireCanonical)
+            BlockHeader header = blockFinder.FindHeader(blockParameter);
+            if (blockParameter.RequireCanonical && header is null && !allowNulls && blockParameter.BlockHash is not null)
             {
-                header = blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (header is null && !allowNulls)
+                header = blockFinder.FindHeader(blockParameter.BlockHash);
+                if (header is not null)
                 {
-                    header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header is not null)
-                    {
-                        return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
+                    return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
-            }
-            else
-            {
-                header = blockFinder.FindHeader(blockParameter);
             }
 
             return header is null && !allowNulls
@@ -62,22 +54,14 @@ namespace Nethermind.JsonRpc.Modules
         {
             blockParameter ??= BlockParameter.Latest;
 
-            Block block;
-            if (blockParameter.RequireCanonical)
+            Block block = blockFinder.FindBlock(blockParameter);
+            if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
-                if (block is null && !allowNulls)
+                BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
+                if (header is not null)
                 {
-                    BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header is not null)
-                    {
-                        return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
+                    return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
-            }
-            else
-            {
-                block = blockFinder.FindBlock(blockParameter);
             }
 
             if (block is null)
