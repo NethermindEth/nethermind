@@ -108,11 +108,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         //In case of SocketException we log it as debug to avoid noise
         if (exception is SocketException)
         {
-            if (_logger.IsTrace)
-            {
-                string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
-                _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Error in communication with {GetClientId(_session)} (SocketException): {exception}");
         }
         else
         {
