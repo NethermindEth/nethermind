@@ -46,7 +46,6 @@ namespace Nethermind.Network
         private int _tryCount;
         private int _newActiveNodes;
         private int _failedInitialConnect;
-        private int _connectionRounds;
 
         private Timer? _peerUpdateTimer;
 
@@ -280,7 +279,6 @@ namespace Nethermind.Network
                     Volatile.Write(ref _tryCount, 0);
                     Volatile.Write(ref _newActiveNodes, 0);
                     Volatile.Write(ref _failedInitialConnect, 0);
-                    Volatile.Write(ref _connectionRounds, 0);
 
                     SelectAndRankCandidates();
                     List<Peer> remainingCandidates = _currentSelection.Candidates;
@@ -318,7 +316,7 @@ namespace Nethermind.Network
                         {
                             string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key}: {x.Value}"));
                             _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count}, " +
-                                          $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
+                                          $"Tried: {_tryCount}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
                                           $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Length} " +
                                           $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
                                           $"[Out: {activePeers.Count(x => x.Value.OutSession is not null)} | " +
