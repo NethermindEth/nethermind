@@ -209,7 +209,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Finalize
             if (restore)
             {
-                WorldState.Reset(resetBlockChanges: false);
+                WorldState.Reset(resetBlockChanges: false); //todo: need to implement?
                 if (deleteCallerAccount)
                 {
                     WorldState.DeleteAccount(tx.SenderAddress!, VirtualMachine.TxExecutionContext.BlockAccessIndex);
@@ -288,7 +288,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (!WorldState.AccountExists(authority, VirtualMachine.TxExecutionContext.BlockAccessIndex))
                     {
-                        WorldState.CreateAccount(authority, 0, 1);
+                        WorldState.CreateAccount(authority, 0, 1, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                     }
                     else
                     {
@@ -472,7 +472,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (!commit || noValidation || effectiveGasPrice.IsZero)
                     {
                         deleteCallerAccount = !commit || restore;
-                        WorldState.CreateAccount(sender!, in UInt256.Zero);
+                        WorldState.CreateAccount(sender!, in UInt256.Zero, blockAccessIndex: VirtualMachine.TxExecutionContext.BlockAccessIndex);
                     }
                 }
 
@@ -595,7 +595,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void DecrementNonce(Transaction tx)
         {
-            WorldState.DecrementNonce(tx.SenderAddress!);
+            WorldState.DecrementNonce(tx.SenderAddress!); //todo: check if used?
         }
 
         [SkipLocalsInit]
@@ -716,7 +716,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (substate.ShouldRevert || substate.IsError)
             {
                 if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                WorldState.Restore(snapshot);
+                WorldState.Restore(snapshot, VirtualMachine.TxExecutionContext.BlockAccessIndex);
             }
             else
             {
@@ -743,7 +743,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (Logger.IsTrace)
                         Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.ClearStorage(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                     WorldState.DeleteAccount(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
 
                     if (tracer.IsTracingRefunds)
@@ -758,7 +758,7 @@ namespace Nethermind.Evm.TransactionProcessing
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-            WorldState.Restore(snapshot);
+            WorldState.Restore(snapshot, VirtualMachine.TxExecutionContext.BlockAccessIndex);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
 
         Complete:
