@@ -12,7 +12,7 @@ namespace Nethermind.Evm
         public abstract EvmExceptionType ExceptionType { get; }
     }
 
-    public enum EvmExceptionType : int
+    public enum EvmExceptionType : sbyte
     {
         Stop = -1,
         None = 0,

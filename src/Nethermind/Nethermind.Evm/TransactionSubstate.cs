@@ -52,7 +52,8 @@ public readonly ref struct TransactionSubstate
     public string? Error { get; }
     public string? SubstateError { get; }
     public EvmExceptionType EvmExceptionType { get; }
-    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
+    public readonly ReadOnlyMemory<byte> OutputBytes;
+    public ICodeInfo DeployCode { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
@@ -97,10 +98,12 @@ public readonly ref struct TransactionSubstate
         IToArrayCollection<LogEntry> logs,
         bool shouldRevert,
         ITxTracer tracer,
-        (ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+        ICodeInfo deployCode,
+        ReadOnlyMemory<byte> outputBytes,
         EvmExceptionType evmExceptionType = default)
     {
-        Output = output;
+        OutputBytes = outputBytes;
+        DeployCode = deployCode;
         Refund = refund;
         _destroyList = destroyList;
         _logs = logs;
@@ -114,7 +117,7 @@ public readonly ref struct TransactionSubstate
         }
 
         Error = Revert;
-        if (Output.Bytes.IsEmpty || !tracer.IsTracing)
+        if (OutputBytes.IsEmpty || !tracer.IsTracing)
             return;
 
         Error = DecodeErrorMessage();
@@ -123,7 +126,7 @@ public readonly ref struct TransactionSubstate
     [MethodImpl(MethodImplOptions.NoInlining)]
     private string? DecodeErrorMessage()
     {
-        ReadOnlySpan<byte> span = Output.Bytes.Span;
+        ReadOnlySpan<byte> span = OutputBytes.Span;
         return TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 

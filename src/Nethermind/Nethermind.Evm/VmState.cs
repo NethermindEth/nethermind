@@ -335,6 +335,7 @@ public class VmState<TGasPolicy> : IDisposable
 /// <summary>
 /// Return state for EVM call stack management.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public struct ReturnState
 {
     public int Index;

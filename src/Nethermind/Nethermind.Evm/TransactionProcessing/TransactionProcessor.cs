@@ -261,13 +261,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : [];
+                    byte[] output = substate.ShouldRevert ? substate.OutputBytes.ToArray() : [];
                     tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.Bytes.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.OutputBytes.ToArray(), logs, stateRoot);
                 }
             }
 
@@ -773,22 +773,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
+            ReadOnlyMemory<byte> code = substate.OutputBytes;
+            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, code.Length);
             if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && spec.ChargeForTopLevelCreate)
             {
                 return false;
             }
 
-            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
+            if (CodeDepositHandler.CodeIsInvalid(spec, code, 0))
             {
                 return false;
             }
 
             if (TGasPolicy.GetRemainingGas(unspentGas) >= codeDepositGasCost)
             {
-                // Copy the bytes so it's not live memory that will be used in another tx
-                byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(code, codeOwner, spec);
+                // Copy the bytes to array so it's not live memory that will be used in another tx
+                _codeInfoRepository.InsertCode(code.ToArray(), codeOwner, spec);
                 if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -803,8 +803,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
             // 1 - load deploy EOF subContainer at deploy_container_index in the container from which RETURNCODE is executed
-            ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
-            EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
+            ReadOnlySpan<byte> auxExtraData = substate.OutputBytes.Span;
+            EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.DeployCode;
 
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length);
             if (TGasPolicy.GetRemainingGas(unspentGas) < codeDepositGasCost && spec.ChargeForTopLevelCreate)

@@ -226,7 +226,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         ? ExecuteCall<TTracingInst>(spec, in previousCallOutput)
                         : CallResult.InvalidCodeException;
                     // Consumed call output so clear
-                    previousCallOutput = ZeroPaddedSpan.Empty;
+                    previousCallOutput = default;
 
                     if (!callResult.IsReturn)
                     {
@@ -352,7 +352,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
         where TTracingActions : struct, IFlag
     {
-        ReturnDataBuffer = callResult.Output.Bytes;
+        ReadOnlyMemory<byte> returnDataBuffer = callResult.OutputBytes;
+        ReturnDataBuffer = returnDataBuffer;
+        ReadOnlySpan<byte> returnSpan = returnDataBuffer.Span;
         _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
             callResult.PrecompileSuccess.HasValue
             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
@@ -361,7 +363,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (TTracingInst.IsActive && previousState.IsPrecompile)
         {
             // parity induced if else for vmtrace
-            ZeroPaddedSpan previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+            ZeroPaddedSpan previousCallOutput = returnSpan.SliceWithZeroPadding(0, Math.Min(returnSpan.Length, (int)previousState.OutputLength));
             _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
         }
 
@@ -370,7 +372,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
 
-        return callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength)); ;
+        return returnSpan.SliceWithZeroPadding(0, Math.Min(returnSpan.Length, (int)previousState.OutputLength)); ;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -380,8 +382,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         Address callCodeOwner = previousState.Env.ExecutingAccount;
         // ReturnCode was called with a container index and auxdata
         // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
-        ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
-        EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
+        ReadOnlySpan<byte> auxExtraData = callResult.OutputBytes.Span;
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.DeployCode;
 
         // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
         Span<byte> bytecodeResult = new byte[deployCodeInfo.Code.Length + auxExtraData.Length];
@@ -491,17 +493,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required to deposit the contract code using legacy cost rules.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        ReadOnlyMemory<byte> code = callResult.OutputBytes;
+        ReadOnlySpan<byte> codeSpan = code.Span;
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, codeSpan.Length);
 
         // Validate the code against legacy rules; mark it invalid if it fails these checks.
-        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, codeSpan);
 
         bool success = true;
         // Check if there is sufficient gas and the code is valid.
         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
         {
             // Deposit the contract code into the repository.
-            ReadOnlyMemory<byte> code = callResult.Output.Bytes;
             _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
@@ -510,7 +513,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // If tracing is enabled, report the successful code deposit operation.
             if (TTracingActions.IsActive)
             {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.OutputBytes);
             }
         }
         // If the code deposit should fail due to out-of-gas or invalid code conditions...
@@ -544,7 +547,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // report the end of the action if tracing is enabled.
         else if (TTracingActions.IsActive)
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.OutputBytes);
         }
         return success;
     }
@@ -566,7 +569,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             tracer: _txTracer,
-            output: callResult.Output,
+            outputBytes: callResult.OutputBytes,
+            deployCode: callResult.DeployCode,
             evmExceptionType: callResult.ExceptionType);
     }
 
@@ -595,7 +599,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _worldState.Restore(previousState.Snapshot);
 
         // Cache the output bytes from the call result to avoid multiple property accesses.
-        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+        ReadOnlyMemory<byte> outputBytes = callResult.OutputBytes;
 
         // Set the return data buffer to the output bytes from the failed call.
         ReturnDataBuffer = outputBytes;
@@ -1038,10 +1042,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.OutputBytes.Length);
 
         // Cache the output bytes for reuse in the tracing reports.
-        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+        ReadOnlyMemory<byte> outputBytes = callResult.OutputBytes;
 
         // If an exception occurred during execution, report the error immediately.
         if (callResult.IsException)
