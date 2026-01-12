@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
@@ -349,8 +351,15 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
                     // Use RetrospectiveExecutionTracer for actual EVM execution replay
+                    // Resolve IReadOnlyTxProcessingEnvFactory from DI to create isolated transaction processors
+                    var txProcessingEnvFactory = api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+                    var txProcessorSource = txProcessingEnvFactory.Create();
+
                     var executionTracer = new RetrospectiveExecutionTracer(
-                        api,
+                        blockTree,
+                        api.SpecProvider!,
+                        api.StateReader!,
+                        txProcessorSource,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
                         api.LogManager);

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
 using Nethermind.State;
@@ -23,7 +24,7 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 public sealed class RetrospectiveExecutionTracer
 {
     private readonly IBlockTree _blockTree;
-    private readonly IBlockProcessor _blockProcessor;
+    private readonly IReadOnlyTxProcessorSource _txProcessorSource;
     private readonly ISpecProvider _specProvider;
     private readonly IStateReader _stateReader;
     private readonly OpcodeCounter _counter;
@@ -39,31 +40,34 @@ public sealed class RetrospectiveExecutionTracer
     /// <summary>
     /// Initializes a new instance of the <see cref="RetrospectiveExecutionTracer"/> class.
     /// </summary>
-    /// <param name="api">The Nethermind API providing access to blockchain services.</param>
+    /// <param name="blockTree">The block tree for finding blocks.</param>
+    /// <param name="specProvider">The spec provider for getting release specs.</param>
+    /// <param name="stateReader">The state reader for checking state availability.</param>
+    /// <param name="txProcessorSource">The read-only transaction processor source for isolated execution.</param>
     /// <param name="counter">The opcode counter to accumulate into.</param>
     /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
     /// <param name="logManager">The log manager.</param>
     /// <exception cref="ArgumentNullException">Thrown when required parameters are null.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when required API components are not available.</exception>
     public RetrospectiveExecutionTracer(
-        INethermindApi api,
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        IStateReader stateReader,
+        IReadOnlyTxProcessorSource txProcessorSource,
         OpcodeCounter counter,
         int maxDegreeOfParallelism,
         ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(api);
+        ArgumentNullException.ThrowIfNull(blockTree);
+        ArgumentNullException.ThrowIfNull(specProvider);
+        ArgumentNullException.ThrowIfNull(stateReader);
+        ArgumentNullException.ThrowIfNull(txProcessorSource);
         ArgumentNullException.ThrowIfNull(counter);
         ArgumentNullException.ThrowIfNull(logManager);
 
-        _blockTree = api.BlockTree ?? throw new InvalidOperationException("BlockTree is not available");
-        _specProvider = api.SpecProvider ?? throw new InvalidOperationException("SpecProvider is not available");
-        _stateReader = api.StateReader ?? throw new InvalidOperationException("StateReader is not available");
-
-        var processingContext = api.MainProcessingContext
-            ?? throw new InvalidOperationException("MainProcessingContext is not available");
-
-        _blockProcessor = processingContext.BlockProcessor;
-
+        _blockTree = blockTree;
+        _specProvider = specProvider;
+        _stateReader = stateReader;
+        _txProcessorSource = txProcessorSource;
         _counter = counter;
         _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
         _logger = logManager.GetClassLogger<RetrospectiveExecutionTracer>();
@@ -111,24 +115,29 @@ public sealed class RetrospectiveExecutionTracer
         var blockNumbers = Enumerable.Range(0, (int)range.Count)
             .Select(i => range.StartBlock + i);
 
-        // For initial implementation, process sequentially to ensure correctness
-        // Parallel processing will be added in Phase 4 (US2)
-        foreach (long blockNumber in blockNumbers)
+        // Configure parallel processing options
+        var parallelOptions = new ParallelOptions
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            MaxDegreeOfParallelism = _maxDegreeOfParallelism,
+            CancellationToken = cancellationToken
+        };
 
-            await ProcessBlockAsync(blockNumber, progress, cancellationToken).ConfigureAwait(false);
-        }
+        // Process blocks in parallel with isolated state per block
+        await Parallel.ForEachAsync(blockNumbers, parallelOptions, (blockNumber, ct) =>
+        {
+            ProcessBlockSync(blockNumber, progress, ct);
+            return ValueTask.CompletedTask;
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Processes a single block by replaying all its transactions with the EVM.
+    /// This method is synchronous and thread-safe for parallel execution.
     /// </summary>
     /// <param name="blockNumber">The block number to process.</param>
     /// <param name="progress">The progress tracker.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    private async Task ProcessBlockAsync(long blockNumber, TracingProgress progress, CancellationToken cancellationToken)
+    private void ProcessBlockSync(long blockNumber, TracingProgress progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -178,40 +187,52 @@ public sealed class RetrospectiveExecutionTracer
         {
             _logger.Info($"RetrospectiveExecution tracing progress: block {blockNumber} ({progress.PercentComplete:F2}% complete)");
         }
-
-        await Task.CompletedTask.ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Processes a block using the block processor with opcode counting tracer.
+    /// Processes a block by executing each transaction with an isolated read-only transaction processor.
+    /// This approach does not modify any chain state and is safe for historical analysis.
     /// </summary>
     /// <param name="block">The block to process.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Array of opcode counts (256 elements, one per possible opcode byte).</returns>
     private long[] ProcessBlock(Block block, CancellationToken cancellationToken)
     {
-        // Create a tracer to accumulate opcodes for this block
         long[] blockOpcodes = new long[256];
-        var blockTracer = new OpcodeBlockTracer(trace =>
-        {
-            // Accumulate opcodes from the block trace
-            foreach (var kvp in trace.Opcodes)
-            {
-                blockOpcodes[kvp.Key] += kvp.Value;
-            }
-        });
 
-        // Get spec for this block
+        // Get parent header for state context
+        BlockHeader? parentHeader = block.IsGenesis
+            ? null
+            : _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+
+        // Create isolated processing scope based on parent state
+        using IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(parentHeader);
+
+        // Get spec and calculate blob base fee for this block
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        UInt256 blobBaseFee = UInt256.Zero;
+        if (spec.IsEip4844Enabled && block.Header.ExcessBlobGas.HasValue)
+        {
+            BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+        }
 
-        // Process the block with tracing enabled
-        // ProcessingOptions.Trace enables read-only execution without state persistence
-        _blockProcessor.ProcessOne(
-            block,
-            ProcessingOptions.Trace,
-            blockTracer,
-            spec,
-            cancellationToken);
+        // Create block execution context
+        BlockExecutionContext blockExecutionContext = new(block.Header, spec, blobBaseFee);
+
+        // Process each transaction in the block
+        foreach (Transaction tx in block.Transactions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Create opcode counting tracer for this transaction
+            OpcodeCountingTxTracer txTracer = new();
+
+            // Execute transaction with tracing (no validation, commits state within scope)
+            scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
+
+            // Accumulate opcode counts from this transaction
+            txTracer.AccumulateInto(blockOpcodes);
+        }
 
         return blockOpcodes;
     }
