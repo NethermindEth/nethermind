@@ -290,7 +290,7 @@ public class VmState<TGasPolicy> : IDisposable
             dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, ref AsAlignedRef(dataStack, alignment: EvmStack.WordSize), codeSpan);
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         byte[] AllocateStacks()
@@ -309,7 +309,7 @@ public class VmState<TGasPolicy> : IDisposable
             dataStack = AllocateStacks();
         }
 
-        stack = new(DataStackHead, txTracer, ref AsAlignedRef(dataStack, alignment: EvmStack.WordSize), codeSpan);
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         byte[] AllocateStacks()
@@ -319,9 +319,9 @@ public class VmState<TGasPolicy> : IDisposable
         }
     }
 
-    private static ref byte AsAlignedRef(byte[] array, uint alignment)
+    private static ref byte As32AlignedRef(byte[] array)
     {
-        int offset = GetAlignmentOffset(array, alignment);
+        nuint offset = GetAlignmentOffset32(array);
         return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), offset);
     }
 
@@ -333,24 +333,18 @@ public class VmState<TGasPolicy> : IDisposable
 
     private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
     {
-        int offset = GetAlignmentOffset(array, alignment);
-        return array.AsMemory(offset, size);
+        nuint offset = GetAlignmentOffset32(array);
+        return array.AsMemory((int)(uint)offset, size);
     }
 
-    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe static nuint GetAlignmentOffset32(byte[] array)
     {
-        ArgumentNullException.ThrowIfNull(array);
-        ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
-
         // The input array should be pinned and we are just using the Pointer to
         // calculate alignment, not using data so not creating memory hole.
-        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
-
-        uint mask = alignment - 1;
-        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
-        uint adjustment = (uint)((-(nint)address) & mask);
-
-        return (int)adjustment;
+        Debug.Assert(array is not null);
+        nint addr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+        return (nuint)((-addr) & 31);
     }
 
     public void CommitToParent(VmState<TGasPolicy> parentState)
