@@ -148,7 +148,7 @@ internal static partial class EvmInstructions
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
+        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
@@ -171,7 +171,7 @@ internal static partial class EvmInstructions
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
         Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
-            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
+            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
@@ -213,7 +213,7 @@ internal static partial class EvmInstructions
         if (state.IsDeadAccount(contractAddress, vm.TxExecutionContext.BlockAccessIndex))
         {
             // Note: Seems to be needed on block 21827914 for some reason
-            state.ClearStorage(contractAddress);
+            state.ClearStorage(contractAddress, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Deduct the transfer value from the executing account's balance.

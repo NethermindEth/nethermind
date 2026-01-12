@@ -346,7 +346,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             accessTracker.WarmUp(authorizationTuple.Authority);
 
-            if (WorldState.HasCode(authorizationTuple.Authority, VirtualMachine.TxExecutionContext.BlockAccessIndex) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            if (WorldState.HasCode(authorizationTuple.Authority, VirtualMachine.TxExecutionContext.BlockAccessIndex) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _, VirtualMachine.TxExecutionContext.BlockAccessIndex))
             {
                 error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                 return AuthorizationTupleResult.InvalidAsCodeDeployed;
@@ -790,7 +790,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Copy the bytes so it's not live memory that will be used in another tx
                 byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(code, codeOwner, spec);
+                _codeInfoRepository.InsertCode(code, codeOwner, spec, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                 if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);
@@ -842,7 +842,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
+                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                 if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
                 {
                     accessedItems.WarmUpLargeContract(codeOwner);

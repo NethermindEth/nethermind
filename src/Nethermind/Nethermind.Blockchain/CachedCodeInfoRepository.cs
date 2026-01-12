@@ -42,21 +42,15 @@ public class CachedCodeInfoRepository(
     //     return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
     // }
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null)
-    {
-        baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
-    }
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null) =>
+        baseCodeInfoRepository.InsertCode(code, codeOwner, spec, blockAccessIndex);
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null)
-    {
-        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
-    }
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null) =>
+        baseCodeInfoRepository.SetDelegation(codeSource, authority, spec, blockAccessIndex);
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null)
-    {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress, blockAccessIndex);
-    }
+        [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
+        baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress, blockAccessIndex);
 
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
