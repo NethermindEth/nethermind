@@ -48,7 +48,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             return Errors.InvalidInputLength;
         }
 
-        // use Mul to optimise single point multiplication
+        // use Mul to optimize single point multiplication
         int nItems = inputData.Length / ItemSize;
         return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
     }

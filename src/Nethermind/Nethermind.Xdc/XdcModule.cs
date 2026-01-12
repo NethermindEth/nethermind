@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -14,13 +15,13 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Contracts;
-using Nethermind.Abi;
-using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.Spec;
 using Nethermind.Logging;
 
 namespace Nethermind.Xdc;
@@ -48,6 +49,14 @@ public class XdcModule : Module
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
 
+            // Sys contracts
+            //TODO this might not be wired correctly
+            .AddSingleton<
+                IMasternodeVotingContract,
+                IAbiEncoder,
+                ISpecProvider,
+                IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
+
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
 
@@ -56,7 +65,6 @@ public class XdcModule : Module
 
             // reward handler
             .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
-            .AddSingleton<IMasternodeVotingContract, ISpecProvider, IAbiEncoder, IWorldStateManager, IReadOnlyTxProcessingEnvFactory, ILogManager>(CreateMasternodeVotingContract)
 
             // forensics handler
 
@@ -72,30 +80,24 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
             ;
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler)
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        return new SnapshotManager(db, blockTree, penaltyHandler);
+        return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
     }
 
-    private IMasternodeVotingContract CreateMasternodeVotingContract(
-        ISpecProvider specProvider,
+    private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,
-        IWorldStateManager worldStateManager,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        ILogManager logManager)
+        ISpecProvider specProvider,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv)
     {
-        var xdcSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
-        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
-        IWorldState worldState = new WorldState(scopeProvider, logManager);
-        IReadOnlyTxProcessorSource readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
-        return new MasternodeVotingContract(worldState, abiEncoder, xdcSpec.MasternodeVotingContract, readOnlyTxProcessorSource);
+        IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
+        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
-
 }
