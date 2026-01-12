@@ -4,9 +4,9 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 
 ## Repo structure
 
-- [src/Nethermind](./src/Nethermind/) directory contains the Nethermind codebase
-- [tools](./tools/) directory contains various servicing tools for testing, monitoring, etc.
-- [scripts](./scripts/) directory contains the build scripts and stuff used by GitHub Actions workflows
+- [src/Nethermind](./src/Nethermind/): The Nethermind codebase
+- [tools](./tools/): Various servicing tools for testing, monitoring, etc.
+- [scripts](./scripts/): The build scripts and stuff used by GitHub Actions workflows
 - See [README.md](./README.md) for more info
 
 ## Coding guidelines and style
@@ -28,7 +28,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Add tests to existing test files rather than creating new ones
 - Code comments must explain _why_, not _what_
 - Do not use the `#region` and `#endregion` pragmas
-- Do not alter anything in [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
+- Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
 
 ## Project structure
 
@@ -105,8 +105,8 @@ Before creating a pull request:
   ```bash
   dotnet format whitespace src/Nethermind/ --folder
   ```
-- Use the [pull_request_template.md](.github/pull_request_template.md)
+- Use [pull_request_template.md](.github/pull_request_template.md)
 
 ## Prerequisites
 
-See the [global.json](./global.json) for the required .NET SDK version.
+See [global.json](./global.json) for the required .NET SDK version.
