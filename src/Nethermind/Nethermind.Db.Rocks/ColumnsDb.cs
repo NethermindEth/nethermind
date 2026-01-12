@@ -56,7 +56,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
     {
-        if (typeof(T).IsEnum && keys.Count == 0)
+        if (keys.Count == 0)
         {
             keys = FastEnum.GetValues<T>().ToArray();
         }
