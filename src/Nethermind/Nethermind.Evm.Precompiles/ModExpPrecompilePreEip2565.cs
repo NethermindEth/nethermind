@@ -11,7 +11,7 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
+///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-198.md
 /// </summary>
 [Obsolete("Pre-eip2565 implementation")]
 public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
