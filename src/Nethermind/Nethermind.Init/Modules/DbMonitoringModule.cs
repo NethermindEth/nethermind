@@ -29,7 +29,7 @@ public class DbMonitoringModule : Module
 
             // Intercept block processing by checking the queue and pausing the metrics when that happen.
             // Dont use constructor injection because this would prevent the metric from being updated before
-            // the block processing chain is constructed, eg: verifytrie or import jobs.
+            // the block processing chain is constructed, eg: VerifyTrie or import jobs.
             .Intercept<IBlockProcessingQueue>((processingQueue, ctx) =>
             {
                 if (!ctx.Resolve<IMetricsConfig>().PauseDbMetricDuringBlockProcessing) return;
