@@ -1064,133 +1064,47 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(iterator);
     }
 
-    internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
+    private void ExecuteIteratorOperation(Action operation)
     {
         try
         {
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            operation();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
 
+    private IEnumerable<T> IterateWithErrorHandling<T>(Iterator iterator, Func<Iterator, T> valueSelector)
+    {
+        try
+        {
+            ExecuteIteratorOperation(iterator.SeekToFirst);
+            
             while (iterator.Valid())
             {
-                yield return iterator.Value();
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                yield return valueSelector(iterator);
+                ExecuteIteratorOperation(iterator.Next);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+           ExecuteIteratorOperation(iterator.Dispose);
         }
     }
 
-    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator)
-    {
-        try
-        {
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+    internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator) =>
+    IterateWithErrorHandling(iterator, it => it.Value());
 
-            while (iterator.Valid())
-            {
-                yield return iterator.Key();
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
-            }
-        }
-        finally
-        {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
-        }
-    }
+    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator) =>
+    IterateWithErrorHandling(iterator, it => it.Key());
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
     {
-        try
-        {
-            ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
-
-            while (iterator.Valid())
-            {
-                yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
-
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
-            }
-        }
-        finally
-        {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        return IterateWithErrorHandling(iterator, it => new KeyValuePair<byte[], byte[]?>(it.Key(), it.Value()));
     }
 
     public bool KeyExists(ReadOnlySpan<byte> key)
