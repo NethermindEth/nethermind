@@ -1308,7 +1308,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Use if rather than pattern match as it generates better asm for a large struct return.
         if (typeof(TGasPolicy) == typeof(EthereumGasPolicy))
         {
-            // Allow devirtualizated call to improve performance.
+            // Allow de-virtualizated call to improve performance.
             result = RunByteCodeImpl<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
         }
         else

@@ -264,25 +264,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
-            if (outOfGas) return 0;
-            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
-            if (outOfGas) return 0;
-
-            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-            ulong cost = (ulong)
-                ((newActiveWords - activeWords) * GasCostOf.Memory +
-                 ((newActiveWords * newActiveWords) >> 9) -
-                 ((activeWords * activeWords) >> 9));
-
-            if (cost > long.MaxValue)
-            {
-                return long.MaxValue;
-            }
-
-            UpdateSize(newSize, rentIfNeeded: false);
-
-            return (long)cost;
+            return ComputeMemoryExpansionCost(newSize, out outOfGas);
         }
 
         return 0L;
@@ -301,28 +283,34 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
-            if (outOfGas) return 0;
-            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
-            if (outOfGas) return 0;
-
-            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-            ulong cost = (ulong)
-                ((newActiveWords - activeWords) * GasCostOf.Memory +
-                 ((newActiveWords * newActiveWords) >> 9) -
-                 ((activeWords * activeWords) >> 9));
-
-            if (cost > long.MaxValue)
-            {
-                return long.MaxValue;
-            }
-
-            UpdateSize(newSize, rentIfNeeded: false);
-
-            return (long)cost;
+            return ComputeMemoryExpansionCost(newSize, out outOfGas);
         }
 
         return 0L;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private long ComputeMemoryExpansionCost(ulong newSize, out bool outOfGas)
+    {
+        long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
+        if (outOfGas) return 0;
+        long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
+        if (outOfGas) return 0;
+
+        // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
+        ulong cost = (ulong)
+            ((newActiveWords - activeWords) * GasCostOf.Memory +
+                ((newActiveWords * newActiveWords) >> 9) -
+                ((activeWords * activeWords) >> 9));
+
+        if (cost > long.MaxValue)
+        {
+            return long.MaxValue;
+        }
+
+        UpdateSize(newSize, rentIfNeeded: false);
+
+        return (long)cost;
     }
 
     public TraceMemory GetTrace()

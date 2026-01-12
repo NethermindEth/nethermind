@@ -281,30 +281,29 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         byte[] dataStack = DataStack;
         if (DataStack is null)
         {
-            (DataStack, ReturnStack) = _stackPool.RentStacks();
-            dataStack = DataStack;
+            dataStack = AllocateStacks();
         }
 
         stack = new(DataStackHead, txTracer, ref AsAlignedRef(dataStack, alignment: EvmStack.WordSize), codeSpan);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        byte[] AllocateStacks()
+        {
+            (DataStack, ReturnStack) = _stackPool.RentStacks();
+            return DataStack;
+        }
     }
 
     private static ref byte AsAlignedRef(byte[] array, uint alignment)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), offset);
-    }
-
-    private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
-    {
-        int offset = GetAlignmentOffset(array, alignment);
-        return array.AsSpan(offset, size);
     }
 
     public Memory<byte> MemoryStacks(int count)
