@@ -225,13 +225,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     callResult = currentState.Env.CodeInfo is not null
                         ? ExecuteCall<TTracingInst>(spec, in previousCallOutput)
                         : CallResult.InvalidCodeException;
-                    // Consumed call output so clear
-                    previousCallOutput = default;
 
                     if (!callResult.IsReturn)
                     {
                         PrepareNextCallFrame(currentState, in callResult);
-                        continue;
+                        goto ClearOutput;
                     }
                 }
 
@@ -253,47 +251,47 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     goto ClearOutput;
                 }
 
-                VmState<TGasPolicy> previousState = currentState;
+                VmState<TGasPolicy> previous = currentState;
                 try
                 {
-                    VmState<TGasPolicy> previous = previousState;
+                    VmState<TGasPolicy> previousState = previous;
                     currentState = _currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
 
-                    TGasPolicy.Refund(ref currentState.Gas, in previous.Gas);
+                    TGasPolicy.Refund(ref currentState.Gas, in previousState.Gas);
 
                     if (!callResult.ShouldRevert)
                     {
-                        long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previous.Gas);
 
-                        ExecutionType executionType = previous.ExecutionType;
+                        ExecutionType executionType = previousState.ExecutionType;
                         if (executionType.IsAnyCreate())
                         {
+                            long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
                             bool previousStateSucceeded = ExecuteCreate<TTracingActions>(
                                 in callResult,
-                                previous,
+                                previousState,
                                 gasAvailableForCodeDeposit,
                                 executionType);
                             if (previousStateSucceeded)
                             {
-                                previous.CommitToParent(currentState);
+                                previousState.CommitToParent(currentState);
                             }
                             goto ClearOutput;
                         }
                         else
                         {
-                            previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(in callResult, previous);
-                            previous.CommitToParent(currentState);
+                            previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(in callResult, previousState);
+                            previousState.CommitToParent(currentState);
                         }
                     }
                     else
                     {
-                        previousCallOutput = HandleRevert<TTracingActions>(previous, in callResult);
+                        previousCallOutput = HandleRevert<TTracingActions>(previousState, in callResult);
                     }
                 }
                 finally
                 {
-                    previousState.Dispose();
+                    previous.Dispose();
                 }
             }
             catch (EvmException)
