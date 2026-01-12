@@ -105,28 +105,16 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
-#pragma warning disable CS0162 // Unreachable code detected
-        if (BlsConst.DisableConcurrency)
+        Parallel.ForEach(pointDestinations, (dest, state, i) =>
         {
-            for (int i = 0; i < pointDestinations.Count && result; i++)
+            int index = (int)i;
+            Result local = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
+            if (!local)
             {
-                result = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
+                result = local;
+                state.Break();
             }
-        }
-        else
-        {
-            Parallel.ForEach(pointDestinations, (dest, state, i) =>
-            {
-                int index = (int)i;
-                Result local = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
-                if (!local)
-                {
-                    result = local;
-                    state.Break();
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        });
 
         if (!result) return result.Error!;
 
