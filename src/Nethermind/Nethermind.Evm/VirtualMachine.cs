@@ -169,37 +169,52 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PrepareOpcodes<TTracingInst>(spec);
 
         // Trampoline via out to reduce stack size in the main loop.
+        bool inCancelable = txTracer.IsCancelable;
         TransactionSubstate substate;
         if (txTracer.IsTracingActions)
         {
-            ExecuteTransaction<TTracingInst, OnFlag>(spec, out substate);
+            if (inCancelable)
+            {
+                ExecuteTransaction<TTracingInst, OnFlag, OnFlag>(spec, out substate);
+            }
+            else
+            {
+                ExecuteTransaction<TTracingInst, OnFlag, OffFlag>(spec, out substate);
+            }
         }
         else
         {
-            ExecuteTransaction<TTracingInst, OffFlag>(spec, out substate);
+            if (inCancelable)
+            {
+                ExecuteTransaction<TTracingInst, OffFlag, OnFlag>(spec, out substate);
+            }
+            else
+            {
+                ExecuteTransaction<TTracingInst, OffFlag, OffFlag>(spec, out substate);
+            }
         }
         return substate;
     }
 
     [SkipLocalsInit]
-    private void ExecuteTransaction<TTracingInst, TTracingActions>(
+    private void ExecuteTransaction<TTracingInst, TTracingActions, TCancellable>(
         IReleaseSpec spec,
         out TransactionSubstate substate)
         where TTracingInst : struct, IFlag
         where TTracingActions : struct, IFlag
+        where TCancellable : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput = default;
         while (true)
         {
-            VmState<TGasPolicy> currentState = _currentState;
-
-            if (!currentState.IsContinuation)
-            {
-                ReturnDataBuffer = Array.Empty<byte>();
-            }
-
             try
             {
+                VmState<TGasPolicy> currentState = _currentState;
+                if (!currentState.IsContinuation)
+                {
+                    ReturnDataBuffer = Array.Empty<byte>();
+                }
+
                 CallResult callResult;
                 if (currentState.IsPrecompile)
                 {
@@ -222,9 +237,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TraceTransactionActionStart(currentState);
                     }
 
-                    callResult = currentState.Env.CodeInfo is not null
-                        ? ExecuteCall<TTracingInst>(spec, in previousCallOutput)
-                        : CallResult.InvalidCodeException;
+                    if (currentState.Env.CodeInfo is not null)
+                    {
+                        ExecuteCall<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
+                    }
+                    else
+                    {
+                        callResult = CallResult.InvalidCodeException;
+                    }
 
                     if (!callResult.IsReturn)
                     {
@@ -255,10 +275,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 try
                 {
                     VmState<TGasPolicy> previousState = previous;
-                    currentState = _currentState = _stateStack.Pop();
-                    currentState.IsContinuation = true;
+                    VmState<TGasPolicy> current = _currentState = _stateStack.Pop();
+                    current.IsContinuation = true;
 
-                    TGasPolicy.Refund(ref currentState.Gas, in previousState.Gas);
+                    TGasPolicy.Refund(ref current.Gas, in previousState.Gas);
 
                     if (!callResult.ShouldRevert)
                     {
@@ -274,14 +294,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                                 executionType);
                             if (previousStateSucceeded)
                             {
-                                previousState.CommitToParent(currentState);
+                                previousState.CommitToParent(current);
                             }
                             goto ClearOutput;
                         }
                         else
                         {
                             previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(in callResult, previousState);
-                            previousState.CommitToParent(currentState);
+                            previousState.CommitToParent(current);
                         }
                     }
                     else
@@ -306,13 +326,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             continue;
 
         RecoverableFailure:
-            if (currentState.IsTopLevel)
             {
-                substate = HandleTopLevelFailure<TTracingInst>(currentState);
-                return;
-            }
+                VmState<TGasPolicy> current = _currentState;
+                if (current.IsTopLevel)
+                {
+                    substate = HandleTopLevelFailure<TTracingInst>(current);
+                    return;
+                }
 
-            HandleFailure<TTracingInst, TTracingActions>(currentState);
+                HandleFailure<TTracingInst, TTracingActions>(current);
+            }
         ClearOutput:
             previousCallOutput = default;
         }
@@ -1217,10 +1240,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected CallResult ExecuteCall<TTracingInst>(
+    protected void ExecuteCall<TTracingInst, TCancellable>(
         IReleaseSpec spec,
-        scoped in ZeroPaddedSpan previousCallOutput)
+        scoped in ZeroPaddedSpan previousCallOutput,
+        out CallResult result)
         where TTracingInst : struct, IFlag
+        where TCancellable : struct, IFlag
     {
         VmState<TGasPolicy> vmState = _currentState;
         ExecutionEnvironment env = vmState.Env;
@@ -1239,7 +1264,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             {
                 Metrics.IncrementEmptyCalls();
             }
-            return CallResult.Empty(codeInfo.Version);
+            result = CallResult.Empty(codeInfo.Version);
+            return;
         }
 
         // Initialize the internal stacks for the current call frame.
@@ -1268,7 +1294,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             if (!success)
             {
-                return CallResult.OutOfGasException;
+                result = CallResult.OutOfGasException;
+                return;
             }
         }
 
@@ -1282,12 +1309,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Use if rather than pattern match as it generates better asm for a large struct return.
-        if (_txTracer.IsCancelable)
-        {
-            return RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas);
-        }
-
-        return RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas);
+        result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
