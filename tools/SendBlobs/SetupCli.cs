@@ -209,7 +209,7 @@ internal static class SetupCli
 
             FundsDistributor distributor = new(
                 rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            await distributor.DitributeFunds(
+            await distributor.DistributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
                 parseResult.GetValue(maxFeeOption),

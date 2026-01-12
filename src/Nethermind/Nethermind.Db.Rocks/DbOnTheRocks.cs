@@ -230,7 +230,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         long availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
         _logger.Info($"Warming up database {Name} assuming {availableMemory} bytes of available memory");
-        List<(FileMetadata metadata, DateTime creationTime)> fileMetadatas = new();
+        List<(FileMetadata metadata, DateTime creationTime)> fileMetadataEntries = new();
 
         foreach (LiveFileMetadata liveFileMetadata in db.GetLiveFilesMetadata())
         {
@@ -238,7 +238,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             try
             {
                 DateTime creationTime = File.GetCreationTimeUtc(fullPath);
-                fileMetadatas.Add((liveFileMetadata.FileMetadata, creationTime));
+                fileMetadataEntries.Add((liveFileMetadata.FileMetadata, creationTime));
             }
             catch (IOException)
             {
@@ -246,7 +246,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        fileMetadatas.Sort((item1, item2) =>
+        fileMetadataEntries.Sort((item1, item2) =>
         {
             // Sort them by level so that lower level get priority
             int levelDiff = item1.metadata.FileLevel - item2.metadata.FileLevel;
@@ -257,7 +257,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         });
 
         long totalSize = 0;
-        fileMetadatas = fileMetadatas.TakeWhile(metadata =>
+        fileMetadataEntries = fileMetadataEntries.TakeWhile(metadata =>
             {
                 availableMemory -= (long)metadata.metadata.FileSize;
                 bool take = availableMemory > 0;
@@ -273,7 +273,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             .ToList();
 
         long totalRead = 0;
-        Parallel.ForEach(fileMetadatas, (task) =>
+        Parallel.ForEach(fileMetadataEntries, (task) =>
         {
             string fullPath = Path.Join(basePath, task.metadata.FileName);
             _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");

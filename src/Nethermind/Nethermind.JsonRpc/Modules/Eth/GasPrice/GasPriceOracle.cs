@@ -17,6 +17,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public class GasPriceOracle : IGasPriceOracle
     {
+        private static readonly IComparer<UInt256> UInt256Comparer = Comparer<UInt256>.Default;
+
         protected readonly IBlockFinder _blockFinder;
         protected readonly ILogger _logger;
         protected readonly UInt256 _minGasPrice;
@@ -55,14 +57,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return ValueTask.FromResult(price!.Value);
             }
 
-            IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
+            IEnumerable<UInt256> txGasPrices = GetGasPricesFromRecentBlocks(headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
             return ValueTask.FromResult(gasPriceEstimate!);
         }
 
-        internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
@@ -106,8 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 }
             }
 
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction)
-                .OrderBy(gasPrice => gasPrice);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);
         }
 
         private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction)
@@ -161,7 +162,73 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             return roundedIndex < 0
                 ? null
-                : txGasPriceList[roundedIndex];
+                : SelectKthSmallestInPlace(txGasPriceList, roundedIndex);
+        }
+
+        /// <summary>
+        /// Selects the kth smallest element (0-based) in-place using a Quickselect-style partitioning algorithm.
+        /// This mutates the input list order.
+        /// </summary>
+        internal static UInt256 SelectKthSmallestInPlace(List<UInt256> list, int k)
+        {
+            if ((uint)k >= (uint)list.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(k), k, "k must be within [0, list.Count).");
+            }
+
+            int left = 0;
+            int right = list.Count - 1;
+
+            while (true)
+            {
+                if (left == right)
+                {
+                    return list[left];
+                }
+
+                // Deterministic pivot for stable perf/repro (median-of-range).
+                int pivotIndex = left + ((right - left) >> 1);
+                pivotIndex = Partition(list, left, right, pivotIndex, UInt256Comparer);
+
+                if (k == pivotIndex)
+                {
+                    return list[k];
+                }
+
+                if (k < pivotIndex)
+                {
+                    right = pivotIndex - 1;
+                }
+                else
+                {
+                    left = pivotIndex + 1;
+                }
+            }
+        }
+
+        private static int Partition(List<UInt256> list, int left, int right, int pivotIndex, IComparer<UInt256> comparer)
+        {
+            UInt256 pivotValue = list[pivotIndex];
+            Swap(list, pivotIndex, right);
+
+            int storeIndex = left;
+            for (int i = left; i < right; i++)
+            {
+                if (comparer.Compare(list[i], pivotValue) < 0)
+                {
+                    Swap(list, storeIndex, i);
+                    storeIndex++;
+                }
+            }
+
+            Swap(list, right, storeIndex);
+            return storeIndex;
+        }
+
+        private static void Swap(List<UInt256> list, int a, int b)
+        {
+            if (a == b) return;
+            (list[a], list[b]) = (list[b], list[a]);
         }
 
         private static int GetRoundedIndexAtPercentile(int count)

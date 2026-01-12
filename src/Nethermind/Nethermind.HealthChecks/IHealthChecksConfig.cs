@@ -19,7 +19,7 @@ public interface IHealthChecksConfig : IConfig
     [ConfigItem(Description = "The web hook URL.", DefaultValue = "null")]
     public string WebhooksUri { get; set; }
 
-    [ConfigItem(Description = "An escaped JSON paylod to be sent to the web hook on failure.",
+    [ConfigItem(Description = "An escaped JSON payload to be sent to the web hook on failure.",
         DefaultValue = """
             ```json
             {
@@ -46,7 +46,7 @@ public interface IHealthChecksConfig : IConfig
             """)]
     public string WebhooksPayload { get; set; }
 
-    [ConfigItem(Description = "An escaped JSON paylod to be sent to the web hook on recovery.",
+    [ConfigItem(Description = "An escaped JSON payload to be sent to the web hook on recovery.",
         DefaultValue = """
             ```json
             {

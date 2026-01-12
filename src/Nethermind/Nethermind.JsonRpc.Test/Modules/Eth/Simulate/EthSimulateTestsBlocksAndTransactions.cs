@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
-    public static SimulatePayload<TransactionForRpc> CreateSerialisationPayload(TestRpcBlockchain chain)
+    public static SimulatePayload<TransactionForRpc> CreateSerializationPayload(TestRpcBlockchain chain)
     {
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction txToFail = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 10_000_000);
@@ -160,11 +160,11 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task Test_eth_simulate_serialisation()
+    public async Task Test_eth_simulate_serialization()
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        SimulatePayload<TransactionForRpc> payload = CreateSerialisationPayload(chain);
+        SimulatePayload<TransactionForRpc> payload = CreateSerializationPayload(chain);
 
         //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
@@ -205,7 +205,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
-        //Force persistancy of head block in main chain
+        //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
@@ -246,7 +246,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
-        //Force persistancy of head block in main chain
+        //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
