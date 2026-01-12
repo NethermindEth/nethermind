@@ -168,11 +168,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         var opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        Span<byte> stackSpan = vmState.InitializeStacks();
-        EvmStack stack = new(0, txTracer, stackSpan);
-        ReadOnlySpan<byte> codeSection = vmState.Env.CodeInfo.CodeSpan;
-        stack.Code = ref MemoryMarshal.GetReference(codeSection);
-        stack.CodeLength = codeSection.Length;
+        vmState.InitializeStacks(out Span<byte> stackSpan);
+        EvmStack stack = new(0, txTracer, stackSpan, vmState.Env.CodeInfo.CodeSpan);
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 
@@ -196,7 +193,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 state.Reset(resetBlockChanges: true);
-                stack = new(0, txTracer, stackSpan);
+                stack = new(0, txTracer, stackSpan, vmState.Env.CodeInfo.CodeSpan);
                 gas = TGasPolicy.FromLong(long.MaxValue);
                 pc = 0;
             }

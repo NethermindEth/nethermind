@@ -1274,14 +1274,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // Initialize the internal stacks for the current call frame.
-        Span<byte> stackSpan = vmState.InitializeStacks();
+        vmState.InitializeStacks(out Span<byte> stackSpan);
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, stackSpan);
-
-        // Store the code reference and length in the stack for execution.
-        ref byte code = ref MemoryMarshal.GetReference(codeSpan);
-        stack.Code = ref code;
-        stack.CodeLength = codeSpan.Length;
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, stackSpan, codeSpan);
 
         ReadOnlySpan<byte> callResult = _previousCallResult.Span;
         if (!callResult.IsNull())
@@ -1314,7 +1309,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Use if rather than pattern match as it generates better asm for a large struct return.
-        result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
+        if (typeof(TGasPolicy) == typeof(EthereumGasPolicy))
+        {
+            // Allow devirtualizated call to improve performance.
+            result = RunByteCodeImpl<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
+        }
+        else
+        { 
+            result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1357,6 +1360,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     [SkipLocalsInit]
     protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas,
+        ICodeInfo codeInfo)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+    {
+        return RunByteCodeImpl<TTracingInst, TCancelable>(ref stack, ref gas, codeInfo);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected CallResult RunByteCodeImpl<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ICodeInfo codeInfo)

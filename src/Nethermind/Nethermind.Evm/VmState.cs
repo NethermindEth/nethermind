@@ -281,14 +281,14 @@ public class VmState<TGasPolicy> : IDisposable
 #endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public Span<byte> InitializeStacks()
+    public void InitializeStacks(out Span<byte> stackSpan)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         if (DataStack is null)
         {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
         }
-        return AsAlignedSpan(DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength);
+        stackSpan = AsAlignedSpan(DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength);
     }
 
     private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)

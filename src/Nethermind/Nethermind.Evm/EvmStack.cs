@@ -30,11 +30,13 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes)
+    public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes, scoped in ReadOnlySpan<byte> codeSpan)
     {
         Head = head;
         _tracer = txTracer;
         _bytes = bytes;
+        Code = ref MemoryMarshal.GetReference(codeSpan);
+        CodeLength = codeSpan.Length;
     }
 
     private readonly ITxTracer _tracer;
