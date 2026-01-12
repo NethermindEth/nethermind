@@ -28,8 +28,8 @@ public class RocksDbReader : ISortedKeyValueStore
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
-        DbOnTheRocks.IteratorManager? iteratorManager,
-        ColumnFamilyHandle? columnFamily)
+        DbOnTheRocks.IteratorManager? iteratorManager = null,
+        ColumnFamilyHandle? columnFamily = null)
     {
         _mainDb = mainDb;
         _readOptionsFactory = readOptionsFactory;
