@@ -239,7 +239,7 @@ public class ChainSpecBasedSpecProviderTests
                 expectedDepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress;
                 break;
             default:
-                Assert.Fail("Unrecognised chain id when verifying Prague specifics.");
+                Assert.Fail("Unrecognized chain id when verifying Prague specifics.");
                 return;
         }
 

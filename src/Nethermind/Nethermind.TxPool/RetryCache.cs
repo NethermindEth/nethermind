@@ -23,7 +23,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _expiringQueueLimit;
     private readonly int _maxRetryRequests;
     private readonly Task _mainLoopTask;
-    private static readonly ObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>> _handlerBagsPool = new DefaultObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>>(new ConcurrentBagPolicy<IMessageHandler<TMessage>>());
+    private static readonly ObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>> _handlerBagsPool = new DefaultObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>>(new ConcurrentHashSetPolicy<IMessageHandler<TMessage>>());
     private readonly ConcurrentDictionary<TResourceId, ConcurrentHashSet<IMessageHandler<TMessage>>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
     private int _expiringQueueCounter = 0;
@@ -194,7 +194,7 @@ public enum AnnounceResult
     Delayed
 }
 
-internal class ConcurrentBagPolicy<TItem> : IPooledObjectPolicy<ConcurrentHashSet<TItem>>
+internal class ConcurrentHashSetPolicy<TItem> : IPooledObjectPolicy<ConcurrentHashSet<TItem>>
 {
     public ConcurrentHashSet<TItem> Create() => [];
 
