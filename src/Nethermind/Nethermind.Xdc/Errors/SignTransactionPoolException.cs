@@ -7,7 +7,7 @@ using System.Text;
 
 namespace Nethermind.Xdc.Errors;
 
-internal class SignedTransactionPoolException(string message)
+internal class SignTransactionPoolException(string message)
     : Exception(message)
 {
 }

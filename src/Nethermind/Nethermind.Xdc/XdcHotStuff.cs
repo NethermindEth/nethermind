@@ -246,10 +246,12 @@ namespace Nethermind.Xdc
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
 
-                if ((roundParent.Number % spec.MergeSignRange == 0) || roundParent.Number < spec.TIP2019Block)
-                {
-                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
-                }
+            }
+
+            if (Array.Exists(epochInfo.Masternodes, (masternodeAddress) => _signer.Address == masternodeAddress)
+                && ((roundParent.Number % spec.MergeSignRange == 0) || roundParent.Number < spec.TIP2019Block))
+            {
+                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
             if (spec.SwitchBlock < roundParent.Number)

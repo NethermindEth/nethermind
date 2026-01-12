@@ -34,7 +34,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool) : ISignTra
         bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            throw new SignedTransactionPoolException("Failed to add signed transaction to the pool.");
+            throw new SignTransactionPoolException("Failed to add signed transaction to the pool.");
         }
     }
 
