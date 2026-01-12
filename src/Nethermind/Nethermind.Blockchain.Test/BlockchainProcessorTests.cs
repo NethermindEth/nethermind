@@ -130,7 +130,6 @@ public class BlockchainProcessorTests
         {
             private readonly ILogger _logger;
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
-            private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
 
             public RecoveryStepMock(ILogManager logManager)
             {
@@ -157,12 +156,6 @@ public class BlockchainProcessorTests
                     Hash256 blockHash = block.Hash!;
                     if (!_allowed.ContainsKey(blockHash))
                     {
-                        if (_allowedToFail.ContainsKey(blockHash))
-                        {
-                            _allowedToFail.Remove(blockHash, out _);
-                            throw new Exception();
-                        }
-
                         Thread.Sleep(20);
                         continue;
                     }
