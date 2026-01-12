@@ -107,8 +107,6 @@ internal class XdcTransactionProcessor(
                 }
 
                 WorldState.IncrementNonce(tx.SenderAddress);
-
-                return TransactionResult.Ok;
             }
 
             return TransactionResult.Ok;
@@ -145,41 +143,13 @@ internal class XdcTransactionProcessor(
             return result;
         }
 
-        // the code here will only be reached by a tx if tx.RequiresSpecialHandling returns true
-        if (tx.IsSignTransaction(spec))
-        {
-            return ProcessSignTransaction(tx, tracer, spec, opts);
-        }
-
-
-        // the code here will only be reached by a tx if tx.RequiresSpecialHandling returns true and IsSignTx is false
+        // SignTx special stuff has already been handled above
         return ProcessEmptyTransaction(tx, tracer, spec);
     }
 
     private TransactionResult ProcessEmptyTransaction(Transaction tx, ITxTracer tracer, IReleaseSpec spec)
     {
         WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
-
-        if (tracer.IsTracingReceipt)
-        {
-            Hash256 stateRoot = null;
-            if (!spec.IsEip658Enabled)
-            {
-                WorldState.RecalculateStateRoot();
-                stateRoot = WorldState.StateRoot;
-            }
-
-            var log = new LogEntry(tx.To, [], []);
-            tracer.MarkAsSuccess(tx.To, 0, [], [log], stateRoot);
-        }
-
-        return TransactionResult.Ok;
-    }
-
-    private TransactionResult ProcessSignTransaction(Transaction tx, ITxTracer tracer, IReleaseSpec spec, ExecutionOptions opts)
-    {
-        WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
-
 
         if (tracer.IsTracingReceipt)
         {
