@@ -2,41 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test;
 
 public class ConfigSourceHelperTests
 {
-    [Test]
-    public void GetDefault_returns_null_for_ValueTuple_types()
+    public static IEnumerable<TestCaseData> GetDefaultTestCases()
     {
-        // Test various ValueTuple types
-        Assert.That(ConfigSourceHelper.GetDefault(typeof((int, string))), Is.Null, "ValueTuple<int, string> should return null");
-        Assert.That(ConfigSourceHelper.GetDefault(typeof((int, int, int))), Is.Null, "ValueTuple<int, int, int> should return null");
-        Assert.That(ConfigSourceHelper.GetDefault(typeof((string, bool, int, long))), Is.Null, "ValueTuple<string, bool, int, long> should return null");
+        // ValueTuple types should return null
+        yield return new TestCaseData(typeof((int, string)), null).SetName("GetDefault_returns_null_for_ValueTuple_2_elements");
+        yield return new TestCaseData(typeof((int, int, int)), null).SetName("GetDefault_returns_null_for_ValueTuple_3_elements");
+        yield return new TestCaseData(typeof((string, bool, int, long)), null).SetName("GetDefault_returns_null_for_ValueTuple_4_elements");
+
+        // Reference types should return null
+        yield return new TestCaseData(typeof(string), null).SetName("GetDefault_returns_null_for_string");
+        yield return new TestCaseData(typeof(object), null).SetName("GetDefault_returns_null_for_object");
+
+        // Value types should return default instances
+        yield return new TestCaseData(typeof(int), 0).SetName("GetDefault_returns_0_for_int");
+        yield return new TestCaseData(typeof(bool), false).SetName("GetDefault_returns_false_for_bool");
+        yield return new TestCaseData(typeof(byte), (byte)0).SetName("GetDefault_returns_0_for_byte");
+
+        // Nullable value types should return null
+        yield return new TestCaseData(typeof(int?), null).SetName("GetDefault_returns_null_for_int_nullable");
+        yield return new TestCaseData(typeof(bool?), null).SetName("GetDefault_returns_null_for_bool_nullable");
     }
 
-    [Test]
-    public void GetDefault_returns_null_for_reference_types()
+    [TestCaseSource(nameof(GetDefaultTestCases))]
+    public void GetDefault_returns_expected_value(Type type, object? expected)
     {
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null, "string should return null");
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(object)), Is.Null, "object should return null");
-    }
-
-    [Test]
-    public void GetDefault_returns_default_instance_for_value_types()
-    {
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(int)), Is.EqualTo(0), "int should return 0");
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(bool)), Is.EqualTo(false), "bool should return false");
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(byte)), Is.EqualTo((byte)0), "byte should return 0");
-    }
-
-    [Test]
-    public void GetDefault_returns_null_for_nullable_value_types()
-    {
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(int?)), Is.Null, "int? should return null");
-        Assert.That(ConfigSourceHelper.GetDefault(typeof(bool?)), Is.Null, "bool? should return null");
+        object? result = ConfigSourceHelper.GetDefault(type);
+        Assert.That(result, Is.EqualTo(expected));
     }
 }
 
