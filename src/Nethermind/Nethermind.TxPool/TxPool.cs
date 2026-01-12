@@ -493,7 +493,6 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
-                _retryCache.Received(tx.Hash!);
                 return AcceptTxResult.Syncing;
             }
 
@@ -577,7 +576,10 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => _retryCache.Announced(txhash, retryHandler);
+        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
+            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
+                AnnounceResult.Delayed :
+                _retryCache.Announced(hash, retryHandler);
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
@@ -958,13 +960,14 @@ namespace Nethermind.TxPool
             if (_isDisposed) return;
             _isDisposed = true;
             _timer?.Dispose();
-            _cts.Cancel();
+            await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
             _transactions.Removed -= OnRemovedTx;
 
+            await _retryCache.DisposeAsync();
             await _headProcessing;
         }
 

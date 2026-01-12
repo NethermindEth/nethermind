@@ -330,7 +330,7 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public void Doesnt_cache_null_hashes()
+    public void DoesNot_cache_null_hashes()
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(100);
         BlockHeader head = tree.FindHeader(99, BlockTreeLookupOptions.None)!;
