@@ -22,7 +22,7 @@ public readonly ref struct ZeroPaddedSpan
     private readonly int _length;          // 4 bytes
     private readonly int _paddingLength;   // 4 bytes
 
-    public readonly PadDirection PadDirection => PaddingLength <= 0 ? PadDirection.Right : PadDirection.Left;
+    public readonly PadDirection PadDirection => _paddingLength >= 0 ? PadDirection.Right : PadDirection.Left;
     public readonly ReadOnlySpan<byte> Span => MemoryMarshal.CreateReadOnlySpan(ref _reference, _length);
     public readonly int PaddingLength => Math.Abs(_paddingLength);
     public int Length => Span.Length + PaddingLength;
