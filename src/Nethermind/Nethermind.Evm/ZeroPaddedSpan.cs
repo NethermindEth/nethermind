@@ -15,7 +15,7 @@ public readonly ref struct ZeroPaddedSpan
     {
         _reference = ref MemoryMarshal.GetReference(span);
         _length = span.Length;
-        _paddingLength = padDirection == PadDirection.Right ? paddingLength : -paddingLength;
+        _paddingLength = padDirection == PadDirection.Right ? paddingLength : (paddingLength | int.MinValue);
     }
 
     private readonly ref byte _reference;  // 8 bytes (ByReference<byte>)
