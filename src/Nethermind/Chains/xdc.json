@@ -45,24 +45,30 @@
             "MinePeriod": 2
           },
           {
-            "MaxMasternodes":       108,
-            "SwitchRound":          460000,
-            "CertThreshold":        0.667,
+            "MaxMasternodes": 108,
+            "SwitchRound": 460000,
+            "CertThreshold": 0.667,
             "TimeoutSyncThreshold": 2,
-            "TimeoutPeriod":        20,
-            "MinePeriod":           2
+            "TimeoutPeriod": 20,
+            "MinePeriod": 2
           },
           {
-            "MaxMasternodes":       108,
-            "SwitchRound":          3200000,
-            "CertThreshold":        0.667,
+            "MaxMasternodes": 108,
+            "SwitchRound": 3200000,
+            "CertThreshold": 0.667,
             "TimeoutSyncThreshold": 3,
-            "TimeoutPeriod":        10,
-            "MinePeriod":           2
+            "TimeoutPeriod": 10,
+            "MinePeriod": 2
           }
         ],
+
         "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
-        "blockSignerContract": "0x0000000000000000000000000000000000000089"
+        "blockSignerContract": "0x0000000000000000000000000000000000000089",
+        "randomizeSMCBinary": "0x0000000000000000000000000000000000000090",
+        "XDCXAddrBinary": "0x0000000000000000000000000000000000000091",
+        "tradingStateAddressBinary": "0x0000000000000000000000000000000000000092",
+        "XDCXLendingAddressBinary": "0x0000000000000000000000000000000000000093",
+        "XDCXLendingFinalizedTradeAddressBinary": "0x0000000000000000000000000000000000000094"
       }
     }
   },
