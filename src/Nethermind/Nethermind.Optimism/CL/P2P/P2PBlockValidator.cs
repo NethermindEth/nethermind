@@ -35,8 +35,8 @@ public class P2PBlockValidator : IP2PBlockValidator
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {
         if (!IsTopicValid(topic) || !IsTimestampValid(payload) || !IsBlockHashValid(payload) ||
-            !IsBlobGasUsedValid(payload, topic) || !IsExcessBlobGasValid(payload, topic) ||
-            !IsParentBeaconBlockRootValid(payload, topic))
+            !IsBlobGasUsedValid(payload) || !IsExcessBlobGasValid(payload) ||
+            !IsParentBeaconBlockRootValid(payload))
         {
             return ValidityStatus.Reject;
         }
@@ -106,9 +106,9 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsBlobGasUsedValid(ExecutionPayloadV3 payload, P2PTopic topic)
+    private bool IsBlobGasUsedValid(ExecutionPayloadV3 payload)
     {
-        // [REJECT] if the block is on a topic >= V3 and has a blob gas-used value that is not zero
+        // [REJECT] if the block has a blob gas-used value that is not zero
         if (payload.BlobGasUsed != 0)
         {
             if (_logger.IsError) _logger.Error($"Invalid BlobGasUsed: {payload.BlobGasUsed}");
@@ -118,9 +118,9 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsExcessBlobGasValid(ExecutionPayloadV3 payload, P2PTopic topic)
+    private bool IsExcessBlobGasValid(ExecutionPayloadV3 payload)
     {
-        // [REJECT] if the block is on a topic >= V3 and has an excess blob gas value that is not zero
+        // [REJECT] if the block has an excess blob gas value that is not zero
         if (payload.ExcessBlobGas != 0)
         {
             if (_logger.IsError) _logger.Error($"Invalid ExcessBlobGas {payload.ExcessBlobGas}");
@@ -130,9 +130,9 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsParentBeaconBlockRootValid(ExecutionPayloadV3 payload, P2PTopic topic)
+    private bool IsParentBeaconBlockRootValid(ExecutionPayloadV3 payload)
     {
-        // [REJECT] if the block is on a topic >= V3 and the parent beacon block root is nil
+        // [REJECT] if the parent beacon block root is nil
         if (payload.ParentBeaconBlockRoot is null)
         {
             if (_logger.IsError) _logger.Error($"Invalid BeaconBlockRoot");
