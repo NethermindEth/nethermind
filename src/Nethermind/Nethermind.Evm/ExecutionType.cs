@@ -10,11 +10,11 @@ public static class ExecutionTypeExtensions
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAnyCreateLegacy(this ExecutionType executionType) =>
-        executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
+        (executionType & ExecutionType.IsEofCreate) == ExecutionType.IsCreate;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAnyCreateEof(this ExecutionType executionType) =>
-        executionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE;
+        (executionType & ExecutionType.IsEofCreate) == ExecutionType.IsEofCreate;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAnyCreate(this ExecutionType executionType) =>
@@ -22,7 +22,7 @@ public static class ExecutionTypeExtensions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsAnyCallEof(this ExecutionType executionType) =>
-        executionType is ExecutionType.EOFCALL or ExecutionType.EOFSTATICCALL or ExecutionType.EOFDELEGATECALL;
+        (executionType & ExecutionType.IsEofCall) == ExecutionType.IsEofCall;
 
     public static Instruction ToInstruction(this ExecutionType executionType) =>
         executionType switch
@@ -47,19 +47,22 @@ public static class ExecutionTypeExtensions
 public enum ExecutionType : byte
 {
     TRANSACTION = 0,
-    CALL = 1,
-    STATICCALL = 2,
-    DELEGATECALL = 3,
-    CALLCODE = 4,
+    CALL = 1 | IsCall,
+    STATICCALL = 2 | IsCall,
+    DELEGATECALL = 3 | IsCall,
+    CALLCODE = 4 | IsCall,
     CREATE = 5 | IsCreate,
     CREATE2 = 6 | IsCreate,
     EOFCREATE = 7 | IsCreate | IsEof,
     TXCREATE = 8 | IsCreate | IsEof,
-    EOFCALL = 9 | IsEof,
-    EOFSTATICCALL = 10 | IsEof,
-    EOFDELEGATECALL = 11 | IsEof,
+    EOFCALL = 9 | IsEof | IsCall,
+    EOFSTATICCALL = 10 | IsEof | IsCall,
+    EOFDELEGATECALL = 11 | IsEof | IsCall,
 
     IsCreate = 16,
-    IsEof = 32
+    IsCall = 32,
+    IsEof = 64,
+    IsEofCall = IsEof | IsCall,
+    IsEofCreate = IsEof | IsCreate
 }
 // ReSharper restore IdentifierTypo InconsistentNaming
