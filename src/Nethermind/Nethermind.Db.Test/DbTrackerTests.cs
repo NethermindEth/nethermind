@@ -28,17 +28,17 @@ public class DbTrackerTests
     public void TestTrackOnlyCreatedDb()
     {
         using IContainer container = new ContainerBuilder()
-            .AddSingleton<DbTracker>()
+            .AddSingleton<DbMonitoringModule.DbTracker>()
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(NoopMonitoringService.Instance)
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
+            .AddDecorator<IDbFactory, DbMonitoringModule.DbTracker.DbFactoryInterceptor>()
             .AddSingleton<IDbFactory, MemDbFactory>()
             .Build();
 
         IDbFactory dbFactory = container.Resolve<IDbFactory>();
 
-        DbTracker tracker = container.Resolve<DbTracker>();
+        DbMonitoringModule.DbTracker tracker = container.Resolve<DbMonitoringModule.DbTracker>();
         tracker.GetAllDbMeta().Count().Should().Be(0);
 
         dbFactory.CreateDb(new DbSettings("TestDb", "TestDb"));
@@ -108,7 +108,7 @@ public class DbTrackerTests
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService)
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
+            .AddDecorator<IDbFactory, DbMonitoringModule.DbTracker.DbFactoryInterceptor>()
             .AddSingleton<IDbFactory>(fakeDbFactory);
 
         configurer?.Invoke(builder);
