@@ -17,6 +17,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
+using Microsoft.IO;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -141,12 +142,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         // Initializes a buffer to store the data read from the reader.
         ReadOnlySequence<byte> buffer = default;
+        RecyclableMemoryStream? bufferedStream = null;
+        bool readCompleted = false;
         try
         {
-            // Asynchronously reads data from the PipeReader.
-            ReadResult readResult = await reader.ReadToEndAsync(timeoutSource.Token);
-
-            buffer = readResult.Buffer;
+            // Asynchronously reads data from the PipeReader while consuming it to avoid backpressure.
+            (buffer, bufferedStream, readCompleted) = await ReadToEndBufferedAsync(reader, timeoutSource.Token);
             // Placeholder for a result in case of deserialization failure.
             JsonRpcResult? deserializationFailureResult = null;
 
@@ -256,7 +257,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             }
 
             // Checks if the read operation is completed.
-            if (readResult.IsCompleted)
+            if (readCompleted)
             {
                 if (buffer.Length > 0 && HasNonWhitespace(buffer))
                 {
@@ -266,11 +267,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
         finally
         {
-            // Advances the reader to the end of the buffer if not null.
-            if (!buffer.FirstSpan.IsNull())
-            {
-                reader.AdvanceTo(buffer.End);
-            }
+            bufferedStream?.Dispose();
         }
 
         // Completes the PipeReader's asynchronous reading operation.
@@ -406,6 +403,44 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         buffer = buffer.Slice(reader.BytesConsumed);
         return true;
 
+    }
+
+    private static async Task<(ReadOnlySequence<byte> Buffer, RecyclableMemoryStream Stream, bool IsCompleted)> ReadToEndBufferedAsync(PipeReader reader, CancellationToken cancellationToken)
+    {
+        RecyclableMemoryStream stream = RecyclableStream.GetStream("rpc");
+        bool isCompleted = false;
+
+        while (true)
+        {
+            ReadResult result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            ReadOnlySequence<byte> resultBuffer = result.Buffer;
+            foreach (ReadOnlyMemory<byte> segment in resultBuffer)
+            {
+                stream.Write(segment.Span);
+            }
+
+            reader.AdvanceTo(resultBuffer.End);
+
+            if (result.IsCompleted || result.IsCanceled)
+            {
+                isCompleted = result.IsCompleted;
+                break;
+            }
+        }
+
+        ReadOnlySequence<byte> buffer = ReadOnlySequence<byte>.Empty;
+        if (stream.Length > 0)
+        {
+            if (!stream.TryGetBuffer(out ArraySegment<byte> segment))
+            {
+                segment = new ArraySegment<byte>(stream.ToArray());
+            }
+
+            ReadOnlyMemory<byte> memory = new(segment.Array!, segment.Offset, checked((int)stream.Length));
+            buffer = new ReadOnlySequence<byte>(memory);
+        }
+
+        return (buffer, stream, isCompleted);
     }
 
     private bool IsRecordingRequest => (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0;
