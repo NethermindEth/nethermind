@@ -1262,6 +1262,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         ICodeInfo codeInfo = env.CodeInfo;
+        int version = codeInfo.Version;
         ReadOnlySpan<byte> codeSpan = codeInfo.CodeSpan;
         if (codeSpan.Length == 0)
         {
@@ -1269,7 +1270,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             {
                 Metrics.IncrementEmptyCalls();
             }
-            result = CallResult.Empty(codeInfo.Version);
+            result = CallResult.Empty(version);
             return;
         }
         // Initialize the internal stacks for the current call frame.
@@ -1317,11 +1318,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (typeof(TGasPolicy) == typeof(EthereumGasPolicy))
         {
             // Allow de-virtualizated call to improve performance.
-            result = RunByteCodeImpl<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
+            result = RunByteCodeImpl<TTracingInst, TCancellable>(ref stack, ref gas, version);
         }
         else
         {
-            result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
+            result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, version);
         }
     }
 
@@ -1367,11 +1368,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ICodeInfo codeInfo)
+        int version)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        return RunByteCodeImpl<TTracingInst, TCancelable>(ref stack, ref gas, codeInfo);
+        return RunByteCodeImpl<TTracingInst, TCancelable>(ref stack, ref gas, version);
     }
 
     [SkipLocalsInit]
@@ -1379,7 +1380,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected CallResult RunByteCodeImpl<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ICodeInfo codeInfo)
+        int version)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -1423,10 +1424,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             return ReturnData switch
             {
-                null => CallResult.Empty(codeInfo.Version),
-                byte[] array => new CallResult(null, array, null, codeInfo.Version, shouldRevert, exceptionType),
+                null => CallResult.Empty(version),
+                byte[] array => new CallResult(null, array, null, version, shouldRevert, exceptionType),
                 VmState<TGasPolicy> state => new CallResult(state),
-                _ => ReturnEof(codeInfo),
+                _ => ReturnEof(version),
             };
 
         OutOfGas:
@@ -1437,9 +1438,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        CallResult ReturnEof(ICodeInfo codeInfo)
+        CallResult ReturnEof(int version)
         {
-            return new CallResult((EofCodeInfo)ReturnData, ReturnDataBuffer, null, codeInfo.Version);
+            return new CallResult((EofCodeInfo)ReturnData, ReturnDataBuffer, null, version);
         }
     }
 
