@@ -451,10 +451,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         PseudoNethermindRunner runner,
         ImmediateDisconnectFailure immediateDisconnectFailure)
     {
-        // These check is really slow (it doubles the test time) so its disabled by default.
-        private const bool CheckBlocksAndReceiptsContent = false;
-        private const bool VerifyTrieOnFinished = false;
-
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
 
@@ -507,13 +503,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             AssertBlockEqual(blockTree.Head!, otherBlockTree.Head!);
 
-            if (VerifyTrieOnFinished)
-#pragma warning disable CS0162 // Unreachable code detected
-            {
-                IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
-                worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
-            }
-#pragma warning restore CS0162 // Unreachable code detected
+            // Trie verification is intentionally disabled in this suite to keep runtime low.
         }
 
         private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken)
@@ -529,15 +519,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 clientBlock.Should().NotBeNull();
                 clientReceipts.Should().NotBeNull();
 
-                if (CheckBlocksAndReceiptsContent)
-#pragma warning disable CS0162 // Unreachable code detected
-                {
-                    Block serverBlock = otherBlockTree.FindBlock(i)!;
-                    AssertBlockEqual(clientBlock, serverBlock);
-                    TxReceipt[] serverReceipts = otherReceiptStorage.Get(serverBlock);
-                    AssertReceiptsEqual(clientReceipts, serverReceipts);
-                }
-#pragma warning restore CS0162 // Unreachable code detected
+                // Deep receipt comparison is skipped here to keep end-to-end test execution time reasonable.
             }
 
             return ValueTask.CompletedTask;
