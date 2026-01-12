@@ -243,7 +243,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
-                        callResult = CallResult.InvalidCodeException;
+                        InvalidCodeException(out callResult);
                     }
 
                     if (!callResult.IsReturn)
@@ -340,6 +340,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             previousCallOutput = default;
         }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void InvalidCodeException(out CallResult result)
+        => result = CallResult.InvalidCodeException;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool ExecuteCreate<TTracingActions>(in CallResult callResult, VmState<TGasPolicy> previousState, long gasAvailableForCodeDeposit, ExecutionType executionType)
