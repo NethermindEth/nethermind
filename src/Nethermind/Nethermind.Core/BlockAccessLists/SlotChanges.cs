@@ -69,7 +69,15 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
 
     public byte[] Get(int blockAccessIndex)
     {
-        return [];
+        UInt256 lastValue = 0;
+        foreach (KeyValuePair<int, StorageChange> change in _changes)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return lastValue.ToBigEndian();
+            }
+            lastValue = change.Value.NewValue;
+        }
+        return lastValue.ToBigEndian();
     }
-
 }
