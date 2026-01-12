@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
@@ -33,7 +34,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool) : ISignTra
         bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            throw new InvalidOperationException("Failed to add signed transaction to the pool.");
+            throw new SignedTransactionPoolException("Failed to add signed transaction to the pool.");
         }
     }
 
