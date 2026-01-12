@@ -742,7 +742,6 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Config": "[1.37.0-unstable, )",
-          "Nethermind.Monitoring": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
