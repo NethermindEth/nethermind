@@ -1315,7 +1315,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             result = RunByteCodeImpl<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
         }
         else
-        { 
+        {
             result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
         }
     }
