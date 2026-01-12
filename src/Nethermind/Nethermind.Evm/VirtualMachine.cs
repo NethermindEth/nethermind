@@ -1272,9 +1272,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             result = CallResult.Empty(codeInfo.Version);
             return;
         }
-
         // Initialize the internal stacks for the current call frame.
-        vmState.InitializeStacks(_txTracer, codeSpan, out EvmStack stack);
+        EvmStack stack;
+        if (TTracingInst.IsActive)
+        {
+            vmState.InitializeStacks(_txTracer, codeSpan, out stack);
+        }
+        else
+        {
+            vmState.InitializeStacks(codeSpan, out stack);
+        }
+
         ReadOnlySpan<byte> callResult = _previousCallResult.Span;
         if (!callResult.IsNull())
         {

@@ -281,6 +281,25 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
+    public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
+        if (DataStack is null)
+        {
+            dataStack = AllocateStacks();
+        }
+
+        stack = new(DataStackHead, ref AsAlignedRef(dataStack, alignment: EvmStack.WordSize), codeSpan);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        byte[] AllocateStacks()
+        {
+            (DataStack, ReturnStack) = _stackPool.RentStacks();
+            return DataStack;
+        }
+    }
+
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);

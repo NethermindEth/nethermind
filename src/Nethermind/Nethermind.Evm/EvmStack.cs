@@ -39,6 +39,15 @@ public ref partial struct EvmStack
         CodeLength = codeSpan.Length;
     }
 
+    public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
+    {
+        Head = head;
+        _tracer = null;
+        _stack = ref stack;
+        Code = ref MemoryMarshal.GetReference(codeSpan);
+        CodeLength = codeSpan.Length;
+    }
+
     private readonly ITxTracer _tracer;
     private readonly ref byte _stack;
     internal readonly ref byte Code;
