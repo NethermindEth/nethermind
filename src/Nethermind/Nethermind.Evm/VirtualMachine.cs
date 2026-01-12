@@ -477,7 +477,7 @@ public unsafe partial class VirtualMachine(
         {
             // Deposit the contract code into the repository.
             ReadOnlyMemory<byte> code = callResult.Output.Bytes;
-            _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+            _codeInfoRepository.InsertCode(code, callCodeOwner, spec, TxExecutionContext.BlockAccessIndex);
 
             // Deduct the gas cost for the code deposit from the current state's available gas.
             _currentState.GasAvailable -= codeDepositGasCost;
