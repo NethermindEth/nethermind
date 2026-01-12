@@ -102,7 +102,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected VmState<TGasPolicy> _currentState;
-    protected ReadOnlyMemory<byte>? _previousCallResult;
+    protected ReadOnlyMemory<byte> _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
 
     public ILogger Logger => _logger;
@@ -161,7 +161,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _currentState = vmState;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
-        _previousCallResult = null;
+        _previousCallResult = default;
         _previousCallOutputDestination = default;
         OpCodeCount = 0;
         // Prepare the specification and opcode mapping based on the current block header.
@@ -845,7 +845,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _currentState = callResult.StateToExecute;
 
         // Clear the previous call result as the execution context is moving to a new frame.
-        _previousCallResult = null;
+        _previousCallResult = default;
 
         // Reset the return data buffer to ensure no residual data persists across call frames.
         ReturnDataBuffer = Array.Empty<byte>();
@@ -896,6 +896,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _currentState = currentState = _stateStack.Pop();
         currentState.IsContinuation = true;
     }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected TransactionSubstate HandleTopLevelException<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult)
         where TTracingActions : struct, IFlag
@@ -1276,12 +1277,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         Span<byte> stackSpan = vmState.InitializeStacks();
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
         EvmStack stack = new(vmState.DataStackHead, _txTracer, stackSpan);
-        // HasValue is a direct field load vs pattern match overhead
-        if (_previousCallResult.HasValue)
-        {
-            ReadOnlyMemory<byte> callResult = _previousCallResult.GetValueOrDefault();
-            stack.PushBytes<TTracingInst>(callResult.Span);
 
+        // Store the code reference and length in the stack for execution.
+        ref byte code = ref MemoryMarshal.GetReference(codeSpan);
+        stack.Code = ref code;
+        stack.CodeLength = codeSpan.Length;
+
+        ReadOnlySpan<byte> callResult = _previousCallResult.Span;
+        if (!callResult.IsNull())
+        {
+            stack.PushBytes<TTracingInst>(callResult);
             if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
@@ -1303,10 +1308,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
         }
 
-        // Store the code reference and length in the stack for execution.
-        ref byte code = ref MemoryMarshal.GetReference(codeSpan);
-        stack.Code = ref code;
-        stack.CodeLength = codeSpan.Length;
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
         // - OffFlag is used when cancellation is not needed.
