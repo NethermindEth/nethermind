@@ -53,7 +53,7 @@ internal class MineModuleTests
 
         // mine the gap block that should trigger master node update
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -127,7 +127,7 @@ internal class MineModuleTests
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -141,8 +141,6 @@ internal class MineModuleTests
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
-
-        long tstamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var epochSwitchBlock = await blockchain.AddBlock();
         while (!blockchain.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)tree.Head!.Header!))
