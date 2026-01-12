@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
@@ -48,12 +47,32 @@ public static class BlockTraceDumper
 
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
-        Either<Hash256, IList<Block>> blocksOrHash,
+        IList<Block> blocks,
+        ILogger logger)
+    {
+        string blockHash = blocks.Count == 1
+            ? blocks[0].Hash.ToString()
+            : string.Join("|", blocks.Select(b => b.Hash.ToString()));
+
+        LogDiagnosticTrace(blockTracer, "valid on rerun", blockHash, isSuccess: true, logger);
+    }
+
+    public static void LogDiagnosticTrace(
+        IBlockTracer blockTracer,
+        Hash256 failedBlockHash,
+        ILogger logger)
+    {
+        LogDiagnosticTrace(blockTracer, "invalid", failedBlockHash.ToString(), isSuccess: false, logger);
+    }
+
+    private static void LogDiagnosticTrace(
+        IBlockTracer blockTracer,
+        string logCondition,
+        string blockHash,
+        bool isSuccess,
         ILogger logger)
     {
         string fileName = string.Empty;
-        bool isSuccess = GetConditionAndHashString(blocksOrHash, out string logCondition, out string blockHash);
-
         string state = isSuccess ? "success" : "failed";
         try
         {
@@ -91,31 +110,6 @@ public static class BlockTraceDumper
         {
             if (logger.IsError)
                 logger.Error($"Cannot save trace of {logCondition} block {blockHash} in file {fileName}", e);
-        }
-    }
-
-    private static bool GetConditionAndHashString(Either<Hash256, IList<Block>> blocksOrHash, out string condition, out string blockHash)
-    {
-        if (blocksOrHash.Is(out Hash256 failedBlockHash))
-        {
-            condition = "invalid";
-            blockHash = failedBlockHash.ToString();
-            return false;
-        }
-        else
-        {
-            blocksOrHash.To(out IList<Block> blocks);
-            condition = "valid on rerun";
-
-            if (blocks.Count == 1)
-            {
-                blockHash = blocks[0].Hash.ToString();
-            }
-            else
-            {
-                blockHash = string.Join("|", blocks.Select(b => b.Hash.ToString()));
-            }
-            return true;
         }
     }
 
