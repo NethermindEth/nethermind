@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
@@ -281,14 +282,23 @@ public class VmState<TGasPolicy> : IDisposable
 #endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void InitializeStacks(out Span<byte> stackSpan)
+    public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
         if (DataStack is null)
         {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
+            dataStack = DataStack;
         }
-        stackSpan = AsAlignedSpan(DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength);
+
+        stack = new(DataStackHead, txTracer, ref AsAlignedRef(dataStack, alignment: EvmStack.WordSize), codeSpan);
+    }
+
+    private static ref byte AsAlignedRef(byte[] array, uint alignment)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), offset);
     }
 
     private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)

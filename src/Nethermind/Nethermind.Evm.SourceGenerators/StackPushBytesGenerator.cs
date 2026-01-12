@@ -335,7 +335,7 @@ if ({{tracingTpName}}.IsActive)
         sb.AppendBlock(indent + 1, """
 uint headOffset = (uint)Head;
 uint newOffset = headOffset + 1;
-ref Vector256<byte> head = ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+ref Vector256<byte> head = ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
 if (newOffset >= MaxStackSize)
 {
     return EvmExceptionType.StackOverflow;

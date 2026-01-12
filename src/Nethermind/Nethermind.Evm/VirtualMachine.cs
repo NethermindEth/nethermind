@@ -1274,10 +1274,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // Initialize the internal stacks for the current call frame.
-        vmState.InitializeStacks(out Span<byte> stackSpan);
-        // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, stackSpan, codeSpan);
-
+        vmState.InitializeStacks(_txTracer, codeSpan, out EvmStack stack);
         ReadOnlySpan<byte> callResult = _previousCallResult.Span;
         if (!callResult.IsNull())
         {

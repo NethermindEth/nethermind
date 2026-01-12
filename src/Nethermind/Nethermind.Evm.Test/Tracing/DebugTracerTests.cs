@@ -5,6 +5,7 @@
 using System;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -302,7 +303,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
-                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack, default);
+                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, ref MemoryMarshal.GetArrayDataReference(tracer.CurrentState.DataStack), default);
                 if (!stack.PopLimbo()) throw new EvmStackUnderflowException();
                 stack.PushByte<OffFlag>(0x00);
 

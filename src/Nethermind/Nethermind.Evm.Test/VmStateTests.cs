@@ -217,7 +217,7 @@ namespace Nethermind.Evm.Test
         public void Can_dispose_after_init()
         {
             VmState<EthereumGasPolicy> vmState = CreateEvmState();
-            vmState.InitializeStacks(out _);
+            vmState.InitializeStacks(null, default, out _);
             vmState.Dispose();
         }
 

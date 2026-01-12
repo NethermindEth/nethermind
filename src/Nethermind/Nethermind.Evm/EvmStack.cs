@@ -30,20 +30,20 @@ public ref partial struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
-    public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes, scoped in ReadOnlySpan<byte> codeSpan)
+    public EvmStack(int head, ITxTracer txTracer, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan)
     {
         Head = head;
         _tracer = txTracer;
-        _bytes = bytes;
+        _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
     }
 
     private readonly ITxTracer _tracer;
-    private readonly Span<byte> _bytes;
+    private readonly ref byte _stack;
+    internal readonly ref byte Code;
     public int Head;
-    internal ref byte Code;
-    internal int CodeLength;
+    internal readonly int CodeLength;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
@@ -51,7 +51,7 @@ public ref partial struct EvmStack
         // Workhorse method
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref byte headRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), headOffset * WordSize);
+        ref byte headRef = ref Unsafe.Add(ref _stack, headOffset * WordSize);
         if (newOffset >= MaxStackSize)
         {
             ThrowEvmStackOverflowException();
@@ -195,7 +195,7 @@ public ref partial struct EvmStack
 
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref byte dst = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize));
+        ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -418,7 +418,7 @@ public ref partial struct EvmStack
 
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref byte dst = ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize));
+        ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -507,7 +507,7 @@ public ref partial struct EvmStack
 
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -539,7 +539,7 @@ public ref partial struct EvmStack
 
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -565,7 +565,7 @@ public ref partial struct EvmStack
     {
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -599,7 +599,7 @@ public ref partial struct EvmStack
     {
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -640,7 +640,7 @@ public ref partial struct EvmStack
     {
         uint headOffset = (uint)Head;
         uint newOffset = headOffset + 1;
-        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (nint)(headOffset * WordSize)));
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
         if (newOffset >= MaxStackSize)
         {
             return EvmExceptionType.StackOverflow;
@@ -724,7 +724,7 @@ public ref partial struct EvmStack
     public bool PopUInt256(out UInt256 result)
     {
         Unsafe.SkipInit(out result);
-        ref byte baseRef = ref MemoryMarshal.GetReference(_bytes);
+        ref byte baseRef = ref _stack;
         int head = Head - 1;
         if (head < 0)
         {
@@ -780,7 +780,7 @@ public ref partial struct EvmStack
 
     public readonly bool PeekUInt256IsZero()
     {
-        ref byte baseRef = ref MemoryMarshal.GetReference(_bytes);
+        ref byte baseRef = ref _stack;
         int head = Head - 1;
         if (head < 0)
         {
@@ -793,7 +793,7 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly ref byte PeekBytesByRef()
     {
-        ref byte baseRef = ref MemoryMarshal.GetReference(_bytes);
+        ref byte baseRef = ref _stack;
         int head = Head - 1;
         if (head < 0)
         {
@@ -810,10 +810,10 @@ public ref partial struct EvmStack
             ThrowEvmStackUnderflowException();
         }
 
-        return _bytes.Slice(head * WordSize, WordSize);
+        return MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize), WordSize);
     }
 
-    public Address? PopAddress() => Head-- != 0 ? new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray()) : null;
+    public Address? PopAddress() => Head-- != 0 ? new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize + WordSize - AddressSize), AddressSize).ToArray()) : null;
 
     public bool PopAddress(out Address address)
     {
@@ -823,14 +823,14 @@ public ref partial struct EvmStack
             return false;
         }
 
-        address = new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize + WordSize - AddressSize), AddressSize).ToArray());
         return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PopBytesByRef()
     {
-        ref byte baseRef = ref MemoryMarshal.GetReference(_bytes);
+        ref byte baseRef = ref _stack;
         uint head = (uint)Head;
         if (head == 0)
         {
@@ -856,7 +856,7 @@ public ref partial struct EvmStack
             return false;
         }
 
-        word = _bytes.Slice(Head * WordSize, WordSize);
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize), WordSize);
         return true;
     }
 
@@ -880,7 +880,7 @@ public ref partial struct EvmStack
             return EvmExceptionType.StackUnderflow;
         }
 
-        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+        ref byte bytes = ref _stack;
         // Use nuint to eliminate sign extension; parallel shifts
         nuint headOffset = (nuint)(uint)head << 5;
         nuint depthBytes = (nuint)(uint)depth << 5;
@@ -914,7 +914,7 @@ public ref partial struct EvmStack
             return EvmExceptionType.StackUnderflow;
         }
 
-        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+        ref byte bytes = ref _stack;
 
         nuint headOffset = (nuint)(uint)head << 5;
         nuint depthBytes = (nuint)(uint)depth << 5;
@@ -939,7 +939,7 @@ public ref partial struct EvmStack
         int maxDepth = Math.Max(n, m);
         if (!EnsureDepth(maxDepth)) return false;
 
-        ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
+        ref byte bytes = ref _stack;
 
         ref byte first = ref Unsafe.Add(ref bytes, (Head - n) * WordSize);
         ref byte second = ref Unsafe.Add(ref bytes, (Head - m) * WordSize);
@@ -958,7 +958,7 @@ public ref partial struct EvmStack
     {
         for (int i = depth; i > 0; i--)
         {
-            _tracer.ReportStackPush(_bytes.Slice(Head * WordSize - i * WordSize, WordSize));
+            _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, Head * WordSize - i * WordSize), WordSize));
         }
     }
 
