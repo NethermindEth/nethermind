@@ -316,11 +316,11 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             return Task.CompletedTask;
         }
 
-        if (_traceConfig.Mode != TracingMode.Retrospective)
+        if (_traceConfig.Mode != TracingMode.Retrospective && _traceConfig.Mode != TracingMode.RetrospectiveExecution)
         {
             if (_logger.IsDebug)
             {
-                _logger.Debug("Skipping retrospective execution: not in Retrospective mode");
+                _logger.Debug("Skipping retrospective execution: not in Retrospective or RetrospectiveExecution mode");
             }
             return Task.CompletedTask;
         }
@@ -330,6 +330,8 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
 
         _tracingTask = Task.Run(async () =>
         {
+            long[]? skippedBlocks = null;
+
             try
             {
                 var blockTree = api.BlockTree;
@@ -343,21 +345,52 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 }
 
                 var range = new BlockRange(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-                var tracer = new RetrospectiveTracer(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
 
-                if (_logger.IsInfo)
+                if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
-                    _logger.Info($"Starting retrospective tracing of {range.Count} blocks");
-                }
+                    // Use RetrospectiveExecutionTracer for actual EVM execution replay
+                    var executionTracer = new RetrospectiveExecutionTracer(
+                        api,
+                        _counter,
+                        _traceConfig.MaxDegreeOfParallelism,
+                        api.LogManager);
 
-                await tracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Starting RetrospectiveExecution tracing of {range.Count} blocks");
+                    }
+
+                    await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
+
+                    // Capture skipped blocks for metadata
+                    if (executionTracer.SkippedBlocks.Count > 0)
+                    {
+                        skippedBlocks = executionTracer.SkippedBlocks.OrderBy(b => b).ToArray();
+                        if (_logger.IsWarn)
+                        {
+                            _logger.Warn($"RetrospectiveExecution tracing skipped {skippedBlocks.Length} blocks due to unavailable state");
+                        }
+                    }
+                }
+                else
+                {
+                    // Use RetrospectiveTracer for static bytecode analysis
+                    var tracer = new RetrospectiveTracer(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
+
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Starting Retrospective tracing of {range.Count} blocks");
+                    }
+
+                    await tracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
+                }
 
                 _isComplete = true;
                 _lastProcessedBlock = _traceConfig.EffectiveEndBlock;
 
                 if (_logger.IsInfo)
                 {
-                    _logger.Info("Retrospective tracing completed");
+                    _logger.Info($"{_traceConfig.Mode} tracing completed");
                 }
             }
             catch (OperationCanceledException)
@@ -378,7 +411,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             }
             finally
             {
-                await WriteOutputAsync().ConfigureAwait(false);
+                await WriteOutputAsync(skippedBlocks).ConfigureAwait(false);
             }
         }, _cts.Token);
 
@@ -403,7 +436,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
         }
     }
 
-    private async Task WriteOutputAsync()
+    private async Task WriteOutputAsync(long[]? skippedBlocks = null)
     {
         if (_traceConfig is null)
         {
@@ -422,7 +455,8 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 Timestamp = DateTime.UtcNow,
                 Duration = _stopwatch?.ElapsedMilliseconds,
                 CompletionStatus = _isComplete ? "complete" : "partial",
-                Warnings = _traceConfig.Warnings.Count > 0 ? _traceConfig.Warnings.ToArray() : null
+                Warnings = _traceConfig.Warnings.Count > 0 ? _traceConfig.Warnings.ToArray() : null,
+                SkippedBlocks = skippedBlocks
             };
 
             var opcodeCounts = _counter.ToOpcodeCountsDictionary();

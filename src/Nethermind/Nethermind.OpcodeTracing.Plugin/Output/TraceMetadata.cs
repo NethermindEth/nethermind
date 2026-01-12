@@ -56,4 +56,12 @@ public sealed class TraceMetadata
     [JsonPropertyName("warnings")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? Warnings { get; init; }
+
+    /// <summary>
+    /// Gets or sets block numbers that were skipped due to unavailable state.
+    /// Only populated in RetrospectiveExecution mode when historical state is pruned.
+    /// </summary>
+    [JsonPropertyName("skippedBlocks")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long[]? SkippedBlocks { get; init; }
 }
