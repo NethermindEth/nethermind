@@ -280,6 +280,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public Span<byte> InitializeStacks()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);

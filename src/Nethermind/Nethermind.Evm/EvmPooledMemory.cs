@@ -251,6 +251,43 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
+    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    {
+        outOfGas = false;
+        if (length == 0)
+        {
+            return 0L;
+        }
+
+        CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
+
+        if (newSize > Size)
+        {
+            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
+            if (outOfGas) return 0;
+            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
+            if (outOfGas) return 0;
+
+            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
+            ulong cost = (ulong)
+                ((newActiveWords - activeWords) * GasCostOf.Memory +
+                 ((newActiveWords * newActiveWords) >> 9) -
+                 ((activeWords * activeWords) >> 9));
+
+            if (cost > long.MaxValue)
+            {
+                return long.MaxValue;
+            }
+
+            UpdateSize(newSize, rentIfNeeded: false);
+
+            return (long)cost;
+        }
+
+        return 0L;
+    }
+
     public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
         outOfGas = false;

@@ -1314,7 +1314,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Use if rather than pattern match as it generates better asm for a large struct return.
-        result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas);
+        result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, codeInfo);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1358,7 +1358,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [SkipLocalsInit]
     protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
-        scoped ref TGasPolicy gas)
+        scoped ref TGasPolicy gas,
+        ICodeInfo codeInfo)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -1371,9 +1372,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         fixed (byte* pOpcodeMethods = &MemoryMarshal.GetArrayDataReference(_opcodeMethods))
         {
             var opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>*)pOpcodeMethods;
-
-            // Retrieve the code information and create a read-only span of instructions.
-            ICodeInfo codeInfo = VmState.Env.CodeInfo;
 
             EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods);
 
