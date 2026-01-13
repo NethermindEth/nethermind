@@ -11,10 +11,10 @@ public class ConfigSourceHelperTests
 {
     public static IEnumerable<TestCaseData> GetDefaultTestCases()
     {
-        // ValueTuple types should return null
-        yield return new TestCaseData(typeof((int, string)), null).SetName("GetDefault_returns_null_for_ValueTuple_2_elements");
-        yield return new TestCaseData(typeof((int, int, int)), null).SetName("GetDefault_returns_null_for_ValueTuple_3_elements");
-        yield return new TestCaseData(typeof((string, bool, int, long)), null).SetName("GetDefault_returns_null_for_ValueTuple_4_elements");
+        // ValueTuple types should return default instances (not null, as ValueTuple is a value type)
+        yield return new TestCaseData(typeof((int, string)), (0, (string?)null)).SetName("GetDefault_returns_default_for_ValueTuple_2_elements");
+        yield return new TestCaseData(typeof((int, int, int)), (0, 0, 0)).SetName("GetDefault_returns_default_for_ValueTuple_3_elements");
+        yield return new TestCaseData(typeof((string, bool, int, long)), ((string?)null, false, 0, 0L)).SetName("GetDefault_returns_default_for_ValueTuple_4_elements");
 
         // Reference types should return null
         yield return new TestCaseData(typeof(string), null).SetName("GetDefault_returns_null_for_string");
