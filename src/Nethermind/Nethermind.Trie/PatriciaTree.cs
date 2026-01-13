@@ -188,16 +188,6 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    Task CreateTaskForPath(TreePath childPath, TrieNode childNode, int idx) => Task.Run(() =>
-                    {
-                        TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
-                        if (!ReferenceEquals(childNode, newChild))
-                        {
-                            node[idx] = newChild;
-                        }
-                        committer.ReturnConcurrencyQuota();
-                    });
-
                     ArrayPoolList<Task>? childTasks = null;
 
                     path.AppendMut(0);
@@ -210,7 +200,7 @@ namespace Nethermind.Trie
                             {
                                 childTasks ??= new ArrayPoolList<Task>(15);
                                 // path is copied here
-                                childTasks.Add(CreateTaskForPath(path, childNode, i));
+                                childTasks.Add(CreateTaskForPath(committer, node, maxLevelForConcurrentCommit, path, childNode, i));
                             }
                             else
                             {
@@ -304,6 +294,18 @@ namespace Nethermind.Trie
             {
                 _logger.Trace($"Skipping commit of an inlined {node}");
             }
+        }
+
+        private async Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx)
+        {
+            // Background task
+            await Task.Yield();
+            TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
+            if (!ReferenceEquals(childNode, newChild))
+            {
+                node[idx] = newChild;
+            }
+            committer.ReturnConcurrencyQuota();
         }
 
         public void UpdateRootHash(bool canBeParallel = true)
