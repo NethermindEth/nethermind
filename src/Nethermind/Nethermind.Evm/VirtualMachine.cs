@@ -193,6 +193,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 ExecuteTransaction<TTracingInst, OffFlag, OffFlag>(spec, out substate);
             }
         }
+
+        Metrics.IncrementOpCodes(OpCodeCount);
         return substate;
     }
 
@@ -1266,13 +1268,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReadOnlySpan<byte> codeSpan = codeInfo.CodeSpan;
         if (codeSpan.Length == 0)
         {
-            if (!vmState.IsTopLevel)
-            {
-                Metrics.IncrementEmptyCalls();
-            }
-            result = CallResult.Empty(version);
+            EmptyCall(vmState, version, out result);
             return;
         }
+
         // Initialize the internal stacks for the current call frame.
         EvmStack stack;
         if (TTracingInst.IsActive)
@@ -1324,6 +1323,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, version);
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void EmptyCall(VmState<TGasPolicy> vmState, int version, out CallResult result)
+    {
+        if (!vmState.IsTopLevel)
+        {
+            Metrics.IncrementEmptyCalls();
+        }
+        result = CallResult.Empty(version);
+        return;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

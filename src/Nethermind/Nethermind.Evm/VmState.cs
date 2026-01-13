@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 /// State for EVM Calls
 /// </summary>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public class VmState<TGasPolicy> : IDisposable
+public sealed class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
