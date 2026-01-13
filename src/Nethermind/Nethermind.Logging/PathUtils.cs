@@ -9,7 +9,7 @@ namespace Nethermind.Logging;
 
 public static class PathUtils
 {
-    public static string ExecutingDirectory { get; } = Path.GetDirectoryName(AppContext.BaseDirectory);
+    public static string ExecutingDirectory { get; } = AppContext.BaseDirectory;
 
     public static string GetApplicationResourcePath(this string resourcePath, string overridePrefixPath = null)
     {
