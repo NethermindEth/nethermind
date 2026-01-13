@@ -258,7 +258,7 @@ internal class BlobSender
             return;
         }
 
-        (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult!, 1, spec);
+        (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult, 1, spec);
 
         maxPriorityFeePerGas *= feeMultiplier;
         maxGasPrice *= feeMultiplier;
