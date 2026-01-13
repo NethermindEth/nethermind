@@ -138,15 +138,14 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             reader = await RecordRequest(reader);
         }
 
-        long startTime = Stopwatch.GetTimestamp();
         using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
-
         JsonReaderState readerState = new(_jsonReaderOptions);
         bool shouldExit = false;
         try
         {
             while (!shouldExit)
             {
+                long startTime = Stopwatch.GetTimestamp();
                 ReadResult readResult = await reader.ReadAsync(timeoutSource.Token);
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
 
