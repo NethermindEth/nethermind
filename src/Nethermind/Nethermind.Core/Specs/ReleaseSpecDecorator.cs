@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs;
@@ -150,6 +151,21 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
+
+    // Forwarders for members that were previously provided as default interface members on IReleaseSpec
+    public virtual bool DepositsEnabled => spec.DepositsEnabled;
+    public virtual bool WithdrawalRequestsEnabled => spec.WithdrawalRequestsEnabled;
+    public virtual bool ConsolidationRequestsEnabled => spec.ConsolidationRequestsEnabled;
+    public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
+    public virtual bool RequestsEnabled => spec.RequestsEnabled;
+    public virtual ProofVersion BlobProofVersion => spec.BlobProofVersion;
+    public virtual bool CLZEnabled => spec.CLZEnabled;
+
+    // This member is non-public on the interface; implement explicitly.
+    bool IReleaseSpec.IsAuthorizationListEnabled => ((IReleaseSpec)spec).IsAuthorizationListEnabled;
+
+    public virtual bool IsPrecompile(Address address) => spec.IsPrecompile(address);
+
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;

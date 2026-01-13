@@ -12,11 +12,13 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
+        // Compiling of default interface methods/properties is very slow, therefore
+        // these methods/properties are implemented in the target classes.
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
         //EIP-3860: Limit and meter initcode
-        long MaxInitCodeSize => 2 * MaxCodeSize;
+        long MaxInitCodeSize { get; }
         long MinGasLimit { get; }
         long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
@@ -205,7 +207,7 @@ namespace Nethermind.Core.Specs
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address) => false;
+        bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
         /// BaseFee opcode
@@ -276,14 +278,14 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        bool DepositsEnabled => IsEip6110Enabled;
+        bool DepositsEnabled { get; }
         Address DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        bool WithdrawalRequestsEnabled => IsEip7002Enabled;
+        bool WithdrawalRequestsEnabled { get; }
         Address Eip7002ContractAddress { get; }
 
 
@@ -291,7 +293,7 @@ namespace Nethermind.Core.Specs
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+        bool ConsolidationRequestsEnabled { get; }
         Address Eip7251ContractAddress { get; }
 
 
@@ -310,7 +312,7 @@ namespace Nethermind.Core.Specs
         /// EIP-2935 ring buffer size for historical block hash storage.
         /// Defaults to 8,191 blocks for Ethereum mainnet.
         /// </summary>
-        long Eip2935RingBufferSize => Eip2935Constants.RingBufferSize;
+        long Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
@@ -385,7 +387,7 @@ namespace Nethermind.Core.Specs
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateChainId => true;
+        bool ValidateChainId { get; }
 
         /// <summary>
         /// EIP-7780: Add blob schedule to EL config files
@@ -400,82 +402,82 @@ namespace Nethermind.Core.Specs
         public ulong Eip4844TransitionTimestamp { get; }
 
         // STATE related
-        public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
+        public bool ClearEmptyAccountWhenTouched { get; }
 
         // VM
-        public bool LimitCodeSize => IsEip170Enabled;
+        public bool LimitCodeSize { get; }
 
-        public bool UseHotAndColdStorage => IsEip2929Enabled;
+        public bool UseHotAndColdStorage { get; }
 
-        public bool UseTxAccessLists => IsEip2930Enabled;
+        public bool UseTxAccessLists { get; }
 
-        public bool AddCoinbaseToTxAccessList => IsEip3651Enabled;
+        public bool AddCoinbaseToTxAccessList { get; }
 
-        public bool ModExpEnabled => IsEip198Enabled;
+        public bool ModExpEnabled { get; }
 
-        public bool BN254Enabled => IsEip196Enabled && IsEip197Enabled;
+        public bool BN254Enabled { get; }
 
-        public bool BlakeEnabled => IsEip152Enabled;
+        public bool BlakeEnabled { get; }
 
-        public bool Bls381Enabled => IsEip2537Enabled;
+        public bool Bls381Enabled { get; }
 
-        public bool ChargeForTopLevelCreate => IsEip2Enabled;
+        public bool ChargeForTopLevelCreate { get; }
 
-        public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
+        public bool FailOnOutOfGasCodeDeposit { get; }
 
-        public bool UseShanghaiDDosProtection => IsEip150Enabled;
+        public bool UseShanghaiDDosProtection { get; }
 
-        public bool UseExpDDosProtection => IsEip160Enabled;
+        public bool UseExpDDosProtection { get; }
 
-        public bool UseLargeStateDDosProtection => IsEip1884Enabled;
+        public bool UseLargeStateDDosProtection { get; }
 
-        public bool ReturnDataOpcodesEnabled => IsEip211Enabled;
+        public bool ReturnDataOpcodesEnabled { get; }
 
-        public bool ChainIdOpcodeEnabled => IsEip1344Enabled;
+        public bool ChainIdOpcodeEnabled { get; }
 
-        public bool Create2OpcodeEnabled => IsEip1014Enabled;
+        public bool Create2OpcodeEnabled { get; }
 
-        public bool DelegateCallEnabled => IsEip7Enabled;
+        public bool DelegateCallEnabled { get; }
 
-        public bool StaticCallEnabled => IsEip214Enabled;
+        public bool StaticCallEnabled { get; }
 
-        public bool ShiftOpcodesEnabled => IsEip145Enabled;
+        public bool ShiftOpcodesEnabled { get; }
 
-        public bool RevertOpcodeEnabled => IsEip140Enabled;
+        public bool RevertOpcodeEnabled { get; }
 
-        public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
+        public bool ExtCodeHashOpcodeEnabled { get; }
 
-        public bool SelfBalanceOpcodeEnabled => IsEip1884Enabled;
+        public bool SelfBalanceOpcodeEnabled { get; }
 
-        public bool UseConstantinopleNetGasMetering => IsEip1283Enabled;
+        public bool UseConstantinopleNetGasMetering { get; }
 
-        public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
+        public bool UseIstanbulNetGasMetering { get; }
 
-        public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
+        public bool UseNetGasMetering { get; }
 
-        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
+        public bool UseNetGasMeteringWithAStipendFix { get; }
 
-        public bool Use63Over64Rule => UseShanghaiDDosProtection;
+        public bool Use63Over64Rule { get; }
 
-        public bool BaseFeeEnabled => IsEip3198Enabled;
+        public bool BaseFeeEnabled { get; }
 
         // EVM Related
-        public bool IncludePush0Instruction => IsEip3855Enabled;
+        public bool IncludePush0Instruction { get; }
 
-        public bool TransientStorageEnabled => IsEip1153Enabled;
+        public bool TransientStorageEnabled { get; }
 
-        public bool WithdrawalsEnabled => IsEip4895Enabled;
-        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
+        public bool WithdrawalsEnabled { get; }
+        public bool SelfdestructOnlyOnSameTransaction { get; }
 
-        public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
-        public bool MCopyIncluded => IsEip5656Enabled;
+        public bool IsBeaconBlockRootAvailable { get; }
+        public bool IsBlockHashInStateAvailable { get; }
+        public bool MCopyIncluded { get; }
 
-        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+        public bool BlobBaseFeeEnabled { get; }
 
-        bool IsAuthorizationListEnabled => IsEip7702Enabled;
+        bool IsAuthorizationListEnabled { get; }
 
-        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+        public bool RequestsEnabled { get; }
 
         public bool IsEip7594Enabled { get; }
 
@@ -511,7 +513,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="address">The address to check for precompile status.</param>
         /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
-        bool IsPrecompile(Address address) => Precompiles.Contains(address);
+        bool IsPrecompile(Address address);
 
         /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
@@ -519,14 +521,14 @@ namespace Nethermind.Core.Specs
         /// </summary>
         FrozenSet<AddressAsKey> Precompiles { get; }
 
-        public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
+        public ProofVersion BlobProofVersion { get; }
 
         /// <summary>
         /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>
         public bool IsEip7939Enabled { get; }
 
-        public bool CLZEnabled => IsEip7939Enabled;
+        public bool CLZEnabled { get; }
 
         /// <summary>
         /// EIP-7907: Meter Contract Code Size And Increase Limit

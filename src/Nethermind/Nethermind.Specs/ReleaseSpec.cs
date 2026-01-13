@@ -13,6 +13,9 @@ namespace Nethermind.Specs;
 
 public class ReleaseSpec : IReleaseSpec
 {
+    // Compiling of IReleaseSpec is very slow when these members are Default
+    // Interface Members, therefore, we reintroduce them as concrete members.
+
     public string Name { get; set; } = "Custom";
     public long MaximumExtraDataSize { get; set; }
     public long MaxCodeSize { get; set; }
@@ -57,6 +60,74 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip2929Enabled { get; set; }
     public bool IsEip2930Enabled { get; set; }
 
+    public long MaxInitCodeSize => 2 * MaxCodeSize;
+
+    public bool IsEip158IgnoredAccount(Address address) => false;
+
+    public bool DepositsEnabled => IsEip6110Enabled;
+    public bool WithdrawalRequestsEnabled => IsEip7002Enabled;
+    public bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+
+    // STATE related
+    public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
+
+    // VM
+    public bool LimitCodeSize => IsEip170Enabled;
+    public bool UseHotAndColdStorage => IsEip2929Enabled;
+    public bool UseTxAccessLists => IsEip2930Enabled;
+    public bool AddCoinbaseToTxAccessList => IsEip3651Enabled;
+
+    public bool ModExpEnabled => IsEip198Enabled;
+    public bool BN254Enabled => IsEip196Enabled && IsEip197Enabled;
+    public bool BlakeEnabled => IsEip152Enabled;
+    public bool Bls381Enabled => IsEip2537Enabled;
+
+    public bool ChargeForTopLevelCreate => IsEip2Enabled;
+    public bool FailOnOutOfGasCodeDeposit => IsEip2Enabled;
+    public bool UseShanghaiDDosProtection => IsEip150Enabled;
+    public bool UseExpDDosProtection => IsEip160Enabled;
+    public bool UseLargeStateDDosProtection => IsEip1884Enabled;
+    public bool ReturnDataOpcodesEnabled => IsEip211Enabled;
+    public bool ChainIdOpcodeEnabled => IsEip1344Enabled;
+    public bool Create2OpcodeEnabled => IsEip1014Enabled;
+    public bool DelegateCallEnabled => IsEip7Enabled;
+    public bool StaticCallEnabled => IsEip214Enabled;
+    public bool ShiftOpcodesEnabled => IsEip145Enabled;
+    public bool RevertOpcodeEnabled => IsEip140Enabled;
+    public bool ExtCodeHashOpcodeEnabled => IsEip1052Enabled;
+    public bool SelfBalanceOpcodeEnabled => IsEip1884Enabled;
+
+    public bool UseConstantinopleNetGasMetering => IsEip1283Enabled;
+    public bool UseIstanbulNetGasMetering => IsEip2200Enabled;
+    public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
+    public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
+    public bool Use63Over64Rule => UseShanghaiDDosProtection;
+
+    public bool BaseFeeEnabled => IsEip3198Enabled;
+
+    // EVM Related
+    public bool IncludePush0Instruction => IsEip3855Enabled;
+    public bool TransientStorageEnabled => IsEip1153Enabled;
+
+    public bool WithdrawalsEnabled => IsEip4895Enabled;
+    public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
+
+    public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
+    public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
+    public bool MCopyIncluded => IsEip5656Enabled;
+
+    public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+
+    bool IReleaseSpec.IsAuthorizationListEnabled => IsEip7702Enabled;
+
+    public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+
+    public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
+
+    public bool CLZEnabled => IsEip7939Enabled;
+
+    public bool IsPrecompile(Address address) => ((IReleaseSpec)this).Precompiles.Contains(address);
+
     // used only in testing
     public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
 
@@ -70,7 +141,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
     public bool IsEip3541Enabled { get; set; }
-    public bool ValidateChainId { get; set; }
+    public bool ValidateChainId { get; set; } = true;
     public bool ValidateReceipts { get; set; }
     public long Eip1559TransitionBlock { get; set; }
     public ulong WithdrawalTimestamp { get; set; }
