@@ -317,7 +317,7 @@ public class HexPrefixTests
         {
             for (byte j = 0; j < 16; j++)
             {
-                // Test [2] + [] = [2]
+                // Test [i,j] + [] = [i,j]
                 byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { i, j }, []);
                 byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { i, j }, []);
                 Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i},{j}], []) should return cached array");
@@ -325,7 +325,7 @@ public class HexPrefixTests
                 Assert.That(result1[0], Is.EqualTo(i));
                 Assert.That(result1[1], Is.EqualTo(j));
 
-                // Test [1] + [1] = [2]
+                // Test [i] + [j] = [i,j]
                 byte[] result3 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j });
                 byte[] result4 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j });
                 Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([{i}], [{j}]) should return cached array");
@@ -333,7 +333,7 @@ public class HexPrefixTests
                 Assert.That(result3[0], Is.EqualTo(i));
                 Assert.That(result3[1], Is.EqualTo(j));
 
-                // Test [] + [2] = [2]
+                // Test [] + [i,j] = [i,j]
                 byte[] result5 = HexPrefix.ConcatNibbles([], new byte[] { i, j });
                 byte[] result6 = HexPrefix.ConcatNibbles([], new byte[] { i, j });
                 Assert.That(ReferenceEquals(result5, result6), Is.True, $"ConcatNibbles([], [{i},{j}]) should return cached array");
@@ -354,7 +354,7 @@ public class HexPrefixTests
             {
                 for (byte k = 0; k < 4; k++)
                 {
-                    // Test [3] + [] = [3]
+                    // Test [i,j,k] + [] = [i,j,k]
                     byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { i, j, k }, []);
                     byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { i, j, k }, []);
                     Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i},{j},{k}], []) should return cached array");
@@ -363,7 +363,7 @@ public class HexPrefixTests
                     Assert.That(result1[1], Is.EqualTo(j));
                     Assert.That(result1[2], Is.EqualTo(k));
 
-                    // Test [1] + [2] = [3]
+                    // Test [i] + [j,k] = [i,j,k]
                     byte[] result3 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j, k });
                     byte[] result4 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j, k });
                     Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([{i}], [{j},{k}]) should return cached array");
@@ -372,7 +372,7 @@ public class HexPrefixTests
                     Assert.That(result3[1], Is.EqualTo(j));
                     Assert.That(result3[2], Is.EqualTo(k));
 
-                    // Test [2] + [1] = [3]
+                    // Test [i,j] + [k] = [i,j,k]
                     byte[] result5 = HexPrefix.ConcatNibbles(new byte[] { i, j }, new byte[] { k });
                     byte[] result6 = HexPrefix.ConcatNibbles(new byte[] { i, j }, new byte[] { k });
                     Assert.That(ReferenceEquals(result5, result6), Is.True, $"ConcatNibbles([{i},{j}], [{k}]) should return cached array");
@@ -381,7 +381,7 @@ public class HexPrefixTests
                     Assert.That(result5[1], Is.EqualTo(j));
                     Assert.That(result5[2], Is.EqualTo(k));
 
-                    // Test [] + [3] = [3]
+                    // Test [] + [i,j,k] = [i,j,k]
                     byte[] result7 = HexPrefix.ConcatNibbles([], new byte[] { i, j, k });
                     byte[] result8 = HexPrefix.ConcatNibbles([], new byte[] { i, j, k });
                     Assert.That(ReferenceEquals(result7, result8), Is.True, $"ConcatNibbles([], [{i},{j},{k}]) should return cached array");
