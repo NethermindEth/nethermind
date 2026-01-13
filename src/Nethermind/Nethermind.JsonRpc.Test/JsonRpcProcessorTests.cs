@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -408,5 +409,66 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
             Substitute.For<IJsonRpcConfig>(),
             null!, LimboLogs.Instance));
+    }
+
+    [Test]
+    public async Task Can_process_multiple_large_requests_arriving_in_chunks()
+    {
+        Pipe pipe = new();
+        JsonRpcProcessor processor = Initialize();
+        JsonRpcContext context = new(RpcEndpoint.Http);
+
+        // Create 5 large JSON-RPC requests (~10KB each)
+        List<string> requests = Enumerable.Range(0, 5)
+            .Select(i => CreateLargeRequest(i, targetSize: 10_000))
+            .ToList();
+
+        string allRequestsJson = string.Join("\n", requests);
+        byte[] bytes = Encoding.UTF8.GetBytes(allRequestsJson);
+
+        // Start processing task (reads from pipe.Reader)
+        ValueTask<List<JsonRpcResult>> processTask = processor
+            .ProcessAsync(pipe.Reader, context)
+            .ToListAsync();
+
+        // Write data in 1KB chunks with small delays to simulate network
+        const int chunkSize = 1024;
+        for (int i = 0; i < bytes.Length; i += chunkSize)
+        {
+            int size = Math.Min(chunkSize, bytes.Length - i);
+            await pipe.Writer.WriteAsync(new ReadOnlyMemory<byte>(bytes, i, size));
+            await Task.Delay(1);
+        }
+        await pipe.Writer.CompleteAsync();
+
+        // Verify all 5 requests processed
+        List<JsonRpcResult> results = await processTask;
+        results.Should().HaveCount(5);
+        for (int i = 0; i < 5; i++)
+        {
+            results[i].Response.Should().NotBeNull();
+        }
+        results.DisposeItems();
+    }
+
+    private static string CreateLargeRequest(int id, int targetSize)
+    {
+        StringBuilder sb = new();
+        sb.Append($"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"test_method\",\"params\":[");
+
+        int currentSize = sb.Length + 2; // account for closing ]}
+        bool first = true;
+        int paramIndex = 0;
+        while (currentSize < targetSize)
+        {
+            string param = $"\"param_{paramIndex++}_padding\"";
+            if (!first) sb.Append(',');
+            sb.Append(param);
+            currentSize += param.Length + (first ? 0 : 1);
+            first = false;
+        }
+
+        sb.Append("]}");
+        return sb.ToString();
     }
 }
