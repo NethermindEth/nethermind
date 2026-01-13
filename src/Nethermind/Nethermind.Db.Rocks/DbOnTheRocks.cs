@@ -1064,45 +1064,60 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(iterator);
     }
 
+    private void IteratorSeekToFirstWithErrorHandling(Iterator iterator)
+    {
+        try
+        {
+            iterator.SeekToFirst();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    private void IteratorNextWithErrorHandling(Iterator iterator)
+    {
+        try
+        {
+            iterator.Next();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    private void IteratorDisposeWithErrorHandling(Iterator iterator)
+    {
+        try
+        {
+            iterator.Dispose();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
     {
         try
         {
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorSeekToFirstWithErrorHandling(iterator);
 
             while (iterator.Valid())
             {
                 yield return iterator.Value();
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                IteratorNextWithErrorHandling(iterator);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorDisposeWithErrorHandling(iterator);
         }
     }
 
@@ -1110,86 +1125,37 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         try
         {
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorSeekToFirstWithErrorHandling(iterator);
 
             while (iterator.Valid())
             {
                 yield return iterator.Key();
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                IteratorNextWithErrorHandling(iterator);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorDisposeWithErrorHandling(iterator);
         }
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
     {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
         try
         {
-            ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorSeekToFirstWithErrorHandling(iterator);
 
             while (iterator.Valid())
             {
                 yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
-
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                IteratorNextWithErrorHandling(iterator);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorDisposeWithErrorHandling(iterator);
         }
     }
 
