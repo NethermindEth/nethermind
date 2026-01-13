@@ -149,57 +149,55 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             {
                 ReadResult readResult = await reader.ReadAsync(timeoutSource.Token);
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
-                bool isCompleted = readResult.IsCompleted || readResult.IsCanceled;
 
-                JsonRpcResult? result = null;
-
-                buffer = buffer.TrimStart();
-                if (!buffer.IsEmpty)
+                try
                 {
-                    try
+                    bool isCompleted = readResult.IsCompleted || readResult.IsCanceled;
+                    JsonRpcResult? result = null;
+                    buffer = buffer.TrimStart();
+                    if (!buffer.IsEmpty)
                     {
-                        if (TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument))
+                        try
                         {
-                            result = await ProcessJsonDocument(jsonDocument, context, startTime);
-                        }
-                        else if (isCompleted)
-                        {
-                            buffer = buffer.TrimStart();
-                            if (!buffer.IsEmpty)
+                            if (TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument))
+                            {
+                                result = await ProcessJsonDocument(jsonDocument, context, startTime);
+                            }
+                            else if (isCompleted && !buffer.IsEmpty)
                             {
                                 result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
                                 shouldExit = true;
                             }
                         }
+                        catch (BadHttpRequestException e)
+                        {
+                            Metrics.JsonRpcRequestDeserializationFailures++;
+                            if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                            shouldExit = true;
+                        }
+                        catch (ConnectionResetException e)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
+                            shouldExit = true;
+                        }
+                        catch (JsonException ex)
+                        {
+                            result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
+                            shouldExit = true;
+                        }
                     }
-                    catch (BadHttpRequestException e)
-                    {
-                        Metrics.JsonRpcRequestDeserializationFailures++;
-                        if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
-                        shouldExit = true;
-                    }
-                    catch (ConnectionResetException e)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
-                        shouldExit = true;
-                    }
-                    catch (JsonException ex)
-                    {
-                        result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
-                        shouldExit = true;
-                    }
-                    finally
-                    {
-                        reader.AdvanceTo(buffer.Start, buffer.End);
-                    }
-                }
 
-                if (result.HasValue)
+                    if (result.HasValue)
+                    {
+                        yield return result.Value;
+                    }
+
+                    shouldExit |= isCompleted && buffer.IsEmpty;
+                }
+                finally
                 {
-                    yield return result.Value;
+                    reader.AdvanceTo(buffer.Start, buffer.End);
                 }
-
-                shouldExit |= isCompleted && buffer.IsEmpty;
             }
         }
         finally
@@ -289,7 +287,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             }
         }
 
-        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
+        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "parse error");
         if (_logger.IsTrace) TraceResult(response);
         return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false)));
     }
