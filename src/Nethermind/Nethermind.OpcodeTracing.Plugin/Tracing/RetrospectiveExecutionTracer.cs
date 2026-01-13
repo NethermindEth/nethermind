@@ -193,22 +193,63 @@ public sealed class RetrospectiveExecutionTracer
                 BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
             }
 
-            // Create block execution context
-            BlockExecutionContext blockExecutionContext = new(block.Header, spec, blobBaseFee);
+            // Reset GasUsed to 0 for tracing - the finalized header has the total gas used,
+            // but ValidateGas() checks against remaining gas (GasLimit - GasUsed).
+            // Without this reset, all transactions fail the gas limit check.
+            long originalGasUsed = block.Header.GasUsed;
+            block.Header.GasUsed = 0;
 
-            // Process each transaction in the block
-            foreach (Transaction tx in block.Transactions)
+            if (_logger.IsDebug)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                _logger.Debug($"Processing block {block.Number} with {block.Transactions.Length} txs (original GasUsed: {originalGasUsed}, GasLimit: {block.Header.GasLimit})");
+            }
 
-                // Create opcode counting tracer for this transaction
-                OpcodeCountingTxTracer txTracer = new();
+            long blockTotalOpcodes = 0;
+            int successfulTxs = 0;
+            int failedTxs = 0;
 
-                // Execute transaction with tracing (no validation, commits state within scope)
-                scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
+            try
+            {
+                // Create block execution context
+                BlockExecutionContext blockExecutionContext = new(block.Header, spec, blobBaseFee);
 
-                // Accumulate opcode counts from this transaction
-                txTracer.AccumulateInto(blockOpcodes);
+                // Process each transaction in the block
+                foreach (Transaction tx in block.Transactions)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // Create opcode counting tracer for this transaction
+                    OpcodeCountingTxTracer txTracer = new();
+
+                    // Execute transaction with tracing
+                    TransactionResult result = scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
+
+                    if (result.TransactionExecuted)
+                    {
+                        successfulTxs++;
+                        // Accumulate opcode counts from this transaction
+                        txTracer.AccumulateInto(blockOpcodes);
+                        blockTotalOpcodes += txTracer.TotalOpcodes;
+                    }
+                    else
+                    {
+                        failedTxs++;
+                        if (_logger.IsDebug)
+                        {
+                            _logger.Debug($"Block {block.Number} tx {tx.Hash} failed: {result.ErrorDescription}");
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                // Restore original GasUsed value
+                block.Header.GasUsed = originalGasUsed;
+            }
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Block {block.Number}: {successfulTxs} txs executed, {failedTxs} failed, {blockTotalOpcodes} total opcodes");
             }
         }
         finally

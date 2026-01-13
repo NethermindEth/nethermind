@@ -13,6 +13,11 @@ internal sealed class OpcodeCountingTxTracer : TxTracer
 
     public override bool IsTracingInstructions => true;
 
+    /// <summary>
+    /// Gets the total number of opcodes executed in this transaction.
+    /// </summary>
+    public long TotalOpcodes => _opcodeCounters.Sum();
+
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         _opcodeCounters[(byte)opcode]++;
