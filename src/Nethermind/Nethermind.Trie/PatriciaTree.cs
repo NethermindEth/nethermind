@@ -538,7 +538,7 @@ namespace Nethermind.Trie
             {
                 if (node is null)
                 {
-                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey.ToArray(), value);
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey, value);
 
                     // End traverse
                     break;
@@ -628,12 +628,12 @@ namespace Nethermind.Trie
 
                     // This is the new branch
                     theBranch[remainingKey[commonPrefixLength]] =
-                        TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength + 1)..].ToArray(), value);
+                        TrieNodeFactory.CreateLeaf(remainingKey[(commonPrefixLength + 1)..], value);
 
                     // Extension in front of the branch
                     node = commonPrefixLength == 0 ?
                         theBranch :
-                        TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength].ToArray(), theBranch);
+                        TrieNodeFactory.CreateExtension(remainingKey[..commonPrefixLength], theBranch);
 
                     break;
                 }
