@@ -62,13 +62,13 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
-        
+
         /// <summary>
         /// The last block number that the txpool has processed.
         /// This may be different from the blockchain head if txpool is still processing head changes.
         /// </summary>
         long LastProcessedBlockNumber { get; }
-        
+
         /// <summary>
         /// Clears all txpool caches (hash cache and account cache).
         /// This should be called during chain resets/deep reorgs to ensure

@@ -401,7 +401,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             // may not process in time
             long txPoolLastBlock = txPool.LastProcessedBlockNumber;
             long? currentBlockchainHead = blockFinder.Head?.Number;
-            
+
             if (currentBlockchainHead.HasValue && txPoolLastBlock > currentBlockchainHead.Value)
             {
                 // Reorg detected: txpool thinks chain is at block X, but blockchain is at lower block Y
@@ -409,20 +409,20 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 txPool.ClearAllCaches();
                 return ResultWrapper<bool>.Success(true);
             }
-            
+
             // Normal case: poll until txpool catches up
             const int pollIntervalMs = 50;
             int elapsedMs = 0;
             while (elapsedMs < timeoutMs)
             {
                 txPoolLastBlock = txPool.LastProcessedBlockNumber;
-                
+
                 // Consider synced if txpool has processed the expected block
                 if (txPoolLastBlock >= expectedBlockNumber)
                 {
                     return ResultWrapper<bool>.Success(true);
                 }
-                
+
                 // Wait a bit and try again
                 await Task.Delay(pollIntervalMs, cts.Token);
                 elapsedMs += pollIntervalMs;
