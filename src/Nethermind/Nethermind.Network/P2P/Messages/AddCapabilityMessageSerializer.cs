@@ -17,13 +17,13 @@ namespace Nethermind.Network.P2P.Messages
 
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
-            string protocolCode = msg.Capability.ProtocolCode.ToLowerInvariant();
+            string protocolCode = msg.Capability.ProtocolCode;
             int totalLength = GetLength(protocolCode, msg.Capability.Version, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
-            stream.Encode(protocolCode);
+            stream.EncodeAsciiLowercase(protocolCode);
             stream.Encode(msg.Capability.Version);
         }
 
