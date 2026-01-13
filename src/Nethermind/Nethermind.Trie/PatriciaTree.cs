@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -623,7 +624,7 @@ namespace Nethermind.Trie
                     else
                     {
                         // Note: could be a leaf at the end of the tree which now have zero length key
-                        theBranch[currentNodeNib] = node.CloneWithChangedKey(node.Key.Slice(commonPrefixLength + 1));
+                        theBranch[currentNodeNib] = node.CloneWithChangedKey(HexPrefix.GetArray(node.Key.AsSpan(commonPrefixLength + 1)));
                     }
 
                     // This is the new branch
@@ -674,7 +675,7 @@ namespace Nethermind.Trie
                         if (child.IsExtension || child.IsLeaf)
                         {
                             // Merge current node with child
-                            node = child.CloneWithChangedKey(Bytes.Concat(node.Key, child.Key));
+                            node = child.CloneWithChangedKey(HexPrefix.ConcatNibbles(node.Key, child.Key));
                         }
                         else
                         {
@@ -767,7 +768,8 @@ namespace Nethermind.Trie
 
             if (onlyChildNode.IsBranch)
             {
-                byte[] extensionKey = [(byte)onlyChildIdx];
+                byte key = (byte)onlyChildIdx;
+                ReadOnlySpan<byte> extensionKey = MemoryMarshal.CreateReadOnlySpan(ref key, 1);
                 if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
                 {
                     TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
@@ -777,13 +779,12 @@ namespace Nethermind.Trie
                     }
                 }
 
-                return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
+                return TrieNodeFactory.CreateExtension(extensionKey, onlyChildNode);
             }
 
             // 35%
             // Replace the only child with something with extra key.
-            byte[] newKey = Bytes.Concat((byte)onlyChildIdx, onlyChildNode.Key);
-
+            byte[] newKey = HexPrefix.PrependNibble((byte)onlyChildIdx, onlyChildNode.Key);
             if (originalNode is not null) // Only bulkset provide original node
             {
                 if (originalNode.IsExtension && onlyChildNode.IsExtension)

@@ -112,7 +112,7 @@ public static class HexPrefix
     /// This optimization takes advantage of the fact that short nibble paths are common and their possible combinations are limited.
     /// The returned cached arrays are shared and must not be modified by callers.
     /// </remarks>
-    public static byte[] GetPathArray(ReadOnlySpan<byte> path)
+    public static byte[] GetArray(ReadOnlySpan<byte> path)
     {
         if (path.Length == 0)
         {
@@ -146,6 +146,100 @@ public static class HexPrefix
             }
         }
         return path.ToArray();
+    }
+
+    /// <summary>
+    /// Prepends a nibble to an existing nibble array, returning a cached array for small results.
+    /// </summary>
+    /// <param name="prefix">The nibble value (0-15) to prepend.</param>
+    /// <param name="array">The existing nibble array to prepend to.</param>
+    /// <returns>
+    /// A cached array if the result length is 3 or fewer nibbles; otherwise a newly allocated array.
+    /// </returns>
+    public static byte[] PrependNibble(byte prefix, byte[] array)
+    {
+        switch (array.Length)
+        {
+            case 0:
+                if (prefix < 16)
+                {
+                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), prefix);
+                }
+                break;
+            case 1:
+            {
+                uint v1 = array[0];
+                if ((prefix | v1) < 16)
+                {
+                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), (prefix << 4) | (int)v1);
+                }
+                break;
+            }
+            case 2:
+            {
+                uint v1 = array[0];
+                uint v2 = array[1];
+                if ((prefix | v1 | v2) < 16)
+                {
+                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (prefix << 8) | (int)((v1 << 4) | v2));
+                }
+                break;
+            }
+        }
+
+        // Fallback - allocate and concat
+        byte[] result = new byte[array.Length + 1];
+        result[0] = prefix;
+        array.CopyTo(result, 1);
+        return result;
+    }
+
+    /// <summary>
+    /// Concatenates two nibble arrays, returning a cached array for small results.
+    /// </summary>
+    /// <param name="first">The first nibble array.</param>
+    /// <param name="second">The second nibble array to append.</param>
+    /// <returns>
+    /// A cached array if the combined length is 3 or fewer nibbles; otherwise a newly allocated array.
+    /// </returns>
+    public static byte[] ConcatNibbles(byte[] first, byte[] second)
+    {
+        switch (first.Length + second.Length)
+        {
+            case 0:
+                return [];
+            case 1:
+                return first.Length == 1
+                    ? Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), first[0])
+                    : Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), second[0]);
+            case 2:
+            {
+                int index = first.Length switch
+                {
+                    0 => (second[0] << 4) | second[1],
+                    1 => (first[0] << 4) | second[0],
+                    _ => (first[0] << 4) | first[1]
+                };
+                return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), index);
+            }
+            case 3:
+            {
+                int index = first.Length switch
+                {
+                    0 => (second[0] << 8) | (second[1] << 4) | second[2],
+                    1 => (first[0] << 8) | (second[0] << 4) | second[1],
+                    2 => (first[0] << 8) | (first[1] << 4) | second[0],
+                    _ => (first[0] << 8) | (first[1] << 4) | first[2]
+                };
+                return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), index);
+            }
+        }
+
+        // Fallback - allocate and concat
+        byte[] result = new byte[first.Length + second.Length];
+        first.CopyTo(result, 0);
+        second.CopyTo(result, first.Length);
+        return result;
     }
 
     private static byte[][] CreateSingleNibblePaths()

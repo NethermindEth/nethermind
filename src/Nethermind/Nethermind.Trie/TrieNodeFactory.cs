@@ -15,19 +15,19 @@ public static class TrieNodeFactory
 
     public static TrieNode CreateLeaf(ReadOnlySpan<byte> path, SpanSource value)
     {
-        byte[] pathArray = HexPrefix.GetPathArray(path);
+        byte[] pathArray = HexPrefix.GetArray(path);
         return new(new LeafData(pathArray, value));
     }
 
     public static TrieNode CreateExtension(ReadOnlySpan<byte> path)
     {
-        byte[] pathArray = HexPrefix.GetPathArray(path);
+        byte[] pathArray = HexPrefix.GetArray(path);
         return new(new ExtensionData(pathArray));
     }
 
     public static TrieNode CreateExtension(ReadOnlySpan<byte> path, TrieNode child)
     {
-        byte[] pathArray = HexPrefix.GetPathArray(path);
+        byte[] pathArray = HexPrefix.GetArray(path);
         return new(new ExtensionData(pathArray, child));
     }
 }
