@@ -12,7 +12,7 @@ namespace Nethermind.Logging;
 /// the struct rather than being an interface call each time.
 /// </summary>
 #if DEBUG
-public struct ILogger
+public struct ILogger : IEquatable<ILogger>
 #else
 public readonly struct ILogger : IEquatable<ILogger>
 #endif
