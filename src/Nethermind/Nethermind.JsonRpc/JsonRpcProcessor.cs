@@ -221,50 +221,58 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     private async Task<JsonRpcResult?> ProcessJsonDocument(JsonDocument jsonDocument, JsonRpcContext context, long startTime)
     {
-        (JsonRpcRequest? model, ArrayPoolList<JsonRpcRequest>? collection) = DeserializeObjectOrArray(jsonDocument);
-
-        // Handles a single JSON RPC request
-        if (model is not null)
+        try
         {
-            if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model.Method}");
+            (JsonRpcRequest? model, ArrayPoolList<JsonRpcRequest>? collection) = DeserializeObjectOrArray(jsonDocument);
 
-            JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
-            result.Response.AddDisposable(jsonDocument.Dispose);
-
-            return JsonRpcResult.Single(RecordResponse(result));
-        }
-
-        // Processes a collection of JSON RPC requests
-        if (collection is not null)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{collection.Count} JSON RPC requests");
-
-            if (!context.IsAuthenticated && collection.Count > _jsonRpcConfig.MaxBatchSize)
+            // Handles a single JSON RPC request
+            if (model is not null)
             {
-                if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {collection.Count}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
-                JsonRpcErrorResponse? errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
-                errorResponse.AddDisposable(jsonDocument.Dispose);
+                if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model.Method}");
 
-                collection.Dispose();
-                return JsonRpcResult.Single(RecordResponse(errorResponse, RpcReport.Error));
+                JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
+                result.Response.AddDisposable(jsonDocument.Dispose);
+
+                return JsonRpcResult.Single(RecordResponse(result));
             }
-            JsonRpcBatchResult jsonRpcBatchResult = new((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c));
-            jsonRpcBatchResult.AddDisposable(jsonDocument.Dispose);
-            jsonRpcBatchResult.AddDisposable(collection.Dispose);
-            return JsonRpcResult.Collection(jsonRpcBatchResult);
+
+            // Processes a collection of JSON RPC requests
+            if (collection is not null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{collection.Count} JSON RPC requests");
+
+                if (!context.IsAuthenticated && collection.Count > _jsonRpcConfig.MaxBatchSize)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {collection.Count}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
+                    JsonRpcErrorResponse? errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+                    errorResponse.AddDisposable(jsonDocument.Dispose);
+
+                    collection.Dispose();
+                    return JsonRpcResult.Single(RecordResponse(errorResponse, RpcReport.Error));
+                }
+                JsonRpcBatchResult jsonRpcBatchResult = new((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c));
+                jsonRpcBatchResult.AddDisposable(jsonDocument.Dispose);
+                jsonRpcBatchResult.AddDisposable(collection.Dispose);
+                return JsonRpcResult.Collection(jsonRpcBatchResult);
+            }
+
+            // Handles invalid requests (neither object nor array)
+            Metrics.JsonRpcInvalidRequests++;
+            JsonRpcErrorResponse invalidResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
+            invalidResponse.AddDisposable(jsonDocument.Dispose);
+
+            if (_logger.IsTrace)
+            {
+                TraceResult(invalidResponse);
+                _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            }
+            return JsonRpcResult.Single(RecordResponse(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
         }
-
-        // Handles invalid requests (neither object nor array)
-        Metrics.JsonRpcInvalidRequests++;
-        JsonRpcErrorResponse invalidResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
-        invalidResponse.AddDisposable(jsonDocument.Dispose);
-
-        if (_logger.IsTrace)
+        catch
         {
-            TraceResult(invalidResponse);
-            _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            jsonDocument.Dispose();
+            throw;
         }
-        return JsonRpcResult.Single(RecordResponse(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
     }
 
     private JsonRpcResult GetParsingError(long startTime, ref readonly ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
