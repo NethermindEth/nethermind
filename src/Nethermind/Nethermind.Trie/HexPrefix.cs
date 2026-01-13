@@ -242,6 +242,23 @@ public static class HexPrefix
         return result;
     }
 
+    /// <summary>
+    /// Returns a cached single-nibble array for a byte value if it's a valid nibble (0-15);
+    /// otherwise allocates a new single-element array.
+    /// </summary>
+    /// <param name="value">The byte value.</param>
+    /// <returns>
+    /// A cached single-element array if the value is 0-15; otherwise a newly allocated array.
+    /// </returns>
+    public static byte[] SingleNibble(byte value)
+    {
+        if (value < 16)
+        {
+            return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), value);
+        }
+        return [value];
+    }
+
     private static byte[][] CreateSingleNibblePaths()
     {
         var paths = new byte[16][];

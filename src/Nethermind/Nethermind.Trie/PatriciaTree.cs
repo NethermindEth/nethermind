@@ -768,8 +768,7 @@ namespace Nethermind.Trie
 
             if (onlyChildNode.IsBranch)
             {
-                byte key = (byte)onlyChildIdx;
-                ReadOnlySpan<byte> extensionKey = MemoryMarshal.CreateReadOnlySpan(ref key, 1);
+                byte[] extensionKey = HexPrefix.SingleNibble((byte)onlyChildIdx);
                 if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
                 {
                     TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
