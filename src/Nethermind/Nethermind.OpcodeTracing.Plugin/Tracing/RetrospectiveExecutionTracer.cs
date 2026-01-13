@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -27,6 +28,7 @@ public sealed class RetrospectiveExecutionTracer
     private readonly IBlockTree _blockTree;
     private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly ISpecProvider _specProvider;
+    private readonly IEthereumEcdsa _ecdsa;
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
     private readonly int _maxDegreeOfParallelism;
@@ -43,6 +45,7 @@ public sealed class RetrospectiveExecutionTracer
     /// <param name="blockTree">The block tree for finding blocks.</param>
     /// <param name="specProvider">The spec provider for getting release specs.</param>
     /// <param name="txProcessingEnvFactory">Factory to create isolated transaction processing environments per block.</param>
+    /// <param name="ecdsa">The ECDSA implementation for recovering sender addresses from signatures.</param>
     /// <param name="counter">The opcode counter to accumulate into.</param>
     /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
     /// <param name="logManager">The log manager.</param>
@@ -51,6 +54,7 @@ public sealed class RetrospectiveExecutionTracer
         IBlockTree blockTree,
         ISpecProvider specProvider,
         IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
+        IEthereumEcdsa ecdsa,
         OpcodeCounter counter,
         int maxDegreeOfParallelism,
         ILogManager logManager)
@@ -58,12 +62,14 @@ public sealed class RetrospectiveExecutionTracer
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(txProcessingEnvFactory);
+        ArgumentNullException.ThrowIfNull(ecdsa);
         ArgumentNullException.ThrowIfNull(counter);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _blockTree = blockTree;
         _specProvider = specProvider;
         _txProcessingEnvFactory = txProcessingEnvFactory;
+        _ecdsa = ecdsa;
         _counter = counter;
         _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
         _logger = logManager.GetClassLogger<RetrospectiveExecutionTracer>();
@@ -191,6 +197,12 @@ public sealed class RetrospectiveExecutionTracer
             if (spec.IsEip4844Enabled && block.Header.ExcessBlobGas.HasValue)
             {
                 BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+            }
+
+            // Recover sender addresses from ECDSA signatures - transactions from database don't have sender set
+            foreach (Transaction tx in block.Transactions)
+            {
+                tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
 
             // Reset GasUsed to 0 for tracing - the finalized header has the total gas used,

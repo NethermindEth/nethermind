@@ -358,6 +358,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                         blockTree,
                         api.SpecProvider!,
                         txProcessingEnvFactory,
+                        api.EthereumEcdsa,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
                         api.LogManager);
