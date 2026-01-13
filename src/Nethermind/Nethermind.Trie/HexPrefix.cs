@@ -167,24 +167,24 @@ public static class HexPrefix
                 }
                 break;
             case 1:
-            {
-                uint v1 = array[0];
-                if ((prefix | v1) < 16)
                 {
-                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), (prefix << 4) | (int)v1);
+                    uint v1 = array[0];
+                    if ((prefix | v1) < 16)
+                    {
+                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), (prefix << 4) | (int)v1);
+                    }
+                    break;
                 }
-                break;
-            }
             case 2:
-            {
-                uint v1 = array[0];
-                uint v2 = array[1];
-                if ((prefix | v1 | v2) < 16)
                 {
-                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (prefix << 8) | (int)((v1 << 4) | v2));
+                    uint v2 = array[1];
+                    uint v1 = array[0];
+                    if ((prefix | v1 | v2) < 16)
+                    {
+                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (prefix << 8) | (int)((v1 << 4) | v2));
+                    }
+                    break;
                 }
-                break;
-            }
         }
 
         // Fallback - allocate and concat
@@ -213,26 +213,26 @@ public static class HexPrefix
                     ? Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), first[0])
                     : Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), second[0]);
             case 2:
-            {
-                int index = first.Length switch
                 {
-                    0 => (second[0] << 4) | second[1],
-                    1 => (first[0] << 4) | second[0],
-                    _ => (first[0] << 4) | first[1]
-                };
-                return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), index);
-            }
+                    int index = first.Length switch
+                    {
+                        0 => (second[0] << 4) | second[1],
+                        1 => (first[0] << 4) | second[0],
+                        _ => (first[0] << 4) | first[1]
+                    };
+                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), index);
+                }
             case 3:
-            {
-                int index = first.Length switch
                 {
-                    0 => (second[0] << 8) | (second[1] << 4) | second[2],
-                    1 => (first[0] << 8) | (second[0] << 4) | second[1],
-                    2 => (first[0] << 8) | (first[1] << 4) | second[0],
-                    _ => (first[0] << 8) | (first[1] << 4) | first[2]
-                };
-                return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), index);
-            }
+                    int index = first.Length switch
+                    {
+                        0 => (second[0] << 8) | (second[1] << 4) | second[2],
+                        1 => (first[0] << 8) | (second[0] << 4) | second[1],
+                        2 => (first[0] << 8) | (first[1] << 4) | second[0],
+                        _ => (first[0] << 8) | (first[1] << 4) | first[2]
+                    };
+                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), index);
+                }
         }
 
         // Fallback - allocate and concat
