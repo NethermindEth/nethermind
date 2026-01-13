@@ -909,7 +909,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             int closureIndex = index;
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
-            _dirtyNodesTasks[closureIndex] = CreatePurneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);;
+            _dirtyNodesTasks[closureIndex] = CreatePurneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);
         }
 
         Task.WaitAll(_dirtyNodesTasks);
