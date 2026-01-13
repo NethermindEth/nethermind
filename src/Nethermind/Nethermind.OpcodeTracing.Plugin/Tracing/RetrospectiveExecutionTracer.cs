@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -24,7 +25,7 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 public sealed class RetrospectiveExecutionTracer
 {
     private readonly IBlockTree _blockTree;
-    private readonly IReadOnlyTxProcessorSource _txProcessorSource;
+    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly ISpecProvider _specProvider;
     private readonly IStateReader _stateReader;
     private readonly OpcodeCounter _counter;
@@ -43,7 +44,7 @@ public sealed class RetrospectiveExecutionTracer
     /// <param name="blockTree">The block tree for finding blocks.</param>
     /// <param name="specProvider">The spec provider for getting release specs.</param>
     /// <param name="stateReader">The state reader for checking state availability.</param>
-    /// <param name="txProcessorSource">The read-only transaction processor source for isolated execution.</param>
+    /// <param name="txProcessingEnvFactory">Factory to create isolated transaction processing environments per block.</param>
     /// <param name="counter">The opcode counter to accumulate into.</param>
     /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
     /// <param name="logManager">The log manager.</param>
@@ -52,7 +53,7 @@ public sealed class RetrospectiveExecutionTracer
         IBlockTree blockTree,
         ISpecProvider specProvider,
         IStateReader stateReader,
-        IReadOnlyTxProcessorSource txProcessorSource,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         OpcodeCounter counter,
         int maxDegreeOfParallelism,
         ILogManager logManager)
@@ -60,14 +61,14 @@ public sealed class RetrospectiveExecutionTracer
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(stateReader);
-        ArgumentNullException.ThrowIfNull(txProcessorSource);
+        ArgumentNullException.ThrowIfNull(txProcessingEnvFactory);
         ArgumentNullException.ThrowIfNull(counter);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _blockTree = blockTree;
         _specProvider = specProvider;
         _stateReader = stateReader;
-        _txProcessorSource = txProcessorSource;
+        _txProcessingEnvFactory = txProcessingEnvFactory;
         _counter = counter;
         _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
         _logger = logManager.GetClassLogger<RetrospectiveExecutionTracer>();
@@ -191,7 +192,7 @@ public sealed class RetrospectiveExecutionTracer
 
     /// <summary>
     /// Processes a block by executing each transaction with an isolated read-only transaction processor.
-    /// This approach does not modify any chain state and is safe for historical analysis.
+    /// Creates an independent processing environment for each block to ensure thread-safety during parallel processing.
     /// </summary>
     /// <param name="block">The block to process.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -205,33 +206,43 @@ public sealed class RetrospectiveExecutionTracer
             ? null
             : _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
 
-        // Create isolated processing scope based on parent state
-        using IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(parentHeader);
-
-        // Get spec and calculate blob base fee for this block
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-        UInt256 blobBaseFee = UInt256.Zero;
-        if (spec.IsEip4844Enabled && block.Header.ExcessBlobGas.HasValue)
+        // Create independent processing environment for this block (thread-safe for parallel processing)
+        IReadOnlyTxProcessorSource txProcessorSource = _txProcessingEnvFactory.Create();
+        try
         {
-            BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+            // Create isolated processing scope based on parent state
+            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(parentHeader);
+
+            // Get spec and calculate blob base fee for this block
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            UInt256 blobBaseFee = UInt256.Zero;
+            if (spec.IsEip4844Enabled && block.Header.ExcessBlobGas.HasValue)
+            {
+                BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+            }
+
+            // Create block execution context
+            BlockExecutionContext blockExecutionContext = new(block.Header, spec, blobBaseFee);
+
+            // Process each transaction in the block
+            foreach (Transaction tx in block.Transactions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Create opcode counting tracer for this transaction
+                OpcodeCountingTxTracer txTracer = new();
+
+                // Execute transaction with tracing (no validation, commits state within scope)
+                scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
+
+                // Accumulate opcode counts from this transaction
+                txTracer.AccumulateInto(blockOpcodes);
+            }
         }
-
-        // Create block execution context
-        BlockExecutionContext blockExecutionContext = new(block.Header, spec, blobBaseFee);
-
-        // Process each transaction in the block
-        foreach (Transaction tx in block.Transactions)
+        finally
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Create opcode counting tracer for this transaction
-            OpcodeCountingTxTracer txTracer = new();
-
-            // Execute transaction with tracing (no validation, commits state within scope)
-            scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
-
-            // Accumulate opcode counts from this transaction
-            txTracer.AccumulateInto(blockOpcodes);
+            // Dispose the processing environment if it's disposable
+            (txProcessorSource as IDisposable)?.Dispose();
         }
 
         return blockOpcodes;

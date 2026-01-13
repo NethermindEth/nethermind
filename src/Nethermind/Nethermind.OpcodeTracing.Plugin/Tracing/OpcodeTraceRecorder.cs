@@ -351,15 +351,14 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
                     // Use RetrospectiveExecutionTracer for actual EVM execution replay
-                    // Resolve IReadOnlyTxProcessingEnvFactory from DI to create isolated transaction processors
+                    // Pass factory so each parallel block gets its own isolated processing environment
                     var txProcessingEnvFactory = api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
-                    var txProcessorSource = txProcessingEnvFactory.Create();
 
                     var executionTracer = new RetrospectiveExecutionTracer(
                         blockTree,
                         api.SpecProvider!,
                         api.StateReader!,
-                        txProcessorSource,
+                        txProcessingEnvFactory,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
                         api.LogManager);
