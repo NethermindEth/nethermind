@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -14,7 +13,7 @@ public class ClHealthTrackerTests
 {
     private const int MaxIntervalSeconds = 300;
 
-    private static async Task<ClHealthRequestsTracker> CreateHealthTracker(ManualTimestamper timestamper)
+    private static ClHealthRequestsTracker CreateHealthTracker(ManualTimestamper timestamper)
     {
         return new ClHealthRequestsTracker(
             timestamper,
@@ -25,39 +24,39 @@ public class ClHealthTrackerTests
     }
 
     [Test]
-    public async Task CheckClAlive_Initially_ReturnsTrue()
+    public void CheckClAlive_Initially_ReturnsTrue()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         healthTracker.CheckClAlive().Should().BeTrue();
     }
 
     [Test]
-    public async Task CheckClAlive_AfterMaxInterval_ReturnsFalse()
+    public void CheckClAlive_AfterMaxInterval_ReturnsFalse()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
         healthTracker.CheckClAlive().Should().BeFalse();
     }
 
     [Test]
-    public async Task CheckClAlive_BeforeMaxInterval_ReturnsTrue()
+    public void CheckClAlive_BeforeMaxInterval_ReturnsTrue()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds - 1));
         healthTracker.CheckClAlive().Should().BeTrue();
     }
 
     [Test]
-    public async Task CheckClAlive_AfterForkchoiceUpdated_ResetsTimer()
+    public void CheckClAlive_AfterForkchoiceUpdated_ResetsTimer()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
         healthTracker.CheckClAlive().Should().BeFalse();
@@ -67,10 +66,10 @@ public class ClHealthTrackerTests
     }
 
     [Test]
-    public async Task CheckClAlive_AfterNewPayload_ResetsTimer()
+    public void CheckClAlive_AfterNewPayload_ResetsTimer()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
         healthTracker.CheckClAlive().Should().BeFalse();
@@ -80,10 +79,10 @@ public class ClHealthTrackerTests
     }
 
     [Test]
-    public async Task CheckClAlive_WithBothRequests_WorksCorrectly()
+    public void CheckClAlive_WithBothRequests_WorksCorrectly()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         healthTracker.OnForkchoiceUpdatedCalled();
         healthTracker.CheckClAlive().Should().BeTrue();
@@ -96,10 +95,10 @@ public class ClHealthTrackerTests
     }
 
     [Test]
-    public async Task CheckClAlive_AtBoundaryConditions_WorksCorrectly()
+    public void CheckClAlive_AtBoundaryConditions_WorksCorrectly()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = await CreateHealthTracker(timestamper);
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds - 1));
         healthTracker.OnForkchoiceUpdatedCalled();
