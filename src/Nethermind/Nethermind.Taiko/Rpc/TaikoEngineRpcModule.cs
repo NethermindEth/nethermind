@@ -4,8 +4,10 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
@@ -376,5 +378,62 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         l1OriginStore.WriteL1Origin(blockId, l1Origin);
 
         return ResultWrapper<L1Origin>.Success(l1Origin);
+    }
+
+    public async Task<ResultWrapper<bool>> taikoAuth_waitForTxPoolSync(long expectedBlockNumber, int timeoutMs = 5000)
+    {
+        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(timeoutMs));
+        TaskCompletionSource<bool> tcs = new();
+
+        void OnTxPoolHeadChanged(object? sender, Block block)
+        {
+            if (block.Number >= expectedBlockNumber)
+            {
+                tcs.TrySetResult(true);
+            }
+        }
+
+        txPool.TxPoolHeadChanged += OnTxPoolHeadChanged;
+        try
+        {
+            // Check if this is a reorg scenario where txpool is ahead of blockchain
+            // In this case, directly clear caches because the async ProcessNewHeadLoop 
+            // may not process in time
+            long txPoolLastBlock = txPool.LastProcessedBlockNumber;
+            long? currentBlockchainHead = blockFinder.Head?.Number;
+            
+            if (currentBlockchainHead.HasValue && txPoolLastBlock > currentBlockchainHead.Value)
+            {
+                // Reorg detected: txpool thinks chain is at block X, but blockchain is at lower block Y
+                // Directly clear caches to allow transactions to be resubmitted
+                txPool.ClearAllCaches();
+                return ResultWrapper<bool>.Success(true);
+            }
+            
+            // Normal case: poll until txpool catches up
+            const int pollIntervalMs = 50;
+            int elapsedMs = 0;
+            while (elapsedMs < timeoutMs)
+            {
+                txPoolLastBlock = txPool.LastProcessedBlockNumber;
+                
+                // Consider synced if txpool has processed the expected block
+                if (txPoolLastBlock >= expectedBlockNumber)
+                {
+                    return ResultWrapper<bool>.Success(true);
+                }
+                
+                // Wait a bit and try again
+                await Task.Delay(pollIntervalMs, cts.Token);
+                elapsedMs += pollIntervalMs;
+            }
+
+            // Timeout - txpool didn't sync in time
+            return ResultWrapper<bool>.Success(false);
+        }
+        finally
+        {
+            txPool.TxPoolHeadChanged -= OnTxPoolHeadChanged;
+        }
     }
 }

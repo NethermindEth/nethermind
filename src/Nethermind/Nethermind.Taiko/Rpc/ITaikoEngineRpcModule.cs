@@ -89,4 +89,10 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature);
+
+    [JsonRpcMethod(
+        Description = "Waits for txpool to finish processing head changes up to the expected block number.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> taikoAuth_waitForTxPoolSync(long expectedBlockNumber, int timeoutMs = 5000);
 }

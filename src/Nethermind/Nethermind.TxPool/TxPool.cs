@@ -236,7 +236,7 @@ namespace Nethermind.TxPool
         {
             if (_headInfo.IsSyncing)
             {
-                DisposeBlockAccountChanges(e.Block);
+                if (e.Block is not null) DisposeBlockAccountChanges(e.Block);
                 return;
             }
 
@@ -271,6 +271,9 @@ namespace Nethermind.TxPool
             {
                 while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                 {
+                    Block block = args.Block;
+                    if (block is null) continue;
+
                     // Clear snapshot
                     _transactionSnapshot = null;
                     _blobTransactionSnapshot = null;
@@ -278,8 +281,11 @@ namespace Nethermind.TxPool
                     _newHeadLock.EnterWriteLock();
                     try
                     {
-                        ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                        if (args.PreviousBlock is not null || !CanUseCache(args.Block, accountChanges))
+                        ArrayPoolList<AddressAsKey>? accountChanges = block.AccountChanges;
+                        bool hasPreviousBlock = args.PreviousBlock is not null;
+                        bool canUseCache = CanUseCache(block, accountChanges);
+
+                        if (hasPreviousBlock || !canUseCache)
                         {
                             // Non-sequential block or reorganization detected, reset cache
                             _accountCache.Reset();
@@ -287,16 +293,17 @@ namespace Nethermind.TxPool
                         else
                         {
                             // Sequential block, just remove changed accounts from cache
-                            _accountCache.RemoveAccounts(accountChanges);
+                            // accountChanges is guaranteed non-null when canUseCache is true (NotNullWhen attribute)
+                            _accountCache.RemoveAccounts(accountChanges!);
                         }
 
-                        DisposeBlockAccountChanges(args.Block);
+                        DisposeBlockAccountChanges(block);
 
-                        _lastBlockNumber = args.Block.Number;
-                        _lastBlockHash = args.Block.Hash;
+                        _lastBlockNumber = block.Number;
+                        _lastBlockHash = block.Hash;
 
                         ReAddReorganisedTransactions(args.PreviousBlock);
-                        RemoveProcessedTransactions(args.Block);
+                        RemoveProcessedTransactions(block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
                         {
@@ -304,13 +311,13 @@ namespace Nethermind.TxPool
                         }
 
                         UpdateBuckets();
-                        TxPoolHeadChanged?.Invoke(this, args.Block);
+                        TxPoolHeadChanged?.Invoke(this, block);
                         Metrics.TransactionCount = _transactions.Count;
                         Metrics.BlobTransactionCount = _blobTransactions.Count;
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        if (_logger.IsWarn) _logger.Warn($"TxPool failed to update after block {block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                     }
                     finally
                     {
@@ -481,6 +488,41 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
+        public long LastProcessedBlockNumber => Volatile.Read(ref _lastBlockNumber);
+        
+        public void ClearAllCaches()
+        {
+            _newHeadLock.EnterWriteLock();
+            try
+            {
+                // Clear hash cache and account cache
+                _hashCache.ClearAll();
+                _accountCache.Reset();
+                
+                // Also clear all pending transactions - they are invalid after a chain reset
+                // Get snapshot first to avoid modifying collection while iterating
+                Transaction[] pendingTxs = _transactions.GetSnapshot();
+                foreach (Transaction tx in pendingTxs)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+                
+                // Clear blob transactions too
+                Transaction[] pendingBlobTxs = _blobTransactions.GetSnapshot();
+                foreach (Transaction tx in pendingBlobTxs)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+                
+                // Reset snapshots
+                _transactionSnapshot = null;
+                _blobTransactionSnapshot = null;
+            }
+            finally
+            {
+                _newHeadLock.ExitWriteLock();
+            }
+        }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
