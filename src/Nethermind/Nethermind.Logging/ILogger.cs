@@ -14,7 +14,7 @@ namespace Nethermind.Logging;
 #if DEBUG
 public struct ILogger
 #else
-public readonly struct ILogger
+public readonly struct ILogger : IEquatable<ILogger>
 #endif
 {
     private readonly InterfaceLogger _logger;
@@ -55,6 +55,8 @@ public readonly struct ILogger
         if (IsDebug)
             _logger.Debug(text);
     }
+
+    public bool Equals(ILogger other) => _logger == other._logger;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Error(string text, Exception ex = null)
