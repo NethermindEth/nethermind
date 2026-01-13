@@ -1252,7 +1252,7 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 Hash256 address = Keccak.Compute(seed.ToBigEndianByteArray());
                 StorageTree storageTree = new StorageTree(fullTrieStore.GetTrieStore(address), LimboLogs.Instance);
-                storageTree.Set(Keccak.Compute((seed*2).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                storageTree.Set(Keccak.Compute((seed * 2).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
                 storageTree.Commit();
 
                 ptree.Set(address, new Account(0, 0, storageTree.RootHash, Keccak.OfAnEmptyString));
