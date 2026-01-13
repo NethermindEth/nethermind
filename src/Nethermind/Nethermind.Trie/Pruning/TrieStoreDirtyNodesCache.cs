@@ -502,7 +502,7 @@ internal class TrieStoreDirtyNodesCache
 
         public bool IsRoot()
         {
-            return Path.Length == 0;
+            return Address is null && Path.Length == 0;
         }
     }
 
