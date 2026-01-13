@@ -107,8 +107,8 @@ namespace Ethereum.Rlp.Test
         [Test]
         public void TestEmpty()
         {
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(new byte[0]), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(new Nethermind.Serialization.Rlp.Rlp[0]), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptySequence));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<Nethermind.Serialization.Rlp.Rlp>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptySequence));
         }
 
         [Test]

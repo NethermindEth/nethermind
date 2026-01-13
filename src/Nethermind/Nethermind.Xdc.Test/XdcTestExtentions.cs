@@ -5,7 +5,7 @@ using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Core.Test.Builders;
 
-public static class BuildExtentions
+public static class BuildExtensions
 {
     public static XdcBlockHeaderBuilder XdcBlockHeader(this Build build)
     {
