@@ -909,7 +909,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             int closureIndex = index;
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
-            _dirtyNodesTasks[closureIndex] = CreatePurneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);
+            _dirtyNodesTasks[closureIndex] = CreatePruneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);
         }
 
         Task.WaitAll(_dirtyNodesTasks);
@@ -919,7 +919,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {DirtyMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
     }
 
-    private async Task CreatePurneDirtyNodeTask(bool prunePersisted, bool doNotRemoveNodes, bool forceRemovePersistedNodes, int closureIndex, TrieStoreDirtyNodesCache dirtyNode)
+    private async Task CreatePruneDirtyNodeTask(bool prunePersisted, bool doNotRemoveNodes, bool forceRemovePersistedNodes, int closureIndex, TrieStoreDirtyNodesCache dirtyNode)
     {
         // Background task
         await Task.Yield();
