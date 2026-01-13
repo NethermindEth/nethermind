@@ -105,7 +105,7 @@ public class HexPrefixTests
         {
             byte[] path1 = HexPrefix.GetPathArray(new byte[] { i });
             byte[] path2 = HexPrefix.GetPathArray(new byte[] { i });
-            
+
             // Should return the same cached instance
             Assert.That(ReferenceEquals(path1, path2), Is.True, $"Single nibble {i} should return cached array");
             Assert.That(path1.Length, Is.EqualTo(1));
@@ -123,7 +123,7 @@ public class HexPrefixTests
             {
                 byte[] path1 = HexPrefix.GetPathArray(new byte[] { i, j });
                 byte[] path2 = HexPrefix.GetPathArray(new byte[] { i, j });
-                
+
                 // Should return the same cached instance
                 Assert.That(ReferenceEquals(path1, path2), Is.True, $"Double nibble [{i},{j}] should return cached array");
                 Assert.That(path1.Length, Is.EqualTo(2));
@@ -145,7 +145,7 @@ public class HexPrefixTests
                 {
                     byte[] path1 = HexPrefix.GetPathArray(new byte[] { i, j, k });
                     byte[] path2 = HexPrefix.GetPathArray(new byte[] { i, j, k });
-                    
+
                     // Should return the same cached instance
                     Assert.That(ReferenceEquals(path1, path2), Is.True, $"Triple nibble [{i},{j},{k}] should return cached array");
                     Assert.That(path1.Length, Is.EqualTo(3));
@@ -188,7 +188,7 @@ public class HexPrefixTests
         // Test paths longer than 3 nibbles
         byte[] path1 = HexPrefix.GetPathArray(new byte[] { 1, 2, 3, 4 });
         byte[] path2 = HexPrefix.GetPathArray(new byte[] { 1, 2, 3, 4 });
-        
+
         Assert.That(ReferenceEquals(path1, path2), Is.False, "Should allocate new array for paths longer than 3");
         Assert.That(path1.Length, Is.EqualTo(4));
         Assert.That(path1, Is.EqualTo(new byte[] { 1, 2, 3, 4 }).AsCollection);
