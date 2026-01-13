@@ -14,18 +14,17 @@ namespace Nethermind.JsonRpc
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
         private int? _hashCode;
-        private string _scheme = null!;
-        private string _host = null!;
-        private int _port;
-        private RpcEndpoint _rpcEndpoint;
-        private IReadOnlySet<string> _enabledModules = null!;
         public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
         {
+            string[] sortedModules = enabledModules
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             Scheme = scheme;
             Host = host;
             Port = port;
             RpcEndpoint = rpcEndpoint;
-            EnabledModules = new HashSet<string>(enabledModules, StringComparer.OrdinalIgnoreCase);
+            EnabledModules = new HashSet<string>(sortedModules, StringComparer.OrdinalIgnoreCase);
             IsAuthenticated = isAuthenticated;
             MaxRequestBodySize = maxRequestBodySize;
         }
@@ -84,11 +83,11 @@ namespace Nethermind.JsonRpc
 
         public long? MaxRequestBodySize { get; }
         public bool IsAuthenticated { get; }
-        public string Scheme { get => _scheme; set { _scheme = value; _hashCode = null; } }
-        public string Host { get => _host; set { _host = value; _hashCode = null; } }
-        public int Port { get => _port; set { _port = value; _hashCode = null; } }
-        public RpcEndpoint RpcEndpoint { get => _rpcEndpoint; set { _rpcEndpoint = value; _hashCode = null; } }
-        public IReadOnlySet<string> EnabledModules { get => _enabledModules; set { _enabledModules = new HashSet<string>(value, StringComparer.OrdinalIgnoreCase); _hashCode = null; } }
+        public string Scheme { get; }
+        public string Host { get; }
+        public int Port { get; }
+        public RpcEndpoint RpcEndpoint { get; }
+        public IReadOnlySet<string> EnabledModules { get; }
 
         public bool IsModuleEnabled(string moduleName) => EnabledModules.Contains(moduleName);
 
@@ -123,7 +122,7 @@ namespace Nethermind.JsonRpc
             if (_hashCode.HasValue) return _hashCode.Value;
 
             int modulesHash = 0;
-            foreach (string m in EnabledModules.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            foreach (string m in EnabledModules)
             {
                 modulesHash = HashCode.Combine(modulesHash, StringComparer.OrdinalIgnoreCase.GetHashCode(m));
             }
