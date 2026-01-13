@@ -114,7 +114,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             if (_logger.IsDebug)
             {
-                string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
+                string clientId = GetClientId(_session);
                 _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
         }
@@ -125,7 +125,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else if (_session?.Node?.IsStatic != true)
         {
-            string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
+            string clientId = GetClientId(_session);
             _session.InitiateDisconnect(DisconnectReason.Exception,
                 $"Error in communication with {clientId} ({exception.GetType().Name}): {exception.Message}");
         }
@@ -133,6 +133,11 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             base.ExceptionCaught(context, exception);
         }
+    }
+
+    private static string GetClientId(ISession? session)
+    {
+        return session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
     }
 
     public void EnableSnappy()
