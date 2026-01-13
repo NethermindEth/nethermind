@@ -12,7 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
-using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
@@ -27,7 +27,6 @@ public sealed class RetrospectiveExecutionTracer
     private readonly IBlockTree _blockTree;
     private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly ISpecProvider _specProvider;
-    private readonly IStateReader _stateReader;
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
     private readonly int _maxDegreeOfParallelism;
@@ -43,7 +42,6 @@ public sealed class RetrospectiveExecutionTracer
     /// </summary>
     /// <param name="blockTree">The block tree for finding blocks.</param>
     /// <param name="specProvider">The spec provider for getting release specs.</param>
-    /// <param name="stateReader">The state reader for checking state availability.</param>
     /// <param name="txProcessingEnvFactory">Factory to create isolated transaction processing environments per block.</param>
     /// <param name="counter">The opcode counter to accumulate into.</param>
     /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
@@ -52,7 +50,6 @@ public sealed class RetrospectiveExecutionTracer
     public RetrospectiveExecutionTracer(
         IBlockTree blockTree,
         ISpecProvider specProvider,
-        IStateReader stateReader,
         IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         OpcodeCounter counter,
         int maxDegreeOfParallelism,
@@ -60,41 +57,16 @@ public sealed class RetrospectiveExecutionTracer
     {
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(specProvider);
-        ArgumentNullException.ThrowIfNull(stateReader);
         ArgumentNullException.ThrowIfNull(txProcessingEnvFactory);
         ArgumentNullException.ThrowIfNull(counter);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _blockTree = blockTree;
         _specProvider = specProvider;
-        _stateReader = stateReader;
         _txProcessingEnvFactory = txProcessingEnvFactory;
         _counter = counter;
         _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
         _logger = logManager.GetClassLogger<RetrospectiveExecutionTracer>();
-    }
-
-    /// <summary>
-    /// Checks if historical state is available for the specified block.
-    /// State availability is determined by whether the parent block's state exists.
-    /// </summary>
-    /// <param name="block">The block to check state availability for.</param>
-    /// <returns>True if state is available; false otherwise.</returns>
-    public bool CheckStateAvailability(Block block)
-    {
-        if (block.IsGenesis)
-        {
-            return true;
-        }
-
-        BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-        if (parentHeader is null)
-        {
-            return false;
-        }
-
-        // Check if parent state exists using IStateReader
-        return _stateReader.HasStateForBlock(parentHeader);
     }
 
     /// <summary>
@@ -134,6 +106,8 @@ public sealed class RetrospectiveExecutionTracer
     /// <summary>
     /// Processes a single block by replaying all its transactions with the EVM.
     /// This method is synchronous and thread-safe for parallel execution.
+    /// State availability is checked via exception handling rather than pre-checking,
+    /// matching the pattern used by debug_traceBlock.
     /// </summary>
     /// <param name="blockNumber">The block number to process.</param>
     /// <param name="progress">The progress tracker.</param>
@@ -154,25 +128,23 @@ public sealed class RetrospectiveExecutionTracer
             return;
         }
 
-        // Check if state is available for this block
-        if (!CheckStateAvailability(block))
-        {
-            if (_logger.IsWarn)
-            {
-                _logger.Warn($"State unavailable for block {blockNumber}, skipping (parent state may be pruned)");
-            }
-            _skippedBlocks.Add(blockNumber);
-            progress.UpdateProgress(blockNumber);
-            return;
-        }
-
         // Process the block with our opcode counting tracer
+        // State availability is determined by catching MissingTrieNodeException during processing
         try
         {
             long[] blockOpcodes = ProcessBlock(block, cancellationToken);
             _counter.AccumulateFrom(blockOpcodes);
         }
-        catch (Exception ex)
+        catch (MissingTrieNodeException ex)
+        {
+            // State is genuinely unavailable (pruned or not synced)
+            if (_logger.IsWarn)
+            {
+                _logger.Warn($"State unavailable for block {blockNumber}: {ex.Message}");
+            }
+            _skippedBlocks.Add(blockNumber);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             if (_logger.IsWarn)
             {

@@ -357,7 +357,6 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                     var executionTracer = new RetrospectiveExecutionTracer(
                         blockTree,
                         api.SpecProvider!,
-                        api.StateReader!,
                         txProcessingEnvFactory,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
