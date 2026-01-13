@@ -87,9 +87,9 @@ public static class HexPrefix
         return (path, isLeaf);
     }
 
-    private static readonly ushort[] Lookup16 = CreateLookup16("x2");
+    private static readonly ushort[] Lookup16 = CreateLookup16();
 
-    private static ushort[] CreateLookup16(string format)
+    private static ushort[] CreateLookup16()
     {
         ushort[] result = new ushort[256];
         for (int i = 0; i < 256; i++)
@@ -100,6 +100,18 @@ public static class HexPrefix
         return result;
     }
 
+    /// <summary>
+    /// Returns a byte array for the specified nibble path, using cached arrays for short paths (1-3 nibbles) with valid nibble values (0-15) to reduce allocations.
+    /// </summary>
+    /// <param name="path">The nibble path to convert to a byte array.</param>
+    /// <returns>
+    /// A byte array representing the nibble path. For paths of length 1-3 with nibble values 0-15, returns a shared cached array that must not be modified.
+    /// For longer paths or paths with nibble values >= 16, allocates and returns a new array.
+    /// </returns>
+    /// <remarks>
+    /// This optimization takes advantage of the fact that short nibble paths are common and their possible combinations are limited.
+    /// The returned cached arrays are shared and must not be modified by callers.
+    /// </remarks>
     public static byte[] GetPathArray(ReadOnlySpan<byte> path)
     {
         if (path.Length == 0)
