@@ -336,7 +336,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            AddAccountRead(address);
+            AddAccountRead(address, blockAccessIndex);
         }
         return GetCodeInternal(address, blockAccessIndex.Value);
     }
@@ -385,7 +385,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            AddAccountRead(address);
+            AddAccountRead(address, blockAccessIndex);
             // todo move inside bal
             if (balance != 0)
             {
@@ -435,7 +435,15 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     }
 
     public void AddAccountRead(Address address, int? blockAccessIndex = null)
-        => GetGeneratingBlockAccessList(blockAccessIndex).AddAccountRead(address);
+    {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        if (TracingEnabled)
+        {
+            GetGeneratingBlockAccessList(blockAccessIndex).AddAccountRead(address);
+        }
+    }
 
     public override void Restore(Snapshot snapshot, int? blockAccessIndex = null)
     {

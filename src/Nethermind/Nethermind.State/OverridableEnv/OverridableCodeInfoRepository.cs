@@ -28,11 +28,11 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             return !result.codeInfo.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegationAddress) &&
                    followDelegation
-                ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _)
+                ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _, blockAccessIndex)
                 : result.codeInfo;
         }
 
-        return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress, blockAccessIndex);
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null) =>

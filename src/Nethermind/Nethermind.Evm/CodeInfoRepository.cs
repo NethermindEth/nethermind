@@ -37,7 +37,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             if (_balBuilder is not null && _balBuilder.TracingEnabled)
             {
-                _balBuilder.AddAccountRead(codeSource);
+                _balBuilder.AddAccountRead(codeSource, blockAccessIndex);
             }
             return _localPrecompiles[codeSource];
         }

@@ -159,10 +159,10 @@ internal static partial class EvmInstructions
             if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
-            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
 
             ICodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+                .GetCachedCodeInfo(address, followDelegation: false, spec, out _, vm.TxExecutionContext.BlockAccessIndex);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -193,7 +193,7 @@ internal static partial class EvmInstructions
         }
         else
         {
-            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         return EvmExceptionType.None;
@@ -239,7 +239,7 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
-        (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+        (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;
@@ -295,7 +295,7 @@ internal static partial class EvmInstructions
 
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _, vm.TxExecutionContext.BlockAccessIndex)
             .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
