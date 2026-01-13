@@ -18,7 +18,7 @@ public static class HexPrefix
 
     public static void CopyToSpan(byte[] path, bool isLeaf, Span<byte> output)
     {
-        if (output.Length != ByteLength(path)) throw new ArgumentOutOfRangeException(nameof(output));
+        ArgumentOutOfRangeException.ThrowIfNotEqual(ByteLength(path), output.Length, nameof(output));
 
         output[0] = (byte)(isLeaf ? 0x20 : 0x00);
         if (path.Length % 2 != 0)
