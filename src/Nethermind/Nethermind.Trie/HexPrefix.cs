@@ -209,29 +209,42 @@ public static class HexPrefix
             case 0:
                 return [];
             case 1:
-                return first.Length == 1
-                    ? Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), first[0])
-                    : Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), second[0]);
+                {
+                    byte nibble = first.Length == 1 ? first[0] : second[0];
+                    if (nibble < 16)
+                    {
+                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(SingleNibblePaths), nibble);
+                    }
+                    break;
+                }
             case 2:
                 {
-                    int index = first.Length switch
+                    (uint v1, uint v2) = first.Length switch
                     {
-                        0 => (second[0] << 4) | second[1],
-                        1 => (first[0] << 4) | second[0],
-                        _ => (first[0] << 4) | first[1]
+                        0 => (second[0], second[1]),
+                        1 => (first[0], second[0]),
+                        _ => (first[0], first[1])
                     };
-                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), index);
+                    if ((v1 | v2) < 16)
+                    {
+                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), (int)((v1 << 4) | v2));
+                    }
+                    break;
                 }
             case 3:
                 {
-                    int index = first.Length switch
+                    (uint v1, uint v2, uint v3) = first.Length switch
                     {
-                        0 => (second[0] << 8) | (second[1] << 4) | second[2],
-                        1 => (first[0] << 8) | (second[0] << 4) | second[1],
-                        2 => (first[0] << 8) | (first[1] << 4) | second[0],
-                        _ => (first[0] << 8) | (first[1] << 4) | first[2]
+                        0 => (second[0], second[1], second[2]),
+                        1 => (first[0], second[0], second[1]),
+                        2 => (first[0], first[1], second[0]),
+                        _ => (first[0], first[1], first[2])
                     };
-                    return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), index);
+                    if ((v1 | v2 | v3) < 16)
+                    {
+                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (int)((v1 << 8) | (v2 << 4) | v3));
+                    }
+                    break;
                 }
         }
 

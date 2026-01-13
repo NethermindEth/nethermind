@@ -421,4 +421,53 @@ public class HexPrefixTests
         byte[] result = HexPrefix.ConcatNibbles(new byte[] { 15, 14, 13 }, new byte[] { 12, 11, 10 });
         Assert.That(result, Is.EqualTo(new byte[] { 15, 14, 13, 12, 11, 10 }).AsCollection);
     }
+
+    [Test]
+    public void ConcatNibbles_allocates_new_array_for_invalid_nibble_values()
+    {
+        // Test single nibble with value >= 16
+        byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { 16 }, []);
+        byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { 16 }, []);
+        Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for nibble value >= 16");
+        Assert.That(result1.Length, Is.EqualTo(1));
+        Assert.That(result1[0], Is.EqualTo(16));
+
+        byte[] result3 = HexPrefix.ConcatNibbles([], new byte[] { 16 });
+        byte[] result4 = HexPrefix.ConcatNibbles([], new byte[] { 16 });
+        Assert.That(ReferenceEquals(result3, result4), Is.False, "Should allocate new array for nibble value >= 16");
+        Assert.That(result3.Length, Is.EqualTo(1));
+        Assert.That(result3[0], Is.EqualTo(16));
+
+        // Test double nibble with value >= 16
+        byte[] result5 = HexPrefix.ConcatNibbles(new byte[] { 5 }, new byte[] { 16 });
+        byte[] result6 = HexPrefix.ConcatNibbles(new byte[] { 5 }, new byte[] { 16 });
+        Assert.That(ReferenceEquals(result5, result6), Is.False, "Should allocate new array for nibble value >= 16");
+        Assert.That(result5.Length, Is.EqualTo(2));
+        Assert.That(result5[0], Is.EqualTo(5));
+        Assert.That(result5[1], Is.EqualTo(16));
+
+        byte[] result7 = HexPrefix.ConcatNibbles(new byte[] { 16, 5 }, []);
+        byte[] result8 = HexPrefix.ConcatNibbles(new byte[] { 16, 5 }, []);
+        Assert.That(ReferenceEquals(result7, result8), Is.False, "Should allocate new array for nibble value >= 16");
+        Assert.That(result7.Length, Is.EqualTo(2));
+        Assert.That(result7[0], Is.EqualTo(16));
+        Assert.That(result7[1], Is.EqualTo(5));
+
+        // Test triple nibble with value >= 16
+        byte[] result9 = HexPrefix.ConcatNibbles(new byte[] { 3, 7 }, new byte[] { 20 });
+        byte[] result10 = HexPrefix.ConcatNibbles(new byte[] { 3, 7 }, new byte[] { 20 });
+        Assert.That(ReferenceEquals(result9, result10), Is.False, "Should allocate new array for nibble value >= 16");
+        Assert.That(result9.Length, Is.EqualTo(3));
+        Assert.That(result9[0], Is.EqualTo(3));
+        Assert.That(result9[1], Is.EqualTo(7));
+        Assert.That(result9[2], Is.EqualTo(20));
+
+        byte[] result11 = HexPrefix.ConcatNibbles(new byte[] { 3 }, new byte[] { 16, 7 });
+        byte[] result12 = HexPrefix.ConcatNibbles(new byte[] { 3 }, new byte[] { 16, 7 });
+        Assert.That(ReferenceEquals(result11, result12), Is.False, "Should allocate new array for nibble value >= 16");
+        Assert.That(result11.Length, Is.EqualTo(3));
+        Assert.That(result11[0], Is.EqualTo(3));
+        Assert.That(result11[1], Is.EqualTo(16));
+        Assert.That(result11[2], Is.EqualTo(7));
+    }
 }
