@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading;
@@ -380,40 +379,34 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 
-    public async Task<ResultWrapper<bool>> taikoAuth_waitForTxPoolSync(long expectedBlockNumber, int timeoutMs = 5000)
+    /// <summary>
+    /// Behavior:
+    /// 1. Detects reorg scenarios (txpool ahead of blockchain) and resets txpool state
+    /// 2. Polls until txpool has processed up to expectedBlockNumber
+    /// 3. Returns true if synced within timeout, false otherwise
+    /// </summary>
+    public async Task<ResultWrapper<bool>> taikoDebug_waitForTxPoolSync(long expectedBlockNumber, int timeoutMs = 5000)
     {
-        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(timeoutMs));
-        TaskCompletionSource<bool> tcs = new();
+        long txPoolLastBlock = txPool.LastProcessedBlockNumber;
+        long? currentBlockchainHead = blockFinder.Head?.Number;
 
-        void OnTxPoolHeadChanged(object? sender, Block block)
+        if (currentBlockchainHead.HasValue && txPoolLastBlock > currentBlockchainHead.Value)
         {
-            if (block.Number >= expectedBlockNumber)
-            {
-                tcs.TrySetResult(true);
-            }
+            txPool.ResetTxPoolState();
+            return ResultWrapper<bool>.Success(true);
         }
 
-        txPool.TxPoolHeadChanged += OnTxPoolHeadChanged;
+        if (txPoolLastBlock >= expectedBlockNumber)
+        {
+            return ResultWrapper<bool>.Success(true);
+        }
+
+        const int pollIntervalMs = 50;
+
+        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(timeoutMs));
         try
         {
-            // Check if this is a reorg scenario where txpool is ahead of blockchain
-            // In this case, directly clear caches because the async ProcessNewHeadLoop 
-            // may not process in time
-            long txPoolLastBlock = txPool.LastProcessedBlockNumber;
-            long? currentBlockchainHead = blockFinder.Head?.Number;
-
-            if (currentBlockchainHead.HasValue && txPoolLastBlock > currentBlockchainHead.Value)
-            {
-                // Reorg detected: txpool thinks chain is at block X, but blockchain is at lower block Y
-                // Directly clear caches to allow transactions to be resubmitted
-                txPool.ClearAllCaches();
-                return ResultWrapper<bool>.Success(true);
-            }
-
-            // Normal case: poll until txpool catches up
-            const int pollIntervalMs = 50;
-            int elapsedMs = 0;
-            while (elapsedMs < timeoutMs)
+            while (!cts.Token.IsCancellationRequested)
             {
                 txPoolLastBlock = txPool.LastProcessedBlockNumber;
 
@@ -425,15 +418,15 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                 // Wait a bit and try again
                 await Task.Delay(pollIntervalMs, cts.Token);
-                elapsedMs += pollIntervalMs;
             }
 
             // Timeout - txpool didn't sync in time
             return ResultWrapper<bool>.Success(false);
         }
-        finally
+        catch (OperationCanceledException)
         {
-            txPool.TxPoolHeadChanged -= OnTxPoolHeadChanged;
+            // Timeout reached - txpool didn't sync in time
+            return ResultWrapper<bool>.Success(false);
         }
     }
 }

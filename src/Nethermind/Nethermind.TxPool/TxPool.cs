@@ -483,7 +483,7 @@ namespace Nethermind.TxPool
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
         public long LastProcessedBlockNumber => Volatile.Read(ref _lastBlockNumber);
 
-        public void ClearAllCaches()
+        public void ResetTxPoolState()
         {
             _newHeadLock.EnterWriteLock();
             try

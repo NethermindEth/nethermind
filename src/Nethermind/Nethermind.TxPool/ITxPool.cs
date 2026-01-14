@@ -70,8 +70,9 @@ namespace Nethermind.TxPool
         long LastProcessedBlockNumber { get; }
 
         /// <summary>
-        /// Clears all txpool caches (hash cache and account cache).
+        /// Resets txpool state by clearing all caches (hash cache, account cache) 
+        /// and removing all pending transactions. Used for integration testing after chain reorgs.
         /// </summary>
-        void ClearAllCaches();
+        void ResetTxPoolState();
     }
 }

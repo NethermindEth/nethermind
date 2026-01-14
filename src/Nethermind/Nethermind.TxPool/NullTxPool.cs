@@ -114,6 +114,6 @@ namespace Nethermind.TxPool
         }
         public bool AcceptTxWhenNotSynced { get; set; }
         public long LastProcessedBlockNumber => 0;
-        public void ClearAllCaches() { }
+        public void ResetTxPoolState() { }
     }
 }
