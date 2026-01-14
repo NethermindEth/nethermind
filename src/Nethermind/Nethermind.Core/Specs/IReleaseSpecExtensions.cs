@@ -72,7 +72,7 @@ public static class IReleaseSpecExtensions
 
         public bool UseIstanbulNetGasMetering => spec.IsEip2200Enabled;
 
-        public bool UseNetGasMetering => spec.UseConstantinopleNetGasMetering | spec.UseIstanbulNetGasMetering;
+        public bool UseNetGasMetering => spec.UseConstantinopleNetGasMetering || spec.UseIstanbulNetGasMetering;
 
         public bool UseNetGasMeteringWithAStipendFix => spec.UseIstanbulNetGasMetering;
 
