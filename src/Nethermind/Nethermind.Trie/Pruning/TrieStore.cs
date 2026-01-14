@@ -604,8 +604,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return;
         }
 
-        // Skip triggering GC while pruning or so they
-        // don't fight each other causing pruning to take longer
+        // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
         GCScheduler.Instance.SkipNextGC();
         try
         {
