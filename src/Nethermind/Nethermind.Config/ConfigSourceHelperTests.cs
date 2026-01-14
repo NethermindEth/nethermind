@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using NUnit;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test;
