@@ -139,7 +139,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         await Task.Delay(1000);
 
-        ResultWrapper<GetPayloadV5Result?> getPayloadResult =
+        ResultWrapper<GetPayloadV6Result?> getPayloadResult =
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(payloadId));
         var res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);

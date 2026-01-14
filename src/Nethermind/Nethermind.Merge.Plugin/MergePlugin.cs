@@ -331,6 +331,8 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IAsyncHandler<Hash256[], IEnumerable<byte[]?>>, GetBALsByHashV1Handler>()
+                .AddSingleton<IAsyncHandler<(long, long), IEnumerable<byte[]>?>, GetBALsByRangeV1Handler>()
                 .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()

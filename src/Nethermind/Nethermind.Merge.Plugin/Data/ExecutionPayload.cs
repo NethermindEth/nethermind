@@ -53,8 +53,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    public byte[]? BlockAccessList { get; set; }
-
     protected byte[][] _encodedTransactions = [];
 
     /// <summary>
@@ -102,6 +100,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
+    /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-4844</see>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
@@ -129,7 +134,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
-            BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode<BlockAccessList>(block.BlockAccessList!.Value).Bytes),
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -172,27 +176,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             TotalDifficulty = totalDifficulty,
             TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
-            BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes)
         };
 
-        BlockAccessList? blockAccessList = null;
-
-        if (BlockAccessList is not null)
-        {
-            //tmp
-            // Console.WriteLine("Decoding BAL from execution payload:\n" + Bytes.ToHexString(BlockAccessList));
-            try
-            {
-                blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
-            }
-            catch (RlpException e)
-            {
-                Console.Error.Write("Could not decode block access list from execution payload: " + e);
-                return new("Could not decode block access list.");
-            }
-        }
-
-        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals, blockAccessList);
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals);
         return new(block);
     }
 
@@ -272,7 +258,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected virtual int GetExecutionPayloadVersion() => this switch
     {
-        { ExecutionRequests: not null } => 4,
+        { BlockAccessList: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1
