@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -12,10 +11,10 @@ public static class PathUtils
 {
     static PathUtils()
     {
-        Process process = Process.GetCurrentProcess();
+        string processName = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
 
-        ExecutingDirectory = process.ProcessName.StartsWith("dotnet", StringComparison.OrdinalIgnoreCase)
-            || process.ProcessName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)
+        ExecutingDirectory = processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+            || processName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)
             // A workaround for tests in JetBrains Rider ignoring MTP:
             // https://youtrack.jetbrains.com/projects/RIDER/issues/RIDER-131530
             ? AppContext.BaseDirectory 
