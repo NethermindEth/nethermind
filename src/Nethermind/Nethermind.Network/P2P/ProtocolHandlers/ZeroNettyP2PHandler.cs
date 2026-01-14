@@ -121,8 +121,6 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else if (_session?.Node?.IsStatic != true)
         {
-            string clientId = GetClientId(_session);
-            _session.InitiateDisconnect(DisconnectReason.Exception,
             _session.InitiateDisconnect(DisconnectReason.Exception, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else
