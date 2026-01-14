@@ -22,18 +22,18 @@ namespace Nethermind.State
     public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
         private const int LookupSize = 1024;
-        private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
+        private static readonly FrozenDictionary<UInt256, ValueHash256> Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
-        private static FrozenDictionary<UInt256, byte[]> CreateLookup()
+        private static FrozenDictionary<UInt256, ValueHash256> CreateLookup()
         {
             Span<byte> buffer = stackalloc byte[32];
-            Dictionary<UInt256, byte[]> lookup = new Dictionary<UInt256, byte[]>(LookupSize);
+            Dictionary<UInt256, ValueHash256> lookup = new Dictionary<UInt256, ValueHash256>(LookupSize);
             for (int i = 0; i < LookupSize; i++)
             {
-                UInt256 index = (UInt256)i;
+                UInt256 index = new UInt256((uint)i);
                 index.ToBigEndian(buffer);
-                lookup[index] = Keccak.Compute(buffer).BytesToArray();
+                lookup[index] = ValueKeccak.Compute(buffer);
             }
 
             return lookup.ToFrozenDictionary();
@@ -52,27 +52,25 @@ namespace Nethermind.State
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ComputeKey(in UInt256 index, Span<byte> key)
+        private static void ComputeKey(in UInt256 index, out ValueHash256 key)
         {
-            index.ToBigEndian(key);
-
-            // We can't direct ComputeTo the key as its also the input, so need a separate variable
-            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
-            // Which we can then directly assign to fast update the key
-            Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
+            Span<byte> buffer = stackalloc byte[32];
+            index.ToBigEndian(buffer);
+            KeccakCache.ComputeTo(buffer, out key);
         }
 
-        public static void ComputeKeyWithLookup(in UInt256 index, Span<byte> key)
+        public static void ComputeKeyWithLookup(in UInt256 index, ref ValueHash256 key)
         {
             if (index < LookupSize)
             {
-                Lookup[index].CopyTo(key);
+                key = Lookup[index];
+                return;
             }
 
-            ComputeKey(index, key);
+            ComputeKey(index, out key);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(ValueHash256 key, byte[]? value)
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value)
         {
             byte[] encodedValue;
             if (value.IsZero())
@@ -92,7 +90,7 @@ namespace Nethermind.State
                 }
             }
 
-            return new BulkSetEntry(key, encodedValue);
+            return new BulkSetEntry(in key, encodedValue);
         }
 
         [SkipLocalsInit]
@@ -100,7 +98,7 @@ namespace Nethermind.State
         {
             if (index < LookupSize)
             {
-                return GetArray(Lookup[index], storageRoot);
+                return GetArray(Lookup[index].Bytes, storageRoot);
             }
 
             return GetWithKeyGenerate(in index, storageRoot);
@@ -108,9 +106,8 @@ namespace Nethermind.State
             [SkipLocalsInit]
             byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
             {
-                Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, key);
-                return GetArray(key, storageRoot);
+                ComputeKey(index, out ValueHash256 key);
+                return GetArray(key.Bytes, storageRoot);
             }
         }
 
@@ -158,7 +155,7 @@ namespace Nethermind.State
         {
             if (index < LookupSize)
             {
-                SetInternal(Lookup[index], value);
+                SetInternal(Lookup[index].Bytes, value);
             }
             else
             {
@@ -168,9 +165,8 @@ namespace Nethermind.State
             [SkipLocalsInit]
             void SetWithKeyGenerate(in UInt256 index, byte[] value)
             {
-                Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, key);
-                SetInternal(key, value);
+                ComputeKey(index, out ValueHash256 key);
+                SetInternal(key.Bytes, value);
             }
         }
 
