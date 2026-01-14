@@ -106,6 +106,7 @@ namespace Nethermind.Db.LogIndex
         {
             get
             {
+                yield return _metaDb;
                 yield return _addressDb;
 
                 foreach (IDb topicDb in _topicDbs)
@@ -139,7 +140,7 @@ namespace Nethermind.Db.LogIndex
         private bool FirstBlockAdded => _minBlock is not null || _maxBlock is not null;
 
         /// <summary>
-        /// Guarantees initialization won't be run concurrently
+        /// Guarantees <see cref="_minBlock"/>/<see cref="_maxBlock"/> initialization won't be run concurrently.
         /// </summary>
         private readonly SemaphoreSlim _initSemaphore = new(1, 1);
 

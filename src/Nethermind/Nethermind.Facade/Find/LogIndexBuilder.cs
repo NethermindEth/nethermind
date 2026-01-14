@@ -60,8 +60,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly TaskCompletionSource<int> _pivotSource = new(RunContinuationsAsynchronously);
     private readonly Task<int> _pivotTask;
 
-    [SuppressMessage("ReSharper", "CollectionNeverQueried.Local")]
-    private readonly CompositeDisposable _disposables = new();
     private readonly List<Task> _tasks = new();
 
     private readonly Dictionary<bool, ProgressLogger> _progressLoggers = new();
@@ -140,7 +138,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             UpdateProgress();
             LogProgress();
 
-            _disposables.Add(_progressLoggerTimer = new(TimeSpan.FromSeconds(30)));
+            _progressLoggerTimer = new(TimeSpan.FromSeconds(30));
             _progressLoggerTimer.AutoReset = true;
             _progressLoggerTimer.Elapsed += (_, _) => LogProgress();
             _progressLoggerTimer.Start();
@@ -182,8 +180,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public async ValueTask DisposeAsync()
     {
-        _disposables.Dispose();
         await _logIndexStorage.DisposeAsync();
+        _progressLoggerTimer?.Dispose();
+        _cancellationSource.Dispose();
     }
 
     private void LogStats()
