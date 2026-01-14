@@ -587,8 +587,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // 2. Allow kick off (block processing) some time to finish before starting to prune (prune in block gap)
         // 3. If we are n+1 Task passing the .IsCompleted check but not going to be first to pass lock,
         //    remain uncompleted for a time to prevent other tasks seeing .IsCompleted and also trying to queue.
-        var pruneDelayMs = _pruneDelayMs;
-        if (pruneDelayMs == 0)
+        int pruneDelayMs = _pruneDelayMs;
+        if (pruneDelayMs <= 0)
         {
             // Always async
             await Task.Yield();
