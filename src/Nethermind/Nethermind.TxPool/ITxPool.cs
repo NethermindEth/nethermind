@@ -71,8 +71,6 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Clears all txpool caches (hash cache and account cache).
-        /// This should be called during chain resets/deep reorgs to ensure
-        /// transactions can be resubmitted without AlreadyKnown errors.
         /// </summary>
         void ClearAllCaches();
     }
