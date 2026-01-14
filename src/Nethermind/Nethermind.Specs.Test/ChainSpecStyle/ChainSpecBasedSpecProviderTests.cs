@@ -661,12 +661,9 @@ public class ChainSpecBasedSpecProviderTests
 
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled)))
         {
             Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);
