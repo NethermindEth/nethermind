@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -64,7 +65,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         return result;
     }
 
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    public override Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -159,13 +160,13 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    protected override async Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>> Execute(
         BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx,
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
+        SimulateOutput<TTrace> results = await _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {

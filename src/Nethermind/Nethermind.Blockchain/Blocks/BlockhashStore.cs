@@ -24,13 +24,13 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!worldState.IsContract(eip2935Account)) return;
+        if (!worldState.IsContract(eip2935Account, 0)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
         UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         byte[] newValue = parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray();
-        worldState.Set(blockHashStoreCell, newValue);
+        worldState.Set(blockHashStoreCell, newValue, 0);
         if (tracer is not null && tracer.IsTracingStorage)
         {
             tracer.ReportStorageChange(blockHashStoreCell, null, newValue);
@@ -47,7 +47,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         UInt256 blockIndex = new UInt256((ulong)(requiredBlockNumber % spec.Eip2935RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
+        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell, 0);
         return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
     }
 }

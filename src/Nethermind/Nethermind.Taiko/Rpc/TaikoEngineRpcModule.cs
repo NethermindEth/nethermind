@@ -180,7 +180,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             for (int i = 0; i < txSource.Length;)
             {
                 Transaction tx = txSource[i];
-                Snapshot snapshot = worldState.TakeSnapshot(true);
+                Snapshot snapshot = worldState.TakeSnapshot(true, i);
 
                 try
                 {

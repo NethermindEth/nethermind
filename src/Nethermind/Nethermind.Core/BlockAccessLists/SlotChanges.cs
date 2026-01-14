@@ -6,17 +6,23 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Nethermind.Core.Collections;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(UInt256 slot, List<StorageChange> changes) : IEquatable<SlotChanges>
+public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) : IEquatable<SlotChanges>
 {
     [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Slot { get; init; } = slot;
-    public List<StorageChange> Changes { get; init; } = changes;
+    public EnumerableWithCount<StorageChange> Changes =>
+        _changes.Keys.FirstOrDefault() == -1 ?
+            new(_changes.Values.Skip(1), _changes.Count - 1) :
+            new(_changes.Values, _changes.Count);
+
+    private readonly SortedList<int, StorageChange> _changes = changes;
 
     public SlotChanges(UInt256 slot) : this(slot, [])
     {
@@ -39,22 +45,39 @@ public class SlotChanges(UInt256 slot, List<StorageChange> changes) : IEquatable
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
-    public bool PopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public void AddStorageChange(StorageChange storageChange)
+        => _changes.Add(storageChange.BlockAccessIndex, storageChange);
+
+    public bool PopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
-        if (Changes.Count == 0)
+        if (_changes.Count == 0)
             return false;
 
         StorageChange lastChange = Changes.Last();
 
         if (lastChange.BlockAccessIndex == index)
         {
-            Changes.RemoveAt(Changes.Count - 1);
+            _changes.RemoveAt(_changes.Count - 1);
             storageChange = lastChange;
             return true;
         }
 
         return false;
+    }
+
+    public byte[] Get(int blockAccessIndex)
+    {
+        UInt256 lastValue = 0;
+        foreach (KeyValuePair<int, StorageChange> change in _changes)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return lastValue.ToBigEndian();
+            }
+            lastValue = change.Value.NewValue;
+        }
+        return lastValue.ToBigEndian();
     }
 }

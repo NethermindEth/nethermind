@@ -8,9 +8,9 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct BalanceChange(ushort blockAccessIndex, UInt256 postBalance) : IEquatable<BalanceChange>, IIndexedChange
+public readonly struct BalanceChange(int blockAccessIndex, UInt256 postBalance) : IEquatable<BalanceChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     [JsonConverter(typeof(UInt256Converter))]
     public UInt256 PostBalance { get; init; } = postBalance;
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -19,7 +20,7 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public interface IBlockProcessor
     {
-        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+        public Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
             IBlockTracer blockTracer,
