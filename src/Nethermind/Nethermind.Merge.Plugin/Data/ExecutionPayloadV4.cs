@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayloadV4</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayloadV4 : ExecutionPayload, IExecutionPayloadFactory<ExecutionPayloadV4>
+public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<ExecutionPayloadV4>
 {
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV4, new()
     {
