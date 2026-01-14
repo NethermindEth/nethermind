@@ -43,7 +43,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _requestingResources = new(requestingCacheSize);
         _expiringQueueLimit = expiringQueueLimit;
         _maxRetryRequests = maxRetryRequests;
-        // Clousre capture
+        // Closure capture
         _announceUpdate = AnnounceUpdate;
 
         _mainLoopTask = Task.Run(async () =>
@@ -135,18 +135,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         return AnnounceResult.RequestRequired;
     }
 
-    private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
-    {
-        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
-
-        if (requests.Count < _maxRetryRequests)
-        {
-            requests.Add(retryHandler);
-        }
-
-        return requests;
-    }
-
     private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceAdd(TResourceId resourceId, IMessageHandler<TMessage> retryHandler, out AnnounceResult result)
     {
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: NEW");
@@ -157,6 +145,18 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         result = AnnounceResult.RequestRequired;
 
         return _handlerBagsPool.Get();
+    }
+
+    private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
+
+        if (requests.Count < _maxRetryRequests)
+        {
+            requests.Add(retryHandler);
+        }
+
+        return requests;
     }
 
     public void Received(in TResourceId resourceId)
