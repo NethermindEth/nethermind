@@ -74,22 +74,22 @@ public class XdcModule : Module
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
 
             // managers
+            .AddSingleton<IMasternodesCalculator, MasternodesCalculator>()
             .AddSingleton<IVotesManager, VotesManager>()
             .AddSingleton<IQuorumCertificateManager, QuorumCertificateManager>()
             .AddSingleton<ITimeoutCertificateManager, TimeoutCertificateManager>()
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
-            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
             ;
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
+        return new SnapshotManager(db, blockTree, votingContract, specProvider);
     }
 
     private IMasternodeVotingContract CreateVotingContract(

@@ -53,7 +53,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IMasternodeVotingContract, XdcTestDepositContract>()
 
             // add missing components
-            .AddSingleton<IPenaltyHandler, RandomPenaltyHandler>()
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments

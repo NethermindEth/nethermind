@@ -10,6 +10,8 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -23,6 +25,7 @@ public static class XdcExtensions
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
+
     public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
         var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);

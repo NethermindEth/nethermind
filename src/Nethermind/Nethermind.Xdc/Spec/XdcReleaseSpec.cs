@@ -34,6 +34,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address[] GenesisMasterNodes { get; set; }
     public long MergeSignRange { get; set; }
     public long TIP2019Block { get; set; }
+    public long TipUpgradePenalty { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
     public Address BlockSignerContract { get; set; }
@@ -107,6 +108,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     Address FoundationWallet { get; set; }
     Address MasternodeVotingContract { get; set; }
     Address BlockSignerContract { get; set; }
+    long TipUpgradePenalty { get; set; }
 
     long MergeSignRange { get; set; }
     long TIP2019Block { get; set; }

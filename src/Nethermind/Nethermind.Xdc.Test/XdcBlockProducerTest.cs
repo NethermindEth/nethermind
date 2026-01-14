@@ -60,6 +60,7 @@ internal class XdcBlockProducerTest
         XdcBlockProducer producer = new XdcBlockProducer(
             epochManager,
             Substitute.For<ISnapshotManager>(),
+            Substitute.For<IMasternodesCalculator>(),
             xdcContext,
             Substitute.For<ITxSource>(),
             processor,
@@ -72,7 +73,7 @@ internal class XdcBlockProducerTest
             Substitute.For<ILogManager>(),
             Substitute.For<IDifficultyCalculator>(),
             Substitute.For<IBlocksConfig>());
-        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<ISnapshotManager>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
+        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
 
         Block? block = await producer.BuildBlock(parent);
 

@@ -28,16 +28,14 @@ internal class SnapshotManager : ISnapshotManager
     private readonly IBlockTree blockTree;
     private readonly IMasternodeVotingContract votingContract;
     private readonly ISpecProvider specProvider;
-    private readonly IPenaltyHandler penaltyHandler;
 
-    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
         blockTree.NewHeadBlock += OnNewHeadBlock;
         this.snapshotDb = snapshotDb;
         this.blockTree = blockTree;
         this.votingContract = votingContract;
         this.specProvider = specProvider;
-        this.penaltyHandler = penaltyHandler;
     }
 
     public Snapshot? GetSnapshotByGapNumber(long gapNumber)
@@ -83,37 +81,6 @@ internal class SnapshotManager : ISnapshotManager
 
         snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
-    }
-
-    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
-    {
-        int maxMasternodes = spec.MaxMasternodes;
-        Snapshot previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
-
-        if (previousSnapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
-
-        Address[] candidates = previousSnapshot.NextEpochCandidates;
-
-        if (blockNumber == spec.SwitchBlock + 1)
-        {
-            if (candidates.Length > maxMasternodes)
-            {
-                Array.Resize(ref candidates, maxMasternodes);
-                return (candidates, []);
-            }
-
-            return (candidates, []);
-        }
-
-        Address[] penalties = penaltyHandler.HandlePenalties(blockNumber, parentHash, candidates);
-
-        candidates = candidates
-            .Except(penalties)        // remove penalties
-            .Take(maxMasternodes)     // enforce max cap
-            .ToArray();
-
-        return (candidates, penalties);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)

@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
@@ -17,7 +19,7 @@ using static Nethermind.Xdc.XdcExtensions;
 
 namespace Nethermind.Xdc;
 
-internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager) : IPenaltyHandler
+internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager) : IPenaltyHandler
 {
     private LruCache<Hash256, Transaction[]> _signTransactionCache = new(XdcConstants.BlockSignersCacheLimit, "XDC Signing Txs Cache");
 
@@ -85,9 +87,11 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 break;
             }
 
-            Address miner = parentHeader.Author;
+            var xdcHeaderDecoder = new XdcHeaderDecoder();
+            Address miner = ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
 
-            if (minerStatistics.ContainsKey(miner)) {
+
+            if (!minerStatistics.ContainsKey(miner)) {
                 minerStatistics[miner] = 1;
             } else
             {
@@ -108,7 +112,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         List<Address> penalties = [];
 
         int minMinerBlockPerEpoch = XdcConstants.MinimunMinerBlockPerEpoch;
-        if(currentSpec.TIP2019Block == number)
+        if(currentSpec.TipUpgradePenalty == number)
         {
             minMinerBlockPerEpoch = currentSpec.MinimumMinerBlockPerEpoch;
         }
@@ -129,7 +133,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             }
         }
 
-        if(currentSpec.TIP2019Block == number)
+        if(currentSpec.TipUpgradePenalty == number)
         {
             var comebackHeight = (XdcConstants.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
             var penComebacks = new List<Address>();

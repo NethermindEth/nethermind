@@ -24,6 +24,7 @@ internal class TestXdcBlockProducer(
     CandidateContainer candidateContainer,
     IEpochSwitchManager epochSwitchManager,
     ISnapshotManager snapshotManager,
+    IMasternodesCalculator masternodesCalculator,
     IXdcConsensusContext xdcContext,
     ITxSource txSource,
     IBlockchainProcessor processor,
@@ -35,7 +36,7 @@ internal class TestXdcBlockProducer(
     ISpecProvider specProvider,
     ILogManager logManager,
     IDifficultyCalculator? difficultyCalculator,
-    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, snapshotManager, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, snapshotManager, masternodesCalculator, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
 {
     private readonly Signer signer = (Signer)signer;
 
@@ -57,7 +58,7 @@ internal class TestXdcBlockProducer(
         Address[] masternodes;
         if (epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
         {
-            (masternodes, _) = snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
+            (masternodes, _) = masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
         }
         else
         {
