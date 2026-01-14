@@ -133,6 +133,72 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
 
+        public bool DepositsEnabled => spec.DepositsEnabled;
+        public bool WithdrawalRequestsEnabled => spec.WithdrawalRequestsEnabled;
+        public bool ConsolidationRequestsEnabled => spec.ConsolidationRequestsEnabled;
+        public long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
+        public bool ValidateChainId => spec.ValidateChainId;
+
+        // STATE related
+        public bool ClearEmptyAccountWhenTouched => spec.ClearEmptyAccountWhenTouched;
+
+        // VM
+        public bool LimitCodeSize => spec.LimitCodeSize;
+        public bool UseHotAndColdStorage => spec.UseHotAndColdStorage;
+        public bool UseTxAccessLists => spec.UseTxAccessLists;
+        public bool AddCoinbaseToTxAccessList => spec.AddCoinbaseToTxAccessList;
+
+        public bool ModExpEnabled => spec.ModExpEnabled;
+        public bool BN254Enabled => spec.BN254Enabled;
+        public bool BlakeEnabled => spec.BlakeEnabled;
+        public bool Bls381Enabled => spec.Bls381Enabled;
+
+        public bool ChargeForTopLevelCreate => spec.ChargeForTopLevelCreate;
+        public bool FailOnOutOfGasCodeDeposit => spec.FailOnOutOfGasCodeDeposit;
+        public bool UseShanghaiDDosProtection => spec.UseShanghaiDDosProtection;
+        public bool UseExpDDosProtection => spec.UseExpDDosProtection;
+        public bool UseLargeStateDDosProtection => spec.UseLargeStateDDosProtection;
+        public bool ReturnDataOpcodesEnabled => spec.ReturnDataOpcodesEnabled;
+        public bool ChainIdOpcodeEnabled => spec.ChainIdOpcodeEnabled;
+        public bool Create2OpcodeEnabled => spec.Create2OpcodeEnabled;
+        public bool DelegateCallEnabled => spec.DelegateCallEnabled;
+        public bool StaticCallEnabled => spec.StaticCallEnabled;
+        public bool ShiftOpcodesEnabled => spec.ShiftOpcodesEnabled;
+        public bool RevertOpcodeEnabled => spec.RevertOpcodeEnabled;
+        public bool ExtCodeHashOpcodeEnabled => spec.ExtCodeHashOpcodeEnabled;
+        public bool SelfBalanceOpcodeEnabled => spec.SelfBalanceOpcodeEnabled;
+
+        public bool UseConstantinopleNetGasMetering => spec.UseConstantinopleNetGasMetering;
+        public bool UseIstanbulNetGasMetering => spec.UseIstanbulNetGasMetering;
+        public bool UseNetGasMetering => spec.UseNetGasMetering;
+        public bool UseNetGasMeteringWithAStipendFix => spec.UseNetGasMeteringWithAStipendFix;
+        public bool Use63Over64Rule => spec.Use63Over64Rule;
+
+        public bool BaseFeeEnabled => spec.BaseFeeEnabled;
+
+        // EVM Related
+        public bool IncludePush0Instruction => spec.IncludePush0Instruction;
+        public bool TransientStorageEnabled => spec.TransientStorageEnabled;
+
+        public bool WithdrawalsEnabled => spec.WithdrawalsEnabled;
+        public bool SelfdestructOnlyOnSameTransaction => spec.SelfdestructOnlyOnSameTransaction;
+
+        public bool IsBeaconBlockRootAvailable => spec.IsBeaconBlockRootAvailable;
+        public bool IsBlockHashInStateAvailable => spec.IsBlockHashInStateAvailable;
+        public bool MCopyIncluded => spec.MCopyIncluded;
+
+        public bool BlobBaseFeeEnabled => spec.BlobBaseFeeEnabled;
+
+        public bool IsAuthorizationListEnabled => spec.IsAuthorizationListEnabled;
+
+        public bool RequestsEnabled => spec.RequestsEnabled;
+
+        public ProofVersion BlobProofVersion => spec.BlobProofVersion;
+
+        public bool CLZEnabled => spec.CLZEnabled;
+
+        public bool IsPrecompile(Address address) => spec.IsPrecompile(address);
+
         private long? _overriddenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
         {
