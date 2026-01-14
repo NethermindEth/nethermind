@@ -781,4 +781,33 @@ internal static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
+
+    /// <summary>
+    /// Implements the SLOTNUM opcode.
+    /// Returns the slot number from the block header.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if slot number not set.
+    /// </returns>
+    public static EvmExceptionType InstructionSlotNum<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
+    {
+        ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
+        // If the slot number is missing this opcode is invalid.
+        if (!context.Header.SlotNumber.HasValue) goto BadInstruction;
+
+        // Charge the base gas cost for this opcode.
+        gasAvailable -= GasCostOf.Base;
+        stack.PushUInt64<TTracingInst>(context.SlotNumber);
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
 }

@@ -165,6 +165,7 @@ namespace Nethermind.Specs
         public bool IsEip7939Enabled { get; set; }
         public bool IsRip7728Enabled { get; set; }
         public bool IsEip7928Enabled { get; set; }
+        public bool IsEip7843Enabled { get; set; }
 
         private FrozenSet<AddressAsKey>? _precompiles;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
