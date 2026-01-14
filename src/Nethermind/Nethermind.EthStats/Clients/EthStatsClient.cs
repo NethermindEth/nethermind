@@ -29,10 +29,13 @@ namespace Nethermind.EthStats.Clients
             IMessageSender? messageSender,
             ILogManager? logManager)
         {
-            _urlFromConfig = urlFromConfig ?? throw new ArgumentNullException(nameof(urlFromConfig));
+            ArgumentNullException.ThrowIfNull(urlFromConfig);
+            _urlFromConfig = urlFromConfig;
             _reconnectionInterval = reconnectionInterval;
-            _messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            ArgumentNullException.ThrowIfNull(messageSender);
+            _messageSender = messageSender;
+            ArgumentNullException.ThrowIfNull(logManager);
+            _logger = logManager.GetClassLogger();
         }
 
         internal string BuildUrl()
