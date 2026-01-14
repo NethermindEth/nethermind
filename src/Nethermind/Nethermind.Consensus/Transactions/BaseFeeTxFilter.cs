@@ -13,11 +13,15 @@ namespace Nethermind.Consensus.Transactions
     {
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, spec);
             bool isEip1559Enabled = spec.IsEip1559Enabled;
 
-            bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
-            bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;
+            if (!isEip1559Enabled || tx.IsServiceTransaction)
+            {
+                return AcceptTxResult.Accepted;
+            }
+
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, spec);
+            bool allowed = tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted
                 : AcceptTxResult.FeeTooLow.WithMessage(
