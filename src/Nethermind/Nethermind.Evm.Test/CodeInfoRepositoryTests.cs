@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using NSubstitute;
@@ -165,10 +166,12 @@ public class CodeInfoRepositoryTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
+        stateProvider.InsertCode(TestItem.AddressA, code, releaseSpec);
 
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.GetCachedCodeInfo(TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
+        sut.GetCachedCodeInfo(TestItem.AddressA, releaseSpec).Should().BeEquivalentTo(new CodeInfo(code));
     }
 }
