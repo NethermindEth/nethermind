@@ -61,8 +61,6 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Clears both long-term and current block caches.
-        /// This should be called during deep reorgs when the chain goes backwards,
-        /// as transactions from the orphaned chain may now be valid again.
         /// </summary>
         public void ClearAll()
         {
