@@ -909,25 +909,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             int closureIndex = index;
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
-            _dirtyNodesTasks[closureIndex] = Task.Run(() =>
-            {
-                ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
-                if (_persistedHashes.Length > 0)
-                {
-                    persistedHashes = _persistedHashes[closureIndex];
-                }
-
-                INodeStorage nodeStorage = _nodeStorage;
-                if (doNotRemoveNodes) nodeStorage = null;
-
-                dirtyNode
-                    .PruneCache(
-                        prunePersisted: prunePersisted,
-                        forceRemovePersistedNodes: forceRemovePersistedNodes,
-                        persistedHashes: persistedHashes,
-                        nodeStorage: nodeStorage);
-                persistedHashes?.NoResizeClear();
-            });
+            _dirtyNodesTasks[closureIndex] = CreatePruneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);
         }
 
         Task.WaitAll(_dirtyNodesTasks);
@@ -935,6 +917,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         RecalculateTotalMemoryUsage();
 
         if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {DirtyMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+    }
+
+    private async Task CreatePruneDirtyNodeTask(bool prunePersisted, bool doNotRemoveNodes, bool forceRemovePersistedNodes, int closureIndex, TrieStoreDirtyNodesCache dirtyNode)
+    {
+        // Background task
+        await Task.Yield();
+        ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
+        if (_persistedHashes.Length > 0)
+        {
+            persistedHashes = _persistedHashes[closureIndex];
+        }
+
+        INodeStorage nodeStorage = _nodeStorage;
+        if (doNotRemoveNodes) nodeStorage = null;
+
+        dirtyNode
+            .PruneCache(
+                prunePersisted: prunePersisted,
+                forceRemovePersistedNodes: forceRemovePersistedNodes,
+                persistedHashes: persistedHashes,
+                nodeStorage: nodeStorage);
+        persistedHashes?.NoResizeClear();
     }
 
     /// <summary>
