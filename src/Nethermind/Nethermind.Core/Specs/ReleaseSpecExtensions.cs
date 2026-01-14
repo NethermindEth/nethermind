@@ -95,11 +95,11 @@ public static class ReleaseSpecExtensions
 
     public static bool UseIstanbulNetGasMetering(this IReleaseSpec spec) => spec.IsEip2200Enabled;
 
-    public static bool UseNetGasMetering(this IReleaseSpec spec) => spec.UseConstantinopleNetGasMetering() || spec.UseIstanbulNetGasMetering();
+    public static bool UseNetGasMetering(this IReleaseSpec spec) => spec.UseConstantinopleNetGasMetering || spec.UseIstanbulNetGasMetering;
 
-    public static bool UseNetGasMeteringWithAStipendFix(this IReleaseSpec spec) => spec.UseIstanbulNetGasMetering();
+    public static bool UseNetGasMeteringWithAStipendFix(this IReleaseSpec spec) => spec.UseIstanbulNetGasMetering;
 
-    public static bool Use63Over64Rule(this IReleaseSpec spec) => spec.UseShanghaiDDosProtection();
+    public static bool Use63Over64Rule(this IReleaseSpec spec) => spec.UseShanghaiDDosProtection;
 
     public static bool BaseFeeEnabled(this IReleaseSpec spec) => spec.IsEip3198Enabled;
 
@@ -122,7 +122,7 @@ public static class ReleaseSpecExtensions
 
     public static bool IsAuthorizationListEnabled(this IReleaseSpec spec) => spec.IsEip7702Enabled;
 
-    public static bool RequestsEnabled(this IReleaseSpec spec) => spec.ConsolidationRequestsEnabled() || spec.WithdrawalRequestsEnabled() || spec.DepositsEnabled();
+    public static bool RequestsEnabled(this IReleaseSpec spec) => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
 
     /// <summary>
     /// Determines whether the specified address is a precompiled contract for this release specification.
