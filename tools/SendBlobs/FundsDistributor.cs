@@ -44,9 +44,8 @@ internal class FundsDistributor
         string? balanceString = await _rpcClient.Post<string>("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
             throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
-        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
-        if (nonceString is null)
-            throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
+        ulong nonce = await _rpcClient.Post<ulong>("eth_getTransactionCount", distributeFrom.Address, "latest")
+            ?? throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
 
         string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "0x1";
         UInt256 gasPrice = UInt256.Parse(gasPriceRes);
@@ -63,8 +62,6 @@ internal class FundsDistributor
 
         if (balance == 0)
             throw new AccountException($"Balance on provided signer {distributeFrom.Address} is 0.");
-
-        ulong nonce = HexConvert.ToUInt64(nonceString);
 
         UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
 
@@ -155,13 +152,10 @@ internal class FundsDistributor
             string? balanceString = await _rpcClient.Post<string>("eth_getBalance", signer.Address, "latest");
             if (balanceString is null)
                 continue;
-            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", signer.Address, "latest");
-            if (nonceString is null)
+            if (await _rpcClient.Post<ulong>("eth_getTransactionCount", signer.Address, "latest") is not { } nonce)
                 continue;
 
             UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
-
-            ulong nonce = HexConvert.ToUInt64(nonceString);
 
             string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "0x1";
             UInt256 gasPrice = UInt256.Parse(gasPriceRes);
