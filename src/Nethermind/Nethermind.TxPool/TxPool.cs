@@ -492,7 +492,7 @@ namespace Nethermind.TxPool
                 _hashCache.ClearAll();
                 _accountCache.Reset();
 
-                // Also clear all pending transactions - they are invalid after a chain reset
+                // Also clear all pending transactions
                 // Get snapshot first to avoid modifying collection while iterating
                 Transaction[] pendingTxs = _transactions.GetSnapshot();
                 foreach (Transaction tx in pendingTxs)
