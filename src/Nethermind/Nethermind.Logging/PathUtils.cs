@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -9,7 +10,19 @@ namespace Nethermind.Logging;
 
 public static class PathUtils
 {
-    public static string ExecutingDirectory { get; } = Path.GetDirectoryName(Environment.ProcessPath);
+    static PathUtils()
+    {
+        Process process = Process.GetCurrentProcess();
+
+        ExecutingDirectory = process.ProcessName.StartsWith("dotnet", StringComparison.OrdinalIgnoreCase)
+            || process.ProcessName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)
+            // A workaround for tests in JetBrains Rider ignoring MTP:
+            // https://youtrack.jetbrains.com/projects/RIDER/issues/RIDER-131530
+            ? AppContext.BaseDirectory 
+            : Path.GetDirectoryName(Environment.ProcessPath);
+    }
+
+    public static string ExecutingDirectory { get; }
 
     public static string GetApplicationResourcePath(this string resourcePath, string overridePrefixPath = null)
     {
