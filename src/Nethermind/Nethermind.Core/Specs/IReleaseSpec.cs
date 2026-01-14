@@ -12,8 +12,6 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
-        // Compiling of default interface methods/properties is very slow, therefore
-        // these methods/properties are implemented in the target classes.
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
