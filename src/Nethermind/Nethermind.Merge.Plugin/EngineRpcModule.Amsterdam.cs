@@ -13,11 +13,12 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
+    private readonly IAsyncHandler<byte[], GetPayloadV6Result?> _getPayloadHandlerV6;
     private readonly IAsyncHandler<Hash256[], IEnumerable<byte[]?>> _getBALSByHashV1Handler;
     private readonly IAsyncHandler<(long, long), IEnumerable<byte[]>?> _getBALSByRangeV1Handler;
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV6(byte[] payloadId)
-        => _getPayloadHandlerV5.HandleAsync(payloadId);
+    public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId)
+        => _getPayloadHandlerV6.HandleAsync(payloadId);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Amsterdam);
