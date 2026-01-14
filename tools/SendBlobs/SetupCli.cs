@@ -276,8 +276,7 @@ internal static class SetupCli
 
     private static async Task<ulong> GetChainIdAsync(IJsonRpcClient rpcClient)
     {
-        string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
-        return HexConvert.ToUInt64(chainIdString);
+        return await rpcClient.Post<ulong>("eth_chainId") ?? 1UL;
     }
 
     public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>
