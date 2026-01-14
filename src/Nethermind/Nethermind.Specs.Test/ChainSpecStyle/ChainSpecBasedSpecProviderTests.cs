@@ -56,8 +56,7 @@ public class ChainSpecBasedSpecProviderTests
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
-            .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
+        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
         expectedSpec.Name = "Genesis_with_non_zero_timestamp";
         expectedSpec.IsEip3651Enabled = true;
         expectedSpec.IsEip3198Enabled = false;
