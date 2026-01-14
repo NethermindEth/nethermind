@@ -546,7 +546,7 @@ namespace Nethermind.Core.Specs
         public bool IsEip7928Enabled { get; }
 
         /// <summary>
-        /// EIP-7928: Block-Level Access Lists
+        /// EIP-7843: SLOTNUM opcode
         /// </summary>
         public bool IsEip7843Enabled { get; }
     }

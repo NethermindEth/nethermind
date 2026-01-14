@@ -133,8 +133,12 @@ internal static unsafe partial class EvmInstructions
         {
             lookup[(int)Instruction.BLOBBASEFEE] = &InstructionBlobBaseFee<TTracingInst>;
         }
+        if (spec.IsEip7843Enabled)
+        {
+            lookup[(int)Instruction.SLOTNUM] = &InstructionSlotNum<TTracingInst>;
+        }
 
-        // Gap: opcodes 0x4b to 0x4f are unassigned.
+        // Gap: opcodes 0x4c to 0x4f are unassigned.
 
         // Memory and storage instructions.
         lookup[(int)Instruction.POP] = &InstructionPop;
