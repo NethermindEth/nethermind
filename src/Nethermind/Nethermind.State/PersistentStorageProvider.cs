@@ -275,6 +275,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             // We can recalculate the roots in parallel as they are all independent tries
             using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
+                // Schedule larger changes first to help balance the work
+                .OrderByDescending(kv => kv.Value.EstimatedChanges)
                 .Select((kv) => (
                     kv.Key,
                     kv.Value,
