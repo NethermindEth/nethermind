@@ -36,6 +36,14 @@ public static class GethLikeNativeTracerFactory
         _tracers.Add(tracerName, tracerDelegate);
     }
 
+    /// <summary>
+    /// Registers an external tracer for use by plugins.
+    /// </summary>
+    public static void RegisterExternalTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
+    {
+        _tracers[tracerName] = tracerDelegate;
+    }
+
     public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState) =>
         _tracers.TryGetValue(options.Tracer, out GethLikeNativeTracerFactoryDelegate tracerDelegate)
             ? tracerDelegate(options, block, transaction, worldState)

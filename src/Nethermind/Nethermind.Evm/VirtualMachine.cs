@@ -97,7 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
     private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
@@ -1360,7 +1360,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
 
-    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
+    protected CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
     {
         if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
 
@@ -1380,7 +1380,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         };
     }
 
-    private void UpdateCurrentState(int pc, in TGasPolicy gas, int stackHead)
+    protected void UpdateCurrentState(int pc, in TGasPolicy gas, int stackHead)
     {
         VmState<TGasPolicy> state = VmState;
 
@@ -1391,7 +1391,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
+    protected void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
     {
         VmState<TGasPolicy> vmState = VmState;
         int sectionIndex = SectionIndex;
@@ -1441,13 +1441,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void EndInstructionTrace(long gasAvailable)
+    protected internal void EndInstructionTrace(long gasAvailable)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
+    protected void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
