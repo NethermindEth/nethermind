@@ -42,7 +42,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
                 if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
-                _stateProvider.AddToBalanceAndCreateIfNotExists(address, amount, spec);
+                _stateProvider.AddToBalanceAndCreateIfNotExists(address, amount, spec, int.MaxValue);
             }
         }
 
