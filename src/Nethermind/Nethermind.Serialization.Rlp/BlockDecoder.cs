@@ -39,20 +39,18 @@ namespace Nethermind.Serialization.Rlp
             return decoded;
         }
 
-        private (int Total, int Txs, int Uncles, int? Withdrawals, int? BlockAccessList, int? GeneratedBlockAccessList) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
             int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
-            (int txs, int uncles, int? withdrawals, int? blockAccessList) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
-            int? generatedBlockAccessList = item.GeneratedBlockAccessList is null ? null : _blockAccessListDecoder.GetLength(item.GeneratedBlockAccessList.Value, rlpBehaviors);
+            (int txs, int uncles, int? withdrawals) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
+            // int? generatedBlockAccessList = item.GeneratedBlockAccessList is null ? null : _blockAccessListDecoder.GetLength(item.GeneratedBlockAccessList.Value, rlpBehaviors);
             int contentLength =
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
-                (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
-                (blockAccessList is not null ? blockAccessList.Value : 0) +
-                (generatedBlockAccessList is not null ? generatedBlockAccessList.Value : 0);
-            return (contentLength, txs, uncles, withdrawals, blockAccessList, generatedBlockAccessList);
+                (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
+            return (contentLength, txs, uncles, withdrawals);
         }
 
         public override int GetLength(Block? item, RlpBehaviors rlpBehaviors)
@@ -82,8 +80,8 @@ namespace Nethermind.Serialization.Rlp
             Block block = new(header, body)
             {
                 EncodedSize = Rlp.LengthOfSequence(sequenceLength),
-                GeneratedBlockAccessList = decoderContext.PeekNumberOfItemsRemaining() == 0 ? null : _blockAccessListDecoder.Decode(ref decoderContext, rlpBehaviors),
-                EncodedBlockAccessList = body.BlockAccessList is null ? null : Rlp.Encode(body.BlockAccessList.Value).Bytes // todo: possible without reencoding?
+                // GeneratedBlockAccessList = decoderContext.PeekNumberOfItemsRemaining() == 0 ? null : _blockAccessListDecoder.Decode(ref decoderContext, rlpBehaviors),
+                // EncodedBlockAccessList = body.BlockAccessList is null ? null : Rlp.Encode(body.BlockAccessList.Value).Bytes // todo: possible without reencoding?
             };
 
             return block;
@@ -109,7 +107,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength, int? balLength, int? genBalLength) = GetContentLength(item, rlpBehaviors);
+            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             _headerDecoder.Encode(stream, item.Header);
             stream.StartSequence(txsLength);
@@ -134,17 +132,17 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (item.BlockAccessList is not null)
-            {
-                // stream.StartSequence(balLength.Value);
-                stream.Encode(item.BlockAccessList.Value);
-            }
+            // if (item.BlockAccessList is not null)
+            // {
+            //     // stream.StartSequence(balLength.Value);
+            //     stream.Encode(item.BlockAccessList.Value);
+            // }
 
-            if (item.GeneratedBlockAccessList is not null)
-            {
-                // stream.StartSequence(genBalLength.Value);
-                stream.Encode(item.GeneratedBlockAccessList.Value);
-            }
+            // if (item.GeneratedBlockAccessList is not null)
+            // {
+            //     // stream.StartSequence(genBalLength.Value);
+            //     stream.Encode(item.GeneratedBlockAccessList.Value);
+            // }
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
