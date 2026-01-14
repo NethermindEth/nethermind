@@ -24,12 +24,14 @@ namespace Ethereum.Test.Base
 
         public IEnumerable<EthereumTest> LoadTests()
         {
-            return _testLoadStrategy.Load(_path, _wildcard);
+            IEnumerable<EthereumTest> tests = _testLoadStrategy.Load(_path, _wildcard);
+            return TestChunkFilter.FilterByChunk(tests, t => $"{t.Category}/{t.Name}");
         }
         public IEnumerable<TTestType> LoadTests<TTestType>()
             where TTestType : EthereumTest
         {
-            return _testLoadStrategy.Load(_path, _wildcard).Cast<TTestType>();
+            IEnumerable<TTestType> tests = _testLoadStrategy.Load(_path, _wildcard).Cast<TTestType>();
+            return TestChunkFilter.FilterByChunk(tests, t => $"{t.Category}/{t.Name}");
         }
     }
 }
