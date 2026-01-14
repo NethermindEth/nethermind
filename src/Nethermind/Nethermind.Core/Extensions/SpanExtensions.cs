@@ -212,7 +212,7 @@ namespace Nethermind.Core.Extensions
         /// </returns>
         /// <remarks>
         /// <para>
-        /// This routine is optimised for throughput and low overhead on modern CPUs. It is based on CRC32C (Castagnoli)
+        /// This routine is optimized for throughput and low overhead on modern CPUs. It is based on CRC32C (Castagnoli)
         /// via <see cref="BitOperations.Crc32C(uint, ulong)"/> and related overloads, and will use hardware acceleration
         /// when the runtime and processor support it.
         /// </para>
@@ -232,7 +232,7 @@ namespace Nethermind.Core.Extensions
             // Fast hardware-accelerated, non-cryptographic hash.
             // Core idea: CRC32C is extremely cheap on CPUs with SSE4.2/ARM CRC,
             // and gives good diffusion for hashing. We then optionally add extra
-            // mixing to reduce "CRC linearity" artefacts.
+            // mixing to reduce "CRC linearity" artifacts.
 
             int len = input.Length;
 
@@ -266,7 +266,7 @@ namespace Nethermind.Core.Extensions
                 uint h = seed;
                 ref byte p = ref start;
 
-                // Process as many full qwords as possible.
+                // Process as many full 64-bit words as possible.
                 // "& ~7" is a cheap round-down-to-multiple-of-8 (no division/mod).
                 int full = len & ~7;
                 int tail = len - full;
@@ -293,18 +293,18 @@ namespace Nethermind.Core.Extensions
             // latency and increase ILP. CRC32C instructions have decent throughput
             // but non-trivial latency; 4 lanes keeps the CPU busy.
             uint h0 = seed;
-            uint h1 = seed ^ 0x9E3779B9u; // golden-ratio-ish constants to decorrelate lanes
-            uint h2 = seed ^ 0x85EBCA6Bu; // constants borrowed from common finalisers (good bit dispersion)
+            uint h1 = seed ^ 0x9E3779B9u; // golden-ratio-ish constants to separate lanes
+            uint h2 = seed ^ 0x85EBCA6Bu; // constants borrowed from common finalizers (good bit dispersion)
             uint h3 = seed ^ 0xC2B2AE35u;
 
             ref byte q = ref start;
 
-            // Consume all full qwords first. Tail (1-7 bytes) is handled later.
+            // Consume all full 64-bit words first. Tail (1-7 bytes) is handled later.
             int aligned = len & ~7;
             int remaining = aligned;
 
             // 64-byte unroll:
-            // - amortises loop branch/compare overhead
+            // - amortizes loop branch/compare overhead
             // - feeds enough independent work to keep OoO cores busy
             // - maps nicely onto cache line sized chunks
             while (remaining >= 64)
@@ -336,7 +336,7 @@ namespace Nethermind.Core.Extensions
                 remaining -= 32;
             }
 
-            // Drain any remaining full qwords (0, 8, 16, or 24 bytes).
+            // Drain any remaining full 64-bit words (0, 8, 16, or 24 bytes).
             // This is branchy but only runs once, so it is cheaper than another loop.
             if (remaining != 0)
             {
@@ -355,7 +355,7 @@ namespace Nethermind.Core.Extensions
             h0 += BitOperations.RotateLeft(h1, 11);
             uint hash = h2 + h0;
 
-            // Handle tail bytes (1-7 bytes) that were not part of the qword-aligned stream.
+            // Handle tail bytes (1-7 bytes) that were not part of the 64-bit-aligned stream.
             // This is exact, in-order processing - no overlap and no over-read.
             int tailBytes = len - aligned;
             if (tailBytes != 0)
@@ -392,7 +392,7 @@ namespace Nethermind.Core.Extensions
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             static uint FinalMix(uint x)
             {
-                // A tiny finaliser to improve avalanche:
+                // A tiny finalizer to improve avalanche:
                 // - xor-fold high bits down
                 // - multiply by an odd constant to spread changes across bits
                 // - xor-fold again to propagate the multiply result

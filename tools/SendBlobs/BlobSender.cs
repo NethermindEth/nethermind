@@ -51,7 +51,7 @@ internal class BlobSender
     // 7 = max fee per blob gas = max value
     // 9 = 1st proof removed
     // 10 = 1st commitment removed
-    // 11 = max fee per blob gas = max value / blobgasperblob + 1
+    // 11 = max fee per blob gas = max value / blobGasPerBlob + 1
     // 14 = 100 blobs
     // 15 = 1000 blobs
     public async Task SendRandomBlobs(
@@ -96,7 +96,7 @@ internal class BlobSender
 
         int signerIndex = -1;
 
-        ulong excessBlobs = (ulong)blobTxCounts.Sum(btxc => btxc.blobCount) / 2;
+        ulong excessBlobs = (ulong)blobTxCounts.Sum(bc => bc.blobCount) / 2;
 
         foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         {
@@ -362,8 +362,6 @@ internal class BlobSender
 
                 if (txHash is not null && blockResult.Transactions.Contains(txHash))
                 {
-                    string? receipt = await rpcClient.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
-
                     Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                     return;
                 }

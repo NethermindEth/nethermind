@@ -8,9 +8,11 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -51,5 +53,22 @@ public class SynchronizerModuleTests
         worldStateManager
             .Received(1)
             .VerifyTrie(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void SyncPeerPool_should_use_INetworkConfig_MaxActivePeers()
+    {
+        NetworkConfig networkConfig = new() { MaxActivePeers = 75 };
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(networkConfig))
+            .AddModule(new SynchronizerModule(new TestSyncConfig()))
+            .AddSingleton(Substitute.For<ITreeSync>())
+            .AddSingleton(Substitute.For<IWorldStateManager>())
+            .Build();
+
+        SyncPeerPool pool = container.Resolve<SyncPeerPool>();
+
+        Assert.That(pool.PeerMaxCount, Is.EqualTo(75));
     }
 }
