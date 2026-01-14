@@ -17,7 +17,7 @@ public static class PathUtils
             || processName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)
             // A workaround for tests in JetBrains Rider ignoring MTP:
             // https://youtrack.jetbrains.com/projects/RIDER/issues/RIDER-131530
-            ? AppContext.BaseDirectory 
+            ? AppContext.BaseDirectory
             : Path.GetDirectoryName(Environment.ProcessPath);
     }
 
