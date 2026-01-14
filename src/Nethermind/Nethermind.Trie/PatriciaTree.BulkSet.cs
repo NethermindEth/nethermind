@@ -273,8 +273,7 @@ public partial class PatriciaTree
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
     {
-        byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
-        Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
+        ReadOnlySpan<byte> shortenedKey = existingNode.Key.AsSpan(1, existingNode.Key.Length - 1);
 
         int branchIdx = existingNode.Key[0];
 
