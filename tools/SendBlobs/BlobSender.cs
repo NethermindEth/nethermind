@@ -76,18 +76,15 @@ internal class BlobSender
             }
         }
 
-        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        ulong chainId = await _rpcClient.Post<ulong>("eth_chainId") ?? 1UL;
 
         foreach (PrivateKey privateKey in privateKeys)
         {
-            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
-            if (nonceString is null)
+            if (await _rpcClient.Post<ulong>("eth_getTransactionCount", privateKey.Address, "latest") is not { } nonce)
             {
                 _logger.Error("Unable to get nonce");
                 return;
             }
-            ulong nonce = HexConvert.ToUInt64(nonceString);
 
             signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
         }
@@ -227,17 +224,14 @@ internal class BlobSender
             }
         }
 
-        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        ulong chainId = await _rpcClient.Post<ulong>("eth_chainId") ?? 1UL;
 
 
-        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
-        if (nonceString is null)
+        if (await _rpcClient.Post<ulong>("eth_getTransactionCount", privateKey.Address, "latest") is not { } nonce)
         {
             _logger.Error("Unable to get nonce");
             return;
         }
-        ulong nonce = HexConvert.ToUInt64(nonceString);
 
         Signer signer = new(chainId, privateKey, _logManager);
 
