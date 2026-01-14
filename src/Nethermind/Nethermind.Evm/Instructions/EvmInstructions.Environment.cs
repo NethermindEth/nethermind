@@ -802,7 +802,7 @@ internal static partial class EvmInstructions
 
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
-        stack.PushUInt64<TTracingInst>(context.SlotNumber);
+        stack.PushUInt64<TTracingInst>(context.Header.SlotNumber.Value);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
