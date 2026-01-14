@@ -104,6 +104,6 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Simulate long finalization by not moving finalized block pointer until after this depth.", DefaultValue = "0", HiddenFromDocs = true)]
     int SimulateLongFinalizationDepth { get; set; }
 
-    [ConfigItem(Description = "If in memory pruning is scheduled how long after newPayload before triggering. Very short will mean it will clash with forkchoice, too long and it will overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
+    [ConfigItem(Description = "If in-memory pruning is scheduled, the duration between `newPayload` and the GC trigger. If too short, it may clash with fork choice; if too long, it may overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
     int PruneDelayMilliseconds { get; set; }
 }
