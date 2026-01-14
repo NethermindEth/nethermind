@@ -16,7 +16,7 @@ WORKDIR /src
 COPY . .
 
 # This will automatically trigger the 'cargo build' via the .csproj target
-RUN dotnet publish EthProofValidator.csproj -c Release -o /app/publish
+RUN dotnet publish src/EthProofValidator.csproj -c Release -o /app/publish
 
 # Copy the compiled native library to the publish directory
 RUN cp /src/native-zk-verifier/target/release/libnative_zk_verifier.so /app/publish/

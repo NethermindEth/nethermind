@@ -34,7 +34,7 @@ The repository is composed of two main parts:
     Navigate to the root directory of the .NET project and build the C# application. This process will automatically build the Rust verifier library and copy the necessary native libraries into the output directory.
 
     ```bash
-    dotnet build
+    dotnet build src
     ```
 
 ### Running the Application
@@ -42,6 +42,7 @@ The repository is composed of two main parts:
 After building both components, you can run the .NET application from the root directory:
 
 ```bash
+cd src/
 dotnet run <LatestBlockId> <BlockCount>
 ```
 
