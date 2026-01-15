@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base;
 /// <summary>
 /// Filters tests into chunks for parallel CI execution.
 /// Set TEST_CHUNK environment variable to "1of3", "2of3", "3of3" etc.
-/// Uses consistent hashing on test names to ensure deterministic partitioning.
+/// Partitions tests by index for consistent and even distribution.
 /// </summary>
 public static class TestChunkFilter
 {
@@ -43,26 +43,19 @@ public static class TestChunkFilter
         if (chunkConfig is null)
             return tests;
 
-        // Materialize to ensure consistent enumeration
+        // Materialize to ensure consistent enumeration and index-based chunking
         var testList = tests as IList<T> ?? tests.ToList();
-        var (index, total) = chunkConfig.Value;
-        return testList.Where(test => GetChunkForTest(getTestIdentifier(test), total) == index);
-    }
+        var (chunkIndex, totalChunks) = chunkConfig.Value;
 
-    /// <summary>
-    /// Determines which chunk (1-based) a test belongs to based on its identifier.
-    /// Uses a stable hash to ensure consistent assignment across runs.
-    /// </summary>
-    private static int GetChunkForTest(string testIdentifier, int totalChunks)
-    {
-        // Use a simple stable hash - sum of character codes
-        // This is deterministic and doesn't depend on runtime specifics
-        long hash = 0;
-        foreach (char c in testIdentifier)
-        {
-            hash = (hash * 31 + c) & 0x7FFFFFFF;
-        }
+        int count = testList.Count;
+        int chunkSize = count / totalChunks;
+        int remainder = count % totalChunks;
 
-        return (int)(hash % totalChunks) + 1; // 1-based chunk index
+        // Calculate start and end indices for this chunk
+        // Distribute remainder across first chunks (one extra item each)
+        int start = (chunkIndex - 1) * chunkSize + Math.Min(chunkIndex - 1, remainder);
+        int end = start + chunkSize + (chunkIndex <= remainder ? 1 : 0);
+
+        return testList.Skip(start).Take(end - start);
     }
 }
