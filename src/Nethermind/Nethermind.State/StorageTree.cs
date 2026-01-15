@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -16,27 +12,30 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
-        private const int LookupSize = 1024;
-        private static readonly FrozenDictionary<UInt256, ValueHash256> Lookup = CreateLookup();
+        private static readonly ValueHash256[] Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
-        private static FrozenDictionary<UInt256, ValueHash256> CreateLookup()
+        private static ValueHash256[] CreateLookup()
         {
+            const int LookupSize = 1024;
+
             Span<byte> buffer = stackalloc byte[32];
-            Dictionary<UInt256, ValueHash256> lookup = new Dictionary<UInt256, ValueHash256>(LookupSize);
-            for (int i = 0; i < LookupSize; i++)
+            ValueHash256[] lookup = new ValueHash256[LookupSize];
+
+            for (int i = 0; i < lookup.Length; i++)
             {
                 UInt256 index = new UInt256((uint)i);
                 index.ToBigEndian(buffer);
-                lookup[index] = ValueKeccak.Compute(buffer);
+                lookup[i] = ValueKeccak.Compute(buffer);
             }
 
-            return lookup.ToFrozenDictionary();
+            return lookup;
         }
 
         public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
@@ -54,16 +53,21 @@ namespace Nethermind.State
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ComputeKey(in UInt256 index, out ValueHash256 key)
         {
-            Span<byte> buffer = stackalloc byte[32];
-            index.ToBigEndian(buffer);
-            KeccakCache.ComputeTo(buffer, out key);
+            // Cannot use key as both in and out to KeccakCache.ComputeTo,
+            // so create another 32-byte buffer
+            Unsafe.SkipInit(out ValueHash256 buffer);
+            index.ToBigEndian(buffer.BytesAsSpan);
+            KeccakCache.ComputeTo(buffer.Bytes, out key);
         }
 
+        [SkipLocalsInit]
         public static void ComputeKeyWithLookup(in UInt256 index, ref ValueHash256 key)
         {
-            if (index < LookupSize)
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                key = Lookup[index];
+                key = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0);
                 return;
             }
 
@@ -96,9 +100,13 @@ namespace Nethermind.State
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
-            if (index < LookupSize)
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                return GetArray(Lookup[index].Bytes, storageRoot);
+                return GetArray(
+                    in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0),
+                    storageRoot);
             }
 
             return GetWithKeyGenerate(in index, storageRoot);
@@ -107,12 +115,13 @@ namespace Nethermind.State
             byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
             {
                 ComputeKey(index, out ValueHash256 key);
-                return GetArray(key.Bytes, storageRoot);
+                return GetArray(in key, storageRoot);
             }
         }
 
-        public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public byte[] GetArray(in ValueHash256 key, Hash256? rootHash = null)
         {
+            ReadOnlySpan<byte> rawKey = key.Bytes;
             ReadOnlySpan<byte> value = Get(rawKey, rootHash);
 
             if (value.IsEmpty)
@@ -147,15 +156,17 @@ namespace Nethermind.State
 
         public byte[] Get(in ValueHash256 hash)
         {
-            return GetArray(hash.Bytes, null);
+            return GetArray(in hash, null);
         }
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
-            if (index < LookupSize)
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                SetInternal(Lookup[index].Bytes, value);
+                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value);
             }
             else
             {
@@ -166,17 +177,18 @@ namespace Nethermind.State
             void SetWithKeyGenerate(in UInt256 index, byte[] value)
             {
                 ComputeKey(index, out ValueHash256 key);
-                SetInternal(key.Bytes, value);
+                SetInternal(in key, value);
             }
         }
 
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
         {
-            SetInternal(key.Bytes, value, rlpEncode);
+            SetInternal(in key, value, rlpEncode);
         }
 
-        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {
+            ReadOnlySpan<byte> rawKey = hash.Bytes;
             if (value.IsZero())
             {
                 Set(rawKey, []);
