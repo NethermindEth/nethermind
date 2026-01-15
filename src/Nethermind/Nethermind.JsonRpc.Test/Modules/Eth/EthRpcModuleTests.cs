@@ -215,7 +215,7 @@ public partial class EthRpcModuleTests
         if (eip1559)
         {
             specProvider = Substitute.For<ISpecProvider>();
-            ReleaseSpec releaseSpec = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
+            ReleaseSpec releaseSpec = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         }
 
