@@ -49,6 +49,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly int _allocationsUpgradeIntervalInMs;
+        private readonly int _maxAllocationsPerPeerPerContext;
 
         private bool _isStarted;
         private readonly Lock _isAllocatedChecks = new();
@@ -67,8 +68,9 @@ namespace Nethermind.Synchronization.Peers
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
             INetworkConfig networkConfig,
+            ISyncConfig syncConfig,
             ILogManager logManager)
-        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount)
+        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount, DefaultUpgradeIntervalInMs, syncConfig.MaxAllocationsPerPeerPerContext)
         {
 
         }
@@ -79,7 +81,8 @@ namespace Nethermind.Synchronization.Peers
             ILogManager logManager,
             int peersMaxCount = 100,
             int priorityPeerMaxCount = 0,
-            int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs)
+            int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs,
+            int maxAllocationsPerPeerPerContext = 2)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -87,6 +90,7 @@ namespace Nethermind.Synchronization.Peers
             PeerMaxCount = peersMaxCount;
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
+            _maxAllocationsPerPeerPerContext = maxAllocationsPerPeerPerContext;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
@@ -243,6 +247,7 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer);
+            peerInfo.SetMaxAllocationsPerContext(_maxAllocationsPerPeerPerContext);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
 
