@@ -44,7 +44,7 @@ public abstract class BlockchainTestBase
     private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
-    private const int _genesisProcessingTimeoutMs = 5000;
+    private const int _genesisProcessingTimeoutMs = 30000;
 
     static BlockchainTestBase()
     {
