@@ -33,26 +33,21 @@ public static class TestChunkFilter
         return (index, total);
     }
 
-    /// <summary>
-    /// Filters a collection of tests based on the TEST_CHUNK environment variable.
-    /// If TEST_CHUNK is not set, returns all tests.
-    /// </summary>
-    public static IEnumerable<T> FilterByChunk<T>(IEnumerable<T> tests, Func<T, string> getTestIdentifier)
+    public static IEnumerable<T> FilterByChunk<T>(IEnumerable<T> tests)
     {
-        var chunkConfig = GetChunkConfig();
+        (int Index, int Total)? chunkConfig = GetChunkConfig();
         if (chunkConfig is null)
+        {
             return tests;
+        }
 
-        // Materialize to ensure consistent enumeration and index-based chunking
-        var testList = tests as IList<T> ?? tests.ToList();
-        var (chunkIndex, totalChunks) = chunkConfig.Value;
+        ICollection<T> testList = tests as ICollection<T> ?? [.. tests];
+        (int chunkIndex, int totalChunks) = chunkConfig.Value;
 
         int count = testList.Count;
         int chunkSize = count / totalChunks;
         int remainder = count % totalChunks;
 
-        // Calculate start and end indices for this chunk
-        // Distribute remainder across first chunks (one extra item each)
         int start = (chunkIndex - 1) * chunkSize + Math.Min(chunkIndex - 1, remainder);
         int end = start + chunkSize + (chunkIndex <= remainder ? 1 : 0);
 
