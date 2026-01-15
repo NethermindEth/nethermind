@@ -75,6 +75,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.Shanghai ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
+        executionPayloadParams.LogParentBeaconBlockRoot(_logger);
+
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)

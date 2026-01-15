@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -12,6 +13,7 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    Hash256? ParentBeaconBlockRoot { get; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -67,10 +69,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
+    byte[][]? executionRequests = null,
+    ILogger? logger = null)
     : ExecutionPayloadParams(executionRequests), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
+    private readonly ILogger? _logger = logger;
+    private readonly Hash256? _parentBeaconBlockRoot = parentBeaconBlockRoot;
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
+    public Hash256? ParentBeaconBlockRoot => _parentBeaconBlockRoot;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
@@ -95,13 +101,18 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Invalid;
         }
 
-        if (parentBeaconBlockRoot is null)
+        // Use parentBeaconBlockRoot parameter if provided, otherwise fall back to executionPayload.ParentBeaconBlockRoot
+        // This handles cases where op-node sends valid requests with parentBeaconBlockRoot in the payload itself
+
+        Hash256? finalParentBeaconBlockRoot = _parentBeaconBlockRoot ?? executionPayload.ParentBeaconBlockRoot;
+
+        if (finalParentBeaconBlockRoot is null)
         {
             error = "Parent beacon block root must be set";
             return ValidationResult.Fail;
         }
 
-        executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        executionPayload.ParentBeaconBlockRoot = finalParentBeaconBlockRoot;
 
         error = null;
         return ValidationResult.Success;
