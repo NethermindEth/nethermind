@@ -122,9 +122,11 @@ public abstract class VirtualMachineTestsBase
 
     protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000, code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, params byte[] code)
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, params byte[] code) => Execute(activation, gasLimit, 0, code);
+
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, ulong slotNumber, params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code, slotNumber: slotNumber);
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
@@ -211,6 +213,7 @@ public abstract class VirtualMachineTestsBase
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
+        ulong slotNumber = 0,
         Transaction transaction = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
@@ -251,7 +254,7 @@ public abstract class VirtualMachineTestsBase
             .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
             .TestObject;
 
-        Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
+        Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas, slotNumber);
         BlockNumber = block.Header.Number;
         Timestamp = block.Header.Timestamp;
         return (block, transaction);
@@ -327,7 +330,7 @@ public abstract class VirtualMachineTestsBase
     }
 
     protected virtual Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner,
-        Transaction tx, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0)
+        Transaction tx, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0, ulong slotNumber = 0)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
         return Build.A.Block.WithNumber(activation.BlockNumber)
@@ -339,6 +342,7 @@ public abstract class VirtualMachineTestsBase
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakG)
             .WithExcessBlobGas(excessBlobGas)
+            .WithSlotNumber(slotNumber)
             .TestObject;
     }
 
