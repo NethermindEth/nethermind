@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -227,10 +228,10 @@ namespace Nethermind.Trie.Test
                 _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
                 _finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
 
-                _trieStore = new TrieStore(
-                    new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
+                _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
                 _finalizedStateProvider.TrieStore = _trieStore;
-                _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
+                _stateProvider = new WorldState(
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
             }
@@ -428,15 +429,20 @@ namespace Nethermind.Trie.Test
                 return Commit(waitForPruning: true);
             }
 
+            public PruningContext SyncPruneCheck()
+            {
+                _trieStore.SyncPruneQueue();
+                return this;
+            }
+
             public PruningContext DisposeAndRecreate()
             {
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
-
                 TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
-                finalizedStateProvider.TrieStore = _trieStore;
-                _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
+                _stateProvider = new WorldState(
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 return this;
             }
@@ -1348,6 +1354,86 @@ namespace Nethermind.Trie.Test
                 await blockTask;
             }
 
+        }
+
+        [Test]
+        public async Task Can_BeginScope_During_Persisted_Node_Pruning()
+        {
+            PruningContext ctx = PruningContext.InMemory
+                .WithPruningConfig((cfg) =>
+                {
+                    cfg.DirtyNodeShardBit = 12; // More shard, deliberately make it slow
+                })
+                .WithMaxDepth(128)
+                .WithPersistedMemoryLimit(50.KiB())
+                .WithPrunePersistedNodeParameter(1, 0.01)
+                .TurnOffPrune();
+
+            // Make a big state
+            for (int i = 0; i < 16_000; i++)
+            {
+                ctx.SetAccountBalance(i, (UInt256)i);
+            }
+            ctx.Commit();
+
+            // Make the big state go to pruning boundary
+            for (int i = 0; i < 128; i++)
+            {
+                ctx.Commit();
+            }
+
+            ctx
+                .AssertThatCachedPersistedNodeCountIs(0)
+                .TurnOnPrune()
+                .SyncPruneCheck()
+                .TurnOffPrune()
+                .AssertThatCachedPersistedNodeCountIs(21745L);
+
+            // Make a different big state
+            for (int i = 0; i < 16_000; i++)
+            {
+                ctx.SetAccountBalance(i, (UInt256)(i + 1));
+            }
+            ctx.Commit();
+
+            // Move pruning boundary again
+            for (int i = 0; i < 128 - 1; i++)
+            {
+                ctx.Commit();
+            }
+
+            // Make the exact same big state as the first try
+            for (int i = 0; i < 16_000; i++)
+            {
+                ctx.SetAccountBalance(i, (UInt256)i);
+            }
+            ctx.Commit();
+
+            ctx.TurnOnPrune();
+
+            TimeSpan syncPruneCheckTime = TimeSpan.Zero;
+            Task pruneTime = Task.Run(() =>
+            {
+                long sw = Stopwatch.GetTimestamp();
+                ctx.SyncPruneCheck();
+                ctx.TurnOffPrune();
+                ctx.AssertThatCachedPersistedNodeCountIs(21747L);
+                syncPruneCheckTime = Stopwatch.GetElapsedTime(sw);
+            });
+
+            long sw = Stopwatch.GetTimestamp();
+            for (int i = 0; i < 1000; i++)
+            {
+                ctx.ExitScope();
+                ctx.EnterScope();
+            }
+
+            TimeSpan exitEnterScopeTime = Stopwatch.GetElapsedTime(sw);
+
+            await pruneTime;
+
+            Assert.That(syncPruneCheckTime, Is.LessThan(5.Seconds())); // Does not hang
+            Assert.That(exitEnterScopeTime, Is.LessThan(syncPruneCheckTime)); // Is not blocked by prune
         }
     }
 }

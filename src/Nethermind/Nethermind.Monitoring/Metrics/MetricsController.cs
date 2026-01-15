@@ -30,10 +30,9 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalMilliseconds;
         private Timer _timer = null!;
-        private static bool _staticLabelsInitialized = false;
+        private static bool _staticLabelsInitialized;
 
         private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
-        private readonly HashSet<Type> _metricTypes = new();
 
         // Largely for testing reason
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
@@ -157,14 +156,6 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void RegisterMetrics(Type type)
-        {
-            if (_metricTypes.Add(type))
-            {
-                EnsurePropertiesCached(type);
-            }
-        }
-
         internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
 
         private static CommonMetricInfo DetermineMetricInfo(MemberInfo member)
@@ -182,7 +173,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
-            var metricInfo = DetermineMetricInfo(member);
+            CommonMetricInfo metricInfo = DetermineMetricInfo(member);
             return CreateGauge(metricInfo.Name, metricInfo.Description, metricInfo.Tags, labels);
         }
 
@@ -214,11 +205,11 @@ namespace Nethermind.Monitoring.Metrics
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName) ?? throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
-            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
+            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialized!");
             return value.ToString()!;
         }
 
-        private void EnsurePropertiesCached(Type type)
+        public void RegisterMetrics(Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {
@@ -230,7 +221,7 @@ namespace Nethermind.Monitoring.Metrics
 
                 IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
-                foreach (var member in members)
+                foreach (MemberInfo member in members)
                 {
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
@@ -364,26 +355,16 @@ namespace Nethermind.Monitoring.Metrics
                 callback();
             }
 
-            foreach (Type metricType in _metricTypes)
+            foreach (IMetricUpdater[] updaters in _metricUpdaters.Values)
             {
-                UpdateMetrics(metricType);
+                foreach (IMetricUpdater metricUpdater in updaters)
+                {
+                    metricUpdater.Update();
+                }
             }
         }
 
-        public void AddMetricsUpdateAction(Action callback)
-        {
-            _callbacks.Add(callback);
-        }
-
-        private void UpdateMetrics(Type type)
-        {
-            EnsurePropertiesCached(type);
-
-            foreach (IMetricUpdater metricUpdater in _metricUpdaters[type])
-            {
-                metricUpdater.Update();
-            }
-        }
+        public void AddMetricsUpdateAction(Action callback) => _callbacks.Add(callback);
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 

@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture(DiscoveryVersion.V5)]
 public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Common code for all node

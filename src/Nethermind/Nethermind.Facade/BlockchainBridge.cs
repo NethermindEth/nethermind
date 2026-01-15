@@ -109,7 +109,7 @@ namespace Nethermind.Facade
             return (null, 0, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
+        public (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
             TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
                 ? (txReceipt, tx, block.BaseFeePerGas)
                 : checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
@@ -289,21 +289,21 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null,
+            HashSet<AddressAsKey>? addresses = null,
+            IEnumerable<Hash256[]?>? topics = null,
             CancellationToken cancellationToken = default)
         {
-            LogFilter filter = GetFilter(fromBlock, toBlock, address, topics);
+            LogFilter filter = GetFilter(fromBlock, toBlock, addresses, topics);
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
         public LogFilter GetFilter(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null)
+            HashSet<AddressAsKey>? addresses = null,
+            IEnumerable<Hash256[]?>? topics = null)
         {
-            return filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+            return filterStore.CreateLogFilter(fromBlock, toBlock, addresses, topics, false);
         }
 
         public IEnumerable<FilterLog> GetLogs(
@@ -325,10 +325,10 @@ namespace Nethermind.Facade
             return filter is not null;
         }
 
-        public int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock,
-            object? address = null, IEnumerable<object>? topics = null)
+        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
+            HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null)
         {
-            LogFilter filter = filterStore.CreateLogFilter(fromBlock ?? BlockParameter.Latest, toBlock ?? BlockParameter.Latest, address, topics);
+            LogFilter filter = filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
@@ -378,9 +378,9 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {
-            stateReader.RunTreeVisitor(treeVisitor, stateRoot);
+            stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
         public bool HasStateForBlock(BlockHeader baseBlock)

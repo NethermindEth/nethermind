@@ -7,18 +7,20 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
 
-public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
+public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
 
     private readonly AutoResetEvent _autoResetEvent = new(false);
-    private readonly Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
-    private Func<EvmState, bool>? _globalBreakCondition;
+    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = new();
+    private Func<VmState<TGasPolicy>, bool>? _globalBreakCondition;
     private readonly object _lock = new();
 
     public DebugTracer(ITxTracer tracer)
@@ -32,7 +34,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Starting;
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
     public bool IsStepByStepModeOn { get; set; }
-    public EvmState? CurrentState { get; set; }
+    public VmState<TGasPolicy>? CurrentState { get; set; }
 
     public bool IsTracingReceipt => InnerTracer.IsTracingReceipt;
 
@@ -62,9 +64,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
-    public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
+    public bool IsBreakpointSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
-    public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
+    public void SetBreakPoint((int depth, int pc) point, Func<VmState<TGasPolicy>, bool> condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
         {
@@ -79,12 +81,12 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void SetCondition(Func<EvmState, bool>? condition = null)
+    public void SetCondition(Func<VmState<TGasPolicy>, bool>? condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }
 
-    public void TryWait(ref EvmState evmState, ref int programCounter, ref long gasAvailable, ref int stackHead)
+    public void TryWait(ref VmState<TGasPolicy> vmState, ref int programCounter, ref TGasPolicy gas, ref int stackHead)
     {
         if (CurrentPhase is DebugPhase.Aborted)
         {
@@ -93,10 +95,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
         lock (_lock)
         {
-            evmState.ProgramCounter = programCounter;
-            evmState.GasAvailable = gasAvailable;
-            evmState.DataStackHead = stackHead;
-            CurrentState = evmState;
+            vmState.ProgramCounter = programCounter;
+            vmState.Gas = gas;
+            vmState.DataStackHead = stackHead;
+            CurrentState = vmState;
         }
 
         if (IsStepByStepModeOn)
@@ -112,7 +114,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         lock (_lock)
         {
             stackHead = CurrentState.DataStackHead;
-            gasAvailable = CurrentState.GasAvailable;
+            gas = CurrentState.Gas;
             programCounter = CurrentState.ProgramCounter;
         }
     }
@@ -163,7 +165,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     {
         (int CallDepth, int ProgramCounter) breakpoint = (CurrentState!.Env.CallDepth, CurrentState.ProgramCounter);
 
-        if (_breakPoints.TryGetValue(breakpoint, out Func<EvmState, bool>? point))
+        if (_breakPoints.TryGetValue(breakpoint, out Func<VmState<TGasPolicy>, bool>? point))
         {
             bool conditionResults = point?.Invoke(CurrentState) ?? true;
             if (conditionResults)
@@ -291,5 +293,13 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     {
         _autoResetEvent.Dispose();
     }
+}
+
+/// <summary>
+/// Non-generic DebugTracer for backward compatibility with EthereumGasPolicy.
+/// </summary>
+public class DebugTracer : DebugTracer<EthereumGasPolicy>
+{
+    public DebugTracer(ITxTracer tracer) : base(tracer) { }
 }
 #endif
