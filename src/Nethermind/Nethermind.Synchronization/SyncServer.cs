@@ -412,6 +412,8 @@ namespace Nethermind.Synchronization
 
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
+        public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
         public Hash256? FindHash(long number)
         {
             try
