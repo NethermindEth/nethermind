@@ -124,6 +124,7 @@ internal static partial class EvmInstructions
 
             if (opPush2 == Instruction.PUSH2 && opJumpi == Instruction.JUMPI)
             {
+                TGasPolicy.Consume(ref gas, GasCostOf.JumpI + GasCostOf.VeryLow);
                 if (result == OpBitwiseEq.One)
                 {
                     // value was zero, ISZERO is true: perform the jump immediately.
