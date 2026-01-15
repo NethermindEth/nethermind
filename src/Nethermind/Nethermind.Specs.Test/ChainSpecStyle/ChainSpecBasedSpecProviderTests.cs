@@ -56,8 +56,7 @@ public class ChainSpecBasedSpecProviderTests
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
-            .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
+        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
         expectedSpec.Name = "Genesis_with_non_zero_timestamp";
         expectedSpec.IsEip3651Enabled = true;
         expectedSpec.IsEip3198Enabled = false;
@@ -239,7 +238,7 @@ public class ChainSpecBasedSpecProviderTests
                 expectedDepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress;
                 break;
             default:
-                Assert.Fail("Unrecognised chain id when verifying Prague specifics.");
+                Assert.Fail("Unrecognized chain id when verifying Prague specifics.");
                 return;
         }
 
@@ -661,12 +660,9 @@ public class ChainSpecBasedSpecProviderTests
 
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled)))
         {
             Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);

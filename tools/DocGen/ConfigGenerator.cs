@@ -96,12 +96,15 @@ internal static class ConfigGenerator
 
         foreach (var prop in props)
         {
-            var itemAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
+            var configAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (itemAttr?.HiddenFromDocs ?? true)
+            if (configAttr?.HiddenFromDocs ?? true)
                 continue;
 
-            var description = itemAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
+            var description = configAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
+            var cliAlias = string.IsNullOrWhiteSpace(configAttr.CliOptionAlias)
+                ? $"{moduleName}-{prop.Name}"
+                : configAttr.CliOptionAlias;
             (string value, string cliValue) = GetValue(prop);
 
             file.Write($$"""
@@ -110,7 +113,7 @@ internal static class ConfigGenerator
                   <Tabs groupId="usage">
                   <TabItem value="cli" label="CLI">
                   ```
-                  --{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}} {{cliValue}}
+                  --{{cliAlias.ToLowerInvariant()}} {{cliValue}}
                   --{{moduleName}}.{{prop.Name}} {{cliValue}}
                   ```
                   </TabItem>
@@ -135,7 +138,7 @@ internal static class ConfigGenerator
 
             var startsFromNewLine = WriteAllowedValues(file, prop.PropertyType) || description.EndsWith('\n');
 
-            WriteDefaultValue(file, itemAttr, startsFromNewLine);
+            WriteDefaultValue(file, configAttr, startsFromNewLine);
 
             file.WriteLine();
             file.WriteLine();

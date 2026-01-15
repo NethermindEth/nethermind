@@ -2,31 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 
 namespace Nethermind.Logging;
 
 public static class PathUtils
 {
-    public static string ExecutingDirectory { get; }
-
-    static PathUtils()
-    {
-        Process process = Process.GetCurrentProcess();
-        if (process.ProcessName.StartsWith("dotnet", StringComparison.OrdinalIgnoreCase)
-            || process.ProcessName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase))
-        {
-            ExecutingDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        }
-        else
-        {
-            ExecutingDirectory = Path.GetDirectoryName(process.MainModule.FileName);
-            //Console.WriteLine($"Resolved executing directory as {ExecutingDirectory}.");
-        }
-    }
+    public static string ExecutingDirectory { get; } = Path.GetDirectoryName(Environment.ProcessPath);
 
     public static string GetApplicationResourcePath(this string resourcePath, string overridePrefixPath = null)
     {
@@ -50,13 +33,13 @@ public static class PathUtils
             : Path.Combine(ExecutingDirectory, overridePrefixPath, resourcePath);
     }
 
-    static readonly string[] RelativePrefixes = new[]
+    static readonly string[] RelativePrefixes = [.. new[]
     {
-        "." + Path.DirectorySeparatorChar,
-        "." + Path.AltDirectorySeparatorChar,
-        ".." + Path.DirectorySeparatorChar,
-        ".." + Path.AltDirectorySeparatorChar,
-    }.Distinct().ToArray();
+        $".{Path.DirectorySeparatorChar}",
+        $".{Path.AltDirectorySeparatorChar}",
+        $"..{Path.DirectorySeparatorChar}",
+        $"..{Path.AltDirectorySeparatorChar}",
+    }.Distinct()];
 
     public static bool IsExplicitlyRelative(string resourcePath) => RelativePrefixes.Any(resourcePath.StartsWith);
 }

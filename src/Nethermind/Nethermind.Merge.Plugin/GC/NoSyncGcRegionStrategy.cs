@@ -20,9 +20,12 @@ public class NoSyncGcRegionStrategy : IGCStrategy
         GcLevel gcLevel = (GcLevel)Math.Min((int)GcLevel.Gen2, (int)mergeConfig.SweepMemory);
         GcCompaction gcCompaction = (GcCompaction)Math.Min((int)GcCompaction.Full, (int)mergeConfig.CompactMemory);
         _gcParams = (gcLevel, gcCompaction);
+        PostBlockDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)((mergeConfig.SecondsPerSlot * 1000) / 8);
     }
 
     public int CollectionsPerDecommit { get; }
+    public int PostBlockDelayMs { get; }
+
     public bool CanStartNoGCRegion() => _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;
     public (GcLevel, GcCompaction) GetForcedGCParams() => _gcParams;
 }
