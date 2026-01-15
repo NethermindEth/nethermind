@@ -28,6 +28,8 @@ public class InvalidBlockInterceptorTest
     public void Setup()
     {
         _baseValidator = Substitute.For<IBlockValidator>();
+        // ValidateBodyAgainstHeader is used implicitly by ShouldNotTrackInvalidation method
+        // to determine if body/header mismatch should prevent tracking invalid blocks.
         _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out _)
             .Returns(f =>
             {
@@ -118,6 +120,7 @@ public class InvalidBlockInterceptorTest
         _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
 
+        _baseValidator.Received().ValidateBodyAgainstHeader(block.Header, block.Body, out _);
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
     }
@@ -138,6 +141,7 @@ public class InvalidBlockInterceptorTest
         _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
 
+        _baseValidator.Received().ValidateBodyAgainstHeader(block.Header, block.Body, out _);
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
     }
