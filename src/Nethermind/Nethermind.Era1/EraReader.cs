@@ -21,10 +21,10 @@ namespace Nethermind.Era1;
 /// </summary>
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
-    private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
-    private readonly E2StoreReader _fileReader;
+    protected readonly ReceiptMessageDecoder _receiptDecoder;
+    protected readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+    protected readonly HeaderDecoder _headerDecoder = new();
+    protected readonly E2StoreReader _fileReader;
 
     public long FirstBlock => _fileReader.First;
     public long LastBlock => _fileReader.LastBlock;
@@ -35,9 +35,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     }
 
 
-    public EraReader(E2StoreReader e2)
+    public EraReader(E2StoreReader e2, ReceiptMessageDecoder? receiptDecoder = null)
     {
         _fileReader = e2;
+        _receiptDecoder = receiptDecoder ?? new();
     }
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
@@ -49,7 +50,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         }
     }
 
-    private IEnumerable<long> EnumerateBlockNumber()
+    protected IEnumerable<long> EnumerateBlockNumber()
     {
         long blockNumber = _fileReader.First;
         while (blockNumber <= _fileReader.LastBlock)
@@ -66,7 +67,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
+    public virtual async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
@@ -123,7 +124,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return accumulator;
     }
 
-    public ValueHash256 ReadAccumulator()
+    public virtual ValueHash256 ReadAccumulator()
     {
         _ = _fileReader.ReadEntryAndDecode<ValueHash256>(
             _fileReader.AccumulatorOffset,
@@ -144,7 +145,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return (result.Block, result.Receipts);
     }
 
-    private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
+    protected virtual async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
             || blockNumber > _fileReader.First + _fileReader.BlockCount)
@@ -185,19 +186,19 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return new EntryReadResult(block, receipts);
     }
 
-    private BlockBody DecodeBody(Memory<byte> buffer)
+    protected BlockBody DecodeBody(Memory<byte> buffer)
     {
         var ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
-    private BlockHeader DecodeHeader(Memory<byte> buffer)
+    protected BlockHeader DecodeHeader(Memory<byte> buffer)
     {
         var ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
-    private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
+    protected TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
@@ -210,7 +211,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult
+    protected struct EntryReadResult
     {
         public EntryReadResult(Block block, TxReceipt[] receipts)
         {

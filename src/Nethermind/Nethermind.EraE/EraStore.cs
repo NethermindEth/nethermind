@@ -1,26 +1,27 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
-using CommunityToolkit.HighPerformance;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
-using NonBlocking;
 
-namespace Nethermind.Era1;
+namespace Nethermind.EraE;
 
-public class EraStore : IEraStore
+public class EraStore : Era1.IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
 
     protected readonly ISpecProvider _specProvider;
     protected readonly IBlockValidator _blockValidator;
-    protected readonly ISet<ValueHash256>? _trustedAccumulators;
+
+    private readonly ISet<ValueHash256>? _trustedAccumulators;
+    private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
+    private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
 
     protected readonly Dictionary<long, string> _epochs;
     protected readonly ValueHash256[] _checksums;
@@ -81,7 +82,9 @@ public class EraStore : IEraStore
         IFileSystem fileSystem,
         string networkName,
         int maxEraSize,
-        ISet<ValueHash256>? trustedAccumulators,
+        ISet<ValueHash256>? trustedAcccumulators,
+        ISet<ValueHash256>? trustedHistoricalRoots,
+        IHistoricalSummariesProvider? historicalSummariesProvider,
         string directory,
         int verifyConcurrency = 0,
         string checksumsFileName = EraExporter.ChecksumsFileName
@@ -89,7 +92,9 @@ public class EraStore : IEraStore
     {
         _specProvider = specProvider;
         _blockValidator = blockValidator;
-        _trustedAccumulators = trustedAccumulators;
+        _trustedAccumulators = trustedAcccumulators;
+        _trustedHistoricalRoots = trustedHistoricalRoots;
+        _historicalSummariesProvider = historicalSummariesProvider;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
         if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
@@ -104,10 +109,10 @@ public class EraStore : IEraStore
         _epochs = new();
         foreach (var file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
-            string[] parts = Path.GetFileName(file).Split(_eraSeparator);
+            string[] parts = Path.GetFileNameWithoutExtension(file).Split(_eraSeparator);
             int epoch;
-            if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
-                throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
+            if (!int.TryParse(parts[1], out epoch) || epoch < 0)
+                throw new ArgumentException($"Malformed EraE file '{file}'.", file);
             _epochs[epoch] = file;
             hasEraFile = true;
             if (epoch > LastEpoch)
@@ -118,7 +123,7 @@ public class EraStore : IEraStore
 
         if (!hasEraFile)
         {
-            throw new EraException($"No relevant era files in directory {directory}");
+            throw new Era1.EraException($"No relevant era files in directory {directory}");
         }
     }
 
@@ -137,7 +142,7 @@ public class EraStore : IEraStore
         return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
-    protected virtual async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
+    protected async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
@@ -154,11 +159,7 @@ public class EraStore : IEraStore
 
             Task accumulatorTask = Task.Run(async () =>
             {
-                ValueHash256 eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
-                if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
-                {
-                    throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
-                }
+                await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
             });
 
             await Task.WhenAll(checksumTask, accumulatorTask);
