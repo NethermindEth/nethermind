@@ -176,9 +176,13 @@ internal static partial class EvmInstructions
             else
             {
                 TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
+                if(CheckStackUnderflow(ref stack, 1))
+                {
+                    goto StackUnderflow;
+                }
+
                 vm.OpCodeCount++;
-                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-                if (isOverflow) goto StackUnderflow;
+                bool shouldJump = TestJumpCondition(ref stack);
                 if (!shouldJump)
                 {
                     // Move forward by 2 bytes + JUMPI

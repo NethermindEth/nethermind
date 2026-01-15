@@ -122,8 +122,7 @@ internal static partial class EvmInstructions
         // Pop the jump destination.
         stack.PopUInt256(out UInt256 result);
 
-        bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-        if (isOverflow) goto StackUnderflow;
+        bool shouldJump = TestJumpCondition(ref stack);
         if (shouldJump)
         {
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
@@ -139,16 +138,10 @@ internal static partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TestJumpCondition(ref EvmStack stack, out bool isOverflow)
+    private static bool TestJumpCondition(ref EvmStack stack)
     {
-        isOverflow = false;
         // Pop the condition as a byte reference.
         ref byte condition = ref stack.PopBytesByRef();
-        if (Unsafe.IsNullRef(in condition))
-        {
-            isOverflow = true;
-            return false;
-        }
         // If the condition is non-zero (i.e., true), attempt to perform the jump.
         return (Unsafe.As<byte, Vector256<byte>>(ref condition) != default);
     }
