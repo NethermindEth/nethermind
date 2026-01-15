@@ -269,7 +269,7 @@ internal static partial class EvmInstructions
             // then this pattern likely corresponds to a contract existence check.
             else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ))
             {
-                if(CheckStackUnderflow(ref stack, 1))
+                if (CheckStackUnderflow(ref stack, 1))
                 {
                     goto StackUnderflow;
                 }
