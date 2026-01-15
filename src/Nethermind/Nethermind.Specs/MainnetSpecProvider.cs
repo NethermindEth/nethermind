@@ -30,6 +30,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong OsakaBlockTimestamp = 0x6930b057;
     public const ulong BPO1BlockTimestamp = 0x69383057;
     public const ulong BPO2BlockTimestamp = 0x695db057;
+    public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
     IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
         forkActivation switch
@@ -53,7 +54,8 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
             { Timestamp: < BPO1BlockTimestamp } => Osaka.Instance,
             { Timestamp: < BPO2BlockTimestamp } => BPO1.Instance,
-            _ => BPO2.Instance
+            { Timestamp: < AmsterdamBlockTimestamp } => BPO2.Instance,
+            _ => Amsterdam.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -79,6 +81,7 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
     public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
     public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
+    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 7, AmsterdamBlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
@@ -99,6 +102,7 @@ public class MainnetSpecProvider : ISpecProvider
         OsakaActivation,
         BPO1Activation,
         BPO2Activation,
+        AmsterdamActivation
     };
 
     public static MainnetSpecProvider Instance { get; } = new();
