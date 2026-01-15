@@ -30,17 +30,20 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
 
     // I just don't want to create a closure... so this happens.
-    private async ValueTask BackgroundSyncSender<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
-    {
-        TRes response = await input.FulfillFunc(input.Request, cancellationToken);
-        handler.Send(response);
-    }
+    private ValueTask BackgroundSyncSender<TReq, TRes>(
+        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage =>
+        SendFulfilledResponse(input.FulfillFunc(input.Request, cancellationToken));
 
-    private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+    private ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
+        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage =>
+        SendFulfilledResponse(input.FulfillFunc(input.Request, cancellationToken));
+
+    private ValueTask SendFulfilledResponse<TRes>(Task<TRes> responseTask) where TRes : P2PMessage =>
+        SendFulfilledResponse(new ValueTask<TRes>(responseTask));
+
+    private async ValueTask SendFulfilledResponse<TRes>(ValueTask<TRes> responseTask) where TRes : P2PMessage
     {
-        TRes response = await input.FulfillFunc(input.Request, cancellationToken);
+        TRes response = await responseTask;
         handler.Send(response);
     }
 
