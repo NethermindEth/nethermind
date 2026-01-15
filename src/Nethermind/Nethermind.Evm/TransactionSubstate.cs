@@ -19,8 +19,8 @@ namespace Nethermind.Evm;
 
 public readonly ref struct TransactionSubstate
 {
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
-    private static readonly IToArrayCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
+    private static readonly JournalSet<Address> _emptyDestroyList = new JournalSet<Address>();
+    private static readonly JournalCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -45,8 +45,8 @@ public readonly ref struct TransactionSubstate
         { 0x51, "uninitialized function" },
     }.ToFrozenDictionary();
 
-    private readonly IHashSetEnumerableCollection<Address>? _destroyList;
-    private readonly IToArrayCollection<LogEntry>? _logs;
+    private readonly JournalSet<Address>? _destroyList;
+    private readonly JournalCollection<LogEntry>? _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -56,8 +56,8 @@ public readonly ref struct TransactionSubstate
     public ICodeInfo DeployCode { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
-    public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
+    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
+    public JournalSet<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType)
     {
@@ -92,10 +92,10 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = true;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TransactionSubstate(long refund,
-        IHashSetEnumerableCollection<Address> destroyList,
-        IToArrayCollection<LogEntry> logs,
+        JournalSet<Address> destroyList,
+        JournalCollection<LogEntry> logs,
         bool shouldRevert,
         ITxTracer tracer,
         ICodeInfo deployCode,
