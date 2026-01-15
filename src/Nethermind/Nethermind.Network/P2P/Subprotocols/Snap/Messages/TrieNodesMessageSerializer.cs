@@ -9,6 +9,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class TrieNodesMessageSerializer : IZeroMessageSerializer<TrieNodesMessage>
     {
+        /// <summary>
+        /// Maximum number of trie nodes allowed in a single message.
+        /// Prevents memory DOS attacks from messages with millions of tiny elements.
+        /// </summary>
+        private const int MaxNodes = 20_000;
+
         public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
         {
             (int contentLength, int nodesLength) = GetLength(message);
@@ -30,10 +36,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             NettyRlpStream rlpStream = new(byteBuffer);
 
-            rlpStream.ReadSequenceLength();
+            // Pass 1: Validate structure with counting reader to prevent memory DOS
+            CountingRlpReader counter = new(rlpStream) { MaxElementsAllowed = MaxNodes };
+            DecodeTrieNodes(counter);
 
-            long requestId = rlpStream.DecodeLong();
-            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray());
+            // Pass 2: Actual decode (limits validated, safe to allocate)
+            rlpStream.Position = 0;
+            return DecodeTrieNodes(rlpStream);
+        }
+
+        private static TrieNodesMessage DecodeTrieNodes(IRlpReader reader)
+        {
+            reader.ReadSequenceLength();
+            long requestId = reader.DecodeLong();
+            IOwnedReadOnlyList<byte[]> result = reader.DecodeArrayPoolList(static stream => stream.DecodeByteArray());
             return new TrieNodesMessage(result) { RequestId = requestId };
         }
 

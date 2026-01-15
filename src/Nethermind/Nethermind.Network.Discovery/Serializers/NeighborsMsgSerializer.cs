@@ -19,7 +19,7 @@ public class NeighborsMsgSerializer(
     INodeIdResolver nodeIdResolver)
     : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
-    private static readonly Func<RlpStream, Node> _decodeItem = static ctx =>
+    private static readonly Func<IRlpReader, Node> _decodeItem = static ctx =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);

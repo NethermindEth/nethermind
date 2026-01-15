@@ -47,27 +47,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.Encode(message.Bytes);
         }
 
+        /// <summary>
+        /// Maximum total paths allowed across all groups.
+        /// Prevents nested amplification DOS (e.g., 10K groups × 1K paths = 10M allocations).
+        /// </summary>
+        private const int MaxTotalPaths = 100_000;
+
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            GetTrieNodesMessage message = new();
             NettyRlpStream stream = new(byteBuffer);
 
-            stream.ReadSequenceLength();
+            // Pass 1: Validate nested structure with counting reader
+            // CountingRlpReader automatically counts nested elements through DecodeGroup callback
+            CountingRlpReader counter = new(stream) { MaxElementsAllowed = MaxTotalPaths };
+            DecodeGetTrieNodes(counter, _defaultPathGroup);
 
-            message.RequestId = stream.DecodeLong();
-            message.RootHash = stream.DecodeKeccak();
-            PathGroup defaultValue = _defaultPathGroup;
-            message.Paths = stream.DecodeArrayPoolList(DecodeGroup, defaultElement: defaultValue);
+            // Pass 2: Actual decode (limits validated, safe to allocate)
+            stream.Position = 0;
+            return DecodeGetTrieNodes(stream, _defaultPathGroup);
+        }
 
-            message.Bytes = stream.DecodeLong();
+        private static GetTrieNodesMessage DecodeGetTrieNodes(IRlpReader reader, PathGroup defaultPathGroup)
+        {
+            GetTrieNodesMessage message = new();
+            reader.ReadSequenceLength();
+
+            message.RequestId = reader.DecodeLong();
+            message.RootHash = reader.DecodeKeccak();
+            message.Paths = reader.DecodeArrayPoolList(DecodeGroup, defaultElement: defaultPathGroup);
+            message.Bytes = reader.DecodeLong();
 
             return message;
         }
 
-        private PathGroup DecodeGroup(RlpStream stream) =>
+        private static PathGroup DecodeGroup(IRlpReader stream) =>
             new()
             {
-                Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: [])
+                Group = stream.DecodeArray(static s => s.DecodeByteArray(), defaultElement: [])
             };
 
         private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)

@@ -12,8 +12,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
-        private readonly Func<RlpStream, PathWithStorageSlot> _decodeSlot;
-        private readonly Func<RlpStream, IOwnedReadOnlyList<PathWithStorageSlot>> _decodeSlotArray;
+        private readonly Func<IRlpReader, PathWithStorageSlot> _decodeSlot;
+        private readonly Func<IRlpReader, IOwnedReadOnlyList<PathWithStorageSlot>> _decodeSlotArray;
 
         public StorageRangesMessageSerializer()
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return message;
         }
 
-        private PathWithStorageSlot DecodeSlot(RlpStream stream)
+        private PathWithStorageSlot DecodeSlot(IRlpReader stream)
         {
             stream.ReadSequenceLength();
             Hash256 path = stream.DecodeKeccak();

@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return message;
         }
 
-        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
+        private static PathWithAccount DecodePathWithRlpData(IRlpReader stream)
         {
             return new() { Path = stream.DecodeKeccak() };
         }

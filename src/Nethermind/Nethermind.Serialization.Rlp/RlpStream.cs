@@ -21,7 +21,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class RlpStream
+    public class RlpStream : IRlpReader
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
@@ -932,7 +932,7 @@ namespace Nethermind.Serialization.Rlp
             return default;
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+        public T[] DecodeArray<T>(Func<IRlpReader, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -959,7 +959,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<IRlpReader, T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);

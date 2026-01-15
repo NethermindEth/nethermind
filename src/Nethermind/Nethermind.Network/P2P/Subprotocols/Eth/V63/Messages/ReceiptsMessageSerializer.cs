@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     {
         private readonly ISpecProvider _specProvider;
         private readonly IRlpStreamDecoder<TxReceipt> _decoder;
-        private readonly Func<RlpStream, TxReceipt[]> _decodeArrayFunc;
+        private readonly Func<IRlpReader, TxReceipt[]> _decodeArrayFunc;
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetStreamDecoder<TxReceipt>()!) { }
 
@@ -24,7 +24,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
-            _decodeArrayFunc = ctx => ctx.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? [];
+            // Cast to RlpStream since the decoder interface requires it
+            _decodeArrayFunc = ctx => ((RlpStream)ctx).DecodeArray(nestedContext => _decoder.Decode((RlpStream)nestedContext)) ?? [];
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
