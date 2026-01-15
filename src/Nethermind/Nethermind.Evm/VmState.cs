@@ -347,9 +347,9 @@ public sealed class VmState<TGasPolicy> : IDisposable
         return (nuint)((-addr) & 31);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void CommitToParent(VmState<TGasPolicy> parentState)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
     }

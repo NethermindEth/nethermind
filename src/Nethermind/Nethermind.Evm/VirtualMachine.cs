@@ -375,6 +375,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = Array.Empty<byte>();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected ZeroPaddedSpan HandleRegularReturn<TTracingInst, TTracingActions>(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
         where TTracingInst : struct, IFlag
         where TTracingActions : struct, IFlag
@@ -399,7 +400,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
 
-        return returnSpan.SliceWithZeroPadding(0, Math.Min(returnSpan.Length, (int)previousState.OutputLength)); ;
+        return returnSpan.SliceWithZeroPadding(0, Math.Min(returnSpan.Length, (int)previousState.OutputLength));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -579,7 +580,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return success;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected TransactionSubstate PrepareTopLevelSubstate<TTracingActions>(VmState<TGasPolicy> currentState, scoped in CallResult callResult)
         where TTracingActions : struct, IFlag
     {
@@ -1018,17 +1019,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <param name="spec">
     /// The release specification, which is used to prepare the appropriate opcodes.
     /// </param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
-        // Check if tracing instructions are inactive.
+        if (!TTracingInst.IsActive)
+        {
+            object? instructions = spec.EvmInstructionsNoTrace;
+            // Fast path: cache populated and past the PGO refresh window
+            if (instructions is not null && _txCount >= 500_000)
+            {
+                _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[])instructions;
+                return;
+            }
+        }
+        PrepareOpcodesSlow<TTracingInst>(spec);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void PrepareOpcodesSlow<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+    {
         if (!TTracingInst.IsActive)
         {
             // Occasionally refresh the opcode cache for non-tracing opcodes.
             // The cache is flushed every 10,000 transactions until a threshold of 500,000 transactions.
             // This is to have the function pointers directly point at any PGO optimized methods rather than via pre-stubs
             // May be a few cycles to pick up pointers to the re-Jitted optimized methods depending on what's in the blocks,
-            // however the the refreshes don't take long. (re-Jitting doesn't update prior captured function pointers)
+            // however the refreshes don't take long. (re-Jitting doesn't update prior captured function pointers)
             if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
             {
                 if (_logger.IsDebug)
@@ -1336,7 +1354,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareTopLevel(IReleaseSpec spec, VmState<TGasPolicy> vmState, ExecutionEnvironment env)
     {
         // Ensure the executing account has sufficient balance and exists in the world state.
