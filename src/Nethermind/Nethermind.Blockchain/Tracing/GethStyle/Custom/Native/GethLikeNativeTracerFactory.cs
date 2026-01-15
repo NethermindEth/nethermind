@@ -31,17 +31,9 @@ public static class GethLikeNativeTracerFactory
         RegisterTracer(NativeCallTracer.CallTracer, static (options, _, transaction, _) => new NativeCallTracer(transaction, options));
     }
 
-    private static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
+    public static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
     {
         _tracers.Add(tracerName, tracerDelegate);
-    }
-
-    /// <summary>
-    /// Registers an external tracer for use by plugins.
-    /// </summary>
-    public static void RegisterExternalTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
-    {
-        _tracers[tracerName] = tracerDelegate;
     }
 
     public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState) =>
