@@ -66,6 +66,7 @@ public class ReleaseSpec : IReleaseSpec
         set => _isEip1559Enabled = value;
     }
 
+    public bool IsEip158IgnoredAccount(Address address) => false;
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
