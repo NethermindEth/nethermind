@@ -39,9 +39,7 @@ internal static class XdcConstants
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
-    public const int RangeReturnSigner = 150;
     public const int MinimunMinerBlockPerEpoch = 1;
-    public const int LimitPenaltyEpochV2 = 0;
 
     public static byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
 	public static byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
