@@ -414,7 +414,7 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         // Pop memory offset and length for the log data.
-        if (!stack.PopUInt256(out UInt256 position) || !stack.PopUInt256(out UInt256 length)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
         // The number of topics is defined by the generic parameter.
         long topicsCount = TOpCount.Count;
