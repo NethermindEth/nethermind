@@ -64,5 +64,6 @@ namespace Nethermind.Db
         public long MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
         public int MaxBufferedCommitCount { get; set; } = 128;
         public int SimulateLongFinalizationDepth { get; set; } = 0;
+        public int PruneDelayMilliseconds { get; set; } = 75;
     }
 }

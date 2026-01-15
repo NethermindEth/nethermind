@@ -15,7 +15,7 @@ using Nethermind.State.OverridableEnv;
 namespace Nethermind.Facade.Simulate;
 
 /// <summary>
-/// This is an env for eth simulater. It is constructed by <see cref="SimulateReadOnlyBlocksProcessingEnvFactory"/>.
+/// This is an env for eth simulator. It is constructed by <see cref="SimulateReadOnlyBlocksProcessingEnvFactory"/>.
 /// It is not thread safe and is meant to be reused. <see cref="Begin"/> must be called and the returned
 /// <see cref="SimulateReadOnlyBlocksProcessingScope"/> must be disposed once done or there may be some memory leak.
 /// </summary>

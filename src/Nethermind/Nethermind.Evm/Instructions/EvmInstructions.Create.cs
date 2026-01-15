@@ -217,7 +217,7 @@ internal static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
+        CodeInfoFactory.CreateInitCodeInfo(initCode, spec, out ICodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();

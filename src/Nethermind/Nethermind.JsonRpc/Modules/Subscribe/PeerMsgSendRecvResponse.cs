@@ -15,9 +15,9 @@ public class PeerMsgSendRecvResponse
 
     }
 
-    public PeerMsgSendRecvResponse(EventArgs eventArgs, string subscripionType, string? e)
+    public PeerMsgSendRecvResponse(EventArgs eventArgs, string subscriptionType, string? e)
     {
-        Type = subscripionType;
+        Type = subscriptionType;
         Error = e;
     }
 
