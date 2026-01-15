@@ -43,8 +43,10 @@ public static class TestChunkFilter
         if (chunkConfig is null)
             return tests;
 
+        // Materialize to ensure consistent enumeration
+        var testList = tests as IList<T> ?? tests.ToList();
         var (index, total) = chunkConfig.Value;
-        return tests.Where(test => GetChunkForTest(getTestIdentifier(test), total) == index);
+        return testList.Where(test => GetChunkForTest(getTestIdentifier(test), total) == index);
     }
 
     /// <summary>
