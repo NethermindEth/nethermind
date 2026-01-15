@@ -128,7 +128,7 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip7934Enabled => spec.IsEip7934Enabled;
         public int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
-
+        public bool ValidateChainId => spec.ValidateChainId;
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
@@ -172,6 +172,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip4895Enabled => spec.IsEip4895Enabled;
         public ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
         public bool IsEip5656Enabled => spec.IsEip5656Enabled;
+        public long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
         public bool IsEip6780Enabled => spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
