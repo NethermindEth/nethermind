@@ -267,12 +267,19 @@ internal static partial class EvmInstructions
             }
             // If the next instruction is GT or EQ and the top stack element is zero,
             // then this pattern likely corresponds to a contract existence check.
-            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ)
-                && !CheckStackUnderflow(ref stack, 1) && stack.PeekUInt256IsZero())
+            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ))
             {
-                optimizeAccess = true;
-                // Remove the zero from the stack since we will have consumed it.
-                stack.PopLimbo();
+                if(CheckStackUnderflow(ref stack, 1))
+                {
+                    goto StackUnderflow;
+                }
+
+                if (stack.PeekUInt256IsZero())
+                {
+                    optimizeAccess = true;
+                    // Remove the zero from the stack since we will have consumed it.
+                    stack.PopLimbo();
+                }
             }
 
             if (optimizeAccess)
