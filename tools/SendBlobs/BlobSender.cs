@@ -204,9 +204,18 @@ internal class BlobSender
         bool waitForInclusion,
         IReleaseSpec spec)
     {
-        data = data
-            .Select((s, i) => i % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32), s]))
-            .SelectMany(b => b).ToArray();
+        int capacity = data.Length + data.Length / 32; // at most one extra byte per 32-byte chunk
+        List<byte> normalized = new(capacity);
+        for (int i = 0; i < data.Length; i++)
+        {
+            byte value = data[i];
+            if (i % 32 == 0 && value >= 0x73)
+            {
+                normalized.Add(32);
+            }
+            normalized.Add(value);
+        }
+        data = normalized.ToArray();
 
         if (waitForInclusion)
         {
