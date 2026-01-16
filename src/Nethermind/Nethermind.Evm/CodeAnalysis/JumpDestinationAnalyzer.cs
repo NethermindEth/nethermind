@@ -108,7 +108,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
 
-        // If code is empty or starts with STOP, then we don't need to analyse
+        // If code is empty or starts with STOP, then we don't need to analyze
         if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
 
         long[] bitmap = CreateBitmap(code.Length);
@@ -305,7 +305,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             else if ((sbyte)op > PUSHx)
             {
                 // Fast forward programCounter by the amount of data the push
-                // represents as don't need to analyse data for Jump Destinations.
+                // represents as don't need to analyze data for Jump Destinations.
                 move = op - PUSH1 + 2;
             }
 

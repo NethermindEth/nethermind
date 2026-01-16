@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -84,7 +84,7 @@ namespace Nethermind.Facade.Test.Eth
         [TestCase(false, false, true)]
         [TestCase(true, true, false)]
         public void IsSyncing_AncientBarriers(bool resolverDownloadingBodies,
-            bool resolverDownloadingreceipts, bool expectedResult)
+            bool resolverDownloadingReceipts, bool expectedResult)
         {
             ISyncConfig syncConfig = new SyncConfig
             {
@@ -95,14 +95,14 @@ namespace Nethermind.Facade.Test.Eth
                 // AncientReceiptsBarrierCalc = Max(1, Min(Pivot, Max(BodiesBarrier, ReceiptsBarrier))) = ReceiptsBarrier = 900
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
-                PivotNumber = "1000"
+                PivotNumber = 1000
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.SyncPivot.Returns((1000, Keccak.Zero));
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
-            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingreceipts);
+            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingReceipts);
 
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
@@ -171,7 +171,7 @@ namespace Nethermind.Facade.Test.Eth
             {
                 FastSync = true,
                 SnapSync = true,
-                PivotNumber = "0", // Equivalent to not having a pivot
+                PivotNumber = 0, // Equivalent to not having a pivot
             };
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);

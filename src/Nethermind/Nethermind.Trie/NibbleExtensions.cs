@@ -35,7 +35,7 @@ namespace Nethermind.Trie
             return output;
         }
 
-        public unsafe static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
+        public static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
         {
             // Ensure the length of the nibbles span is exactly twice the length of the bytes span.
             if (nibbles.Length != 2 * bytes.Length)
@@ -196,6 +196,7 @@ namespace Nethermind.Trie
             return bytes;
         }
 
+        [SkipLocalsInit]
         public static byte[] CompactToHexEncode(byte[] compactPath)
         {
             if (compactPath.Length == 0)
