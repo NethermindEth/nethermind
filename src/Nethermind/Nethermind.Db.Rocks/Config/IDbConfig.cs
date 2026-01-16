@@ -34,7 +34,6 @@ public interface IDbConfig : IConfig
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
     bool FlushOnExit { get; set; }
-    bool SkipDefaultDbOptions { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -117,7 +116,6 @@ public interface IDbConfig : IConfig
     string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
 
     bool? FlatAccountDbVerifyChecksum { get; set; }
-    bool FlatAccountDbSkipDefaultDbOptions { get; set; }
     bool FlatAccountDbEnableFileWarmer { get; set; }
     ulong FlatAccountDbWriteBufferSize { get; set; }
     ulong FlatAccountDbRowCacheSize { get; set; }
@@ -126,7 +124,6 @@ public interface IDbConfig : IConfig
     string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
     bool? FlatStorageDbVerifyChecksum { get; set; }
-    bool FlatStorageDbSkipDefaultDbOptions { get; set; }
     bool FlatStorageDbEnableFileWarmer { get; set; }
     ulong FlatStorageDbRowCacheSize { get; set; }
     ulong FlatStorageDbWriteBufferSize { get; set; }

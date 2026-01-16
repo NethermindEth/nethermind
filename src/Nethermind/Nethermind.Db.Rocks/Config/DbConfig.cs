@@ -17,7 +17,6 @@ public class DbConfig : IDbConfig
     public bool EnableDbStatistics { get; set; } = false;
     public bool EnableMetricsUpdater { get; set; } = false;
     public uint StatsDumpPeriodSec { get; set; } = 600;
-    public bool SkipDefaultDbOptions { get; set; } = false;
 
     public int? MaxOpenFiles { get; set; }
     public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
@@ -400,7 +399,6 @@ public class DbConfig : IDbConfig
     public ulong FlatAccountDbWriteBufferSize { get; set; } = (ulong)32.MiB();
     public ulong FlatAccountDbRowCacheSize { get; set; } = 0;
     public ulong FlatAccountDbWriteBufferNumber { get; set; } = 4;
-    public bool FlatAccountDbSkipDefaultDbOptions { get; set; } = false;
 
     // Account is too small so we make it so that the file and buffer is smaller so that it does not compact too much
     // at once
@@ -422,7 +420,6 @@ public class DbConfig : IDbConfig
 
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatStorageDbVerifyChecksum { get; set; }
-    public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = false;
     public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
     public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)32.MiB();
