@@ -7,6 +7,9 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using Arm = System.Runtime.Intrinsics.Arm;
+using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -234,14 +237,38 @@ namespace Nethermind.Core.Extensions
             // Contract choice: empty input hashes to 0.
             // (Also avoids doing any ref work on an empty span.)
             if (len == 0) return 0;
-            // Using ref + Unsafe.ReadUnaligned lets the JIT hoist bounds checks
-            // and keep the hot loop tight.
-            ref byte start = ref MemoryMarshal.GetReference(input);
 
             // Seed with an instance-random value so attackers cannot trivially
             // engineer lots of same-bucket keys. Mixing in length makes "same prefix,
             // different length" less correlated (CRC alone can be length-sensitive).
             uint seed = s_instanceRandom + (uint)len;
+
+            // Using ref + Unsafe.ReadUnaligned lets the JIT hoist bounds checks
+            // and keep the hot loop tight.
+            ref byte start = ref MemoryMarshal.GetReference(input);
+
+            if (x64.Aes.IsSupported && len == 32)
+            {
+                Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+                Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+                // Mix in the instance-random seed
+                key ^= Vector128.CreateScalar(seed).AsByte();
+                // Single AESENC is a powerful mixer - 4 cycles, full diffusion
+                Vector128<byte> mixed = x64.Aes.Encrypt(data, key);
+                ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
+                return (int)(uint)(compressed ^ (compressed >> 32));
+            }
+            else if (Arm.Aes.IsSupported && len == 32)
+            {
+                Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+                Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+                // Mix in the instance-random seed
+                key ^= Vector128.CreateScalar(seed).AsByte();
+                // ARM needs explicit MixColumns for equivalent diffusion
+                Vector128<byte> mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
+                return (int)(uint)(compressed ^ (compressed >> 32));
+            }
 
             // Small: 1-7 bytes.
             // Using the tail routine here avoids building a synthetic
