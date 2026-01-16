@@ -59,7 +59,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
         // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
 
         // Execute the math operation defined by TOpMath.
         TOpMath.Operation(in a, in b, out UInt256 result);

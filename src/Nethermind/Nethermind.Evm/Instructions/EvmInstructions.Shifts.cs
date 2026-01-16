@@ -104,7 +104,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the shift amount and the value to be shifted.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         if (a >= 256)

@@ -171,7 +171,8 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
+        if (!stack.PopUInt256(out UInt256 position) ||
+            !stack.PopUInt256(out UInt256 length))
         {
             goto StackUnderflow;
         }

@@ -62,7 +62,9 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Pop destination offset, source offset, and copy length.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
+        if (!stack.PopUInt256(out UInt256 a) ||
+            !stack.PopUInt256(out UInt256 b) ||
+            !stack.PopUInt256(out UInt256 result))
             goto StackUnderflow;
 
         // Deduct gas for the operation plus the cost for memory expansion.
@@ -148,7 +150,9 @@ internal static partial class EvmInstructions
         Address address = stack.PopAddress();
         // Pop destination offset, source offset, and length from the stack.
         if (address is null ||
-            !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
+            !stack.PopUInt256(out UInt256 a) ||
+            !stack.PopUInt256(out UInt256 b) ||
+            !stack.PopUInt256(out UInt256 result))
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
