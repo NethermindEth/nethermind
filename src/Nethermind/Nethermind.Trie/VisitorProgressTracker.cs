@@ -16,7 +16,7 @@ namespace Nethermind.Trie;
 /// </summary>
 public class VisitorProgressTracker
 {
-    private const int Level3Depth = 4; // 4 nibbles
+    public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
@@ -27,15 +27,18 @@ public class VisitorProgressTracker
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
     private readonly int _reportingInterval;
+    private readonly bool _printNodes;
 
     public VisitorProgressTracker(
         string operationName,
         ILogManager logManager,
-        int reportingInterval = 100_000)
+        int reportingInterval = 100_000,
+        bool printNodes = true)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
         _operationName = operationName;
+        _printNodes = printNodes;
         _logger = new ProgressLogger(operationName, logManager);
         _logger.Reset(0, 10000); // Use 10000 for 0.01% precision
         _logger.SetFormat(FormatProgress);
@@ -48,9 +51,17 @@ public class VisitorProgressTracker
         float percentage = Math.Clamp(logger.CurrentValue / 10000f, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
-        return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
-               Progress.GetMeter(percentage, 1) +
-               $" nodes: {workStr,8}";
+        if (_printNodes)
+        {
+            return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
+                   Progress.GetMeter(percentage, 1) +
+                   $" nodes: {workStr,8}";
+        }
+        else
+        {
+            return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
+                   Progress.GetMeter(percentage, 1);
+        }
     }
 
     /// <summary>
@@ -68,10 +79,12 @@ public class VisitorProgressTracker
         // Only track state nodes for progress estimation at level 3
         if (!isStorage)
         {
+            bool shouldLog = false;
             if (path.Length == Level3Depth)
             {
                 // Node at exactly level 3 (4 nibbles): count as 1 node
                 Interlocked.Increment(ref _seenCount);
+                shouldLog = true;
             }
             else if (isLeaf && path.Length > 0 && path.Length < Level3Depth)
             {
@@ -86,11 +99,17 @@ public class VisitorProgressTracker
 
                 // Add estimated coverage
                 Interlocked.Add(ref _seenCount, estimatedNodes);
+                shouldLog = true;
             }
             // Nodes at depth > Level3Depth are ignored for progress calculation
 
             // Log progress at intervals (based on state nodes only)
             if (Interlocked.Increment(ref _nodeCount) % _reportingInterval == 0)
+            {
+                shouldLog = true;
+            }
+
+            if (shouldLog)
             {
                 LogProgress();
             }

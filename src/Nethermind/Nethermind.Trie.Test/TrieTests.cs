@@ -1280,5 +1280,26 @@ namespace Nethermind.Trie.Test
                 }
             });
         }
+
+        [Test]
+        public void WarmUpPath_DoesNotThrow()
+        {
+            // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            patriciaTree.Set(_keyA, _longLeaf1);
+            patriciaTree.Set(_keyB, _longLeaf2);
+            patriciaTree.Set(_keyC, _longLeaf1);
+            patriciaTree.Set(_keyD, _longLeaf2);
+            trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+            // Test warmup on various keys
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyA)).Should().NotThrow();  // Existing key
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyB)).Should().NotThrow();  // Existing key
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyC)).Should().NotThrow();  // Existing key in different branch
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyD)).Should().NotThrow();  // Existing key in different branch
+            patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("00000000000cc"))).Should().NotThrow();  // Non-existent key
+            patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("fffffffffffff"))).Should().NotThrow();  // Completely different path
+        }
     }
 }

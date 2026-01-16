@@ -102,4 +102,32 @@ public interface IDbConfig : IConfig
 
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+    bool? FlatDbVerifyChecksum { get; set; }
+    string FlatDbRocksDbOptions { get; set; }
+    string? FlatDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatMetadataDbRocksDbOptions { get; set; }
+    string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatAccountDbRocksDbOptions { get; set; }
+    string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStorageDbRocksDbOptions { get; set; }
+    string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStateNodesDbRocksDbOptions { get; set; }
+    string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStateTopNodesDbRocksDbOptions { get; set; }
+    string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatStorageNodesDbRocksDbOptions { get; set; }
+    string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? FlatFallbackNodesNodesDbRocksDbOptions { get; set; }
+    string? FlatFallbackNodesNodesDbAdditionalRocksDbOptions { get; set; }
+
+    string? PreimageDbRocksDbOptions { get; set; }
+    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }
