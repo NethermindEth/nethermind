@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -14,6 +15,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _skipStateAndStatus;
 
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
         public ReceiptMessageDecoder(bool skipStateAndStatus = false)
         {
             _skipStateAndStatus = skipStateAndStatus;
