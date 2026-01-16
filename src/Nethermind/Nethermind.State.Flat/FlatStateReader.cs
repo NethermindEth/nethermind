@@ -14,13 +14,13 @@ namespace Nethermind.State.Flat;
 
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    IFlatDiffRepository flatDiffRepository,
+    IFlatDbManager flatDbManager,
     ILogManager  logManager
 ): IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
         if (reader is null)
         {
             account = default;
@@ -40,7 +40,7 @@ public class FlatStateReader(
     // TODO: Why is it return span? How is it suppose to dispose itself?
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
         if (reader is null)
         {
             return Array.Empty<byte>();
@@ -62,7 +62,7 @@ public class FlatStateReader(
     {
         StateId stateId = new StateId(baseBlock);
 
-        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(stateId);
+        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlyReaderAtBaseBlock(stateId);
         if (reader is null)
         {
             throw new InvalidOperationException($"State at {baseBlock} not found");
@@ -76,6 +76,6 @@ public class FlatStateReader(
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
     {
-        return flatDiffRepository.HasStateForBlock(new StateId(baseBlock));
+        return flatDbManager.HasStateForBlock(new StateId(baseBlock));
     }
 }

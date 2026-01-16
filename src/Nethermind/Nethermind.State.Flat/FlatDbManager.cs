@@ -16,7 +16,7 @@ using Prometheus;
 
 namespace Nethermind.State.Flat;
 
-public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
+public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
     private readonly ILogger _logger;
     private readonly PersistenceManager _persistenceManager;
@@ -68,7 +68,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    public FlatDiffRepository(
+    public FlatDbManager(
         IProcessExitSource exitSource,
         IPersistence persistedPersistence,
         ResourcePool resourcePool,
@@ -86,7 +86,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _resourcePool = resourcePool;
         _processExitSource = processExitSource;
         _persistenceManager = persistenceManager;
-        _logger = logManager.GetClassLogger<FlatDiffRepository>();
+        _logger = logManager.GetClassLogger<FlatDbManager>();
 
         _compactSize = config.CompactSize;
         _midCompactSize = config.MidCompactSize;
@@ -468,30 +468,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         if (_snapshotRepository.HasState(stateId)) return true;
         if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
         return false;
-    }
-
-    public StateId? FindStateIdForStateRoot(Hash256 stateRoot)
-    {
-        if (_snapshotRepository.TryFindStateIdForStateRoot(stateRoot, out var stateId))
-        {
-            return stateId;
-        }
-
-        StateId? currentPersistedIdx = _persistenceManager.GetCurrentPersistedStateId();
-        if (currentPersistedIdx?.stateRoot == stateRoot)
-        {
-            return currentPersistedIdx.Value;
-        }
-
-        return null;
-    }
-
-    public StateId? FindLatestAvailableState()
-    {
-        StateId? lastInMemory = _snapshotRepository.GetLastSnapshotId();
-        if (lastInMemory != null) return lastInMemory;
-
-        return _persistenceManager.GetCurrentPersistedStateId();
     }
 
     public IPersistence.IPersistenceReader CreateReader()

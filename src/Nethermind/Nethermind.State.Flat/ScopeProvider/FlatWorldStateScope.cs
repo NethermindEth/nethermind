@@ -35,7 +35,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
-    private readonly IFlatDiffRepository _flatDiffRepository;
+    private readonly IFlatDbManager _flatDbManager;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private readonly StateTree _stateTree;
     private readonly PatriciaTree _warmupStateTree;
@@ -58,7 +58,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
         IWorldStateScopeProvider.ICodeDb codeDb,
-        IFlatDiffRepository flatDiffRepository,
+        IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
@@ -67,7 +67,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         _codeDb = codeDb;
-        _flatDiffRepository = flatDiffRepository;
+        _flatDbManager = flatDbManager;
         _isPrewarmerLabel = (_warmer is NoopTrieWarmer).ToString();
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
@@ -301,7 +301,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             if (_currentStateId != newStateId)
             {
-                _flatDiffRepository.AddSnapshot(newSnapshot!, cachedResource!);
+                _flatDbManager.AddSnapshot(newSnapshot!, cachedResource!);
             }
             else
             {

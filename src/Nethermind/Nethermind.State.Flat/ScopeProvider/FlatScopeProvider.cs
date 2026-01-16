@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatScopeProvider : IWorldStateScopeProvider
 {
-    private readonly IFlatDiffRepository _flatDiffRepository;
+    private readonly IFlatDbManager _flatDbManager;
     private readonly ILogManager _logManager;
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb;
     private readonly bool _isReadOnly;
@@ -26,7 +26,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
 
     public FlatScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
-        IFlatDiffRepository flatDiffRepository,
+        IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
         ITrieWarmer trieWarmer,
         ResourcePool resourcePool,
@@ -34,7 +34,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
         ILogManager logManager,
         bool isReadOnly = false)
     {
-        _flatDiffRepository = flatDiffRepository;
+        _flatDbManager = flatDbManager;
         _configuration = configuration;
         _trieWarmer = trieWarmer;
         _resourcePool = resourcePool;
@@ -46,13 +46,13 @@ public class FlatScopeProvider : IWorldStateScopeProvider
 
     public bool HasRoot(BlockHeader? baseBlock)
     {
-        return _flatDiffRepository.HasStateForBlock(new StateId(baseBlock));
+        return _flatDbManager.HasStateForBlock(new StateId(baseBlock));
     }
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         StateId currentState = new StateId(baseBlock);
-        SnapshotBundle snapshotBundle = _flatDiffRepository.GatherReaderAtBaseBlock(currentState, usage: _usage);
+        SnapshotBundle snapshotBundle = _flatDbManager.GatherReaderAtBaseBlock(currentState, usage: _usage);
         if (_trieWarmer is NoopTrieWarmer) snapshotBundle.SetPrewarmer();
 
         ITrieWarmer warmer = _trieWarmer;
@@ -65,7 +65,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             currentState,
             snapshotBundle,
             _codeDb,
-            _flatDiffRepository,
+            _flatDbManager,
             _configuration,
             warmer,
             _logManager);

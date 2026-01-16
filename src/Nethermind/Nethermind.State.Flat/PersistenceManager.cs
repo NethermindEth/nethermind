@@ -23,7 +23,7 @@ namespace Nethermind.State.Flat;
 public class PersistenceManager: IAsyncDisposable
 {
     private readonly ILogger _logger;
-    private static readonly Histogram _flatdiffimes = FlatDiffRepository._flatdiffimes;
+    private static readonly Histogram _flatdiffimes = FlatDbManager._flatdiffimes;
     private readonly Histogram _writesSize = Metrics.CreateHistogram("persistence_manager_writes", "writes", new HistogramConfiguration()
     {
         LabelNames = ["payload"],

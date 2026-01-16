@@ -202,24 +202,6 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public bool HasState(StateId stateId) => _knownStates.ContainsKey(stateId);
 
-    public bool TryFindStateIdForStateRoot(Hash256 stateRoot, out StateId outStateId)
-    {
-        using (var _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapshots))
-        {
-            foreach (var stateId in sortedSnapshots)
-            {
-                if (stateId.stateRoot == stateRoot)
-                {
-                    outStateId = stateId;
-                    return true;
-                }
-            }
-        }
-
-        outStateId = default;
-        return false;
-    }
-
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.LockExitor _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapashots);

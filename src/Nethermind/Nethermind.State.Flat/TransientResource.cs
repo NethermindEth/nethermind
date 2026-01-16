@@ -15,7 +15,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Contains some large variable used by <see cref="SnapshotBundle"/> but not committed into <see cref="IFlatDiffRepository"/>
+/// Contains some large variable used by <see cref="SnapshotBundle"/> but not committed into <see cref="IFlatDbManager"/>
 /// as part of a <see cref="Snapshot"/>. Pooling this is largely for performance reason.
 /// </summary>
 /// <param name="size"></param>

@@ -48,10 +48,10 @@ public class FlatWorldStateScopeProviderTests
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
                     .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
-                    .AddSingleton<IFlatDiffRepository>((ctx) =>
+                    .AddSingleton<IFlatDbManager>((ctx) =>
                     {
                         ResourcePool resourcePool = ctx.Resolve<ResourcePool>();
-                        IFlatDiffRepository flatDiff = Substitute.For<IFlatDiffRepository>();
+                        IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
                         flatDiff.When(it => it.AddSnapshot(Arg.Any<Snapshot>(), Arg.Any<TransientResource>()))
                             .Do(c =>
                             {

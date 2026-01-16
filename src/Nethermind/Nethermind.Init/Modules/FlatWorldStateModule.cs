@@ -39,7 +39,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
         builder
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
+            .AddSingleton<IFlatDbManager, FlatDbManager>()
             .AddSingleton<ResourcePool>()
             .AddSingleton<Importer>()
             .AddSingleton<TrieNodeCache>()

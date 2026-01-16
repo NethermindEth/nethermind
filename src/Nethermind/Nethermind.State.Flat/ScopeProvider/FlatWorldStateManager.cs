@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatWorldStateManager : IWorldStateManager
 {
-    private readonly IFlatDiffRepository _flatDiffRepository;
+    private readonly IFlatDbManager _flatDbManager;
     private readonly FlatStateReader _flatStateReader;
     private readonly IProcessExitSource _exitSource;
     private readonly IDb _codeDb;
@@ -28,7 +28,7 @@ public class FlatWorldStateManager : IWorldStateManager
     private readonly ResourcePool _resourcePool;
 
     public FlatWorldStateManager(
-        IFlatDiffRepository flatDiffRepository,
+        IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
         FlatStateReader flatStateReader,
         ITrieWarmer trieWarmer,
@@ -38,7 +38,7 @@ public class FlatWorldStateManager : IWorldStateManager
         ILogManager logManager
     )
     {
-        _flatDiffRepository = flatDiffRepository;
+        _flatDbManager = flatDbManager;
         _flatStateReader = flatStateReader;
         _codeDb = codeDb;
         _logManager = logManager;
@@ -47,7 +47,7 @@ public class FlatWorldStateManager : IWorldStateManager
         _resourcePool = resourcePool;
         _mainWorldState = new FlatScopeProvider(
             codeDb,
-            flatDiffRepository,
+            flatDbManager,
             configuration,
             trieWarmer,
             resourcePool,
@@ -63,7 +63,7 @@ public class FlatWorldStateManager : IWorldStateManager
     {
         return new FlatScopeProvider(
             _codeDb,
-            _flatDiffRepository,
+            _flatDbManager,
             _configuration,
             new NoopTrieWarmer(),
             _resourcePool,
@@ -74,15 +74,15 @@ public class FlatWorldStateManager : IWorldStateManager
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
     {
-        add => _flatDiffRepository.ReorgBoundaryReached += value;
-        remove => _flatDiffRepository.ReorgBoundaryReached -= value;
+        add => _flatDbManager.ReorgBoundaryReached += value;
+        remove => _flatDbManager.ReorgBoundaryReached -= value;
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
         var scopeProvider = new FlatScopeProvider(
             _codeDb,
-            _flatDiffRepository,
+            _flatDbManager,
             _configuration,
             new NoopTrieWarmer(),
             _resourcePool,
@@ -94,7 +94,7 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
-        using IPersistence.IPersistenceReader reader = _flatDiffRepository.CreateReader();
+        using IPersistence.IPersistenceReader reader = _flatDbManager.CreateReader();
         FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(_codeDb, reader, _logManager, cancellationToken);
 
         _flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock, new VisitingOptions()
@@ -111,7 +111,7 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public void FlushCache(CancellationToken cancellationToken)
     {
-        _flatDiffRepository.FlushCache(cancellationToken);
+        _flatDbManager.FlushCache(cancellationToken);
     }
 
     public class FakeOverridableWorldScope(IWorldStateScopeProvider worldState, IStateReader stateReader) : IOverridableWorldScope
