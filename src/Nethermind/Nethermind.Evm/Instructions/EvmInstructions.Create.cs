@@ -92,10 +92,13 @@ internal static partial class EvmInstructions
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
+        if (!stack.PopUInt256(
+            out UInt256 value,
+            out UInt256 memoryPositionOfInitCode,
+            out UInt256 initCodeLength))
+        {
             goto StackUnderflow;
+        }
 
         Span<byte> salt = default;
         // For CREATE2, an extra salt value is required. Use type check to differentiate.

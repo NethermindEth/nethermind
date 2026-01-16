@@ -787,6 +787,374 @@ public ref partial struct EvmStack
         return true;
     }
 
+    /// <summary>
+    /// Pops two UInt256 values written in big endian, amortising bounds checking
+    /// and offset calculation costs.
+    /// </summary>
+    /// <param name="a">First popped value (was at top of stack).</param>
+    /// <param name="b">Second popped value (was deeper).</param>
+    [SkipLocalsInit]
+    public bool PopUInt256(out UInt256 a, out UInt256 b)
+    {
+        Unsafe.SkipInit(out a);
+        Unsafe.SkipInit(out b);
+
+        int head = Head;
+        int newHead = head - 2;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+
+        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        // Memory layout: [b @ +0] [a @ +32]
+
+        if (Avx2.IsSupported)
+        {
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+
+            // Issue both loads first for memory-level parallelism
+            Word bData = Unsafe.ReadUnaligned<Word>(ref bytes);
+            Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Word bConv = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
+                Word aConv = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
+
+                b = Unsafe.As<Word, UInt256>(ref bConv);
+                a = Unsafe.As<Word, UInt256>(ref aConv);
+            }
+            else
+            {
+                Word bShuf = Avx2.Shuffle(bData, shuffle);
+                Word aShuf = Avx2.Shuffle(aData, shuffle);
+
+                const byte SwapHalves = 0b_01_00_11_10;
+                Vector256<ulong> bPerm = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
+                Vector256<ulong> aPerm = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
+
+                b = Unsafe.As<Vector256<ulong>, UInt256>(ref bPerm);
+                a = Unsafe.As<Vector256<ulong>, UInt256>(ref aPerm);
+            }
+        }
+        else
+        {
+            // Scalar path - interleave loads across both values
+            if (BitConverter.IsLittleEndian)
+            {
+                ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
+                ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
+
+                ulong b2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
+                ulong a2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
+
+                ulong b1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
+                ulong a1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
+
+                ulong b0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
+                ulong a0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
+
+                b = new UInt256(b0, b1, b2, b3);
+                a = new UInt256(a0, a1, a2, a3);
+            }
+            else
+            {
+                ulong b3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+                ulong a3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32));
+
+                ulong b2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
+                ulong a2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40));
+
+                ulong b1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
+                ulong a1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48));
+
+                ulong b0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
+                ulong a0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56));
+
+                b = new UInt256(b0, b1, b2, b3);
+                a = new UInt256(a0, a1, a2, a3);
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Pops three UInt256 values written in big endian, amortising bounds checking
+    /// and offset calculation costs.
+    /// </summary>
+    /// <param name="a">First popped value (was at top of stack).</param>
+    /// <param name="b">Second popped value.</param>
+    /// <param name="c">Third popped value (was deepest).</param>
+    [SkipLocalsInit]
+    public bool PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)
+    {
+        Unsafe.SkipInit(out a);
+        Unsafe.SkipInit(out b);
+        Unsafe.SkipInit(out c);
+
+        int head = Head;
+        int newHead = head - 3;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+
+        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        // Memory layout: [c @ +0] [b @ +32] [a @ +64]
+
+        if (Avx2.IsSupported)
+        {
+            // Hoist shuffle mask - same for all three operations
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+
+            // Issue all loads first to maximise memory-level parallelism
+            // and hide cache latency across the 96-byte span
+            Word cData = Unsafe.ReadUnaligned<Word>(ref bytes);
+            Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+            Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
+
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                // vpermb does full cross-lane byte permutation in one instruction
+                Word cConv = Avx512Vbmi.VL.PermuteVar32x8(cData, shuffle);
+                Word bConv = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
+                Word aConv = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
+
+                c = Unsafe.As<Word, UInt256>(ref cConv);
+                b = Unsafe.As<Word, UInt256>(ref bConv);
+                a = Unsafe.As<Word, UInt256>(ref aConv);
+            }
+            else
+            {
+                // AVX2 needs shuffle + permute (2 instructions per value)
+                // Issue all shuffles together for ILP
+                Word cShuf = Avx2.Shuffle(cData, shuffle);
+                Word bShuf = Avx2.Shuffle(bData, shuffle);
+                Word aShuf = Avx2.Shuffle(aData, shuffle);
+
+                // Issue all permutes together
+                const byte SwapHalves = 0b_01_00_11_10;
+                Vector256<ulong> cPerm = Avx2.Permute4x64(cShuf.AsUInt64(), SwapHalves);
+                Vector256<ulong> bPerm = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
+                Vector256<ulong> aPerm = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
+
+                c = Unsafe.As<Vector256<ulong>, UInt256>(ref cPerm);
+                b = Unsafe.As<Vector256<ulong>, UInt256>(ref bPerm);
+                a = Unsafe.As<Vector256<ulong>, UInt256>(ref aPerm);
+            }
+        }
+        else
+        {
+            // Scalar path - interleave loads across all three values
+            // to break dependency chains and hide load-to-use latency.
+            // Modern CPUs can have 10+ loads in flight simultaneously.
+            if (BitConverter.IsLittleEndian)
+            {
+                // Round 1: high qwords (u3) from each value
+                ulong c3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
+                ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
+                ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64)));
+
+                // Round 2: u2 from each value
+                ulong c2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
+                ulong b2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
+                ulong a2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72)));
+
+                // Round 3: u1 from each value
+                ulong c1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
+                ulong b1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
+                ulong a1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80)));
+
+                // Round 4: low qwords (u0) from each value
+                ulong c0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
+                ulong b0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
+                ulong a0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88)));
+
+                c = new UInt256(c0, c1, c2, c3);
+                b = new UInt256(b0, b1, b2, b3);
+                a = new UInt256(a0, a1, a2, a3);
+            }
+            else
+            {
+                ulong c3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+                ulong b3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32));
+                ulong a3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64));
+
+                ulong c2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
+                ulong b2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40));
+                ulong a2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72));
+
+                ulong c1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
+                ulong b1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48));
+                ulong a1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80));
+
+                ulong c0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
+                ulong b0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56));
+                ulong a0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88));
+
+                c = new UInt256(c0, c1, c2, c3);
+                b = new UInt256(b0, b1, b2, b3);
+                a = new UInt256(a0, a1, a2, a3);
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Pops four UInt256 values written in big endian, amortising bounds checking
+    /// and offset calculation costs.
+    /// </summary>
+    /// <param name="a">First popped value (was at top of stack).</param>
+    /// <param name="b">Second popped value.</param>
+    /// <param name="c">Third popped value.</param>
+    /// <param name="d">Fourth popped value (was deepest).</param>
+    [SkipLocalsInit]
+    public bool PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c, out UInt256 d)
+    {
+        Unsafe.SkipInit(out a);
+        Unsafe.SkipInit(out b);
+        Unsafe.SkipInit(out c);
+        Unsafe.SkipInit(out d);
+
+        int head = Head;
+        int newHead = head - 4;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+
+        ref byte bytes = ref Unsafe.Add(ref _stack, (nint)((uint)newHead * WordSize));
+        // Memory layout: [d @ +0] [c @ +32] [b @ +64] [a @ +96]
+
+        if (Avx2.IsSupported)
+        {
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+
+            // Issue all loads first - 128 bytes spans 2 cache lines minimum,
+            // so maximising MLP is critical here
+            Word dData = Unsafe.ReadUnaligned<Word>(ref bytes);
+            Word cData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+            Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
+            Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 96));
+
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Word dConv = Avx512Vbmi.VL.PermuteVar32x8(dData, shuffle);
+                Word cConv = Avx512Vbmi.VL.PermuteVar32x8(cData, shuffle);
+                Word bConv = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
+                Word aConv = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
+
+                d = Unsafe.As<Word, UInt256>(ref dConv);
+                c = Unsafe.As<Word, UInt256>(ref cConv);
+                b = Unsafe.As<Word, UInt256>(ref bConv);
+                a = Unsafe.As<Word, UInt256>(ref aConv);
+            }
+            else
+            {
+                // Issue all shuffles together
+                Word dShuf = Avx2.Shuffle(dData, shuffle);
+                Word cShuf = Avx2.Shuffle(cData, shuffle);
+                Word bShuf = Avx2.Shuffle(bData, shuffle);
+                Word aShuf = Avx2.Shuffle(aData, shuffle);
+
+                // Issue all permutes together
+                const byte SwapHalves = 0b_01_00_11_10;
+                Vector256<ulong> dPerm = Avx2.Permute4x64(dShuf.AsUInt64(), SwapHalves);
+                Vector256<ulong> cPerm = Avx2.Permute4x64(cShuf.AsUInt64(), SwapHalves);
+                Vector256<ulong> bPerm = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
+                Vector256<ulong> aPerm = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
+
+                d = Unsafe.As<Vector256<ulong>, UInt256>(ref dPerm);
+                c = Unsafe.As<Vector256<ulong>, UInt256>(ref cPerm);
+                b = Unsafe.As<Vector256<ulong>, UInt256>(ref bPerm);
+                a = Unsafe.As<Vector256<ulong>, UInt256>(ref aPerm);
+            }
+        }
+        else
+        {
+            // Scalar path - interleave loads across all four values
+            // to maximise load unit utilisation and hide latency
+            if (BitConverter.IsLittleEndian)
+            {
+                // Round 1: high qwords (u3)
+                ulong d3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
+                ulong c3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32)));
+                ulong b3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64)));
+                ulong a3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 96)));
+
+                // Round 2: u2
+                ulong d2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8)));
+                ulong c2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40)));
+                ulong b2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72)));
+                ulong a2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 104)));
+
+                // Round 3: u1
+                ulong d1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16)));
+                ulong c1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48)));
+                ulong b1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80)));
+                ulong a1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 112)));
+
+                // Round 4: low qwords (u0)
+                ulong d0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24)));
+                ulong c0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56)));
+                ulong b0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88)));
+                ulong a0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 120)));
+
+                d = new UInt256(d0, d1, d2, d3);
+                c = new UInt256(c0, c1, c2, c3);
+                b = new UInt256(b0, b1, b2, b3);
+                a = new UInt256(a0, a1, a2, a3);
+            }
+            else
+            {
+                ulong d3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+                ulong c3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 32));
+                ulong b3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 64));
+                ulong a3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 96));
+
+                ulong d2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
+                ulong c2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 40));
+                ulong b2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 72));
+                ulong a2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 104));
+
+                ulong d1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
+                ulong c1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 48));
+                ulong b1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 80));
+                ulong a1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 112));
+
+                ulong d0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
+                ulong c0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 56));
+                ulong b0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 88));
+                ulong a0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 120));
+
+                d = new UInt256(d0, d1, d2, d3);
+                c = new UInt256(c0, c1, c2, c3);
+                b = new UInt256(b0, b1, b2, b3);
+                a = new UInt256(a0, a1, a2, a3);
+            }
+        }
+
+        return true;
+    }
+
     public readonly bool PeekUInt256IsZero()
     {
         ref byte baseRef = ref _stack;
