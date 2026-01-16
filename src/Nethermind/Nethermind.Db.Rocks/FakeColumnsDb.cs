@@ -42,7 +42,7 @@ public class FakeColumnsDb<T>(
     {
         return new FakeSnapshot(innerDb.ToDictionary((kv) => kv.Key, (kv) =>
         {
-            return ((ISnapshottableKeyValueStore)kv.Value).CreateSnapshot();
+            return ((IKeyValueStoreWithSnapshot)kv.Value).CreateSnapshot();
         }));
     }
 
@@ -94,7 +94,7 @@ public class FakeColumnsDb<T>(
         }
     }
 
-    private class FakeSnapshot(Dictionary<T, IDbSnapshot> innerDb) : IColumnDbSnapshot<T>
+    private class FakeSnapshot(Dictionary<T, IKeyValueStoreSnapshot> innerDb) : IColumnDbSnapshot<T>
     {
 
         public IReadOnlyKeyValueStore GetColumn(T key)
