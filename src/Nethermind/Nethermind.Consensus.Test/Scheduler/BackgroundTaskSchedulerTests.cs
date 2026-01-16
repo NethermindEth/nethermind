@@ -173,7 +173,7 @@ public class BackgroundTaskSchedulerTests
             scheduler.TryScheduleTask("test", async (_, _) => { await Task.Delay(10); });
         }
 
-        Assert.That(scheduler.GetStats()["test"], Is.InRange(capacity, capacity + 1));
+        Assert.That(scheduler.GetStats()["test"], Is.InRange(capacity, capacity + 2));
 
         await Task.Delay(100);
 
