@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -111,4 +111,11 @@ public interface IDiscoveryConfig : IConfig
 
     [ConfigItem(Description = "Discovery version(s) to enable", DefaultValue = "All", HiddenFromDocs = true)]
     DiscoveryVersion DiscoveryVersion { get; set; }
+
+    /// <summary>
+    /// When discv5 is enabled, use well known discv5 bootnodes, in addition to provided by user.
+    /// See Nethermind.Network.Discovery/Discv5/discv5-bootnodes.json
+    /// </summary>
+    [ConfigItem(Description = "When discv5 is enabled, use well known discv5 bootnodes, in addition to provided by user.", DefaultValue = "true")]
+    public bool UseDefaultDiscv5Bootnodes { get; set; }
 }

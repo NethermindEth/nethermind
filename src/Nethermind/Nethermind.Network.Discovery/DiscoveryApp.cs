@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.NetworkInformation;
@@ -267,7 +267,8 @@ public class DiscoveryApp : IDiscoveryApp
 
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
     {
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_networkConfig.Bootnodes, _logger);
+
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
