@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Db.Rocks.Config;
 
 public class AdjustedRocksdbConfig(
     IRocksDbConfig baseConfig,
     string additionalRocksDbOptions,
-    ulong writeBufferSize
+    ulong writeBufferSize,
+    IntPtr? blockCache = null,
+    string? optionsOverride = null
 ) : IRocksDbConfig
 {
     public ulong? WriteBufferSize => writeBufferSize;
@@ -14,7 +18,7 @@ public class AdjustedRocksdbConfig(
     public ulong? WriteBufferNumber => baseConfig.WriteBufferNumber;
 
     // Note: not AdditionalRocksDbOptions so that user can still override option.
-    public string RocksDbOptions => baseConfig.RocksDbOptions + additionalRocksDbOptions;
+    public string RocksDbOptions => optionsOverride ?? (baseConfig.RocksDbOptions + additionalRocksDbOptions);
 
     public string AdditionalRocksDbOptions => baseConfig.AdditionalRocksDbOptions;
 
@@ -37,4 +41,5 @@ public class AdjustedRocksdbConfig(
     public double CompressibilityHint => baseConfig.CompressibilityHint;
 
     public bool FlushOnExit => baseConfig.FlushOnExit;
+    public IntPtr? BlockCache => blockCache ?? baseConfig.BlockCache;
 }

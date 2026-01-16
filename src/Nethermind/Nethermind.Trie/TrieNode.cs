@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 using static Nethermind.Trie.BranchData;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
@@ -503,10 +504,22 @@ namespace Nethermind.Trie
             if (rlp.IsNull || IsDirty)
             {
                 SpanSource oldRlp = rlp.IsNotNull ? rlp : SpanSource.Empty;
-                SpanSource fullRlp = NodeType == NodeType.Branch
-                    ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                        canBeParallel: isRoot && canBeParallel)
-                    : RlpEncode(tree, ref path, bufferPool);
+                SpanSource fullRlp;
+
+                if (path.Length == 0)
+                {
+                    fullRlp = NodeType == NodeType.Branch
+                        ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                            canBeParallel: isRoot && canBeParallel)
+                        : RlpEncode(tree, ref path, bufferPool);
+                }
+                else
+                {
+                    fullRlp = NodeType == NodeType.Branch
+                        ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                            canBeParallel: isRoot && canBeParallel)
+                        : RlpEncode(tree, ref path, bufferPool);
+                }
 
                 if (oldRlp.IsNotNullOrEmpty)
                 {
@@ -522,11 +535,17 @@ namespace Nethermind.Trie
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
+                Hash256? res = Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
+                return res;
             }
 
             return null;
         }
+
+        private static Counter ComputeKeccakTime =
+            DevMetric.Factory.CreateCounter("trienode_compute_keccak_time", "compute time");
+        private static Counter EncodeTime =
+            DevMetric.Factory.CreateCounter("trienode_encode_time", "compute time");
 
         internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
@@ -707,7 +726,7 @@ namespace Nethermind.Trie
             return childNode;
         }
 
-        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex)
+        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex, bool keepChildRef = false)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
@@ -739,7 +758,7 @@ namespace Nethermind.Trie
             // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
             // in RAM, but they are hit quite a lot, and don't have very good data locality.
             // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
-            if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)
+            if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 && childPath.Length % 2 == 0)
             {
                 UnresolveChild(childIndex);
             }
@@ -1255,12 +1274,6 @@ namespace Nethermind.Trie
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 data = childOrRef = child;
-
-                                if (IsPersisted && !child.IsPersisted)
-                                {
-                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                        NullLogger.Instance);
-                                }
 
                                 break;
                             }

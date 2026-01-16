@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Db.Rocks.Config;
 
 public interface IRocksDbConfig
 {
     ulong? WriteBufferSize { get; }
     ulong? WriteBufferNumber { get; }
+    bool SkipDefaultDbOptions => false;
     string RocksDbOptions { get; }
     string AdditionalRocksDbOptions { get; }
     int? MaxOpenFiles { get; }
@@ -19,4 +22,5 @@ public interface IRocksDbConfig
     bool EnableFileWarmer { get; }
     double CompressibilityHint { get; }
     bool FlushOnExit { get; }
+    IntPtr? BlockCache { get; }
 }

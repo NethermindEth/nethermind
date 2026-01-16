@@ -65,6 +65,11 @@ namespace Nethermind.Core
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 
+    public interface ICacheOnlyReader: IReadOnlyKeyValueStore
+    {
+        (bool, int) TryGetSpanCached(scoped ReadOnlySpan<byte> key, Span<byte> outSpan);
+    }
+
     public interface IReadOnlyNativeKeyValueStore
     {
         /// <summary>

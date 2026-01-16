@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
@@ -81,6 +82,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         {
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
+
+        if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
+            builder.AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()));
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.
