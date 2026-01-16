@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -39,6 +40,7 @@ public class ParallelBlockValidationTransactionsExecutor(
         OffParallelTrace trace = OffParallelTrace.Instance;
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
+        ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
         using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
@@ -46,6 +48,31 @@ public class ParallelBlockValidationTransactionsExecutor(
         PushChanges(stateProvider, multiVersionMemory);
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
         return receipts;
+    }
+
+    private void FindNonceDependencies(int txIndex, Block block, ParallelScheduler scheduler)
+    {
+        Address? sender = block.Transactions[txIndex].SenderAddress;
+        for (int i = txIndex - 1; i >= 0; i--)
+        {
+            Transaction prevTx = block.Transactions[i];
+            if (prevTx.SenderAddress == sender)
+            {
+                scheduler.AbortExecution(txIndex, i, false);
+            }
+
+            if (prevTx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
+                {
+                    // how to handle wrong authorizations?
+                    if (tuple.Authority == sender)
+                    {
+                        scheduler.AbortExecution(txIndex, i, false);
+                    }
+                }
+            }
+        }
     }
 
     private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory)
@@ -100,22 +127,12 @@ public class ParallelTransactionProcessor(
             TransactionResult result = transactionProcessor.Execute(transaction, tracer);
             if (!result)
             {
-                if (result.Error == TransactionResult.ErrorType.WrongTransactionNonce)
-                {
-                    for (int i = txIndex - 1; i >= 0; i--)
-                    {
-                        if (block.Transactions[i].SenderAddress == transaction.SenderAddress)
-                        {
-                            blockingTx = i;
-                            break;
-                        }
-                    }
-
-                    if (blockingTx is not null)
-                    {
-                        return Status.ReadError;
-                    }
-                }
+                // blockingTx = FindNonceDependency(result, txIndex, transaction);
+                //
+                // if (blockingTx is not null)
+                // {
+                //     return Status.ReadError;
+                // }
 
                 InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transaction, txIndex);
             }
@@ -154,5 +171,31 @@ public class ParallelTransactionProcessor(
             blockReceiptsTracer.StartNewBlockTrace(block);
             return blockReceiptsTracer.StartNewTxTrace(transaction);
         }
+    }
+
+    private int? FindNonceDependency(TransactionResult result, int txIndex, Transaction tx)
+    {
+        for (int i = txIndex - 1; i >= 0; i--)
+        {
+            Transaction prevTx = block.Transactions[i];
+            if (prevTx.SenderAddress == tx.SenderAddress)
+            {
+                return prevTx.Nonce + 1 == tx.Nonce ? i : null;
+            }
+
+            if (prevTx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
+                {
+                    // how to handle wrong authorizations?
+                    if (tuple.Authority == tx.SenderAddress)
+                    {
+                        return tuple.Nonce + 1 == tx.Nonce ? i : null;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 }

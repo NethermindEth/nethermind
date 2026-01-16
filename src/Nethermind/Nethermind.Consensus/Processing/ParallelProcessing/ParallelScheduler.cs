@@ -174,11 +174,12 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     /// </summary>
     /// <param name="txIndex">Transaction that is waiting for dependency</param>
     /// <param name="blockingTxIndex">Transaction that is blocking</param>
+    /// <param name="fromActiveTask">If abort was called from an active task, not from a static dependency check</param>
     /// <returns>true if dependency was added, false if blocking transaction already finished execution</returns>
     /// <remarks>
     /// After transaction execution in <see cref="ParallelRunner{TLocation, TData, TLogger}.TryExecute"/> either this or <see cref="FinishExecution"/> is called. Both calls end the task.
     /// </remarks>
-    public bool AbortExecution(int txIndex, int blockingTxIndex)
+    public bool AbortExecution(int txIndex, int blockingTxIndex, bool fromActiveTask = true)
     {
         ref TxState blockingTxState = ref _txStates[blockingTxIndex];
         int blockingTxStatus = Volatile.Read(ref blockingTxState.Status);
@@ -216,8 +217,12 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
             if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Can't resume dependencies by Tx {blockingTxIndex}, because Tx {blockingTxIndex} status is {TxStatus.GetName(blockingTxStatus)}");
         }
 
-        // This task execution has ended
-        Interlocked.Decrement(ref _activeTasks);
+        if (fromActiveTask)
+        {
+            // This task execution has ended
+            Interlocked.Decrement(ref _activeTasks);
+        }
+
         return true;
 
         // Lazy & pooled way of handling dependency sets
