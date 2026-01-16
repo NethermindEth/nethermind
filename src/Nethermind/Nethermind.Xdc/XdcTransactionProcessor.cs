@@ -26,6 +26,19 @@ internal class XdcTransactionProcessor(
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager) : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+        out UInt256 blobBaseFee)
+    {
+        if (tx.IsSpecialTransaction((XdcReleaseSpec)spec))
+        {
+            premiumPerGas = 0;
+            senderReservedGasPayment = 0;
+            blobBaseFee = 0;
+            return TransactionResult.Ok;
+        }
+        return base.BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+    }
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
