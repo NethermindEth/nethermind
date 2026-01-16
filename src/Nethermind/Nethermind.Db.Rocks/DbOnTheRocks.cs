@@ -459,6 +459,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return asDict;
     }
 
+    private const string OptimizeFiltersForHitsOption = "optimize_filters_for_hits=";
+
+    /// <summary>
+    /// Normalizes a RocksDB options string by removing earlier occurrences of optimize_filters_for_hits,
+    /// keeping only the last one. This is needed because RocksDB does not allow overriding this option
+    /// when specified multiple times in the same options string.
+    /// </summary>
+    public static string NormalizeRocksDbOptions(string dbOptions)
+    {
+        if (string.IsNullOrEmpty(dbOptions)) return dbOptions ?? string.Empty;
+
+        int lastIndex = dbOptions.LastIndexOf(OptimizeFiltersForHitsOption, StringComparison.Ordinal);
+        if (lastIndex == -1) return dbOptions;
+
+        // Remove all earlier occurrences, keep only the last one
+        int searchStart = 0;
+        while (true)
+        {
+            int index = dbOptions.IndexOf(OptimizeFiltersForHitsOption, searchStart, StringComparison.Ordinal);
+            if (index == -1 || index == lastIndex) break;
+
+            // Find the end of this option (next semicolon)
+            int endIndex = dbOptions.IndexOf(';', index);
+            if (endIndex == -1) break;
+
+            dbOptions = dbOptions.Remove(index, endIndex - index + 1);
+            lastIndex = dbOptions.LastIndexOf(OptimizeFiltersForHitsOption, StringComparison.Ordinal);
+        }
+
+        return dbOptions;
+    }
+
     protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache, IMergeOperator? mergeOperator) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
@@ -512,7 +544,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             options.SetBlockBasedTableFactory(tableOptions);
         }
 
-        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
         try
         {
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
@@ -603,7 +635,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
-            optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
+            optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.AdditionalRocksDbOptions));
             try
             {
                 _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);

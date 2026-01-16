@@ -464,6 +464,41 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void TestNormalizeRocksDbOptions_RemovesDuplicateOptimizeFiltersForHits()
+        {
+            string options = "optimize_filters_for_hits=true;compression=kSnappyCompression;optimize_filters_for_hits=false;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            // Should contain only one optimize_filters_for_hits with the last value (false)
+            normalized.Should().Be("compression=kSnappyCompression;optimize_filters_for_hits=false;");
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_HandlesEmptyString()
+        {
+            DbOnTheRocks.NormalizeRocksDbOptions("").Should().Be("");
+            DbOnTheRocks.NormalizeRocksDbOptions(null!).Should().Be("");
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_PreservesStringWithoutDuplicates()
+        {
+            string options = "compression=kSnappyCompression;block_size=16000;optimize_filters_for_hits=true;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            normalized.Should().Be(options);
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_HandlesMultipleDuplicates()
+        {
+            string options = "optimize_filters_for_hits=true;foo=bar;optimize_filters_for_hits=false;baz=qux;optimize_filters_for_hits=true;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            normalized.Should().Be("foo=bar;baz=qux;optimize_filters_for_hits=true;");
+        }
+
+        [Test]
         public void Can_GetMetric_AfterDispose()
         {
             _db.Dispose();
