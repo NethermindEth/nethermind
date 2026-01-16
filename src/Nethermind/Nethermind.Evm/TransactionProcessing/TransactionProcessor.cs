@@ -159,31 +159,33 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
-            {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, tracer, opts);
-            }
-
-            TransactionResult result = Execute(tx, tracer, opts);
-            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
-            return result;
-        }
-
-        protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
-        {
             if (Logger.IsTrace)
             {
-                return Execute<OnFlag>(tx, tracer, opts);
+                if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
+                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+                {
+                    _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                    return _systemTransactionProcessor.Execute<OnFlag>(tx, tracer, opts);
+                }
+
+                TransactionResult result = Execute<OnFlag>(tx, tracer, opts);
+                if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
+                return result;
             }
             else
             {
-                return Execute<OffFlag>(tx, tracer, opts);
+                if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+                {
+                    _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                    return _systemTransactionProcessor.Execute<OffFlag>(tx, tracer, opts);
+                }
+
+                TransactionResult result = Execute<OffFlag>(tx, tracer, opts);
+                return result;
             }
         }
 
-        private TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
             where TLogTracing : struct, IFlag
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;

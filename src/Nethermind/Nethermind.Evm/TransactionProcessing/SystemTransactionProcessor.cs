@@ -35,14 +35,14 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }
 
-    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
-        return base.Execute(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
+        return base.Execute<TLogTracing>(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
             ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
             : opts);
     }

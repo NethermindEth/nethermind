@@ -26,7 +26,7 @@ public class OptimismTransactionProcessor(
 {
     private UInt256? _currentTxL1Cost;
 
-    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute<TLogTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.SupportsBlobs)
         {
@@ -44,7 +44,7 @@ public class OptimismTransactionProcessor(
 
         Snapshot snapshot = WorldState.TakeSnapshot();
 
-        TransactionResult result = base.Execute(tx, tracer, opts);
+        TransactionResult result = base.Execute<TLogTracing>(tx, tracer, opts);
 
         if (!result && tx.IsDeposit() && result.Error != TransactionResult.ErrorType.BlockGasLimitExceeded)
         {
