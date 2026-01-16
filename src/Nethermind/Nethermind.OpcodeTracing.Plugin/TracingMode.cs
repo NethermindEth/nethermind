@@ -18,5 +18,13 @@ public enum TracingMode
     /// Trace opcodes by reading historical blocks from the database.
     /// Does not impact live sync performance but requires blocks to be already synced.
     /// </summary>
-    Retrospective
+    Retrospective,
+
+    /// <summary>
+    /// Trace opcodes by replaying historical transactions with actual EVM execution.
+    /// Provides accurate opcode counts including internal calls (CALL, DELEGATECALL, etc.).
+    /// Requires historical state to be available (archive node or blocks within pruning window).
+    /// Supports parallel block processing via MaxDegreeOfParallelism configuration.
+    /// </summary>
+    RetrospectiveExecution
 }
