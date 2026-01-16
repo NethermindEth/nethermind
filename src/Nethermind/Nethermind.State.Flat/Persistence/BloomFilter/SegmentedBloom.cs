@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
+using Nethermind.Core;
 using Prometheus;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
@@ -23,17 +24,17 @@ public sealed class SegmentedBloom : IDisposable
     private volatile PersistedBloomFilter[] _snapshot = Array.Empty<PersistedBloomFilter>();
     private volatile PersistedBloomFilter _current = null!;
 
-    private static Gauge _bloomKeySize = Metrics.CreateGauge("segmented_bloom_counts", "", "type");
+    private static Gauge _bloomKeySize = DevMetric.Factory.CreateGauge("segmented_bloom_counts", "", "type");
     private readonly Gauge.Child _total = _bloomKeySize.WithLabels("total");
     private readonly Gauge.Child _skipped = _bloomKeySize.WithLabels("skipped");
 
-    private static Histogram _bloomTime = Metrics.CreateHistogram("segmented_bloom_read_time", "", new HistogramConfiguration()
+    private static Histogram _bloomTime = DevMetric.Factory.CreateHistogram("segmented_bloom_read_time", "", new HistogramConfiguration()
     {
         LabelNames = ["hitmiss"],
         Buckets = Histogram.PowersOfTenDividedBuckets(2, 9, 3),
     });
 
-    private readonly Gauge _unwrittenEntries = Metrics.CreateGauge("segmented_bloom_unwritten_entries", "");
+    private readonly Gauge _unwrittenEntries = DevMetric.Factory.CreateGauge("segmented_bloom_unwritten_entries", "");
 
     private readonly Histogram.Child _bloomHitTime = _bloomTime.WithLabels("hit");
     private readonly Histogram.Child _bloomMissTime = _bloomTime.WithLabels("miss");

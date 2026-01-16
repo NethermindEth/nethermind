@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Prometheus;
@@ -56,7 +57,7 @@ public static class BloomFlatWrapper
     ) : BasePersistence.IHashedFlatReader
         where TFlatReader: struct, BasePersistence.IHashedFlatReader
     {
-        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
+        private static Counter _slotBloomHit = DevMetric.Factory.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
         private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
         private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
 

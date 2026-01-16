@@ -14,7 +14,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 
@@ -24,7 +23,7 @@ public class PersistenceManager: IAsyncDisposable
 {
     private readonly ILogger _logger;
     private static readonly Histogram _flatdiffimes = FlatDbManager._flatdiffimes;
-    private readonly Histogram _writesSize = Metrics.CreateHistogram("persistence_manager_writes", "writes", new HistogramConfiguration()
+    private readonly Histogram _writesSize = DevMetric.Factory.CreateHistogram("persistence_manager_writes", "writes", new HistogramConfiguration()
     {
         LabelNames = ["payload"],
         Buckets = Histogram.PowersOfTenDividedBuckets(2, 8, 10)
