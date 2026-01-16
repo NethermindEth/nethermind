@@ -9,13 +9,13 @@ namespace Nethermind.State.Flat;
 public interface IFlatDbManager : IFlatCommitTarget
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-    SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage);
-    ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock);
+    SnapshotBundle GatherSnapshotBundle(StateId baseBlock, ResourcePool.Usage usage);
+    ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock);
     void FlushCache(CancellationToken cancellationToken);
-    bool HasStateForBlock(in StateId stateId);
+    bool HasStateForBlock(StateId stateId);
 }
 
-// Used by overridable world state env that has its own snapshot repositories.
+// Used by overridable world state env which have its own snapshot repositories.
 public interface IFlatCommitTarget
 {
     void AddSnapshot(Snapshot snapshot, TransientResource transientResource);

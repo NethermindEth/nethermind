@@ -57,20 +57,11 @@ public sealed class TrieNodeCache : ITrieNodeCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (int, int) GetShardAndHashCode(Hash256? address, in TreePath path)
     {
+        int shardIdx;
         int h1;
 
-        int shardIdx = path.Path.Bytes[0];
-        if (address is not null)
-        {
-            // Add address byte so that the root nodes of storage does not all sit in a single shard
-            shardIdx += address.Bytes[0];
-            shardIdx %= 256;
-            h1 = address.GetHashCode();
-        }
-        else
-        {
-            h1 = 0;
-        }
+        shardIdx = path.Path.Bytes[0];
+        h1 = address is null ? 0 : address.GetHashCode();
 
         int h2 = path.GetHashCode();
 
@@ -193,7 +184,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     public class ChildCache
     {
-        private readonly (int hashCode, TrieNode? node)[][] _shards;
+        private (int hashCode, TrieNode? node)[][] _shards;
         private int _count = 0;
         private int _mask;
         private int _shardSize;

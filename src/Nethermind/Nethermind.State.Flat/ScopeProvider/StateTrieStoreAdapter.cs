@@ -18,7 +18,12 @@ internal sealed class StateTrieStoreAdapter(
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
         TrieNode node = bundle.FindStateNodeOrUnknown(path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        if (node.Keccak != hash)
+        {
+            throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
+        }
+
+        return node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -50,11 +55,19 @@ internal sealed class StateTrieStoreWarmerAdapter(
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
         TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        if (node.Keccak != hash)
+        {
+            throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
+        }
+
+        return node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStateRlp(path, hash, flags);
+
+    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+        throw new NotSupportedException("Warmer adapter does not support commit");
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
@@ -72,7 +85,12 @@ internal sealed class StorageTrieStoreAdapter(
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
         TrieNode node = bundle.FindStorageNodeOrUnknown(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        if (node.Keccak != hash)
+        {
+            throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
+        }
+
+        return node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -99,9 +117,17 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
         TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        if (node.Keccak != hash)
+        {
+            throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
+        }
+
+        return node;
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+
+    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+        throw new NotSupportedException("Warmer adapter does not support commit");
 }

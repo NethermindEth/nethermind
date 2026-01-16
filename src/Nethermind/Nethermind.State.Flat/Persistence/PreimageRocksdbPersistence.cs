@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -11,20 +14,19 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.State.Flat.Persistence;
 
 /// <summary>
-/// Preimage means that instead of hashing the address and slot and using the address as a key, it uses the address and
-/// slot directly as a key. This implementation simply fakes the hash by copying the bytes directly.
-/// This has some benefits:
+/// Preimage means that instead of hashing the address and slot and using the address as key, it uses the address and
+/// slot directly as key. This implementation simply fake the hash by copying the bytes directly.
+/// This has a few benefit:
 /// - Skipping hash calculation, address and slot (around 0.3 micros).
 /// - Improved compression ratio, lower storage db size by about 15%, and therefore better os cache utilization.
-/// - Related slot values tend to be closer together, resulting in a better block cache.
-/// However, it has some major downsides.
+/// - Related slot value tend to be closer together resulting in better block cache.
+/// However, it has some major downside.
 /// - Cannot snap sync.
 /// - Cannot import without a complete preimage db.
 /// </summary>
 public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
-    private readonly WriteBufferAdjuster _adjuster = new(db);
 
     public void Flush() => db.Flush();
 
@@ -37,7 +39,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         }
 
         long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
-        ValueHash256 stateHash = new(bytes[8..]);
+        Hash256 stateHash = new Hash256(bytes[8..]);
         return new StateId(blockNumber, stateHash);
     }
 
@@ -53,7 +55,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     public IPersistence.IPersistenceReader CreateReader()
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
-        BaseTriePersistence.Reader trieReader = new(
+        BaseTriePersistence.Reader trieReader = new BaseTriePersistence.Reader(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
             snapshot.GetColumn(FlatDbColumns.StateNodes),
             snapshot.GetColumn(FlatDbColumns.StorageNodes),
@@ -65,7 +67,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         ISortedKeyValueStore state = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account);
         ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
 
-        FakeHashFlatReader<BaseFlatPersistence.Reader> flatReader = new(
+        FakeHashFlatReader<BaseFlatPersistence.Reader> flatReader = new FakeHashFlatReader<BaseFlatPersistence.Reader>(
             new BaseFlatPersistence.Reader(
                 state,
                 storage,
@@ -84,7 +86,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         );
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
@@ -96,41 +98,32 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        IWriteOnlyKeyValueStore accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
-        IWriteOnlyKeyValueStore storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
-        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
-        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
-        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
-        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
-
-        FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new(
+        FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new FakeHashWriter<BaseFlatPersistence.WriteBatch>(
             new BaseFlatPersistence.WriteBatch(
                 ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
-                accountBatch,
-                storageBatch,
+                batch.GetColumnBatch(FlatDbColumns.Account),
+                batch.GetColumnBatch(FlatDbColumns.Storage),
                 flags
             )
         );
 
-        BaseTriePersistence.WriteBatch trieWriteBatch = new(
+        BaseTriePersistence.WriteBatch trieWriteBatch = new BaseTriePersistence.WriteBatch(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
-            stateTopNodesBatch,
-            stateNodesBatch,
-            storageNodesBatch,
-            fallbackNodesBatch,
+            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
+            batch.GetColumnBatch(FlatDbColumns.StateNodes),
+            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
+            batch.GetColumnBatch(FlatDbColumns.FallbackNodes),
             flags);
 
-        StateId toCopy = to;
         return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
                 batch.Dispose();
                 dbSnap.Dispose();
-                _adjuster.OnBatchDisposed();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
                     db.Flush(onlyWal: true);
@@ -144,6 +137,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     ) : BasePersistence.IFlatWriteBatch
         where TWriteBatch : struct, BasePersistence.IHashedFlatWriteBatch
     {
+        internal AccountDecoder _accountDecoder = AccountDecoder.Slim;
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr)
@@ -164,7 +158,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 return;
             }
 
-            using NettyRlpStream stream = AccountDecoder.Slim.EncodeToNewNettyStream(account);
+            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 
@@ -191,23 +185,23 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     ) : BasePersistence.IFlatReader
         where TFlatReader : struct, BasePersistence.IHashedFlatReader
     {
-        private const int AccountSpanBufferSize = 256;
-        private TFlatReader _flatReader = flatReader;
+        internal AccountDecoder _accountDecoder = AccountDecoder.Slim;
+        private int _accountSpanBufferSize = 256;
 
         public Account? GetAccount(Address address)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
 
-            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
-            int responseSize = _flatReader.GetAccount(fakeHash, valueBuffer);
+            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            int responseSize = flatReader.GetAccount(fakeHash, valueBuffer);
             if (responseSize == 0)
             {
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
-            return AccountDecoder.Slim.Decode(ref ctx);
+            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
+            return _accountDecoder.Decode(ref ctx);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
@@ -221,18 +215,18 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
-        public byte[] GetAccountRaw(Hash256 addrHash) =>
+        public byte[]? GetAccountRaw(Hash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
-            _flatReader.TryGetStorage(address, slotHash, ref outValue);
+            flatReader.TryGetStorage(address, slotHash, ref outValue);
 
-        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
-            _flatReader.CreateAccountIterator(startKey, endKey);
+        public IPersistence.IFlatIterator CreateAccountIterator() =>
+            flatReader.CreateAccountIterator();
 
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
-            _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
+            flatReader.CreateStorageIterator(accountKey);
 
-        public bool IsPreimageMode => _flatReader.IsPreimageMode;
+        public bool IsPreimageMode => flatReader.IsPreimageMode;
     }
 }

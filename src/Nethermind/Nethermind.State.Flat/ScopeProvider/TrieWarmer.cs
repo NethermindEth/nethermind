@@ -29,10 +29,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private readonly SpmcRingBuffer<SlotJob> _slotJobBuffer = new(SlotBufferSize);
 
-    // This was also used to store the job from prewarmer. It will be added back in another PR.
+    // This was also used to store job from prewarmer. It will be added back in another PR.
     private readonly MpmcRingBuffer<Job> _jobBufferMultiThreaded = new(BufferSize);
 
-    // A job needs to be small, within one cache line (64B) ideally.
+    // A job need to be small, within one cache line (64B) ideally.
     private record struct Job(
         // If its warming up address, its a scope, otherwise, its a storage tree.
         object scopeOrStorageTree,
@@ -40,7 +40,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         UInt256 index,
         int sequenceId);
 
-    // A slot hint from the main processing thread is called a lot, so it has its own dedicated queue with a smaller job struct.
+    // A slot hint from the main processing thread is called a lot so it has its own dedicated queue with smaller job struct.
     private record struct SlotJob(
         ITrieWarmer.IStorageWarmer storageTree,
         UInt256 index,
@@ -58,7 +58,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     // needed. Only the main worker spin.
     private readonly Semaphore _executionSlots;
 
-    private readonly CancellationTokenSource _cancelTokenSource;
+    private CancellationTokenSource _cancelTokenSource;
 
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager, IFlatDbConfig flatDbConfig)
     {
@@ -79,29 +79,25 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             _warmerJob = Task.Run(() =>
             {
-                using ArrayPoolList<Thread> tasks = new(_secondaryWorkerCount);
-                Thread primaryWorkerThread = new(() =>
+                using ArrayPoolList<Thread> tasks = new ArrayPoolList<Thread>(_secondaryWorkerCount);
+                Thread primaryWorkerThread = new Thread(() =>
                 {
                     RunPrimaryWorker(_cancelTokenSource.Token);
-                })
-                {
-                    Name = "TrieWarmer-Primary",
-                    IsBackground = true
-                };
+                });
+                primaryWorkerThread.Name = "TrieWarmer-Primary";
+                primaryWorkerThread.IsBackground = true;
                 primaryWorkerThread.Start();
                 tasks.Add(primaryWorkerThread);
 
                 for (int i = 0; i < _secondaryWorkerCount; i++)
                 {
-                    Thread t = new(() =>
+                    Thread t = new Thread(() =>
                     {
                         RunSecondaryWorker(_cancelTokenSource.Token);
-                    })
-                    {
-                        Name = $"TrieWarmer-Secondary-{i}",
-                        Priority = ThreadPriority.Lowest,
-                        IsBackground = true
-                    };
+                    });
+                    t.Name = $"TrieWarmer-Secondary-{i}";
+                    t.Priority = ThreadPriority.Lowest;
+                    t.IsBackground = true;
                     t.Start();
                     tasks.Add(t);
                 }
@@ -116,7 +112,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void RunPrimaryWorker(CancellationToken cancellationToken)
     {
-        SpinWait spinWait = new();
+        SpinWait spinWait = new SpinWait();
         try
         {
             while (true)
@@ -207,7 +203,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     {
         bool wokeUpWorker = false;
 
-        // Release one by one until all jobs were dequeued
+        // Release one by one until all job was dequeued
         while (ShouldWakeUpMoreWorker())
         {
             try
@@ -228,7 +224,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private bool MaybeWakeupFast()
     {
-        // Skipping wakeup due to non-atomic read is fine. Doing atomic operation all the time slows down measurably.
+        // Skipping wakeup due to non atomic read is fine. Doing atomic operation all the time slows down measurably.
         if (_shouldWakeUpPrimaryWorker == 1)
         {
             _primaryWorkerLatch.Set();
@@ -275,12 +271,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         // It can be missing when the warmer lags so much behind that the node is now gone.
         catch (TrieNodeException) { }
-        // Because it runs in parallel, it could happen that the bundle changed, which causes this.
+        // Because it run in parallel, it could happen that the bundle changed which causes this.
         catch (NodeHashMismatchException) { }
-        // Because it runs in parallel, it could be that the scope is disposed of early.
+        // Because it run in parallel, it could be that the scope is disposed early.
         catch (ObjectDisposedException) { }
-        // When the scope is disposed, it set some of the dictionary to null to prevent corrupting later state
-        catch (NullReferenceException) { }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -319,7 +313,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         _cancelTokenSource.Cancel();
 
-        // Release semaphore so that worker detects the cancellation quickly
+        // Release semaphore so that worker detect the cancellation quickly
         while (true)
         {
             try

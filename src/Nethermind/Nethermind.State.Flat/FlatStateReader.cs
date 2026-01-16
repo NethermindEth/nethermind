@@ -54,7 +54,7 @@ public class FlatStateReader(
 
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
     {
-        StateId stateId = new(baseBlock);
+        StateId stateId = new StateId(baseBlock);
 
         using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
         if (reader is null)

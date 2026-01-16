@@ -20,6 +20,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
     private readonly SnapshotBundle _snapshotBundle;
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
@@ -33,7 +34,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
-    // tasks within the trie warmer's ring buffer.
+    // tasks within the trie warmers's ring buffer.
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
@@ -50,25 +51,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
-        CodeDb = codeDb;
+        _codeDb = codeDb;
         _commitTarget = commitTarget;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
+        _stateTree = new StateTree(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
-        _warmupStateTree = new(
+        );
+        _stateTree.RootHash = currentStateId.StateRoot.ToCommitment();
+        _warmupStateTree = new PatriciaTree(
             new StateTrieStoreWarmerAdapter(snapshotBundle),
             logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+        );
+        _warmupStateTree.RootHash = currentStateId.StateRoot.ToCommitment();
 
         _configuration = configuration;
         _logManager = logManager;
@@ -99,7 +95,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Account? accTrie = _stateTree.Get(address);
             if (accTrie != account)
             {
-                throw new TrieException($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
+                throw new Exception($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
             }
         }
 
@@ -109,21 +105,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.SetAccount(address, account);
-        if (_snapshotBundle.ShouldQueuePrewarm(address))
-        {
+        if (_snapshotBundle.ShouldQueuePrewarm(address, null))
             _warmer.PushAddressJob(this, address, _hintSequenceId);
-        }
     }
 
-    public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
-
+    public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
 
-        // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+        // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
         // this is just for warming up
         _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
@@ -158,15 +151,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
+        using ArrayPoolListRef<Task> commitTask = new ArrayPoolListRef<Task>(_storages.Count);
 
         commitTask.Add(Task.Factory.StartNew(() =>
         {
             // Commit will copy the trie nodes from the tree to the bundle.
             // Its fine to commit the state tree together with the storage tree at this point as the storage tree
-            // root has been resolved and updated to the state tree within the writebatch.
+            // root has been resolve and updated to state tree within the writebatch.
             _stateTree.Commit();
-        }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
+        }));
 
         foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
         {
@@ -177,7 +170,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     FlatStorageTree st = (FlatStorageTree)ctx!;
                     st.CommitTree();
                     _concurrencyQuota.ReturnConcurrencyQuota();
-                }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
+                }, storage.Value));
             }
             else
             {
@@ -189,7 +182,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _storages.Clear();
 
-        StateId newStateId = new(blockNumber, RootHash);
+        StateId newStateId = new StateId(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 
@@ -228,7 +221,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _dirtyAccounts[key] = account;
             scope._snapshotBundle.SetAccount(key, account);
 
-            if (account is null)
+            if (account == null)
             {
                 // This may not get called by the storage write batch as the worldstate does not try to update storage
                 // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
@@ -254,14 +247,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
                     if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = scope.Get(key);
-                    if (account is null)
-                    {
-                        if (storageRoot == Keccak.EmptyTreeHash) continue;
-                        using var wb = CreateStorageWriteBatch(entry.Item1, 0);
-                        wb.Clear();
-                        continue;
-                    }
-                    account = account.WithChangedStorageRoot(storageRoot);
+                    if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
+                    account ??= ThrowNullAccount(key);
+                    account = account!.WithChangedStorageRoot(storageRoot);
                     _dirtyAccounts[key] = account;
 
                     scope._snapshotBundle.SetAccount(key, account);
@@ -270,10 +258,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(key, storageRoot, account);
                 }
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                using (StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count))
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
             }
             finally
@@ -286,6 +276,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowNullAccount(Address address) =>
+                throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
     }
 }

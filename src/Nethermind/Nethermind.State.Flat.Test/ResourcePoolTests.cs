@@ -149,11 +149,11 @@ public class ResourcePoolTests
     public void Test_DifferentUsages_HaveIndependentPools()
     {
         SnapshotContent contentMain = _resourcePool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-        SnapshotContent contentCompactor = _resourcePool.GetSnapshotContent(ResourcePool.Usage.Compact4);
+        SnapshotContent contentCompactor = _resourcePool.GetSnapshotContent(ResourcePool.Usage.Compactor);
 
         _resourcePool.ReturnSnapshotContent(ResourcePool.Usage.MainBlockProcessing, contentMain);
 
-        SnapshotContent contentCompactor2 = _resourcePool.GetSnapshotContent(ResourcePool.Usage.Compact4);
+        SnapshotContent contentCompactor2 = _resourcePool.GetSnapshotContent(ResourcePool.Usage.Compactor);
         Assert.That(contentCompactor2, Is.Not.SameAs(contentMain));
 
         SnapshotContent contentMain2 = _resourcePool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);

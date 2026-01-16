@@ -12,9 +12,9 @@ namespace Nethermind.State.Flat.Persistence;
 public interface IPersistence
 {
     IPersistenceReader CreateReader();
-    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None);
+    IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags = WriteFlags.None);
 
-    // Note: RocksdbPersistence already flush WAL on writing batch dispose. You don't need this unless you are skipping WAL.
+    // Note: RocksdbPersistence already flush WAL on write batch dispose. You dont need this unless you are skipping WAL.
     void Flush();
 
     public interface IPersistenceReader : IDisposable
@@ -22,7 +22,7 @@ public interface IPersistence
         Account? GetAccount(Address address);
 
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
-        // zero and missing to conform to a potential verkle need.
+        // zero and missing to conform to potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
@@ -32,10 +32,8 @@ public interface IPersistence
         byte[]? GetAccountRaw(Hash256 addrHash);
         bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value);
 
-        IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
-        IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) => CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        IFlatIterator CreateAccountIterator();
+        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
         bool IsPreimageMode { get; }
     }
 

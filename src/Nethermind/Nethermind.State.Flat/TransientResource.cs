@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -25,15 +23,12 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
-    public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
-    public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
+    public BloomFilter PrewarmedAddresses = new BloomFilter(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probe, which the SIMD instruction do.
+    public TrieNodeCache.ChildCache Nodes = new TrieNodeCache.ChildCache(size.NodesCacheSize);
 
     public Size GetSize() => new(PrewarmedAddresses.Capacity, Nodes.Capacity);
 
     public int CachedNodes => Nodes.Count;
-
-    public ConcurrentDictionary<TreePath, TrieNode> ReadStateNodes = new();
-    public ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> ReadStorageNodes = new();
 
     public void Reset()
     {
@@ -43,18 +38,21 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         {
             long newCapacity = (long)BitOperations.RoundUpToPowerOf2((ulong)PrewarmedAddresses.Count);
             double bitsPerKey = PrewarmedAddresses.BitsPerKey;
-            // Create new filter before disposing old one to avoid null ref race condition
-            BloomFilter newFilter = new BloomFilter(newCapacity, bitsPerKey);
-            BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
-            oldFilter.Dispose();
+            BloomFilter oldFilter = PrewarmedAddresses;
+            PrewarmedAddresses = null!;
+            try
+            {
+                oldFilter.Dispose();
+            }
+            finally
+            {
+                PrewarmedAddresses = new BloomFilter(newCapacity, bitsPerKey);
+            }
         }
         else
         {
             PrewarmedAddresses.Clear();
         }
-
-        ReadStateNodes.NoResizeClear();
-        ReadStorageNodes.NoResizeClear();
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot)

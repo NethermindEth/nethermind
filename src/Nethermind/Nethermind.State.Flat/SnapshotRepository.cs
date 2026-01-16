@@ -22,27 +22,26 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     public int SnapshotCount => _snapshots.Count;
     public int CompactedSnapshotCount => _compactedSnapshots.Count;
 
-    public void AddStateId(in StateId stateId)
+    public void AddStateId(StateId stateId)
     {
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
-        sortedSnapshots.Add(stateId);
+        using (ReadWriteLockBox<SortedSet<StateId>>.LockExitor _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots)) sortedSnapshots.Add(stateId);
     }
 
-    public SnapshotPooledList AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
+    public SnapshotPooledList AssembleSnapshots(StateId baseBlock, StateId targetState, int estimatedSize)
     {
         SnapshotPooledList list = AssembleSnapshotsUntil(baseBlock, targetState.BlockNumber, estimatedSize);
         if (list.Count > 0 && list[0].From.BlockNumber == targetState.BlockNumber && list[0].From != targetState)
         {
             list.Dispose();
 
-            // Likely persisted a non-finalized block.
+            // Likely persisted a non finalized block.
             throw new InvalidOperationException($"Attempted to compile snapshots from {baseBlock} to {targetState} but target is not reachable from baseBlock");
         }
 
         return list;
     }
 
-    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
+    public SnapshotPooledList AssembleSnapshotsUntil(StateId baseBlock, long minBlockNumber, int estimatedSize)
     {
         SnapshotPooledList snapshots = new(estimatedSize);
 
@@ -89,9 +88,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return snapshots;
     }
 
-    public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+    public bool TryLeaseCompactedState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
     {
-        SpinWait sw = new();
+        SpinWait sw = new SpinWait();
         while (_compactedSnapshots.TryGetValue(stateId, out entry))
         {
             if (entry.TryAcquire()) return true;
@@ -101,9 +100,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    public bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+    public bool TryLeaseState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
     {
-        SpinWait sw = new();
+        SpinWait sw = new SpinWait();
         while (_snapshots.TryGetValue(stateId, out entry))
         {
             if (entry.TryAcquire()) return true;
@@ -147,21 +146,24 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
     {
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
+        using ReadWriteLockBox<SortedSet<StateId>>.LockExitor _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
-        StateId min = new(blockNumber, ValueKeccak.Zero);
-        StateId max = new(blockNumber, ValueKeccak.MaxValue);
+        StateId min = new StateId(blockNumber, ValueKeccak.Zero);
+        StateId max = new StateId(blockNumber, ValueKeccak.MaxValue);
 
         return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
     public StateId? GetLastSnapshotId()
     {
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
-        return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
+        using ReadWriteLockBox<SortedSet<StateId>>.LockExitor _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
+
+        if (sortedSnapshots.Count == 0)
+            return null;
+        return sortedSnapshots.Max;
     }
 
-    public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)
+    public bool RemoveAndReleaseCompactedKnownState(StateId stateId)
     {
         if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
         {
@@ -185,7 +187,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             Metrics.SnapshotCount--;
 
-            using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
+            using (ReadWriteLockBox<SortedSet<StateId>>.LockExitor _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             {
                 sortedSnapshots.Remove(stateId);
             }
@@ -198,18 +200,18 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         }
     }
 
-    public bool HasState(in StateId stateId) => _snapshots.ContainsKey(stateId);
+    public bool HasState(StateId stateId) => _snapshots.ContainsKey(stateId);
 
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
+        using ReadWriteLockBox<SortedSet<StateId>>.LockExitor _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         return sortedSnapshots
             .GetViewBetween(new StateId(0, Hash256.Zero), new StateId(stateId.BlockNumber, Keccak.MaxValue))
             .ToPooledList(0);
     }
 
-    public void RemoveStatesUntil(in StateId currentPersistedStateId)
+    public void RemoveStatesUntil(StateId currentPersistedStateId)
     {
         using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(currentPersistedStateId);
         foreach (StateId stateToRemove in statesBeforeStateId)

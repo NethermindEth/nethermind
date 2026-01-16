@@ -15,21 +15,25 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
     public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
 
     public abstract byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-
-    public virtual ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        throw new NotSupportedException("Commit not supported");
+    public abstract ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
 
-    public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         byte[]? value = TryLoadRlp(path, hash, flags);
-        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
+        if (value is null)
+        {
+            throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
+        }
+
+        return value;
     }
 
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => throw new UnsupportedOperationException("Persisted check not supported");
 
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {

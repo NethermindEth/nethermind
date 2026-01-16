@@ -1120,7 +1120,6 @@
       "nethermind.state.flat": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Db": "[1.37.0-unstable, )",
           "Nethermind.Evm": "[1.37.0-unstable, )",
