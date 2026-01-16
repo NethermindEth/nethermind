@@ -34,6 +34,11 @@ internal static partial class EvmInstructions
         /// <param name="value">The input 256‐bit vector.</param>
         /// <returns>The result of the operation as a 256‐bit vector.</returns>
         abstract static Word Operation(Word value);
+
+        virtual static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 1;
+        }
     }
 
     /// <summary>
@@ -56,6 +61,9 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
+        if (TOpMath.CheckStackUnderflow(ref stack))
+            goto StackUnderflow;
+
         // Deduct the gas cost associated with the math operation.
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
@@ -117,11 +125,13 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, 2))
+            goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
         Span<byte> bytes = stack.PopWord256();
 
         // If the position is out-of-range, push zero.
@@ -157,16 +167,15 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        if (CheckStackUnderflow(ref stack, 2))
+            goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.Low);
 
         // Pop the index to determine which byte to use for sign extension.
-        if (!stack.PopUInt256(out UInt256 a))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
         if (a >= BigInt32)
         {
-            // If the index is out-of-range, no extension is needed.
-            if (!stack.EnsureDepth(1))
-                goto StackUnderflow;
             return EvmExceptionType.None;
         }
 

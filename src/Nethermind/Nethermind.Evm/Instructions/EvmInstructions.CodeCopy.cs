@@ -29,6 +29,15 @@ internal static partial class EvmInstructions
         /// <param name="vm">The virtual machine instance providing execution context.</param>
         /// <returns>A read-only span of bytes containing the code.</returns>
         abstract static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm);
+
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        virtual static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     /// <summary>
@@ -60,11 +69,12 @@ internal static partial class EvmInstructions
         where TOpCodeCopy : struct, IOpCodeCopy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (TOpCodeCopy.CheckStackUnderflow(ref stack)) goto StackUnderflow;
+
         // Pop destination offset, source offset, and copy length.
-        if (!stack.PopUInt256(out UInt256 a) ||
-            !stack.PopUInt256(out UInt256 b) ||
-            !stack.PopUInt256(out UInt256 result))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
+        stack.PopUInt256(out UInt256 result);
 
         // Deduct gas for the operation plus the cost for memory expansion.
         // Gas cost is calculated as a fixed "VeryLow" cost plus a per-32-bytes cost.
@@ -143,14 +153,15 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
+
+        if (CheckStackUnderflow(ref stack, 4)) goto StackUnderflow;
+
         // Retrieve the target account address.
         Address address = stack.PopAddress();
         // Pop destination offset, source offset, and length from the stack.
-        if (address is null ||
-            !stack.PopUInt256(out UInt256 a) ||
-            !stack.PopUInt256(out UInt256 b) ||
-            !stack.PopUInt256(out UInt256 result))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
+        stack.PopUInt256(out UInt256 result);
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: true, spec.GetExtCodeCost(), GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
@@ -229,13 +240,14 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
         TGasPolicy.Consume(ref gas, spec.GetExtCodeCost());
 
         // Pop the account address from the stack.
         Address address = stack.PopAddress();
-        if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
@@ -255,12 +267,19 @@ internal static partial class EvmInstructions
             }
             // If the next instruction is GT or EQ and the top stack element is zero,
             // then this pattern likely corresponds to a contract existence check.
-            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
-                     stack.PeekUInt256IsZero())
+            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ))
             {
-                optimizeAccess = true;
-                // Remove the zero from the stack since we will have consumed it.
-                if (!stack.PopLimbo()) goto StackUnderflow;
+                if (CheckStackUnderflow(ref stack, 1))
+                {
+                    goto StackUnderflow;
+                }
+
+                if (stack.PeekUInt256IsZero())
+                {
+                    optimizeAccess = true;
+                    // Remove the zero from the stack since we will have consumed it.
+                    stack.PopLimbo();
+                }
             }
 
             if (optimizeAccess)
