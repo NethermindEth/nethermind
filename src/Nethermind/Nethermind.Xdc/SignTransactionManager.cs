@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
+using Nethermind.Logging;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,7 +23,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class SignTransactionManager(ISigner signer, ITxPool txPool) : ISignTransactionManager
+internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger) : ISignTransactionManager
 {
     public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
@@ -34,7 +35,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool) : ISignTra
         bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            throw new SignTransactionPoolException("Failed to add signed transaction to the pool.");
+            logger.Info("Failed to add signed transaction to the pool.");
         }
     }
 
