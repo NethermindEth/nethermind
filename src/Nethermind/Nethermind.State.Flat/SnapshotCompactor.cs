@@ -74,6 +74,12 @@ public class SnapshotCompactor(
         // however, it increase the average snapshot count per bundle. Hard to know if its better or now.
         int compactSize = isMidCompaction ? _midCompactSize : _compactSize;
 
+        int mode = int.Parse(Environment.GetEnvironmentVariable("MID_COMPACT_MODE") ?? "1");
+        if (mode == 2)
+        {
+            compactSize = _compactSize;
+        }
+
         long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
         var snapshots = snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
 
