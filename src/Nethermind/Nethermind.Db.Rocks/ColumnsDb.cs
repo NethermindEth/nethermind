@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -154,6 +156,42 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
+        }
+    }
+
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
+    {
+        Snapshot snapshot = _db.CreateSnapshot();
+        return new ColumnDbSnapshot(this, snapshot);
+    }
+
+    private class ColumnDbSnapshot(
+        ColumnsDb<T> columnsDb,
+        Snapshot snapshot
+    ) : IColumnDbSnapshot<T>
+    {
+        Dictionary<T, IReadOnlyKeyValueStore> _columnDbs = columnsDb.ColumnKeys.ToDictionary((k) => k, (k) =>
+        {
+            return (IReadOnlyKeyValueStore)(new RocksDbReader(
+                columnsDb,
+                () =>
+                {
+                    ReadOptions options = new ReadOptions();
+                    options.SetSnapshot(snapshot);
+                    return options;
+                },
+                null,
+                columnsDb._columnDbs[k]._columnFamily));
+        });
+
+        public IReadOnlyKeyValueStore GetColumn(T key)
+        {
+            return _columnDbs[key];
+        }
+
+        public void Dispose()
+        {
+            snapshot.Dispose();
         }
     }
 }

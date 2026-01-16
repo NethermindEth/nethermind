@@ -49,6 +49,7 @@ public class PerTableDbConfig : IRocksDbConfig
     public ulong? WriteBufferNumber => ReadConfig<ulong?>(nameof(WriteBufferNumber));
 
     public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), _prefixes);
+
     public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), _prefixes);
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
@@ -61,6 +62,7 @@ public class PerTableDbConfig : IRocksDbConfig
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
     public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
+    public IntPtr? BlockCache => null;
 
     private T? ReadConfig<T>(string propertyName)
     {
