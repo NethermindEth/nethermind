@@ -1,0 +1,54 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Config;
+
+namespace Nethermind.Db;
+
+public interface IFlatDbConfig: IConfig
+{
+    [ConfigItem(Description = "Enabled", DefaultValue = "false")]
+    bool Enabled { get; set; }
+
+    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    bool ImportFromPruningTrieState { get; set; }
+
+    [ConfigItem(Description = "Pruning boundary", DefaultValue = "128")]
+    int PruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Compact size", DefaultValue = "32")]
+    int CompactSize { get; set; }
+
+    [ConfigItem(Description = "Compact interval", DefaultValue = "4")]
+    int MidCompactSize { get; set; }
+
+    [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
+    int MaxInFlightCompactJob { get; set; }
+
+    [ConfigItem(Description = "Read with try", DefaultValue = "false")]
+    bool ReadWithTrie { get; set; }
+
+    [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
+    bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
+    bool InlineCompaction { get; set; }
+
+    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
+    long TrieCacheMemoryTarget { get; set; }
+
+    [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
+    FlatLayout Layout { get; set; }
+
+    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1000000000")]
+    long BlockCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Max pruning boundary", DefaultValue = "1024")]
+    int MaxPruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Warmup key by key", DefaultValue = "false")]
+    bool WarmUpPersistence { get; set; }
+
+    [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
+    int TrieWarmerWorkerCount { get; set; }
+}
