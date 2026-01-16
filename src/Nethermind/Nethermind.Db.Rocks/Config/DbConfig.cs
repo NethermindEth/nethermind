@@ -475,6 +475,10 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.block_size=16000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
 
+        // Need to set this when flat
+        "block_based_table_factory.partition_filters=false;" +
+        "block_based_table_factory.index_type=kBinarySearch;" +
+
         // Make it
         "optimize_filters_for_hits=true;" +
         "" + (Environment.GetEnvironmentVariable("EXTRA_TRIE_ARGS") ?? "") +
