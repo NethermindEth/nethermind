@@ -112,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
+        internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
 
@@ -136,7 +136,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
             }
 
-            return Task.FromResult(new PooledTransactionsMessage(txsToSend));
+            return ValueTask.FromResult(new PooledTransactionsMessage(txsToSend));
         }
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)

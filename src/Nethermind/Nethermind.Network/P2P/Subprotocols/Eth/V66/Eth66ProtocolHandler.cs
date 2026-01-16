@@ -132,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             return new BlockBodiesMessage(message.RequestId, ethBlockBodiesMessage);
         }
 
-        private async Task<PooledTransactionsMessage> Handle(GetPooledTransactionsMessage getPooledTransactions, CancellationToken cancellationToken)
+        private async ValueTask<PooledTransactionsMessage> Handle(GetPooledTransactionsMessage getPooledTransactions, CancellationToken cancellationToken)
         {
             using var message = getPooledTransactions;
             return new PooledTransactionsMessage(message.RequestId,

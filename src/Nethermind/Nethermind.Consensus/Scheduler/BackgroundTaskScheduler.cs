@@ -41,6 +41,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
     private long _queueCount;
+    private readonly ConcurrentDictionary<string, int> _stats = new();
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private bool _disposed = false;
@@ -139,6 +140,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                     }
 
                     UpdateQueueCount();
+                    DecrementStats(activity);
                     await activity.Do(token);
                 }
             }
@@ -161,7 +163,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+    public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null) where TReq : notnull
     {
         IActivity activity = new Activity<TReq>
         {
@@ -177,15 +179,23 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             if (_taskQueue.Writer.TryWrite(activity))
             {
                 UpdateQueueCount();
+                IncrementStats(request);
                 return true;
             }
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task.");
-        Interlocked.Decrement(ref _queueCount);
+        long queueCount = Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
+        if (_logger.IsWarn) _logger.Warn($"Background task queue is full (Count: {queueCount}, Capacity: {_capacity}), dropping task. " +
+                                         $"Stats: {string.Join(", ", _stats.Where(kv => kv.Value > 0).Select(kv => $"({kv.Key}: {kv.Value})"))}");
         return false;
     }
+
+    private void IncrementStats<TReq>(TReq request) where TReq : notnull =>
+        _stats.AddOrUpdate(request.ToString(), 1, (_, value) => value + 1);
+
+    private void DecrementStats(IActivity activity) =>
+        _stats.AddOrUpdate(activity.ToString(), 0, (_, value) => value - 1);
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
 
@@ -203,7 +213,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _scheduler.Dispose();
     }
 
-    private readonly struct Activity<TReq> : IActivity
+    public IReadOnlyDictionary<string, int> GetStats() => _stats;
+
+    private readonly struct Activity<TReq> : IActivity where TReq : notnull
     {
         public DateTimeOffset Deadline { get; init; }
         public TReq Request { get; init; }
@@ -238,6 +250,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 cts?.Dispose();
             }
         }
+
+        public override string ToString() => Request.ToString();
     }
 
     private interface IActivity : IComparable<IActivity>

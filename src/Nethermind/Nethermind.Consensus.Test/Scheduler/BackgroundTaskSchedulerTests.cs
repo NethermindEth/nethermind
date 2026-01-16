@@ -16,6 +16,8 @@ using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Consensus.Test.Scheduler;
 
+[Parallelizable(ParallelScope.Self)]
+[TestFixture]
 public class BackgroundTaskSchedulerTests
 {
     private IBranchProcessor _branchProcessor;
@@ -35,7 +37,7 @@ public class BackgroundTaskSchedulerTests
         TaskCompletionSource tcs = new TaskCompletionSource();
         await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
-        scheduler.TryScheduleTask(1, (_, token) =>
+        scheduler.TryScheduleTask("test", (_, token) =>
         {
             tcs.SetResult(1);
             return Task.CompletedTask;
@@ -52,13 +54,13 @@ public class BackgroundTaskSchedulerTests
         int counter = 0;
 
         SemaphoreSlim waitSignal = new SemaphoreSlim(0);
-        scheduler.TryScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask("test", async (_, token) =>
         {
             Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
             Interlocked.Decrement(ref counter);
         });
-        scheduler.TryScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask("test", async (_, token) =>
         {
             Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
@@ -77,7 +79,7 @@ public class BackgroundTaskSchedulerTests
         bool wasCancelled = false;
 
         ManualResetEvent waitSignal = new ManualResetEvent(false);
-        scheduler.TryScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask("test", async (_, token) =>
         {
             waitSignal.Set();
             try
@@ -107,7 +109,7 @@ public class BackgroundTaskSchedulerTests
         int executionCount = 0;
         for (int i = 0; i < 5; i++)
         {
-            scheduler.TryScheduleTask(1, (_, token) =>
+            scheduler.TryScheduleTask("test", (_, token) =>
             {
                 executionCount++;
                 return Task.CompletedTask;
@@ -129,7 +131,7 @@ public class BackgroundTaskSchedulerTests
 
         bool wasCancelled = false;
         ManualResetEvent waitSignal = new ManualResetEvent(false);
-        scheduler.TryScheduleTask(1, (_, token) =>
+        scheduler.TryScheduleTask("test", (_, token) =>
         {
             wasCancelled = token.IsCancellationRequested;
             waitSignal.Set();
@@ -142,4 +144,37 @@ public class BackgroundTaskSchedulerTests
 
         wasCancelled.Should().BeTrue();
     }
+
+    [Test]
+    public async Task Stats_are_correctly_reported_when_queue_is_full()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        int capacity = 10;
+        int concurrency = 1;
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, concurrency, capacity, new OneLoggerLogManager(new ILogger(logger)));
+        for (int i = 0; i < capacity + concurrency + 1; i++)
+        {
+            scheduler.TryScheduleTask("test", async (_, _) => { await Task.Delay(10); });
+        }
+
+        logger.Received()
+            .Warn("Background task queue is full (Count: 10, Capacity: 10), dropping task. Stats: (test: 10)");
+    }
+
+    [Test]
+    [Retry(3)]
+    public async Task Stats_are_correctly_reported_when_queue_is_empty()
+    {
+        const int capacity = 5;
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, capacity, capacity, LimboLogs.Instance);
+        for (int i = 0; i < 2 * capacity; i++)
+        {
+            scheduler.TryScheduleTask("test", async (_, _) => { await Task.Delay(10); });
+        }
+
+        Assert.That(scheduler.GetStats()["test"], Is.InRange(capacity - 2, capacity + 2));
+        Assert.That(() => scheduler.GetStats()["test"], Is.EqualTo(0).After(250, 50));
+    }
+
 }
