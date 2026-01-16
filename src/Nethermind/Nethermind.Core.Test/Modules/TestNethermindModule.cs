@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
