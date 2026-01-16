@@ -232,6 +232,9 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
         xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
+        xdcSpec.MergeSignRange = 15;
+        xdcSpec.LimitPenaltyEpoch = 4;
+        xdcSpec.LimitPenaltyEpochV2 = 0;
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {

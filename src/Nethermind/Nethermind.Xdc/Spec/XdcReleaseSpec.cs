@@ -112,7 +112,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     Address MasternodeVotingContract { get; set; }
     Address BlockSignerContract { get; set; }
     long TipUpgradePenalty { get; set; }
-
     long MergeSignRange { get; set; }
     long TIP2019Block { get; set; }
     public void ApplyV2Config(ulong round);

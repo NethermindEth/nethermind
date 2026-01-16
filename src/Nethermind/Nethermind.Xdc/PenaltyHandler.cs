@@ -105,8 +105,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
             listBlockHash.Add(parentHash);
         }
 
-        var currentHeader = (XdcBlockHeader)tree.FindHeader(number);
-        var currentSpec = specProvider.GetXdcSpec(currentHeader, round);
+        var currentSpec = specProvider.GetXdcSpec(number, round);
 
         var preMasternodes = epochSwitchManager.GetEpochSwitchInfo(currentHash).Masternodes;
 
