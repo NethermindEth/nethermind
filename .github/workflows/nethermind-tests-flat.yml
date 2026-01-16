@@ -1,0 +1,96 @@
+name: Nethermind tests (Flat DB)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  TEST_USE_FLAT: "1"
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+
+jobs:
+  tests:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Blockchain.Pyspec.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
+          - Ethereum.Legacy.Blockchain.Block.Test
+          - Ethereum.Legacy.Transition.Test
+          - Ethereum.Legacy.VM.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Trie.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Runner.Test
+        chunk: ['']
+        include:
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 1of4
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 2of4
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 3of4
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 4of4
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: ${{ matrix.project }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          dotnet test --project ${{ matrix.project }}.csproj -c release
+
+      - name: Save test outcome
+        if: success() || failure()
+        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
+
+      - name: Upload test outcome
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-flat-outcome
+          path: test.outcome
+          retention-days: 1
+
+  tests-summary:
+    name: Tests summary
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download test outcomes
+        uses: actions/download-artifact@v4
+
+      - name: Ensure all tests passed
+        run: |
+          data=$(cat **/test.outcome) && data=${data%?}
+          passed=$(echo "[$data]" | jq -r 'all')
+          [[ "$passed" == "true" ]] && exit 0 || exit 1

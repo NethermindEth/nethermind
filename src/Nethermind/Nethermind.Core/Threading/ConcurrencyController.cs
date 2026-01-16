@@ -49,4 +49,17 @@ public class ConcurrencyController(int concurrency)
             limiter.ReturnSlot();
         }
     }
+
+    public bool TryRequestConcurrencyQuota()
+    {
+        if (Interlocked.Decrement(ref _slots) > 0)
+        {
+            return true;
+        }
+
+        ReturnConcurrencyQuota();
+        return false;
+    }
+
+    public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _slots);
 }

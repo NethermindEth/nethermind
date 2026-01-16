@@ -224,7 +224,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CreateMarkerIfCorrupt(x);
             throw;
         }
-
     }
 
     private void WarmupFile(string basePath, RocksDb db)
@@ -445,7 +444,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("(?<optionName>[A-Za-z0-9_\\.]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractDbOptionsRegex();
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
@@ -539,7 +538,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Marshal.FreeHGlobal(optsPtr);
         }
 
-        if (dbConfig.WriteBufferSize is not null)
+        if (dbConfig.WriteBufferSize is not null && dbConfig.WriteBufferSize != 0)
         {
             _writeBufferSize = dbConfig.WriteBufferSize.Value;
             options.SetWriteBufferSize(dbConfig.WriteBufferSize.Value);
