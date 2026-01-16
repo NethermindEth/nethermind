@@ -442,3 +442,6 @@ FodyWeavers.xsd
 ## Nethermind
 keystore/
 /.githooks
+
+# Worktrees
+.worktrees/

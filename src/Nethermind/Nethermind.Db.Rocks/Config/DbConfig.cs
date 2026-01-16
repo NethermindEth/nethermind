@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -182,7 +183,7 @@ public class DbConfig : IDbConfig
 
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
     public ulong StateDbWriteBufferNumber { get; set; } = 4;
-    public bool? StateDbVerifyChecksum { get; set; }
+    public bool? StateDbVerifyChecksum { get; set; } = true;
     public ulong? StateDbRowCacheSize { get; set; }
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
@@ -234,6 +235,9 @@ public class DbConfig : IDbConfig
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
+        // Dont do periodic compaction
+        "ttl=0;" +
+        "periodic_compaction_seconds=0;" +
         "";
 
     public string StateDbLargeMemoryRocksDbOptions { get; set; } =
@@ -271,4 +275,129 @@ public class DbConfig : IDbConfig
     public string L1OriginDbRocksDbOptions { get; set; } = "";
 
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
+
+    public bool? FlatDbVerifyChecksum { get; set; } = true;
+    public string FlatDbRocksDbOptions { get; set; } =
+
+        // Common across flat columns.
+        "min_write_buffer_number_to_merge=2;" +
+        "block_based_table_factory.block_restart_interval=4;" +
+        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
+        "block_based_table_factory.block_size=16000;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
+        "max_write_batch_group_size_bytes=4000000;" +
+        "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
+        "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
+        "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
+        "level_compaction_dynamic_level_bytes=false;" +
+
+        // We bsearch instead of partitioned tree. This take up memory for improved latency.
+        "block_based_table_factory.partition_filters=false;" +
+        "block_based_table_factory.index_type=kBinarySearch;" +
+
+        "ttl=0;" +
+        "periodic_compaction_seconds=0;" +
+        "compression=kLZ4Compression;" +
+
+        // Reduce num of files. Tend to be a good thing.
+        "target_file_size_multiplier=2;" +
+
+        // Wal flushed manually in persistence.
+        "manual_wal_flush=true;" +
+
+        // When an SST is removed, also remove the cached blocks instead of waiting for it to disappear
+        "uncache_aggressiveness=1000;" +
+
+        // Small by default, column will override
+        "write_buffer_size=1000000;" +
+        "";
+    public string? FlatDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatMetadataDbRocksDbOptions { get; set; } = "max_bytes_for_level_base=1000000;";
+    public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
+
+    // Account is too small so we make it so that the file and buffer is smaller so that it does not compact too much
+    // at once
+    public string? FlatAccountDbRocksDbOptions { get; set; } =
+        // The account db is small, already using slim encoding. Disabling compression does not lose much.
+        "compression=kNoCompression;" +
+
+        // Keep last level bloom filter. Take up most index memory
+        "optimize_filters_for_hits=false;" +
+
+        // account db is really small in writes, so we set low buffer size to prevent too many different version account
+        // in the same memtable.
+        "target_file_size_multiplier=3;" +
+        "target_file_size_base=32000000;" +
+        "max_bytes_for_level_multiplier=15;" + // Reduce level count
+        "max_bytes_for_level_base=128000000;" +
+
+        // account db have no benefit in locality whatsoever, and have compression disabled.
+        "block_based_table_factory.block_size=4096;" +
+
+        // Smaller
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+    public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatStorageDbRocksDbOptions { get; set; } =
+        // Keep last level bloom filter. Take up most index memory
+        "optimize_filters_for_hits=false;" +
+
+        // Much like account kinda small.
+        "target_file_size_base=64000000;" +
+
+        // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much better.
+        "block_based_table_factory.block_size=8000;" +
+
+        // Smaller
+        "write_buffer_size=32000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
+
+    const string? FlatDbCommonTrieOptions =
+        "level_compaction_dynamic_level_bytes=true;" +
+        "block_based_table_factory.block_restart_interval=8;" +
+        "block_based_table_factory.block_size=16000;" +
+        "";
+
+    // Only 1 gig in total, but almost 1/3rd of the writes.
+    public string? FlatStateTopNodesDbRocksDbOptions { get; set; } =
+        FlatDbCommonTrieOptions +
+        "write_buffer_size=64000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+    public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
+
+    // So not written as much so lower buffer size
+    public string? FlatStateNodesDbRocksDbOptions { get; set; } =
+        FlatDbCommonTrieOptions +
+        "write_buffer_size=32000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+    public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
+
+    // Most writes
+    public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
+        FlatDbCommonTrieOptions +
+        // Slight increase to account for high writes
+        "max_bytes_for_level_base=350000000;" +
+        "write_buffer_size=64000000;" +
+        "max_write_buffer_number=8;" +
+        "";
+    public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatFallbackNodesNodesDbRocksDbOptions { get; set; } =
+        FlatDbCommonTrieOptions +
+        // Fallback nodes is tiny. Like KB level small. This is generous.
+        "max_bytes_for_level_base=4000000;" +
+        "";
+    public string? FlatFallbackNodesNodesDbAdditionalRocksDbOptions { get; set; }
+
+    public string? PreimageDbRocksDbOptions { get; set; } = "";
+    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }

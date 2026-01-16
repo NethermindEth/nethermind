@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using FluentAssertions;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -14,7 +16,7 @@ namespace Nethermind.Core.Test;
 /// <summary>
 /// MemDB with additional tools for testing purposes since you can't use NSubstitute with refstruct
 /// </summary>
-public class TestMemDb : MemDb, ITunableDb
+public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 {
     private readonly List<(byte[], ReadFlags)> _readKeys = new();
     private readonly List<((byte[], byte[]?), WriteFlags)> _writes = new();
@@ -112,5 +114,53 @@ public class TestMemDb : MemDb, ITunableDb
     public override void Flush(bool onlyWal)
     {
         FlushCount++;
+    }
+
+    public byte[]? FirstKey => Keys.Min();
+    public byte[]? LastKey => Keys.Max();
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    {
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = Keys
+            .Order(Bytes.Comparer)
+            .Select((key) => (key, this.Get(key)))
+            .ToPooledList(1);
+
+        return new FakeSortedView(sortedValue);
+    }
+
+    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+    {
+        private int idx = -1;
+
+        public void Dispose()
+        {
+            list.Dispose();
+        }
+
+        public bool StartBefore(ReadOnlySpan<byte> value)
+        {
+            idx = 0;
+
+            while (idx < list.Count)
+            {
+                if (Bytes.BytesComparer.Compare(list[idx].Item1, value) >= 0)
+                {
+                    idx--;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool MoveNext()
+        {
+            idx++;
+            if (idx >= list.Count) return false;
+            return true;
+        }
+
+        public ReadOnlySpan<byte> CurrentKey => list[idx].Item1;
+        public ReadOnlySpan<byte> CurrentValue => list[idx].Item2;
     }
 }
