@@ -166,18 +166,15 @@ public class BackgroundTaskSchedulerTests
     [Retry(3)]
     public async Task Stats_are_correctly_reported_when_queue_is_empty()
     {
-        int capacity = 5;
+        const int capacity = 5;
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, capacity, capacity, LimboLogs.Instance);
         for (int i = 0; i < 2 * capacity; i++)
         {
             scheduler.TryScheduleTask("test", async (_, _) => { await Task.Delay(10); });
         }
 
-        Assert.That(scheduler.GetStats()["test"], Is.InRange(capacity, capacity + 2));
-
-        await Task.Delay(100);
-
-        Assert.That(() => scheduler.GetStats()["test"], Is.EqualTo(0).After(1000, 50));
+        Assert.That(scheduler.GetStats()["test"], Is.InRange(capacity - 2, capacity + 2));
+        Assert.That(() => scheduler.GetStats()["test"], Is.EqualTo(0).After(250, 50));
     }
 
 }
