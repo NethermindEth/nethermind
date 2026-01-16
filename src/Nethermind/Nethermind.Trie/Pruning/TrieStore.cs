@@ -32,6 +32,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly int _maxDepth;
     private readonly double _prunePersistedNodePortion;
     private readonly long _prunePersistedNodeMinimumTarget;
+    private readonly int _pruneDelayMs;
 
     private int _isFirst;
 
@@ -91,6 +92,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _maxBufferedCommitCount = pruningConfig.MaxBufferedCommitCount;
 
         _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
+        _pruneDelayMs = pruningConfig.PruneDelayMilliseconds;
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys && _pastKeyTrackingEnabled;
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
@@ -585,7 +587,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // 2. Allow kick off (block processing) some time to finish before starting to prune (prune in block gap)
         // 3. If we are n+1 Task passing the .IsCompleted check but not going to be first to pass lock,
         //    remain uncompleted for a time to prevent other tasks seeing .IsCompleted and also trying to queue.
-        await Task.Delay(10);
+        int pruneDelayMs = _pruneDelayMs;
+        if (pruneDelayMs <= 0)
+        {
+            // Always async
+            await Task.Yield();
+        }
+        else
+        {
+            await Task.Delay(pruneDelayMs);
+        }
 
         if (!_pruningLock.TryEnter())
         {
@@ -909,25 +920,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             int closureIndex = index;
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
-            _dirtyNodesTasks[closureIndex] = Task.Run(() =>
-            {
-                ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
-                if (_persistedHashes.Length > 0)
-                {
-                    persistedHashes = _persistedHashes[closureIndex];
-                }
-
-                INodeStorage nodeStorage = _nodeStorage;
-                if (doNotRemoveNodes) nodeStorage = null;
-
-                dirtyNode
-                    .PruneCache(
-                        prunePersisted: prunePersisted,
-                        forceRemovePersistedNodes: forceRemovePersistedNodes,
-                        persistedHashes: persistedHashes,
-                        nodeStorage: nodeStorage);
-                persistedHashes?.NoResizeClear();
-            });
+            _dirtyNodesTasks[closureIndex] = CreatePruneDirtyNodeTask(prunePersisted, doNotRemoveNodes, forceRemovePersistedNodes, closureIndex, dirtyNode);
         }
 
         Task.WaitAll(_dirtyNodesTasks);
@@ -935,6 +928,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         RecalculateTotalMemoryUsage();
 
         if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {DirtyMemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+    }
+
+    private async Task CreatePruneDirtyNodeTask(bool prunePersisted, bool doNotRemoveNodes, bool forceRemovePersistedNodes, int closureIndex, TrieStoreDirtyNodesCache dirtyNode)
+    {
+        // Background task
+        await Task.Yield();
+        ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
+        if (_persistedHashes.Length > 0)
+        {
+            persistedHashes = _persistedHashes[closureIndex];
+        }
+
+        INodeStorage nodeStorage = _nodeStorage;
+        if (doNotRemoveNodes) nodeStorage = null;
+
+        dirtyNode
+            .PruneCache(
+                prunePersisted: prunePersisted,
+                forceRemovePersistedNodes: forceRemovePersistedNodes,
+                persistedHashes: persistedHashes,
+                nodeStorage: nodeStorage);
+        persistedHashes?.NoResizeClear();
     }
 
     /// <summary>
