@@ -460,6 +460,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return asDict;
     }
 
+    private const string OptimizeFiltersForHitsOption = "optimize_filters_for_hits=";
+
+    /// <summary>
+    /// Normalizes a RocksDB options string by removing earlier occurrences of optimize_filters_for_hits,
+    /// keeping only the last one. This is needed because RocksDB does not allow overriding this option
+    /// when specified multiple times in the same options string.
+    /// </summary>
+    public static string NormalizeRocksDbOptions(string dbOptions)
+    {
+        if (string.IsNullOrEmpty(dbOptions)) return dbOptions ?? string.Empty;
+
+        int lastIndex = dbOptions.LastIndexOf(OptimizeFiltersForHitsOption, StringComparison.Ordinal);
+        if (lastIndex == -1) return dbOptions;
+
+        // Remove all earlier occurrences, keep only the last one
+        int searchStart = 0;
+        while (true)
+        {
+            int index = dbOptions.IndexOf(OptimizeFiltersForHitsOption, searchStart, StringComparison.Ordinal);
+            if (index == -1 || index == lastIndex) break;
+
+            // Find the end of this option (next semicolon)
+            int endIndex = dbOptions.IndexOf(';', index);
+            if (endIndex == -1) break;
+
+            dbOptions = dbOptions.Remove(index, endIndex - index + 1);
+            lastIndex = dbOptions.LastIndexOf(OptimizeFiltersForHitsOption, StringComparison.Ordinal);
+        }
+
+        return dbOptions;
+    }
+
     protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache, IMergeOperator? mergeOperator) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
@@ -477,7 +509,48 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         BlockBasedTableOptions tableOptions = new();
         options.SetBlockBasedTableFactory(tableOptions);
-        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions);
+        /*
+        ulong blockCacheSize = 0;
+        if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
+        {
+            blockCacheSize = ulong.Parse(blockCacheSizeStr);
+        }
+
+        var isUsingPlainTable = optionsAsDict.ContainsKey("plain_table_factory");
+        if (isUsingPlainTable)
+        {
+            // It just need to set the default factory.
+            // settings can be changed via the option string later, but this need to be set first.
+            options.SetPlainTableFactory(
+                user_key_len: 0,
+                bloom_bits_per_key: 10,
+                hash_table_ratio: 0.75,
+                index_sparseness: 16,
+                huge_page_tlb_size: 0,
+                encoding_type: (char)0,
+                full_scan_mode: false,
+                store_index_in_file: true
+            );
+        }
+        else
+        {
+            BlockBasedTableOptions? tableOptions = new();
+            // note: the ordering is important.
+            // changes to the table options must be applied before setting to set.
+            if (dbConfig.BlockCache is not null)
+            {
+                tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
+            }
+            else if (sharedCache is not null && blockCacheSize == 0)
+            {
+                tableOptions.SetBlockCache(sharedCache.Value);
+            }
+            options.SetBlockBasedTableFactory(tableOptions);
+        }
+
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
+        */
         try
         {
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
@@ -579,7 +652,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
-            optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
+            optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.AdditionalRocksDbOptions));
             try
             {
                 _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
