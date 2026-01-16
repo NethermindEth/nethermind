@@ -607,13 +607,8 @@ internal static partial class EvmInstructions
             vmState.Env.ExecutingAccount,
             data.ToArray(),
             topics);
-        vmState.AccessTracker.Logs.Add(logEntry);
 
-        // Optionally report the log if tracing is enabled.
-        if (vm.TxTracer.IsTracingLogs)
-        {
-            vm.TxTracer.ReportLog(logEntry);
-        }
+        vm.AddLog(logEntry);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

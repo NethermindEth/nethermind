@@ -187,10 +187,15 @@ public unsafe partial class VirtualMachine(
                 }
                 else
                 {
-                    // Start transaction tracing for non-continuation frames if tracing is enabled.
-                    if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
+                    if (!_currentState.IsContinuation)
                     {
-                        TraceTransactionActionStart(_currentState);
+                        AddTransferLog(_currentState);
+
+                        // Start transaction tracing for non-continuation frames if tracing is enabled.
+                        if (_txTracer.IsTracingActions)
+                        {
+                            TraceTransactionActionStart(_currentState);
+                        }
                     }
 
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
@@ -773,6 +778,8 @@ public unsafe partial class VirtualMachine(
     /// </returns>
     protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure, out string? substateError)
     {
+        AddTransferLog(currentState);
+
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
@@ -821,7 +828,6 @@ public unsafe partial class VirtualMachine(
         // Return the default CallResult to signal failure, with the failure exception set via the out parameter.
         return default;
     }
-
 
     protected void TraceTransactionActionStart(EvmState currentState)
     {
@@ -1444,4 +1450,32 @@ public unsafe partial class VirtualMachine(
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
     }
+
+    internal void AddLog(LogEntry logEntry)
+    {
+        EvmState.AccessTracker.Logs.Add(logEntry);
+
+        // Optionally report the log if tracing is enabled.
+        if (TxTracer.IsTracingLogs)
+        {
+            TxTracer.ReportLog(logEntry);
+        }
+    }
+
+    private void AddTransferLog(EvmState currentState)
+    {
+        if (currentState.ExecutionType != ExecutionType.DELEGATECALL)
+        {
+            AddTransferLog(currentState.From, currentState.To, currentState.Env.Value);
+        }
+    }
+
+    internal void AddTransferLog(Address from, Address to, in UInt256 value)
+    {
+        if (Spec.IsEip7708Enabled && value > UInt256.Zero)
+        {
+            AddLog(TransferLog.CreateTransfer(from, to, value));
+        }
+    }
+
 }

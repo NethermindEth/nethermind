@@ -157,4 +157,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public bool IsEip7907Enabled => spec.IsEip7907Enabled;
     public bool IsRip7728Enabled => spec.IsRip7728Enabled;
     public bool IsEip7928Enabled => spec.IsEip7928Enabled;
+    public bool IsEip7708Enabled => spec.IsEip7708Enabled;
 }
