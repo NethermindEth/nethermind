@@ -248,7 +248,7 @@ namespace Nethermind.Xdc
 
             }
 
-            if (Array.Exists(epochInfo.Masternodes, (masternodeAddress) => _signer.Address == masternodeAddress)
+            if (IsMasternode(epochInfo, _signer.Address)
                 && ((roundParent.Number % spec.MergeSignRange == 0) || roundParent.Number < spec.TIP2019Block))
             {
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
@@ -332,7 +332,7 @@ namespace Nethermind.Xdc
             _highestVotedRound = votingRound;
 
             // Check if we are in the masternode set
-            if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
+            if (!IsMasternode(epochInfo, _signer.Address))
             {
                 _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
@@ -488,5 +488,8 @@ namespace Nethermind.Xdc
             _cancellationTokenSource?.Dispose();
             _logger.Info("XdcHotStuff consensus runner stopped");
         }
+
+        private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
+            epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
     }
 }
