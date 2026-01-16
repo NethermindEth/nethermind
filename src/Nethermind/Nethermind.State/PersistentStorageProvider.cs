@@ -393,7 +393,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new();
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;
@@ -432,19 +432,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
-
-        private sealed class Comparer : IEqualityComparer<UInt256>
-        {
-            public static Comparer Instance { get; } = new();
-
-            private Comparer() { }
-
-            public bool Equals(UInt256 x, UInt256 y)
-                => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
-
-            public int GetHashCode([DisallowNull] UInt256 obj)
-                => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
-        }
 
         public void UnmarkClear()
         {
