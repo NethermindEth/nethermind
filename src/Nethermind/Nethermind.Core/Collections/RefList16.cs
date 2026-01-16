@@ -27,11 +27,7 @@ public ref struct RefList16<T>
         Count = initialSize;
     }
 
-    public T? this[int index]
-    {
-        get { return _array[index]; }
-        set { _array[index] = value; }
-    }
+    public T? this[int index] => _array[index];
 
     public Span<T> AsSpan() => MemoryMarshal.CreateSpan(ref Unsafe.As<Inline16, T>(ref _array), Count);
 
