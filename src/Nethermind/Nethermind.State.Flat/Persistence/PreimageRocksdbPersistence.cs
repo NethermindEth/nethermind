@@ -96,8 +96,8 @@ public class PreimageRocksdbPersistence : IPersistence
         var flatReader = new FakeHashFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>(
             new BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>(
                 new BaseFlatPersistence.Reader(
-                    (ICacheOnlyReader)state,
-                    (ICacheOnlyReader)storage
+                    state,
+                    storage
                 ),
                 _bloomFilter
             )

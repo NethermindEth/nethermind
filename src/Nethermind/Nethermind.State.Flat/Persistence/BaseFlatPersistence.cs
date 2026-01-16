@@ -31,103 +31,16 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
-    private static bool EnableReadCoalescing = Environment.GetEnvironmentVariable("ENABLE_READ_COALESCE") == "1";
-
-    private class ReadLocker()
-    {
-        public ulong _currentKey = 0;
-    }
-
-    private const int LockShardCount = 1024;
-    private static ReadLocker[] _locks = new ReadLocker[LockShardCount];
-    static BaseFlatPersistence()
-    {
-        for (int i = 0; i < LockShardCount; i++)
-        {
-            _locks[i] = new ReadLocker();
-        }
-    }
-
     public struct Reader(
-        ICacheOnlyReader state,
-        ICacheOnlyReader storage
+        IReadOnlyKeyValueStore state,
+        IReadOnlyKeyValueStore storage
     ) : BasePersistence.IHashedFlatReader
     {
 
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[StateKeyPrefixLength], address);
-
-            if (!EnableReadCoalescing)
-            {
-                return state.Get(key, outBuffer);
-            }
-
-            (bool ok, int outSize) = state.TryGetSpanCached(key, outBuffer);
-            if (ok) return outSize;
-
-            ulong h1 = XxHash3.HashToUInt64(key);
-            ReadLocker lockObj = _locks[(h1 % LockShardCount)];
-
-            bool isLeader = false;
-            bool keyMatch = true;
-
-            lock (lockObj)
-            {
-                if (lockObj._currentKey == 0)
-                {
-                    // Become the leader
-                    lockObj._currentKey = h1;
-                    isLeader = true;
-                }
-                else if (lockObj._currentKey != h1)
-                {
-                    // Shard collision with a different key
-                    keyMatch = false;
-                }
-            }
-
-            // 3. Handle Shard Collision (Different key using the same lock)
-            if (!keyMatch)
-            {
-                return state.Get(key, outBuffer);
-            }
-
-            if (isLeader)
-            {
-                try
-                {
-                    // 4. LEADER: Perform the expensive read
-                    // This presumably populates the cache internally
-                    return state.Get(key, outBuffer);
-                }
-                finally
-                {
-                    // 5. CRITICAL: Always reset state and pulse, even on exception
-                    lock (lockObj)
-                    {
-                        lockObj._currentKey = 0;
-                        Monitor.PulseAll(lockObj);
-                    }
-                }
-            }
-            else
-            {
-                // 6. FOLLOWER: Wait for leader
-                lock (lockObj)
-                {
-                    // CRITICAL FIX: Re-check condition!
-                    // If the leader finished while we were transitioning between locks,
-                    // _currentKey will already be 0. We must NOT Wait in that case.
-                    if (lockObj._currentKey == h1)
-                    {
-                        Monitor.Wait(lockObj);
-                    }
-                }
-
-                // Do a standard read, block should be cached
-                return state.Get(key, outBuffer);
-            }
+            return state.Get(key, outBuffer);
         }
 
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
@@ -165,76 +78,7 @@ public static class BaseFlatPersistence
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer)
         {
-            if (!EnableReadCoalescing)
-            {
-                return storage.Get(key, outBuffer);
-            }
-
-            (bool ok, int outSize) = storage.TryGetSpanCached(key, outBuffer);
-            if (ok) return outSize;
-
-            ulong h1 = XxHash3.HashToUInt64(key);
-            ReadLocker lockObj = _locks[(h1 % LockShardCount)];
-
-            bool isLeader = false;
-            bool keyMatch = true;
-
-            lock (lockObj)
-            {
-                if (lockObj._currentKey == 0)
-                {
-                    // Become the leader
-                    lockObj._currentKey = h1;
-                    isLeader = true;
-                }
-                else if (lockObj._currentKey != h1)
-                {
-                    // Shard collision with a different key
-                    keyMatch = false;
-                }
-            }
-
-            // 3. Handle Shard Collision (Different key using the same lock)
-            if (!keyMatch)
-            {
-                return storage.Get(key, outBuffer);
-            }
-
-            if (isLeader)
-            {
-                try
-                {
-                    // 4. LEADER: Perform the expensive read
-                    // This presumably populates the cache internally
-                    return storage.Get(key, outBuffer);
-                }
-                finally
-                {
-                    // 5. CRITICAL: Always reset state and pulse, even on exception
-                    lock (lockObj)
-                    {
-                        lockObj._currentKey = 0;
-                        Monitor.PulseAll(lockObj);
-                    }
-                }
-            }
-            else
-            {
-                // 6. FOLLOWER: Wait for leader
-                lock (lockObj)
-                {
-                    // CRITICAL FIX: Re-check condition!
-                    // If the leader finished while we were transitioning between locks,
-                    // _currentKey will already be 0. We must NOT Wait in that case.
-                    if (lockObj._currentKey == h1)
-                    {
-                        Monitor.Wait(lockObj);
-                    }
-                }
-
-                // Do a standard read, block should be cached
-                return storage.Get(key, outBuffer);
-            }
+            return storage.Get(key, outBuffer);
         }
     }
 

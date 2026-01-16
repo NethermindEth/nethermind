@@ -229,7 +229,7 @@ namespace Nethermind.Trie
                     }
                     path.TruncateOne();
 
-                    if (childTasks.Count > 0)
+                    if (childTasks is not null)
                     {
                         Task.WaitAll(childTasks.AsSpan());
                     }

@@ -49,28 +49,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<ITrieWarmer, TrieWarmer>()
 
-            // These fake db are workaround for missing metrics with column db. Probably not a good idea though as
-            // a failure in writes in one of the DB will break the db.
-            .AddDatabase(DbNames.Preimage)
-            .AddDatabase(DbNames.FlatMetadata)
-            .AddDatabase(DbNames.FlatAccount)
-            .AddDatabase(DbNames.FlatStorage)
-            .AddDatabase(DbNames.FlatStateNodes)
-            .AddDatabase(DbNames.FlatStateTopNodes)
-            .AddDatabase(DbNames.FlatStorageNodes)
-            .AddSingleton<IColumnsDb<FlatDbColumns>>((ctx) =>
-            {
-                return new FakeColumnsDb<FlatDbColumns>(new Dictionary<FlatDbColumns, IDb>()
-                {
-                    { FlatDbColumns.Metadata, ctx.ResolveKeyed<IDb>(DbNames.FlatMetadata) },
-                    { FlatDbColumns.Account, ctx.ResolveKeyed<IDb>(DbNames.FlatAccount) },
-                    { FlatDbColumns.Storage, ctx.ResolveKeyed<IDb>(DbNames.FlatStorage) },
-                    { FlatDbColumns.StateNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodes) },
-                    { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
-                    { FlatDbColumns.StateTopNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateTopNodes) },
-                });
-            })
-
             .AddSingleton<IPersistence, IFlatDbConfig, IComponentContext>((flatDbConfig, ctx) =>
             {
                 if (flatDbConfig.Layout == FlatLayout.Flat
@@ -115,6 +93,34 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
             })
             ;
+
+
+
+        if (Environment.GetEnvironmentVariable("USE_FAKE_FLAT_COLUMNS") == "1")
+        {
+            builder
+                // These fake db are workaround for missing metrics with column db. Probably not a good idea though as
+                // a failure in writes in one of the DB will break the db.
+                .AddDatabase(DbNames.Preimage)
+                .AddDatabase(DbNames.FlatMetadata)
+                .AddDatabase(DbNames.FlatAccount)
+                .AddDatabase(DbNames.FlatStorage)
+                .AddDatabase(DbNames.FlatStateNodes)
+                .AddDatabase(DbNames.FlatStateTopNodes)
+                .AddDatabase(DbNames.FlatStorageNodes)
+                .AddSingleton<IColumnsDb<FlatDbColumns>>((ctx) =>
+                {
+                    return new FakeColumnsDb<FlatDbColumns>(new Dictionary<FlatDbColumns, IDb>()
+                    {
+                        { FlatDbColumns.Metadata, ctx.ResolveKeyed<IDb>(DbNames.FlatMetadata) },
+                        { FlatDbColumns.Account, ctx.ResolveKeyed<IDb>(DbNames.FlatAccount) },
+                        { FlatDbColumns.Storage, ctx.ResolveKeyed<IDb>(DbNames.FlatStorage) },
+                        { FlatDbColumns.StateNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodes) },
+                        { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
+                        { FlatDbColumns.StateTopNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateTopNodes) },
+                    });
+                });
+        }
 
 
         if (flatDbConfig.ImportFromPruningTrieState)

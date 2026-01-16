@@ -90,8 +90,8 @@ public class RocksdbPersistence : IPersistence, IPersistenceWithConcurrentTrie
                 new BasePersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>(
                     new BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>(
                         new BaseFlatPersistence.Reader(
-                            (ICacheOnlyReader) state,
-                            (ICacheOnlyReader) storage
+                            state,
+                            storage
                         ),
                         _bloomFilter
                     )
@@ -108,8 +108,8 @@ public class RocksdbPersistence : IPersistence, IPersistenceWithConcurrentTrie
         return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
             new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
                 new BaseFlatPersistence.Reader(
-                    (ICacheOnlyReader) state,
-                    (ICacheOnlyReader) storage
+                    state,
+                    storage
                 )
             ),
             trieReader,
