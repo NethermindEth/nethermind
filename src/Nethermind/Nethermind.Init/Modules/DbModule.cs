@@ -57,11 +57,6 @@ public class DbModule(
                 return sortedKeyValue;
             })
 
-            // Monitoring use these to track active db. We intercept db factory to keep them lazy. Does not
-            // track db that is not created by db factory though...
-            .AddSingleton<DbTracker>()
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
-
             .AddDatabase(DbNames.State)
             .AddDatabase(DbNames.Code)
             .AddDatabase(DbNames.Metadata)

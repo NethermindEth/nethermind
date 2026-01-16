@@ -16,10 +16,10 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The pruning mode.", DefaultValue = "Hybrid")]
     PruningMode Mode { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1280")]
+    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1792")]
     long CacheMb { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1024")]
+    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1536")]
     long DirtyCacheMb { get; set; }
 
     [ConfigItem(
