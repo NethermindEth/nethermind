@@ -93,6 +93,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
+    private bool _isUsingExternalCache;
 
     public DbOnTheRocks(
         string basePath,
@@ -352,7 +353,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return value;
     }
 
-    public IDbMeta.DbMetric GatherMetric(bool isUsingSharedCache = false)
+    public IDbMeta.DbMetric GatherMetric()
     {
         if (_isDisposed)
         {
@@ -369,7 +370,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return new IDbMeta.DbMetric()
         {
             Size = GetSize(),
-            CacheSize = GetCacheSize(isUsingSharedCache),
+            CacheSize = GetCacheSize(),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
             TotalReads = _totalReads,
@@ -394,11 +395,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    private long GetCacheSize(bool isUsingSharedCache = false)
+    private long GetCacheSize()
     {
         try
         {
-            if (isUsingSharedCache)
+            if (_isUsingExternalCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -507,50 +508,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
         _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
 
-        BlockBasedTableOptions tableOptions = new();
-        options.SetBlockBasedTableFactory(tableOptions);
-        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
-        /*
         ulong blockCacheSize = 0;
         if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
         {
             blockCacheSize = ulong.Parse(blockCacheSizeStr);
         }
 
-        var isUsingPlainTable = optionsAsDict.ContainsKey("plain_table_factory");
-        if (isUsingPlainTable)
+        BlockBasedTableOptions? tableOptions = new();
+        if (dbConfig.BlockCache is not null)
         {
-            // It just need to set the default factory.
-            // settings can be changed via the option string later, but this need to be set first.
-            options.SetPlainTableFactory(
-                user_key_len: 0,
-                bloom_bits_per_key: 10,
-                hash_table_ratio: 0.75,
-                index_sparseness: 16,
-                huge_page_tlb_size: 0,
-                encoding_type: (char)0,
-                full_scan_mode: false,
-                store_index_in_file: true
-            );
+            tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
+            _isUsingExternalCache = true;
         }
-        else
+        else if (sharedCache is not null && blockCacheSize == 0)
         {
-            BlockBasedTableOptions? tableOptions = new();
-            // note: the ordering is important.
-            // changes to the table options must be applied before setting to set.
-            if (dbConfig.BlockCache is not null)
-            {
-                tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
-            }
-            else if (sharedCache is not null && blockCacheSize == 0)
-            {
-                tableOptions.SetBlockCache(sharedCache.Value);
-            }
-            options.SetBlockBasedTableFactory(tableOptions);
+            tableOptions.SetBlockCache(sharedCache.Value);
+            _isUsingExternalCache = true;
         }
 
+        // Note: the ordering is important.
+        // changes to the table options must be applied before setting to set.
+        options.SetBlockBasedTableFactory(tableOptions);
+
         IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
-        */
         try
         {
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
@@ -558,17 +538,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         finally
         {
             Marshal.FreeHGlobal(optsPtr);
-        }
-
-        ulong blockCacheSize = 0;
-        if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
-        {
-            blockCacheSize = ulong.Parse(blockCacheSizeStr);
-        }
-
-        if (sharedCache is not null && blockCacheSize == 0)
-        {
-            tableOptions.SetBlockCache(sharedCache.Value);
         }
 
         if (dbConfig.WriteBufferSize is not null)

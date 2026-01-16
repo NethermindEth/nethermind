@@ -121,9 +121,9 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
-        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+        public IDbMeta.DbMetric GatherMetric()
         {
-            return _currentDb.GatherMetric(includeSharedCache);
+            return _currentDb.GatherMetric();
         }
 
         public string Name => _settings.DbName;

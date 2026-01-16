@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -46,14 +47,16 @@ public class DbMonitoringModule : Module
     {
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new ConcurrentDictionary<string, IDbMeta>();
         private readonly int _intervalSec;
+        private readonly HyperClockCacheWrapper _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
 
         private ILogger _logger;
 
-        public DbTracker(IMonitoringService monitoringService, IMetricsConfig metricsConfig, ILogManager logManager)
+        public DbTracker(IMonitoringService monitoringService, IMetricsConfig metricsConfig, HyperClockCacheWrapper sharedBlockCache, ILogManager logManager)
         {
             _intervalSec = metricsConfig.DbMetricIntervalSeconds;
             _logger = logManager.GetClassLogger<DbTracker>();
+            _sharedBlockCache = sharedBlockCache;
 
             if (metricsConfig.EnableDbSizeMetrics)
             {
@@ -88,7 +91,7 @@ public class DbMonitoringModule : Module
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
-                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
+                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(); // Only include shared cache if state db
                     Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
                     Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
                     Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
@@ -96,6 +99,9 @@ public class DbMonitoringModule : Module
                     Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
                     Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
                 }
+
+                Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.GetUsage();
+
                 _lastDbMetricsUpdate = Environment.TickCount64;
             }
             catch (Exception e)

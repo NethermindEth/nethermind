@@ -31,6 +31,7 @@ namespace Nethermind.Db.Test
     public class DbOnTheRocksTests
     {
         private RocksDbConfigFactory _rocksdbConfigFactory;
+        private DbConfig _dbConfig = new DbConfig();
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
 
 
@@ -38,13 +39,13 @@ namespace Nethermind.Db.Test
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
-            _rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
         }
 
         [TearDown]
         public void TearDown()
         {
-            Directory.Delete(DbPath, true);
+            if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
         }
 
         [Test]
@@ -158,6 +159,85 @@ namespace Nethermind.Db.Test
             {
                 act.Should().Throw<RocksDbException>();
             }
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void UseSharedCacheIfNoCacheIsSpecified(bool explicitCache)
+        {
+            if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
+            long sharedCacheSize = 10.KiB();
+
+            using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)sharedCacheSize);
+            _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
+            if (explicitCache)
+            {
+                _dbConfig.BlocksDbRocksDbOptions += "block_based_table_factory.block_cache=1000000;";
+            }
+
+            using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
+                _rocksdbConfigFactory, LimboLogs.Instance, sharedCache: cache.Handle);
+
+            Random rng = new Random();
+            byte[] buffer = new byte[1024];
+            for (int i = 0; i < 100; i++)
+            {
+                Hash256 someKey = Keccak.Compute(i.ToBigEndianByteArray());
+                rng.NextBytes(buffer);
+                db.PutSpan(someKey.Bytes, buffer, WriteFlags.None);
+            }
+            db.Flush();
+
+            if (explicitCache)
+            {
+                Assert.That(db.GatherMetric().CacheSize, Is.GreaterThan(sharedCacheSize));
+            }
+            else
+            {
+                Assert.That(db.GatherMetric().CacheSize, Is.LessThan(sharedCacheSize));
+            }
+        }
+
+        [Test]
+        public void UseExplicitlyGivenCache()
+        {
+            _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
+
+            long cacheSize = 10.KiB();
+            using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)cacheSize);
+
+            IRocksDbConfigFactory rocksDbConfigFactory = Substitute.For<IRocksDbConfigFactory>();
+            rocksDbConfigFactory.GetForDatabase(Arg.Any<string>(), Arg.Any<string?>())
+                .Returns<IRocksDbConfig>((c) =>
+                {
+                    string? arg1 = (string?)c[0];
+                    string? arg2 = (string?)c[0];
+
+                    IRocksDbConfig baseConfig = _rocksdbConfigFactory.GetForDatabase(arg1, arg2);
+
+                    baseConfig = new AdjustedRocksdbConfig(baseConfig,
+                        "",
+                        0,
+                        cache.Handle);
+
+                    return baseConfig;
+                });
+
+            using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
+                _rocksdbConfigFactory, LimboLogs.Instance);
+
+            Random rng = new Random();
+            byte[] buffer = new byte[1024];
+            for (int i = 0; i < 100; i++)
+            {
+                Hash256 someKey = Keccak.Compute(i.ToBigEndianByteArray());
+                rng.NextBytes(buffer);
+                db.PutSpan(someKey.Bytes, buffer, WriteFlags.None);
+            }
+            db.Flush();
+
+            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(0));
+            Assert.That(cache.GetUsage(), Is.LessThan(cacheSize));
         }
 
         [Test]
