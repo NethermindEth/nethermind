@@ -91,14 +91,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
     ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature);
 
     /// <summary>
-    /// Waits for the transaction pool to synchronize with the blockchain head, for testing/debugging purposes.
-    /// This RPC is specifically designed for Taiko integration tests to handle timing issues
-    /// between chain reorgs and txpool updates. It ensures txpool caches are cleared after reorgs so transactions can be resubmitted. 
+    /// Clears txpool state (hash cache, account cache, pending transactions) after a chain reorg.
+    /// This is specifically designed for Taiko integration tests where the chain is reset to a base block.
+    /// After a reorg, stale txpool caches would reject transaction resubmissions with "already known" or "nonce too low".
+    /// Pending transactions must also be cleared because tests resubmit transactions with the same hash/nonce,
+    /// which would be rejected as "ReplacementNotAllowed" if they remain in the pool.
     /// </summary>
     [JsonRpcMethod(
-        Description = "Waits for txpool to sync with blockchain head, for testing/debugging purposes. " +
-                      "Returns true if synced within timeout, false otherwise.",
+        Description = "Clears txpool state after chain reorg for testing/debugging purposes. " +
+                      "Returns true on success.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<bool>> taikoDebug_waitForTxPoolSync(long expectedBlockNumber, int timeoutMs = 5000);
+    ResultWrapper<bool> taikoDebug_clearTxPoolForReorg();
 }

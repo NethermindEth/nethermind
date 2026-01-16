@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
@@ -380,53 +379,15 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     }
 
     /// <summary>
-    /// Behavior:
-    /// 1. Detects reorg scenarios (txpool ahead of blockchain) and resets txpool state
-    /// 2. Polls until txpool has processed up to expectedBlockNumber
-    /// 3. Returns true if synced within timeout, false otherwise
+    /// Clears txpool state (hash cache, account cache, pending transactions) after a chain reorg.
+    /// This is specifically designed for Taiko integration tests where the chain is reset to a base block.
+    /// After a reorg, stale txpool caches would reject transaction resubmissions with "already known" or "nonce too low".
+    /// Pending transactions must also be cleared because tests resubmit transactions with the same hash/nonce,
+    /// which would be rejected as "ReplacementNotAllowed" if they remain in the pool.
     /// </summary>
-    public async Task<ResultWrapper<bool>> taikoDebug_waitForTxPoolSync(long expectedBlockNumber, int timeoutMs = 5000)
+    public ResultWrapper<bool> taikoDebug_clearTxPoolForReorg()
     {
-        long txPoolLastBlock = txPool.LastProcessedBlockNumber;
-        long? currentBlockchainHead = blockFinder.Head?.Number;
-
-        if (currentBlockchainHead.HasValue && txPoolLastBlock > currentBlockchainHead.Value)
-        {
-            txPool.ResetTxPoolState();
-            return ResultWrapper<bool>.Success(true);
-        }
-
-        if (txPoolLastBlock >= expectedBlockNumber)
-        {
-            return ResultWrapper<bool>.Success(true);
-        }
-
-        const int pollIntervalMs = 50;
-
-        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(timeoutMs));
-        try
-        {
-            while (!cts.Token.IsCancellationRequested)
-            {
-                txPoolLastBlock = txPool.LastProcessedBlockNumber;
-
-                // Consider synced if txpool has processed the expected block
-                if (txPoolLastBlock >= expectedBlockNumber)
-                {
-                    return ResultWrapper<bool>.Success(true);
-                }
-
-                // Wait a bit and try again
-                await Task.Delay(pollIntervalMs, cts.Token);
-            }
-
-            // Timeout - txpool didn't sync in time
-            return ResultWrapper<bool>.Success(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Timeout reached - txpool didn't sync in time
-            return ResultWrapper<bool>.Success(false);
-        }
+        txPool.ResetTxPoolState();
+        return ResultWrapper<bool>.Success(true);
     }
 }
