@@ -439,17 +439,18 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TTracingInst">A flag type indicating whether detailed tracing is enabled.</typeparam>
-    /// <typeparam name="TUseNetGasStipendFix">A flag type indicating whether stipend fix is enabled.</typeparam>
+    /// <typeparam name="EIP2200">A flag type indicating whether stipend fix is enabled.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gas">The gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static OpcodeResult InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
+    internal static OpcodeResult InstructionSStoreMetered<TGasPolicy, TTracingInst, EIP2200, EIP3529>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        where TUseNetGasStipendFix : struct, IFlag
+        where EIP2200 : struct, IFlag
+        where EIP3529 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -461,7 +462,7 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
-        if (TUseNetGasStipendFix.IsActive)
+        if (EIP2200.IsActive)
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
@@ -492,7 +493,7 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        long sClearRefunds = RefundOf.SClear(EIP3529.IsActive);
 
         if (newSameAsCurrent)
         {

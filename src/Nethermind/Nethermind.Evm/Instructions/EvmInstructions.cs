@@ -146,10 +146,13 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.MSTORE8] = &InstructionMStore8<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.SLOAD] = &InstructionSLoad<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.SSTORE] = spec.UseNetGasMetering ?
-            (spec.UseNetGasMeteringWithAStipendFix ?
-                &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag> :
-                &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag>
-            ) :
+            ((spec.IsEip2200Enabled, spec.IsEip3529Enabled) switch
+            {
+                (true, true) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag, OffFlag>,
+            }) :
             (spec.IsEip3529Enabled ?
                 &InstructionSStoreUnmetered<TGasPolicy, TTracingInst, OnFlag> :
                 &InstructionSStoreUnmetered<TGasPolicy, TTracingInst, OffFlag>
