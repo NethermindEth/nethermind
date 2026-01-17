@@ -148,9 +148,20 @@ internal static partial class EvmInstructions
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? default : callValue;
+        UInt256 transferValue;
+        bool isTransferZero;
+        if (TOpCall.ExecutionType == ExecutionType.DELEGATECALL || callValue.IsZero)
+        {
+            transferValue = default;
+            isTransferZero = true;
+        }
+        else
+        {
+            transferValue = callValue;
+            isTransferZero = false;
+        }
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && !transferValue.IsZero && TOpCall.ExecutionType != ExecutionType.CALLCODE)
+        if (vm.VmState.IsStatic && !isTransferZero && TOpCall.ExecutionType != ExecutionType.CALLCODE)
             return new(programCounter, EvmExceptionType.StaticCallViolation);
 
         // Determine caller and target based on the call type.
@@ -162,7 +173,7 @@ internal static partial class EvmInstructions
         // Add extra gas cost if value is transferred.
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
             !TOpCall.IsStatic &&
-            !transferValue.IsZero)
+            !isTransferZero)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
@@ -176,7 +187,7 @@ internal static partial class EvmInstructions
         else if (EIP158.IsActive &&
             TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
             !TOpCall.IsStatic &&
-            !transferValue.IsZero && state.IsDeadAccount(target))
+            !isTransferZero && state.IsDeadAccount(target))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
@@ -224,7 +235,7 @@ internal static partial class EvmInstructions
         bool tracingRefunds = vm.TxTracer.IsTracingRefunds;
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
             !TOpCall.IsStatic &&
-            !transferValue.IsZero)
+            !isTransferZero)
         {
             if (tracingRefunds)
             {
@@ -236,7 +247,7 @@ internal static partial class EvmInstructions
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
             (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
-            !TOpCall.IsStatic && !transferValue.IsZero &&
+            !TOpCall.IsStatic && !isTransferZero &&
             state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
@@ -265,11 +276,17 @@ internal static partial class EvmInstructions
 
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
-        // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
+
+        if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
+            !TOpCall.IsStatic &&
+            !isTransferZero)
+        {
+            // Subtract the transfer value from the caller's balance.
+            state.SubtractFromBalance(caller, in transferValue, spec);
+        }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        if (!TTracingInst.IsActive && codeInfo.IsEmpty && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             EvmExceptionType result = stack.PushOne<TTracingInst>();
@@ -279,7 +296,7 @@ internal static partial class EvmInstructions
             }
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            return new(programCounter, FastCall(vm, spec, in transferValue, target));
+            return new(programCounter, FastCall(vm, spec, in transferValue, isTransferZero, target));
         }
 
         // Load call data from memory.
@@ -332,10 +349,11 @@ internal static partial class EvmInstructions
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, bool isTransferZero, Address target)
         {
             IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            if (!isTransferZero)
+                state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
             vm.ReturnData = null;
