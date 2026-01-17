@@ -116,11 +116,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Commit(long blockNumber)
         {
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
-
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            // Commit storages with most writes first to minimise waiting
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages.OrderByDescending(kv => kv.Value.OutstandingWritesEstimate))
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())
                 {
@@ -128,6 +126,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     {
                         StorageTree st = (StorageTree)ctx;
                         st.Commit();
+                        st.ClearWritesEstimate();
                         blockCommitter.ReturnConcurrencyQuota();
                     }, storage.Value));
                 }
