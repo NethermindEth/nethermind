@@ -32,7 +32,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        int offset = (int)location;
+        int offset = (int)location.u0;
 
         // Direct 256bit register copy rather than invoke Memmove
         Unsafe.WriteUnaligned(
@@ -50,7 +50,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        _memory![(long)location] = value;
+        _memory![(long)location.u0] = value;
         return true;
     }
 
@@ -66,7 +66,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        value.CopyTo(_memory.AsSpan((int)location, value.Length));
+        value.CopyTo(_memory.AsSpan((int)location.u0, value.Length));
         return true;
     }
 
@@ -121,7 +121,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, (long)location, value.Length);
+        Array.Copy(value, 0, _memory!, (long)location.u0, value.Length);
         return true;
     }
 
@@ -141,7 +141,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        int intLocation = (int)location.u0;
+        int intLocation = (int)(uint)location.u0;
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
@@ -165,7 +165,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         UpdateSize(newLength);
-        data = _memory.AsSpan((int)location, WordSize);
+        data = _memory.AsSpan((int)(uint)location.u0, WordSize);
         return true;
     }
 
@@ -185,7 +185,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         UpdateSize(newLength);
-        data = _memory.AsSpan((int)location, (int)length);
+        data = _memory.AsSpan((int)(uint)location.u0, (int)(uint)length.u0);
         return true;
     }
 
@@ -206,7 +206,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        data = _memory.AsMemory((int)location, (int)length);
+        data = _memory.AsMemory((int)(uint)location.u0, (int)(uint)length.u0);
         return true;
     }
 
@@ -219,7 +219,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (location > int.MaxValue)
         {
-            return new byte[(long)length];
+            return new byte[(long)length.u0];
         }
 
         if (_memory is null)
@@ -237,8 +237,8 @@ public struct EvmPooledMemory : IEvmMemory
             return default;
         }
 
-        ClearForTracing((ulong)largeSize);
-        return _memory.AsMemory((int)location, (int)length);
+        ClearForTracing(largeSize.u0);
+        return _memory.AsMemory((int)(uint)location.u0, (int)(uint)length.u0);
     }
 
     private void ClearForTracing(ulong size)
