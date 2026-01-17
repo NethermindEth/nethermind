@@ -343,9 +343,10 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static OpcodeResult InstructionSStoreUnmetered<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
+    internal static OpcodeResult InstructionSStoreUnmetered<TGasPolicy, TTracingInst, EIP3529>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where EIP3529 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -383,7 +384,7 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        long sClearRefunds = RefundOf.SClear(EIP3529.IsActive);
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)

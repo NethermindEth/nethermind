@@ -150,7 +150,10 @@ internal static unsafe partial class EvmInstructions
                 &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag> :
                 &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag>
             ) :
-            &InstructionSStoreUnmetered<TGasPolicy, TTracingInst>;
+            (spec.IsEip3529Enabled ?
+                &InstructionSStoreUnmetered<TGasPolicy, TTracingInst, OnFlag> :
+                &InstructionSStoreUnmetered<TGasPolicy, TTracingInst, OffFlag>
+            );
 
         // Jump instructions.
         lookup[(int)Instruction.JUMP] = &InstructionJump;
