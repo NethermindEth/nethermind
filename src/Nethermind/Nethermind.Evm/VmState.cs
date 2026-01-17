@@ -160,6 +160,7 @@ public sealed class VmState<TGasPolicy> : IDisposable
         return state;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static VmState<TGasPolicy> Rent()
         => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
 

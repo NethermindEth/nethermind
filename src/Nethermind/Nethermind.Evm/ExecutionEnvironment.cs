@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -74,7 +74,7 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new ExecutionEnvironment();
+            ExecutionEnvironment env = Rent();
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;
@@ -85,6 +85,10 @@ namespace Nethermind.Evm
             env.InputData = inputData;
             return env;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ExecutionEnvironment Rent()
+            => _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new ExecutionEnvironment();
 
         /// <summary>
         /// Returns the ExecutionEnvironment to the pool for reuse.

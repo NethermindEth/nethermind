@@ -277,9 +277,10 @@ internal static partial class EvmInstructions
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
 
-        if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
-            !TOpCall.IsStatic &&
-            !isTransferZero)
+        if (!EIP158.IsActive ||
+            (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
+                !TOpCall.IsStatic &&
+                !isTransferZero))
         {
             // Subtract the transfer value from the caller's balance.
             state.SubtractFromBalance(caller, in transferValue, spec);
@@ -352,7 +353,7 @@ internal static partial class EvmInstructions
         static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, bool isTransferZero, Address target)
         {
             IWorldState state = vm.WorldState;
-            if (!isTransferZero)
+            if (!EIP158.IsActive || !isTransferZero)
                 state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
             Metrics.IncrementEmptyCalls();
 
