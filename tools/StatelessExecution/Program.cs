@@ -243,8 +243,10 @@ class Program
         return result;
     }
 
-    static int Main(string[] args)
+    static int Main()
     {
+#nullable enable
+
         Witness witness = new Witness()
         {
             Codes = ToByteArrays(codes),
@@ -273,7 +275,7 @@ class Program
         StatelessBlockProcessingEnv blockProcessingEnv =
             new(witness, specProvider, Always.Valid, NullLogManager.Instance);
 
-        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
+        using System.IDisposable scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
