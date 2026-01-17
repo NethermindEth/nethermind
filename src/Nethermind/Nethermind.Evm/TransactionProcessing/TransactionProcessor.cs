@@ -331,7 +331,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool IsValidForExecution(
                 AuthorizationTuple authorizationTuple,
-                StackAccessTracker accessTracker,
+                in StackAccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
                 if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)

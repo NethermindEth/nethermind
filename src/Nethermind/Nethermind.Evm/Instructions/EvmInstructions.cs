@@ -276,23 +276,42 @@ internal static unsafe partial class EvmInstructions
 
         // Contract creation and call opcodes.
         lookup[(int)Instruction.CREATE] = &InstructionCreate<TGasPolicy, OpCreate, TTracingInst>;
-        lookup[(int)Instruction.CALL] = &InstructionCall<TGasPolicy, OpCall, TTracingInst>;
-        lookup[(int)Instruction.CALLCODE] = &InstructionCall<TGasPolicy, OpCallCode, TTracingInst>;
         lookup[(int)Instruction.RETURN] = &InstructionReturn;
-        if (spec.DelegateCallEnabled)
+
+        switch (spec.IsEip150Enabled, spec.IsEip158Enabled, spec.IsEip7907Enabled)
         {
-            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst>;
+            case (true, true, true):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(lookup, spec);
+                break;
+            case (true, true, false):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(lookup, spec);
+                break;
+            case (true, false, true):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(lookup, spec);
+                break;
+            case (true, false, false):
+                AddCalls<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(lookup, spec);
+                break;
+            case (false, true, true):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(lookup, spec);
+                break;
+            case (false, true, false):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(lookup, spec);
+                break;
+            case (false, false, true):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(lookup, spec);
+                break;
+            case (false, false, false):
+                AddCalls<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(lookup, spec);
+                break;
         }
+
         if (spec.Create2OpcodeEnabled)
         {
             lookup[(int)Instruction.CREATE2] = &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst>;
         }
 
         lookup[(int)Instruction.RETURNDATALOAD] = &InstructionReturnDataLoad<TGasPolicy, TTracingInst>;
-        if (spec.StaticCallEnabled)
-        {
-            lookup[(int)Instruction.STATICCALL] = &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst>;
-        }
 
         // Extended call opcodes in EO mode.
         if (spec.IsEofEnabled)
@@ -319,5 +338,24 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.SELFDESTRUCT] = &InstructionSelfDestruct;
 
         return lookup;
+    }
+
+    private static void AddCalls<TGasPolicy, TTracingInst, EIP150, EIP158, EIP7907>(delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] lookup, IReleaseSpec spec)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where EIP150 : struct, IFlag
+        where EIP158 : struct, IFlag
+        where EIP7907 : struct, IFlag
+    {
+        lookup[(int)Instruction.CALL] = &InstructionCall<TGasPolicy, OpCall, TTracingInst, EIP150, EIP158, EIP7907>;
+        lookup[(int)Instruction.CALLCODE] = &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, EIP150, EIP158, EIP7907>;
+        if (spec.DelegateCallEnabled)
+        {
+            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, EIP150, EIP158, EIP7907>;
+        }
+        if (spec.StaticCallEnabled)
+        {
+            lookup[(int)Instruction.STATICCALL] = &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, EIP150, EIP158, EIP7907>;
+        }
     }
 }

@@ -89,13 +89,16 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static OpcodeResult InstructionCall<TGasPolicy, TOpCall, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionCall<TGasPolicy, TOpCall, TTracingInst, EIP150, EIP158, EIP7907>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
+        where EIP150 : struct, IFlag
+        where EIP158 : struct, IFlag
+        where EIP7907 : struct, IFlag
     {
         // Increment global call metrics.
         Metrics.IncrementCalls();
@@ -161,18 +164,18 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
 
-        IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        if (!EIP158.IsActive && !state.AccountExists(target))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
+        else if (EIP158.IsActive && transferValue != 0 && state.IsDeadAccount(target))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
 
+        IReleaseSpec spec = vm.Spec;
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GetCallCost()) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
@@ -183,7 +186,7 @@ internal static partial class EvmInstructions
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // If contract is large, charge for access
-        if (spec.IsEip7907Enabled)
+        if (EIP7907.IsActive)
         {
             uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
             if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
@@ -194,22 +197,27 @@ internal static partial class EvmInstructions
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // Apply the 63/64 gas rule if enabled.
-        if (spec.Use63Over64Rule)
+        if (EIP150.IsActive)
         {
             gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
         }
-
-        // If gasLimit exceeds the host's representable range, treat as out-of-gas.
-        if (gasLimit >= long.MaxValue) goto OutOfGas;
+        else
+        {
+            // If gasLimit exceeds the host's representable range, treat as out-of-gas.
+            if (gasLimit >= long.MaxValue) goto OutOfGas;
+        }
 
         long gasLimitUl = (long)gasLimit;
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
+        bool tracingRefunds = vm.TxTracer.IsTracingRefunds;
         if (!transferValue.IsZero)
         {
-            if (vm.TxTracer.IsTracingRefunds)
-                vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+            if (tracingRefunds)
+            {
+                TraceValueTransfer(vm);
+            }
             gasLimitUl += GasCostOf.CallStipend;
         }
 
@@ -221,11 +229,9 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = Array.Empty<byte>();
 
             // Optionally report memory changes for refund tracing.
-            if (vm.TxTracer.IsTracingRefunds)
+            if (tracingRefunds)
             {
-                // Specific to Parity tracing: inspect 32 bytes from data offset.
-                ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
+                TraceMemoryChange(vm, dataOffset);
             }
 
             if (TTracingInst.IsActive)
@@ -265,6 +271,14 @@ internal static partial class EvmInstructions
         // Load call data from memory.
         if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
             goto OutOfGas;
+
+        // Normalize output offset if output length is zero.
+        if (outputLength == 0)
+        {
+            // Output offset is inconsequential when output length is 0.
+            outputOffset = 0;
+        }
+
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
@@ -275,13 +289,6 @@ internal static partial class EvmInstructions
             transferValue: in transferValue,
             value: in callValue,
             inputData: in callData);
-
-        // Normalize output offset if output length is zero.
-        if (outputLength == 0)
-        {
-            // Output offset is inconsequential when output length is 0.
-            outputOffset = 0;
-        }
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
@@ -314,6 +321,20 @@ internal static partial class EvmInstructions
         return new(programCounter, EvmExceptionType.StackUnderflow);
     OutOfGas:
         return new(programCounter, EvmExceptionType.OutOfGas);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void TraceValueTransfer(VirtualMachine<TGasPolicy> vm)
+        {
+            vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void TraceMemoryChange(VirtualMachine<TGasPolicy> vm, UInt256 dataOffset)
+        {
+            // Specific to Parity tracing: inspect 32 bytes from data offset.
+            ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
+            vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
+        }
     }
 
     private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)

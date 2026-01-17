@@ -26,7 +26,6 @@ public class CodeInfoRepositoryTests
     static CodeInfoRepositoryTests()
     {
         _releaseSpec = Substitute.For<IReleaseSpec>();
-        _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
     }
 
     public static IEnumerable<object[]> NotDelegationCodeCases()

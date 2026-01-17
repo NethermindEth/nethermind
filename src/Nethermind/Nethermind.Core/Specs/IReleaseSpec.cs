@@ -425,7 +425,7 @@ namespace Nethermind.Core.Specs
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.
         /// </summary>
-        FrozenSet<AddressAsKey> Precompiles { get; }
+        public bool IsPrecompile(Address address);
 
         /// <summary>
         /// EIP-7939 - CLZ - Count leading zeros instruction

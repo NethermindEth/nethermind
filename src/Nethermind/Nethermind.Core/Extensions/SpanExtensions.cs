@@ -225,6 +225,7 @@ namespace Nethermind.Core.Extensions
         /// </para>
         /// </remarks>
         [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static int FastHash(this ReadOnlySpan<byte> input)
         {
             // Fast hardware-accelerated, non-cryptographic hash.
