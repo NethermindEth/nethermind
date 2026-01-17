@@ -43,7 +43,6 @@
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
-    "mergeForkIdTransition": "0x0",
     "terminalTotalDifficulty": "0x0",
     "eip4895TransitionTimestamp": "0x0",
     "eip3855TransitionTimestamp": "0x0",
