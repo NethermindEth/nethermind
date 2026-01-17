@@ -294,6 +294,7 @@ namespace Nethermind.Network
             _cancellationTokenSource.Cancel();
 
             StopTimers();
+            _nodeSource.NodeRemoved -= NodeSourceOnNodeRemoved;
 
             Task storageCloseTask = Task.CompletedTask;
             if (_storageCommitTask is not null)
