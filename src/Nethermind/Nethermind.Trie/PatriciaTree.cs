@@ -113,7 +113,13 @@ namespace Nethermind.Trie
             ILogManager? logManager,
             ICappedArrayPool? bufferPool = null)
         {
+#if ZKVM
+            // Avoid generic interface dispatch (ILogManager.GetClassLogger<T>) under ZKVM/bflat AOT:
+            // it can trigger a GVM lookup failure at runtime.
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+#else
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+#endif
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _allowCommits = allowCommits;
             RootHash = rootHash;
