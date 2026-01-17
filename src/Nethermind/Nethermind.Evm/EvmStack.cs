@@ -29,6 +29,16 @@ public ref struct EvmStack
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
+    public ReadOnlySpan<byte> _maskIndices256Bit = new byte[] {
+        31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+        15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+    };
+
+    public ReadOnlySpan<byte> _maskIndices128Bit = new byte[] {
+        15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+    };
+
+
     public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes)
     {
         Head = head;
@@ -59,44 +69,75 @@ public ref struct EvmStack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Word CreateWordFromUInt64(ulong value)
-        => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
+        => Vector256.Create(value, 0UL, 0UL, 0UL).AsByte();
 
+    /// <summary>
+    /// Writes a big-endian word (or trimmed big-endian prefix) into the little-endian stack layout.
+    /// </summary>
     public void PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(value);
-
-        if (value.Length != WordSize)
-        {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
         }
-        else
+
+        // Stack storage is little-endian: byte[0] is least significant.
+        // Incoming 'value' is big-endian (most significant at index 0).
+        ref byte dst = ref PushBytesRef();
+
+        // Clear the whole 32-byte word first.
+        Unsafe.As<byte, Word>(ref dst) = default;
+
+        int srcLen = value.Length;
+        if (srcLen == 0)
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            return;
+        }
+
+        // We copy from the end of the big-endian span into the beginning of the word:
+        // value[^1] (LSB) -> dst[0], value[^2] -> dst[1], ...
+        int count = srcLen > WordSize ? WordSize : srcLen;
+        ref byte dstRef = ref dst;
+        for (int i = 0; i < count; i++)
+        {
+            ref byte srcRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(value), srcLen - 1 - i);
+            Unsafe.Add(ref dstRef, i) = srcRef;
         }
     }
 
+    /// <summary>
+    /// Writes a big-endian, left-padded word coming from a ZeroPaddedSpan into the little-endian stack layout.
+    /// The span itself is already zero-padded on the left (big-endian), but we must convert to little-endian.
+    /// </summary>
     public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(value);
+        }
 
         ReadOnlySpan<byte> valueSpan = value.Span;
-        if (valueSpan.Length != WordSize)
+
+        ref byte dst = ref PushBytesRef();
+
+        // Clear the whole 32-byte word first.
+        Unsafe.As<byte, Word>(ref dst) = default;
+
+        int srcLen = valueSpan.Length;
+        if (srcLen == 0)
         {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
+            return;
         }
-        else
+
+        // Same logic as above: valueSpan is big-endian, we store little-endian.
+        int count = srcLen > WordSize ? WordSize : srcLen;
+        ref byte dstRef = ref dst;
+        for (int i = 0; i < count; i++)
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
+            ref byte srcRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(valueSpan), srcLen - 1 - i);
+            Unsafe.Add(ref dstRef, i) = srcRef;
         }
     }
 
@@ -105,13 +146,13 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(value);
+        }
 
-        // Build a 256-bit vector: [ 0, 0, 0, (value << 56) ]
-        // - when viewed as bytes: all zeros except byte[31] == value
+        // Little-endian stack: put the single byte at offset 0.
         ref Word head = ref PushedHead();
-        // Single 32-byte store: last byte as value
-        head = CreateWordFromUInt64((ulong)value << 56);
+        head = CreateWordFromUInt64(value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -120,15 +161,18 @@ public ref struct EvmStack
     {
         // ushort size
         if (TTracingInst.IsActive)
+        {
             _tracer.TraceBytes(in value, sizeof(ushort));
+        }
+
+        ushort v = Unsafe.As<byte, ushort>(ref value);
+        if (!BitConverter.IsLittleEndian)
+        {
+            v = BinaryPrimitives.ReverseEndianness(v);
+        }
 
         ref Word head = ref PushedHead();
-        // Load 2-byte source into the top 16 bits of the last 64-bit lane:
-        // lane3 covers bytes [24..31], so shifting by 48 bits
-        ulong lane3 = (ulong)Unsafe.As<byte, ushort>(ref value) << 48;
-
-        // Single 32-byte store
-        head = CreateWordFromUInt64(lane3);
+        head = CreateWordFromUInt64(v);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -137,15 +181,18 @@ public ref struct EvmStack
     {
         // uint size
         if (TTracingInst.IsActive)
+        {
             _tracer.TraceBytes(in value, sizeof(uint));
+        }
+
+        uint v = Unsafe.As<byte, uint>(ref value);
+        if (!BitConverter.IsLittleEndian)
+        {
+            v = BinaryPrimitives.ReverseEndianness(v);
+        }
 
         ref Word head = ref PushedHead();
-        // Load 4-byte source into the top 32 bits of the last 64-bit lane:
-        // lane3 covers bytes [24..31], so shifting by 32 bits
-        ulong lane3 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
-
-        // Single 32-byte store
-        head = CreateWordFromUInt64(lane3);
+        head = CreateWordFromUInt64(v);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -154,29 +201,38 @@ public ref struct EvmStack
     {
         // ulong size
         if (TTracingInst.IsActive)
+        {
             _tracer.TraceBytes(in value, sizeof(ulong));
+        }
+
+        ulong v = Unsafe.As<byte, ulong>(ref value);
+        if (!BitConverter.IsLittleEndian)
+        {
+            v = BinaryPrimitives.ReverseEndianness(v);
+        }
 
         ref Word head = ref PushedHead();
-        // Load 8-byte source into last 64-bit lane
-        ulong lane3 = Unsafe.As<byte, ulong>(ref value);
-
-        // Single 32-byte store
-        head = CreateWordFromUInt64(lane3);
+        head = CreateWordFromUInt64(v);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public unsafe void Push16Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
     {
-        // UInt128 size
+        // UInt128 size (16 bytes)
         if (TTracingInst.IsActive)
+        {
             _tracer.TraceBytes(in value, sizeof(HalfWord));
+        }
 
-        ref Word head = ref PushedHead();
-        // Load 16-byte source into 16-byte source as a Vector128<byte>
-        HalfWord src = Unsafe.As<byte, HalfWord>(ref value);
-        // Single 32-byte store
-        head = Vector256.Create(default, src);
+        HalfWord halfWord = Unsafe.As<byte, HalfWord>(ref value);
+
+        // invert value from big-endian to little-endian
+
+        Vector128<byte> mask = Vector128.Create(_maskIndices128Bit);
+
+        // Shuffle the vector using the reversal mask
+        PushedHead() = Vector256.Create(Vector128<byte>.Zero, Vector128.Shuffle(halfWord, mask));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -185,19 +241,23 @@ public ref struct EvmStack
     {
         // Address size
         if (TTracingInst.IsActive)
+        {
             _tracer.TraceBytes(in value, 20);
+        }
+
+        // Addresses are passed as big-endian 20-byte sequences.
+        // We store them little-endian in the lowest 20 bytes.
+        Span<byte> tmp = stackalloc byte[WordSize];
+        tmp.Clear();
+
+        ref byte srcRef = ref value;
+        for (int i = 0; i < AddressSize; i++)
+        {
+            tmp[i] = Unsafe.Add(ref srcRef, AddressSize - 1 - i);
+        }
 
         ref Word head = ref PushedHead();
-        // build the 4×8-byte lanes:
-        // - lane0 = 0UL
-        // - lane1 = first 4 bytes of 'value', shifted up into the high half
-        // - lane2 = bytes [4..11] of 'value'
-        // - lane3 = bytes [12..19] of 'value'
-        ulong lane1 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
-        ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
-        ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
-
-        head = Vector256.Create(default, lane1, lane2, lane3).AsByte();
+        head = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(tmp));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -210,10 +270,16 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.TraceWord(in value);
+        }
 
-        // Single 32-byte store
-        PushedHead() = value;
+        // invert value from big-endian to little-endian
+
+        Vector256<byte> mask = Vector256.Create(_maskIndices256Bit);
+
+        // Shuffle the vector using the reversal mask
+        PushedHead() = Vector256.Shuffle(value, mask);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -221,23 +287,34 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
         => Push32Bytes<TTracingInst>(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
 
+    /// <summary>
+    /// Pushes big-endian bytes with explicit left padding into a little-endian word.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushLeftPaddedBytes<TTracingInst>(ReadOnlySpan<byte> value, int paddingLength)
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(value);
-
-        if (value.Length != WordSize)
-        {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - paddingLength), value.Length));
         }
-        else
+
+        // Same semantics as PushBytes: incoming big-endian, stack is little-endian.
+        ref byte dst = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref dst) = default;
+
+        int srcLen = value.Length;
+        if (srcLen == 0)
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            return;
+        }
+
+        int count = srcLen > WordSize ? WordSize : srcLen;
+        ref byte dstRef = ref dst;
+        for (int i = 0; i < count; i++)
+        {
+            ref byte srcRef = ref Unsafe.Add(ref MemoryMarshal.GetReference(value), srcLen - 1 - i);
+            Unsafe.Add(ref dstRef, i) = srcRef;
         }
     }
 
@@ -246,13 +323,12 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(Bytes.OneByteSpan);
+        }
 
-        // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
-        // - when viewed as bytes: all zeros except byte[31] == 1
-
-        // Single 32-byte store
-        PushedHead() = CreateWordFromUInt64(1UL << 56);
+        // Little-endian: value 1 is 0x01 at offset 0.
+        PushedHead() = CreateWordFromUInt64(1UL);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -260,95 +336,76 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
+        }
 
-        // Single 32-byte store: Zero 
         PushedHead() = default;
     }
 
     public unsafe void PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
-        if (BitConverter.IsLittleEndian)
+        // Store as native little-endian in the low 4 bytes.
+        if (!BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
         }
-        // uint size
-        if (TTracingInst.IsActive)
-            _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
-        // Single 32-byte store
-        PushedHead() = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
+        }
+
+        ref Word head = ref PushedHead();
+        head = CreateWordFromUInt64(value);
     }
 
     public unsafe void PushUInt64<TTracingInst>(ulong value)
         where TTracingInst : struct, IFlag
     {
-        if (BitConverter.IsLittleEndian)
+        // Store as native little-endian in the low 8 bytes.
+        if (!BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
         }
-        // ulong size
-        if (TTracingInst.IsActive)
-            _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
-        // Single 32-byte store
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
+        }
+
         PushedHead() = CreateWordFromUInt64(value);
     }
 
     /// <summary>
-    /// Pushes an Uint256 written in big endian.
+    /// Pushes a UInt256 whose fields are in little-endian word order (u0 least significant).
+    /// The stack layout is little-endian as well.
     /// </summary>
-    /// <remarks>
-    /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
-    /// </remarks>
-
     public void PushUInt256<TTracingInst>(in UInt256 value)
         where TTracingInst : struct, IFlag
     {
         ref Word head = ref PushedHead();
-        if (Avx2.IsSupported)
+
+        if (BitConverter.IsLittleEndian)
         {
-            Word shuffle = Vector256.Create(
-                0x18191a1b1c1d1e1ful,
-                0x1011121314151617ul,
-                0x08090a0b0c0d0e0ful,
-                0x0001020304050607ul).AsByte();
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
-                head = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-            }
-            else
-            {
-                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
-                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-                head = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle);
-            }
+            // UInt256 is (u0, u1, u2, u3) from least to most significant.
+            head = Vector256.Create(value.u0, value.u1, value.u2, value.u3).AsByte();
         }
         else
         {
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
-            {
-                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
-                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
-                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
-                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
-            }
-            else
-            {
-                u3 = value.u3;
-                u2 = value.u2;
-                u1 = value.u1;
-                u0 = value.u0;
-            }
-
-            head = Vector256.Create(u3, u2, u1, u0).AsByte();
+            // Reverse individual words to keep overall little-endian semantics.
+            ulong u0 = BinaryPrimitives.ReverseEndianness(value.u0);
+            ulong u1 = BinaryPrimitives.ReverseEndianness(value.u1);
+            ulong u2 = BinaryPrimitives.ReverseEndianness(value.u2);
+            ulong u3 = BinaryPrimitives.ReverseEndianness(value.u3);
+            head = Vector256.Create(u0, u1, u2, u3).AsByte();
         }
 
         if (TTracingInst.IsActive)
+        {
             _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Word, byte>(ref head), WordSize));
+        }
     }
 
     public void PushSignedInt256<TTracingInst>(in Int256.Int256 value)
@@ -370,60 +427,32 @@ public ref struct EvmStack
     }
 
     /// <summary>
-    /// Pops an Uint256 written in big endian.
+    /// Pops a UInt256 from the stack, stored in little-endian layout.
     /// </summary>
-    /// <remarks>
-    /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
-    /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
-    /// </remarks>
-    /// <param name="result">The returned value.</param>
     public bool PopUInt256(out UInt256 result)
     {
         Unsafe.SkipInit(out result);
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) return false;
-
-        if (Avx2.IsSupported)
+        if (Unsafe.IsNullRef(ref bytes))
         {
-            Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
-            Word shuffle = Vector256.Create(
-                0x18191a1b1c1d1e1ful,
-                0x1011121314151617ul,
-                0x08090a0b0c0d0e0ful,
-                0x0001020304050607ul).AsByte();
-            if (Avx512Vbmi.VL.IsSupported)
-            {
-                Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-                result = Unsafe.As<Word, UInt256>(ref convert);
-            }
-            else
-            {
-                Word convert = Avx2.Shuffle(data, shuffle);
-                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
-                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
-            }
+            return false;
         }
-        else
-        {
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
-            {
-                // Combine read and switch endianness to movbe reg, mem
-                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
-                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
-                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
-            }
-            else
-            {
-                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
-            }
 
-            result = new UInt256(u0, u1, u2, u3);
+        // We store four ulongs in little-endian word order.
+        ulong u0 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+        ulong u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
+        ulong u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
+        ulong u3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
+
+        if (!BitConverter.IsLittleEndian)
+        {
+            u0 = BinaryPrimitives.ReverseEndianness(u0);
+            u1 = BinaryPrimitives.ReverseEndianness(u1);
+            u2 = BinaryPrimitives.ReverseEndianness(u2);
+            u3 = BinaryPrimitives.ReverseEndianness(u3);
         }
+
+        result = new UInt256(u0, u1, u2, u3);
 
         return true;
     }
@@ -437,6 +466,8 @@ public ref struct EvmStack
         }
 
         ref byte bytes = ref _bytes[head * WordSize];
+
+        // Little-endian layout: just read the stored UInt256.
         return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
     }
 
@@ -448,6 +479,7 @@ public ref struct EvmStack
         {
             return ref Unsafe.NullRef<byte>();
         }
+
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
@@ -462,7 +494,10 @@ public ref struct EvmStack
         return _bytes.Slice(head * WordSize, WordSize);
     }
 
-    public Address? PopAddress() => Head-- == 0 ? null : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+    public Address? PopAddress()
+        => Head-- == 0
+            ? null
+            : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
 
     public bool PopAddress(out Address address)
     {
@@ -484,6 +519,7 @@ public ref struct EvmStack
         {
             return ref Unsafe.NullRef<byte>();
         }
+
         head--;
         Head = head;
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
@@ -492,9 +528,24 @@ public ref struct EvmStack
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
+        if (Unsafe.IsNullRef(ref bytes))
+        {
+            ThrowEvmStackUnderflowException();
+        }
 
         return MemoryMarshal.CreateSpan(ref bytes, WordSize);
+    }
+
+    public Span<byte> PopWord256AsBigEndian()
+    {
+        ref byte bytes = ref PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes))
+        {
+            ThrowEvmStackUnderflowException();
+        }
+
+        var word = Unsafe.As<byte, UInt256>(ref bytes);
+        return word.ToBigEndian();
     }
 
     public bool PopWord256(out Span<byte> word)
@@ -513,9 +564,13 @@ public ref struct EvmStack
     {
         ref byte bytes = ref PopBytesByRef();
 
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
+        if (Unsafe.IsNullRef(ref bytes))
+        {
+            ThrowEvmStackUnderflowException();
+        }
 
-        return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
+        // Little-endian: LSB is at offset 0.
+        return bytes;
     }
 
     [SkipLocalsInit]
@@ -523,7 +578,10 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         int head = Head;
-        if (head < depth) goto StackUnderflow;
+        if (head < depth)
+        {
+            goto StackUnderflow;
+        }
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -532,9 +590,15 @@ public ref struct EvmStack
 
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
 
-        if (TTracingInst.IsActive) Trace(depth);
+        if (TTracingInst.IsActive)
+        {
+            Trace(depth);
+        }
 
-        if (++head >= MaxStackSize) goto StackOverflow;
+        if (++head >= MaxStackSize)
+        {
+            goto StackOverflow;
+        }
 
         Head = head;
 
@@ -554,7 +618,10 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         int head = Head;
-        if (head < depth) goto StackUnderflow;
+        if (head < depth)
+        {
+            goto StackUnderflow;
+        }
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -565,7 +632,10 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
         Unsafe.WriteUnaligned(ref top, buffer);
 
-        if (TTracingInst.IsActive) Trace(depth);
+        if (TTracingInst.IsActive)
+        {
+            Trace(depth);
+        }
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -577,7 +647,10 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         int maxDepth = Math.Max(n, m);
-        if (!EnsureDepth(maxDepth)) return false;
+        if (!EnsureDepth(maxDepth))
+        {
+            return false;
+        }
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -588,7 +661,10 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
         Unsafe.WriteUnaligned(ref second, buffer);
 
-        if (TTracingInst.IsActive) Trace(maxDepth);
+        if (TTracingInst.IsActive)
+        {
+            Trace(maxDepth);
+        }
 
         return true;
     }
