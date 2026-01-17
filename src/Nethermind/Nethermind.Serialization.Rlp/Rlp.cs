@@ -82,8 +82,36 @@ namespace Nethermind.Serialization.Rlp
         public int Length => Bytes.Length;
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
+#if !ZKVM
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
+#endif
         private static Lock _decoderLock = new();
+
+#if ZKVM
+        // Under NativeAOT/ZKVM, `FrozenDictionary` creation can pull in runtime paths that may fail due to
+        // missing generic method bodies / type loader behavior. Use a plain snapshot instead.
+        private static Dictionary<RlpDecoderKey, IRlpDecoder>? _decodersZkvmSnapshot;
+
+        public static IReadOnlyDictionary<RlpDecoderKey, IRlpDecoder> Decoders
+        {
+            get
+            {
+                Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersZkvmSnapshot;
+                if (snapshot is not null)
+                {
+                    return snapshot;
+                }
+
+                return CreateDecodersZkvmSnapshot();
+            }
+        }
+
+        private static IReadOnlyDictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersZkvmSnapshot()
+        {
+            using Lock.Scope _ = _decoderLock.EnterScope();
+            return _decodersZkvmSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+        }
+#else
         public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
         {
             get
@@ -105,12 +133,18 @@ namespace Nethermind.Serialization.Rlp
             // Recreate, if not already recreated
             return _decoders ??= _decoderBuilder.ToFrozenDictionary();
         }
+#endif
 
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
+#if !ZKVM
             _decoders = null;
+#endif
+#if ZKVM
+            _decodersZkvmSnapshot = null;
+#endif
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -119,8 +153,13 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            // Mark FrozenDictionary as null to force re-creation
+            // Mark cached decoders as null to force re-creation
+#if !ZKVM
             _decoders = null;
+#endif
+#if ZKVM
+            _decodersZkvmSnapshot = null;
+#endif
         }
 
 #if ZKVM
