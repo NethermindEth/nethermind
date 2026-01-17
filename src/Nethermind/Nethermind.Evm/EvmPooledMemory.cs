@@ -332,7 +332,6 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
-        const int MinRentSize = 1_024;
         Length = length;
 
         if (Length > Size)
@@ -343,34 +342,41 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (rentIfNeeded)
         {
-            if (_memory is null)
+            Rent();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Rent()
+    {
+        const uint MinRentSize = 1_024;
+        if (_memory is null)
+        {
+            _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
+            Array.Clear(_memory, 0, (int)Size);
+        }
+        else
+        {
+            int lastZeroedSize = (int)_lastZeroedSize;
+            if (Size > (ulong)_memory.LongLength)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
-                Array.Clear(_memory, 0, (int)Size);
+                byte[] beforeResize = _memory;
+                _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                ArrayPool<byte>.Shared.Return(beforeResize);
+            }
+            else if (Size > _lastZeroedSize)
+            {
+                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
             }
             else
             {
-                int lastZeroedSize = (int)_lastZeroedSize;
-                if (Size > (ulong)_memory.LongLength)
-                {
-                    byte[] beforeResize = _memory;
-                    _memory = ArrayPool<byte>.Shared.Rent((int)Size);
-                    Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                    ArrayPool<byte>.Shared.Return(beforeResize);
-                }
-                else if (Size > _lastZeroedSize)
-                {
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                }
-                else
-                {
-                    return;
-                }
+                return;
             }
-
-            _lastZeroedSize = Size;
         }
+
+        _lastZeroedSize = Size;
     }
 
     [DoesNotReturn, StackTraceHidden]
