@@ -118,7 +118,7 @@ internal static partial class EvmInstructions
         if (typeof(TOpCall) == typeof(OpStaticCall))
         {
             // Static calls cannot transfer value.
-            callValue = UInt256.Zero;
+            callValue = default;
         }
         else if (typeof(TOpCall) == typeof(OpDelegateCall))
         {
@@ -159,7 +159,9 @@ internal static partial class EvmInstructions
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (HasTransfersValue() && !transferValue.IsZero)
+        if (typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
+            !transferValue.IsZero)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
@@ -170,7 +172,9 @@ internal static partial class EvmInstructions
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
-        else if (EIP158.IsActive && HasTransfersValue() &&
+        else if (EIP158.IsActive &&
+            typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
             !transferValue.IsZero && state.IsDeadAccount(target))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
@@ -200,7 +204,7 @@ internal static partial class EvmInstructions
         {
             // Get remaining gas for 63/64 calculation
             long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-            gasAvailable -= gasAvailable / 64;
+            gasAvailable -= (long)((ulong)gasAvailable / 64);
             if (!gasLimit.IsUint64)
             {
                 gasLimitUl = gasAvailable;
@@ -221,7 +225,9 @@ internal static partial class EvmInstructions
 
         // Add call stipend if value is being transferred.
         bool tracingRefunds = vm.TxTracer.IsTracingRefunds;
-        if (HasTransfersValue() && !transferValue.IsZero)
+        if (typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
+            !transferValue.IsZero)
         {
             if (tracingRefunds)
             {
@@ -232,7 +238,8 @@ internal static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (HasTransfersValue() && !transferValue.IsZero &&
+            (typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) && !transferValue.IsZero &&
             state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
@@ -325,13 +332,9 @@ internal static partial class EvmInstructions
 
         return new(programCounter, EvmExceptionType.Return);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool HasTransfersValue() =>
-            typeof(TOpCall) != typeof(OpDelegateCall) &&
-            typeof(TOpCall) != typeof(OpStaticCall);
-
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
+        [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
