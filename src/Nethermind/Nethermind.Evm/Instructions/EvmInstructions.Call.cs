@@ -196,18 +196,19 @@ internal static partial class EvmInstructions
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
+        long gasLimitUl;
         // Apply the 63/64 gas rule if enabled.
         if (EIP150.IsActive)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            gasLimitUl = (long)Math.Min((ulong)(gasAvailable - gasAvailable / 64), gasLimit.IsUint64 ? gasLimit.u0 : ulong.MaxValue);
         }
         else
         {
             // If gasLimit exceeds the host's representable range, treat as out-of-gas.
             if (gasLimit >= long.MaxValue) goto OutOfGas;
+            gasLimitUl = (long)gasLimit;
         }
 
-        long gasLimitUl = (long)gasLimit;
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
