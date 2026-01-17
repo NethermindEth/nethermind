@@ -140,10 +140,11 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
         }
 
+        IReleaseSpec spec = vm.Spec;
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+            .TryGetDelegation(codeSource, spec, out ICodeInfo codeInfo, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // For non-delegate calls, the transfer value is the call value.
@@ -180,15 +181,11 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
 
-        IReleaseSpec spec = vm.Spec;
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GetCallCost()) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             (!outputLength.IsZero && !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState)))
             goto OutOfGas;
-
-        // Retrieve code information for the call and schedule background analysis if needed.
-        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // If contract is large, charge for access
         if (EIP7907.IsActive)

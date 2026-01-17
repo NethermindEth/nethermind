@@ -59,7 +59,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _).Should().Be(false);
+        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _, out _).Should().Be(false);
     }
 
 
@@ -82,7 +82,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _).Should().Be(true);
+        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _, out _).Should().Be(true);
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
@@ -95,7 +95,7 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         Address result;
-        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out result);
+        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out var codeInfo, out result);
 
         result.Should().Be(new Address(code.Slice(3, Address.Size)));
     }

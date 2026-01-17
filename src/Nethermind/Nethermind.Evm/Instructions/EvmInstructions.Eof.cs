@@ -940,7 +940,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
         // 7. Account access gas: ensure target is warm or charge extra gas for cold access.
         bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+            .TryGetDelegation(codeSource, vm.Spec, out ICodeInfo targetCodeInfo, out Address delegated);
         if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
@@ -983,9 +983,6 @@ internal static partial class EvmInstructions
 
             return new(programCounter, EvmExceptionType.None);
         }
-
-        // 11. Retrieve and prepare the target code for execution.
-        ICodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // For delegate calls, calling a non-EOF (legacy) target is disallowed.
         if (typeof(TOpEofCall) == typeof(OpEofDelegateCall)

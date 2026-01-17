@@ -46,10 +46,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         return cachedCodeInfo;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        ICodeInfo GetPrecompile(Address codeSource) => _localPrecompiles[codeSource];
     }
+
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ICodeInfo GetPrecompile(Address codeSource) => _localPrecompiles[codeSource];
 
     private static ICodeInfo InternalGetCachedCode(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
@@ -150,11 +151,36 @@ public class CodeInfoRepository : ICodeInfoRepository
             : codeHash;
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out ICodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        if (spec.IsPrecompile(address))
+        {
+            codeInfo = GetPrecompile(address);
+            delegatedAddress = null;
+            return false;
+        }
+        codeInfo = InternalGetCachedCode(_worldState, address, spec);
 
-    public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
+        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegatedAddress))
+        {
+            codeInfo = InternalGetCachedCode(_worldState, delegatedAddress, spec);
+            return true;
+        }
+
+        delegatedAddress = null;
+        return false;
+    }
+
+    public bool IsDelegated(Address address, IReleaseSpec spec)
+    {
+        ICodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec);
+        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out _))
+        {
+            return true;
+        }
+
+        return false;
+    }
 
     private sealed class CodeLruCache
     {

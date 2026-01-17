@@ -358,7 +358,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
-                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.IsDelegated(authorizationTuple.Authority, spec))
                 {
                     error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                     return false;
