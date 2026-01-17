@@ -4,13 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -19,9 +18,8 @@ using Nethermind.Core.Resettables;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
-using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
+using Nethermind.Logging;
 
 namespace Nethermind.State;
 
@@ -93,7 +91,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         if (!_originalValues.TryGetValue(storageCell, out var value))
         {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            ThrowNotAccessed();
         }
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
@@ -108,6 +106,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         return value;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNotAccessed()
+            => throw new InvalidOperationException("Get original should only be called after get within the same caching round");
     }
 
     public Hash256 GetStorageRoot(Address address)
@@ -135,7 +137,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
         if (_changes[currentPosition].IsNull)
         {
-            throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
+            ThrowNullPosition(currentPosition);
         }
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
@@ -147,6 +149,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             trace = [];
         }
 
+        bool isLogTracing = _logger.IsTrace;
         for (int i = 0; i <= currentPosition; i++)
         {
             Change change = _changes[currentPosition - i];
@@ -174,14 +177,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int forAssertion = _intraBlockCache[change.StorageCell].Pop();
             if (forAssertion != currentPosition - i)
             {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                ThrowInvalidPosition(currentPosition, i, forAssertion);
             }
 
             if (change.ChangeType == ChangeType.Update)
             {
-                if (_logger.IsTrace)
+                if (isLogTracing)
                 {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                    Trace(in change);
                 }
 
                 if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
@@ -234,6 +237,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             ReportChanges(tracer!, trace!);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNullPosition(int currentPosition)
+            => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidPosition(int currentPosition, int i, int forAssertion)
+            => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace(in Change change)
+            => _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
     }
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)

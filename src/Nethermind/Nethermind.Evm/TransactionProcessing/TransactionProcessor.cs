@@ -758,8 +758,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
-                        if (TLogTracing.IsActive)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
+                        if (TLogTracing.IsActive) Logger.Trace($"Destroying account {toBeDestroyed}");
 
                         WorldState.ClearStorage(toBeDestroyed);
                         WorldState.DeleteAccount(toBeDestroyed);
@@ -936,16 +935,14 @@ namespace Nethermind.Evm.TransactionProcessing
                     totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
                 long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
-                if (TLogTracing.IsActive)
-                    Logger.Trace("Refunding unused gas of " + TGasPolicy.GetRemainingGas(unspentGas) + " and refund of " + actualRefund);
+                if (TLogTracing.IsActive) Logger.Trace("Refunding unused gas of " + TGasPolicy.GetRemainingGas(unspentGas) + " and refund of " + actualRefund);
                 spentGas -= actualRefund;
             }
             else if (codeInsertRefund > 0)
             {
                 long refund = CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
 
-                if (TLogTracing.IsActive)
-                    Logger.Trace("Refunding delegations only: " + refund);
+                if (TLogTracing.IsActive) Logger.Trace("Refunding delegations only: " + refund);
                 spentGas -= refund;
             }
 

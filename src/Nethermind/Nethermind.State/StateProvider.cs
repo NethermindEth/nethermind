@@ -222,7 +222,19 @@ namespace Nethermind.State
                 ThrowInsufficientBalanceException(address);
             }
 
-            UInt256 newBalance = isZero ? account.Balance : isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
+            UInt256 newBalance;
+            if (isZero)
+            {
+                newBalance = account.Balance;
+            }
+            else if (isSubtracting)
+            {
+                account.Balance.Subtract(in balanceChange, out newBalance);
+            }
+            else
+            {
+                account.Balance.Add(in balanceChange, out newBalance);
+            }
 
             Account changedAccount = !incrementNonce ? account.WithChangedBalance(newBalance) : account.WithChangedBalanceAndNonce(newBalance, account.Nonce + UInt256.One);
             if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, account, in newBalance);
