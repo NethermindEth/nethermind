@@ -4,6 +4,7 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -132,9 +133,7 @@ namespace Nethermind.Core
 
             if (bytes.Length != Size)
             {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
+                ThrowAddressWrongSize(bytes);
             }
 
             Bytes = bytes;
@@ -144,12 +143,18 @@ namespace Nethermind.Core
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
+                ThrowAddressWrongSize(bytes);
             }
 
             Bytes = bytes.ToArray();
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowAddressWrongSize(ReadOnlySpan<byte> bytes)
+        {
+            throw new ArgumentException(
+                $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
+                nameof(bytes));
         }
 
         public bool Equals(Address? other)

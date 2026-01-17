@@ -159,7 +159,9 @@ internal static partial class EvmInstructions
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (!transferValue.IsZero)
+        if (typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
+            !transferValue.IsZero)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
@@ -170,7 +172,10 @@ internal static partial class EvmInstructions
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
-        else if (EIP158.IsActive && transferValue != 0 && state.IsDeadAccount(target))
+        else if (EIP158.IsActive &&
+            typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
+            !transferValue.IsZero && state.IsDeadAccount(target))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
@@ -193,14 +198,21 @@ internal static partial class EvmInstructions
                 goto OutOfGas;
         }
 
-        // Get remaining gas for 63/64 calculation
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
         long gasLimitUl;
         // Apply the 63/64 gas rule if enabled.
         if (EIP150.IsActive)
         {
-            gasLimitUl = (long)Math.Min((ulong)(gasAvailable - gasAvailable / 64), gasLimit.IsUint64 ? gasLimit.u0 : ulong.MaxValue);
+            // Get remaining gas for 63/64 calculation
+            long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+            gasAvailable -= gasAvailable / 64;
+            if (!gasLimit.IsUint64)
+            {
+                gasLimitUl = gasAvailable;
+            }
+            else
+            {
+                gasLimitUl = (long)Math.Min((ulong)gasAvailable, gasLimit.u0);
+            }
         }
         else
         {
@@ -213,7 +225,9 @@ internal static partial class EvmInstructions
 
         // Add call stipend if value is being transferred.
         bool tracingRefunds = vm.TxTracer.IsTracingRefunds;
-        if (!transferValue.IsZero)
+        if (typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
+            !transferValue.IsZero)
         {
             if (tracingRefunds)
             {
@@ -224,7 +238,11 @@ internal static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (
+            typeof(TOpCall) != typeof(OpDelegateCall) &&
+            typeof(TOpCall) != typeof(OpStaticCall) &&
+            !transferValue.IsZero &&
+            state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
