@@ -205,5 +205,8 @@ namespace Nethermind.State
                 Set(rawKey, rlpEncoded);
             }
         }
+
+        internal void IncrementEstimate(ulong count = 1)
+            => _outstandingWritesEstimate += count;
     }
 }
