@@ -121,7 +121,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
         Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
-        codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
+        codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeader.Length));
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
         if (_worldState.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec)
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)

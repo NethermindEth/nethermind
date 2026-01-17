@@ -411,7 +411,7 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushAddress<TTracingInst>(Address address)
         where TTracingInst : struct, IFlag
-        => Push20Bytes<TTracingInst>(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
+        => Push20Bytes<TTracingInst>(ref MemoryMarshal.GetReference(address.Bytes));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType Push32Bytes<TTracingInst>(in ValueHash256 hash)
@@ -1190,7 +1190,7 @@ public ref partial struct EvmStack
         return MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize), WordSize);
     }
 
-    public Address? PopAddress() => Head-- != 0 ? new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize + WordSize - AddressSize), AddressSize).ToArray()) : null;
+    public Address? PopAddress() => Head-- != 0 ? new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize + WordSize - AddressSize), AddressSize)) : null;
 
     public bool PopAddress(out Address address)
     {
@@ -1200,7 +1200,7 @@ public ref partial struct EvmStack
             return false;
         }
 
-        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize + WordSize - AddressSize), AddressSize).ToArray());
+        address = new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, Head * WordSize + WordSize - AddressSize), AddressSize));
         return true;
     }
 

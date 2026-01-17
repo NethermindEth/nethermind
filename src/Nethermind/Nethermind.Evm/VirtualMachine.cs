@@ -370,7 +370,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState)
     {
-        _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
+        _previousCallResult = previousState.Env.ExecutingAccount.Memory;
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
     }

@@ -107,7 +107,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             .JUMPDEST()
             .PushData(Bytes.ZeroByte)
             .Op(Instruction.DUP1)
-            .PushData(TestItem.AddressB.Bytes)
+            .PushData(TestItem.AddressB.ToArray())
             .Op(Instruction.SWAP1)
             .Op(Instruction.POP)
             .Op(Instruction.CALLDATASIZE)

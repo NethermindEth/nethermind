@@ -929,7 +929,7 @@ internal static partial class EvmInstructions
             goto AddressOutOfRange;
 
         Address caller = typeof(TOpEofCall) == typeof(OpEofDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address codeSource = new(targetBytes[12..].ToArray());
+        Address codeSource = new(targetBytes[12..]);
         // For delegate calls, the target remains the executing account.
         Address target = typeof(TOpEofCall) == typeof(OpEofDelegateCall)
             ? env.ExecutingAccount
