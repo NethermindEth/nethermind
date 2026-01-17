@@ -52,7 +52,11 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
         static Rlp()
         {
+#if ZKVM
+            RegisterDecodersZkvm();
+#else
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+#endif
         }
 
         /// <summary>
@@ -119,8 +123,45 @@ namespace Nethermind.Serialization.Rlp
             _decoders = null;
         }
 
-        public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
+#if ZKVM
+        private static void RegisterDecodersZkvm()
         {
+            // Under ZKVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
+            // (CustomAttribute instantiation can trigger TypeLoader failures).
+            // Register the required decoders explicitly instead.
+            RegisterDecoder(typeof(Account), new AccountDecoder());
+            RegisterDecoder(typeof(BlockBody), new BlockBodyDecoder());
+            RegisterDecoder(typeof(Block), new BlockDecoder());
+            RegisterDecoder(typeof(BlockInfo), new BlockInfoDecoder());
+            RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder());
+            RegisterDecoder(typeof(LogEntry), new LogEntryDecoder());
+            RegisterDecoder(typeof(Hash256), new KeccakDecoder());
+            RegisterDecoder(typeof(BlockHeader), new HeaderDecoder());
+            RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder());
+
+            // Receipt decoders with explicit keys.
+            RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), new CompactReceiptStorageDecoder());
+            RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptArrayStorageDecoder());
+            RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
+
+            // TxDecoder.Instance is still registered by ResetDecoders() for Transaction,
+            // but we keep this registration for completeness in ZKVM startup.
+            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        }
+#endif
+
+        public static void RegisterDecoders(
+            [DynamicallyAccessedMembers(
+                DynamicallyAccessedMemberTypes.PublicConstructors |
+                DynamicallyAccessedMemberTypes.Interfaces)]
+            Assembly assembly,
+            bool canOverrideExistingDecoders = false)
+        {
+#if ZKVM
+            // Do not use reflection-based registration under ZKVM.
+            RegisterDecodersZkvm();
+            return;
+#else
             foreach (Type? type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
@@ -187,6 +228,7 @@ namespace Nethermind.Serialization.Rlp
 
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
+#endif
         }
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -1855,7 +1897,13 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
+#if ZKVM
+        // Under ZKVM/bflat AOT, some generic virtual method / reflection paths in logger initialization can fail.
+        // Use a null logger to avoid triggering runtime type loader issues during static initialization.
+        private static ILogger _logger = Nethermind.Logging.NullLogger.Instance;
+#else
         private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
+#endif
 
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
