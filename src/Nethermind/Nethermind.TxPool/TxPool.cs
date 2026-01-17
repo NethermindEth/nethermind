@@ -481,6 +481,41 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
+        public long LastProcessedBlockNumber => Volatile.Read(ref _lastBlockNumber);
+
+        public void ResetTxPoolState()
+        {
+            _newHeadLock.EnterWriteLock();
+            try
+            {
+                // Clear hash cache and account cache
+                _hashCache.ClearAll();
+                _accountCache.Reset();
+
+                // Also clear all pending transactions
+                // Get snapshot first to avoid modifying collection while iterating
+                Transaction[] pendingTxs = _transactions.GetSnapshot();
+                foreach (Transaction tx in pendingTxs)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+
+                // Clear blob transactions too
+                Transaction[] pendingBlobTxs = _blobTransactions.GetSnapshot();
+                foreach (Transaction tx in pendingBlobTxs)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+
+                // Reset snapshots
+                _transactionSnapshot = null;
+                _blobTransactionSnapshot = null;
+            }
+            finally
+            {
+                _newHeadLock.ExitWriteLock();
+            }
+        }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
