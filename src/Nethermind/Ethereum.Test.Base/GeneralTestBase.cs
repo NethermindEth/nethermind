@@ -76,6 +76,9 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+
             IConfigProvider configProvider = new ConfigProvider();
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
@@ -117,34 +120,47 @@ namespace Ethereum.Test.Base
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot,
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
-                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
-                BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
+                ExcessBlobGas = test.Fork is Cancun ? (test.CurrentExcessBlobGas ?? 0ul) : null,
+                BlobGasUsed = test.Fork is Cancun ? BlobGasCalculator.CalculateBlobGas(test.Transaction) : null,
                 RequestsHash = test.RequestsHash
             };
-            header.Hash = header.CalculateHash();
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = test.ChainId;
-            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
-                BlockHeader parent = new(
-                    parentHash: Keccak.Zero,
-                    unclesHash: Keccak.OfAnEmptySequenceRlp,
-                    beneficiary: test.CurrentCoinbase,
-                    difficulty: test.CurrentDifficulty,
-                    number: test.CurrentNumber - 1,
-                    gasLimit: test.CurrentGasLimit,
-                    timestamp: test.CurrentTimestamp,
-                    extraData: []
-                )
+                test.Transaction.ChainId = test.ChainId;
+            }
+
+            BlockHeader parent = new(
+                parentHash: Keccak.Zero,
+                unclesHash: Keccak.OfAnEmptySequenceRlp,
+                beneficiary: test.CurrentCoinbase,
+                difficulty: test.CurrentDifficulty,
+                number: test.CurrentNumber - 1,
+                gasLimit: test.CurrentGasLimit,
+                timestamp: test.CurrentTimestamp - 1,
+                extraData: []
+            )
+            {
+                BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero,
+                BlobGasUsed = test.Fork is Cancun ? (ulong?)test.ParentBlobGasUsed : null,
+                ExcessBlobGas = test.Fork is Cancun ? (ulong?)test.ParentExcessBlobGas : null,
+            };
+
+            parent.Hash = test.PreviousHash;
+            header.Hash = header.CalculateHash();
+
+            IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
+            Block currentBlock = new(header, new([test.Transaction], null, null));
+
+            if (!blockValidator.ValidateSuggestedBlock(currentBlock, parent, out string? error, false))
+            {
+                _logger.Info($"\nError during in-block transaction validation: {error}");
+
+                return new EthereumTestResult(test.Name, test.ForkName, false)
                 {
-                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
+                    TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
+                    StateRoot = stateProvider.StateRoot,
                 };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
 
             ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
