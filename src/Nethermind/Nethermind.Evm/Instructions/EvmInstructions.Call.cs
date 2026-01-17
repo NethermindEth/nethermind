@@ -115,12 +115,12 @@ internal static partial class EvmInstructions
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
-        if (typeof(TOpCall) == typeof(OpStaticCall))
+        if (TOpCall.IsStatic)
         {
             // Static calls cannot transfer value.
             callValue = default;
         }
-        else if (typeof(TOpCall) == typeof(OpDelegateCall))
+        else if (TOpCall.ExecutionType == ExecutionType.DELEGATECALL)
         {
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
@@ -147,20 +147,20 @@ internal static partial class EvmInstructions
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? default : callValue;
+        UInt256 transferValue = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? default : callValue;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-        if (vm.VmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
+        if (vm.VmState.IsStatic && !transferValue.IsZero && TOpCall.ExecutionType != ExecutionType.CALLCODE)
             return new(programCounter, EvmExceptionType.StaticCallViolation);
 
         // Determine caller and target based on the call type.
-        Address caller = typeof(TOpCall) == typeof(OpDelegateCall) ? env.Caller : env.ExecutingAccount;
-        Address target = (typeof(TOpCall) == typeof(OpCall) || typeof(TOpCall) == typeof(OpStaticCall))
+        Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address target = (TOpCall.ExecutionType == ExecutionType.CALL || TOpCall.IsStatic)
             ? codeSource
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (typeof(TOpCall) != typeof(OpDelegateCall) &&
-            typeof(TOpCall) != typeof(OpStaticCall) &&
+        if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
+            !TOpCall.IsStatic &&
             !transferValue.IsZero)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
@@ -173,8 +173,8 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
         else if (EIP158.IsActive &&
-            typeof(TOpCall) != typeof(OpDelegateCall) &&
-            typeof(TOpCall) != typeof(OpStaticCall) &&
+            TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
+            !TOpCall.IsStatic &&
             !transferValue.IsZero && state.IsDeadAccount(target))
         {
             if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
@@ -184,7 +184,7 @@ internal static partial class EvmInstructions
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GetCallCost()) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
+            (!outputLength.IsZero && !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState)))
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
@@ -204,7 +204,7 @@ internal static partial class EvmInstructions
         {
             // Get remaining gas for 63/64 calculation
             long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-            gasAvailable -= (long)((ulong)gasAvailable / 64);
+            gasAvailable -= (long)((ulong)gasAvailable >> 6);
             if (!gasLimit.IsUint64)
             {
                 gasLimitUl = gasAvailable;
@@ -225,8 +225,8 @@ internal static partial class EvmInstructions
 
         // Add call stipend if value is being transferred.
         bool tracingRefunds = vm.TxTracer.IsTracingRefunds;
-        if (typeof(TOpCall) != typeof(OpDelegateCall) &&
-            typeof(TOpCall) != typeof(OpStaticCall) &&
+        if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
+            !TOpCall.IsStatic &&
             !transferValue.IsZero)
         {
             if (tracingRefunds)
@@ -238,8 +238,8 @@ internal static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (typeof(TOpCall) != typeof(OpDelegateCall) &&
-            typeof(TOpCall) != typeof(OpStaticCall) && !transferValue.IsZero &&
+            (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
+            !TOpCall.IsStatic && !transferValue.IsZero &&
             state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
