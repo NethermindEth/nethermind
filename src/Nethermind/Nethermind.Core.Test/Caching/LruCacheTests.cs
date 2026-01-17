@@ -301,7 +301,7 @@ namespace Nethermind.Core.Test.Caching
 
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 {
-                    LruCache<int, int> unused = new(maxCapacity, "test");
+                    new LruCache<int, int>(maxCapacity, "test");
                 });
 
         }
