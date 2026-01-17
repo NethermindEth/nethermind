@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
+#if DEBUG
+using System.Diagnostics;
+#endif
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
