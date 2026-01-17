@@ -52,7 +52,7 @@ public static class Extensions
             AddPrecompile<MapFp2ToG2Precompile>();
         }
 
-        if (spec.IsEip7951Enabled)
+        if (spec.IsRip7212Enabled || spec.IsEip7951Enabled)
         {
             AddPrecompile<Secp256r1Precompile>();
         }
