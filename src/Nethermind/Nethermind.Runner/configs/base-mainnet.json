@@ -13,8 +13,8 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 40640000,
-    "PivotHash": "0xd110a315f31ff7cde0073f4203a212636b0aaaa5d2b07dc4534a4f92affefedb"
+    "PivotNumber": 40940000,
+    "PivotHash": "0x778ef345ff357d99252bd3db6a7f51c8d3b131b07f3edc1569d035c13e71df65"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
