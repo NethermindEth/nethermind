@@ -175,22 +175,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             if (inCancelable)
             {
-                ExecuteTransaction<TTracingInst, OnFlag, OnFlag>(spec, out substate);
+                ProcessCallFrames<TTracingInst, OnFlag, OnFlag>(spec, out substate);
             }
             else
             {
-                ExecuteTransaction<TTracingInst, OnFlag, OffFlag>(spec, out substate);
+                ProcessCallFrames<TTracingInst, OnFlag, OffFlag>(spec, out substate);
             }
         }
         else
         {
             if (inCancelable)
             {
-                ExecuteTransaction<TTracingInst, OffFlag, OnFlag>(spec, out substate);
+                ProcessCallFrames<TTracingInst, OffFlag, OnFlag>(spec, out substate);
             }
             else
             {
-                ExecuteTransaction<TTracingInst, OffFlag, OffFlag>(spec, out substate);
+                ProcessCallFrames<TTracingInst, OffFlag, OffFlag>(spec, out substate);
             }
         }
 
@@ -199,7 +199,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [SkipLocalsInit]
-    private void ExecuteTransaction<TTracingInst, TTracingActions, TCancellable>(
+    private void ProcessCallFrames<TTracingInst, TTracingActions, TCancellable>(
         IReleaseSpec spec,
         out TransactionSubstate substate)
         where TTracingInst : struct, IFlag
@@ -241,7 +241,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                     if (currentState.Env.CodeInfo is not null)
                     {
-                        ExecuteCall<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
+                        ExecuteCallFrame<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
                     }
                     else
                     {
@@ -1265,7 +1265,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected void ExecuteCall<TTracingInst, TCancellable>(
+    protected void ExecuteCallFrame<TTracingInst, TCancellable>(
         IReleaseSpec spec,
         scoped in ZeroPaddedSpan previousCallOutput,
         out CallResult result)
@@ -1335,7 +1335,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (typeof(TGasPolicy) == typeof(EthereumGasPolicy))
         {
             // Allow de-virtualizated call to improve performance.
-            result = RunByteCodeImpl<TTracingInst, TCancellable>(ref stack, ref gas, version);
+            result = DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas, version);
         }
         else
         {
@@ -1393,38 +1393,59 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         int version)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        return RunByteCodeImpl<TTracingInst, TCancelable>(ref stack, ref gas, version);
+        return DispatchExecution<TTracingInst, TCancelable>(ref stack, ref gas, version);
     }
 
+    /// <summary>
+    /// Resets per-invocation VM state, dispatches to the active execution backend,
+    /// and materializes a <see cref="CallResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the boundary between frame orchestration and the opcode engine.
+    ///
+    /// <para>
+    /// <typeparamref name="TTracingInst"/> and <typeparamref name="TCancelable"/> are compile-time flags used to
+    /// specialize the hot path (tracing and cancellation) without runtime branches.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TTracingInst">Compile-time flag that enables or disables tracing instrumentation.</typeparam>
+    /// <typeparam name="TCancelable">Compile-time flag that enables or disables cancellation checks.</typeparam>
+    /// <param name="stack">The EVM stack for the current invocation.</param>
+    /// <param name="gas">The gas tracker/policy state for the current invocation.</param>
+    /// <param name="version">Protocol version used when constructing <see cref="CallResult"/>.</param>
+    /// <returns>A <see cref="CallResult"/> describing success, revert, or failure.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected CallResult RunByteCodeImpl<TTracingInst, TCancelable>(
+    protected CallResult DispatchExecution<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         int version)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        // Reset return data and set the current section index from the VM state.
+        // Per-invocation reset. ReturnData is set by the opcode engine on RETURN/REVERT/EOF return paths.
         ReturnData = null;
+        // Seed the current section/function index from the VM state (EOF-aware execution uses this).
         SectionIndex = VmState.FunctionIndex;
 
-        // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
-        // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
+        // Pin the opcode dispatch table so the engine can index it without array bounds checks.
+        // The table is fixed-size (256 entries keyed by opcode byte), so the index is always valid.
         fixed (byte* pOpcodeMethods = &MemoryMarshal.GetArrayDataReference(_opcodeMethods))
         {
             var opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>*)pOpcodeMethods;
 
-            EvmExceptionType exceptionType = InterpreterLoop<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods);
+            // Run the opcode engine. It returns a final exception classification (None/Return/Revert/OutOfGas/etc).
+            EvmExceptionType exceptionType = ExecuteOpcodes<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods);
 
-            // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
+            // Fast classification - only Revert/OutOfGas/non-return exceptions need special handling.
+            // None/Return fall through to result materialization.
             if (exceptionType > EvmExceptionType.Return)
             {
                 if (exceptionType == EvmExceptionType.Revert)
@@ -1437,7 +1458,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
                 else
                 {
-                    // For any other exception, jump to the failure handling routine.
                     goto ReturnFailure;
                 }
             }
@@ -1445,11 +1465,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             bool shouldRevert = false;
             exceptionType = EvmExceptionType.None;
             goto DataReturn;
-        Revert:
-            // Return a CallResult indicating a revert.
-            shouldRevert = true;
-        DataReturn:
 
+        Revert:
+            // REVERT returns data and preserves remaining gas, but marks the invocation as reverted.
+            shouldRevert = true;
+
+        DataReturn:
+            // Materialize the return based on what the engine stored into ReturnData.
+            // - null: no return data
+            // - byte[]: raw return buffer (RETURN/REVERT)
+            // - VmState: continuation/resume state
+            // - other: EOF return type (see ReturnEof)
             return ReturnData switch
             {
                 null => CallResult.Empty(version),
@@ -1459,37 +1485,67 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             };
 
         OutOfGas:
+            // Ensure the gas policy reflects OOG for upstream accounting.
             TGasPolicy.SetOutOfGas(ref gas);
+
         ReturnFailure:
-            // Return a failure CallResult based on the remaining gas and the exception type.
+            // Failure: return a standardized failure result using remaining gas and the exception classification.
             return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         CallResult ReturnEof(int version)
         {
+            // EOF return path: ReturnData carries EofCodeInfo and ReturnDataBuffer carries the data.
             return new CallResult((EofCodeInfo)ReturnData, ReturnDataBuffer, null, version);
         }
     }
 
+    /// <summary>
+    /// Executes the opcode engine for the current invocation until termination (RETURN/STOP/REVERT) or failure.
+    /// </summary>
+    /// <remarks>
+    /// This is the tight dispatch loop: it advances the program counter, decodes the opcode byte,
+    /// and calli s the opcode implementation via pinned function pointer dispatch table.
+    ///
+    /// <para>
+    /// <typeparamref name="TTracingInst"/> and <typeparamref name="TCancelable"/> are compile-time flags used to
+    /// specialize the hot path without introducing runtime branches.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TTracingInst">Compile-time flag that enables or disables instruction tracing.</typeparam>
+    /// <typeparam name="TCancelable">Compile-time flag that enables or disables cancellation checks.</typeparam>
+    /// <param name="stack">The EVM stack and code view for the current invocation.</param>
+    /// <param name="gas">The gas tracker/policy state for the current invocation.</param>
+    /// <param name="opcodeMethods">
+    /// Pointer to the opcode dispatch table (256 entries keyed by opcode byte).
+    /// </param>
+    /// <returns>
+    /// The final exception classification produced by the engine (None/Return/Stop/Revert/OutOfGas/etc).
+    /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private EvmExceptionType InterpreterLoop<TTracingInst, TCancelable>(
+    private EvmExceptionType ExecuteOpcodes<TTracingInst, TCancelable>(
         ref EvmStack stack,
         ref TGasPolicy gas,
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods
         ) where TTracingInst : struct, IFlag where TCancelable : struct, IFlag
     {
+        // Note: This is an extremely hot loop.
+        // Keep local variables and checks to a minimum to avoid register spills and branches.
 #if DEBUG
-        // In debug mode, retrieve a tracer for interactive debugging.
+        // Debug-only interactive tracer (step/pause). Kept out of release builds entirely.
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
         ref byte code = ref stack.Code;
         uint codeLength = (uint)stack.CodeLength;
-        // Set the program counter from the current VM state; it may not be zero if resuming after a call.
+        // Resume from the VM state's program counter (non-zero when returning from a nested frame).
         OpcodeResult result = new(VmState.ProgramCounter);
         int opCodeCount = 0;
-        // Iterate over the instructions using a while loop because opcodes may modify the program counter.
+
+        // Note: OpcodeResult.Value packs the program counter in low bits and EvmExceptionType in high bits.
+        // Any non-None exception sets high bits such that (Value >= codeLength), which terminates the loop
+        // without an explicit "if (exception != None) break;" branch. Keep this as an unsigned ulong compare.
         while (result.Value < codeLength)
         {
 #if DEBUG
@@ -1498,7 +1554,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
             result = new(programCounter);
 #endif
-            // Fetch the current instruction from the code section.
+            // Fetch opcode byte - no bounds check here because the loop condition guards it.
             Instruction instruction = (Instruction)Unsafe.Add(ref code, (nuint)result.Value);
 
             // If cancellation is enabled and cancellation has been requested, throw an exception.
@@ -1511,29 +1567,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             opCodeCount++;
 
-            // Invoke the opcode method, which may modify the stack, gas, and program counter.
-            // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+            // Dispatch via function pointer (calli). The handler returns the next PC and exception classification.
             result = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, result.ProgramCounter + 1);
 
             // If gas is exhausted, jump to the out-of-gas handler.
             if (TGasPolicy.GetRemainingGas(in gas) < 0)
             {
-                result = new OpcodeResult(0, EvmExceptionType.OutOfGas);
+                // Ideally all the opcodes would return OutOfGas when they exhaust gas,
+                // so we could remove this check. Is a safety net.
+                goto OutOfGas;
             }
-            // If an exception occurred, exit the loop.
 
-            // If tracing is enabled, complete the trace for the current instruction.
+            // If an exception occurred, the loop will naturally exit due to the packed Value field.
+
+            // Trace completion is only meaningful for the non-throwing/non-terminating path.
             if (TTracingInst.IsActive && result.Exception == EvmExceptionType.None)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
         }
         OpCodeCount += opCodeCount;
 
-        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
+        // Update VM state for non-fatal termination (None/Stop/Return/Revert).
+        // Other exceptions are handled by the caller.
         EvmExceptionType exception = result.Exception;
         if (exception <= EvmExceptionType.Revert)
         {
-            // If tracing is enabled, complete the trace for the current instruction.
-            if (TTracingInst.IsActive)
+            // If tracing is enabled, complete the trace for the current instruction,
+            // if didn't exit from reaching end of code.
+            if (TTracingInst.IsActive && exception != EvmExceptionType.None)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             UpdateCurrentState(result.ProgramCounter, in gas, stack.Head);
         }
@@ -1543,6 +1603,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         debugger?.TryWait(ref _currentState, ref programCounter0, ref gas, ref stack.Head);
 #endif
         return exception;
+
+        OutOfGas:
+            return EvmExceptionType.OutOfGas;
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
