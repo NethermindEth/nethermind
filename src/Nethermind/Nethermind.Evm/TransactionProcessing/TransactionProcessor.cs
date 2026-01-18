@@ -823,7 +823,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
-                substate = VirtualMachine.ExecuteTransaction<OffFlag>(state, WorldState, tracer);
+                // NativeAOT/ZKVM: avoid interface dispatch, which can trigger GVM lookup failures at runtime.
+                if (VirtualMachine is not VirtualMachine<TGasPolicy> vm)
+                {
+                    throw new InvalidOperationException($"Expected {nameof(VirtualMachine)} to be {typeof(VirtualMachine<TGasPolicy>)} under ZKVM.");
+                }
+
+                substate = vm.ExecuteTransactionNoTracing(state, WorldState, tracer);
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.Gas;
 

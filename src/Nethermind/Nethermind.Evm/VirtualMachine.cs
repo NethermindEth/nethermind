@@ -83,6 +83,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+#if ZKVM
+    public TransactionSubstate ExecuteTransactionNoTracing(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer)
+    {
+        return ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
+    }
+#endif
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
@@ -313,7 +319,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Continue with the next iteration of the execution loop.
             continue;
 
-        // Failure handling: attempts to process and possibly finalize the transaction after an error.
+            // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)

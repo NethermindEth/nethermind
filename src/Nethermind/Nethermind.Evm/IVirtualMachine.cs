@@ -13,6 +13,15 @@ public interface IVirtualMachine<TGasPolicy>
 {
     TransactionSubstate ExecuteTransaction<TTracingInst>(VmState<TGasPolicy> state, IWorldState worldState, ITxTracer txTracer)
         where TTracingInst : struct, IFlag;
+
+#if ZKVM
+    /// <summary>
+    /// Executes a transaction without relying on generic tracing flags (e.g. <c>OffFlag</c>/<c>OnFlag</c>),
+    /// which can trigger generic virtual method (GVM) lookups under NativeAOT/ZKVM runtimes.
+    /// </summary>
+    TransactionSubstate ExecuteTransactionNoTracing(VmState<TGasPolicy> state, IWorldState worldState, ITxTracer txTracer);
+#endif
+
     ref readonly BlockExecutionContext BlockExecutionContext { get; }
     ref readonly TxExecutionContext TxExecutionContext { get; }
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
