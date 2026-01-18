@@ -554,9 +554,10 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             bool overflows;
+            UInt256 txGasLimit = new UInt256((ulong)tx.GasLimit);
             if (spec.IsEip1559Enabled && !tx.IsFree())
             {
-                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
+                overflows = UInt256.MultiplyOverflow(tx.MaxFeePerGas, txGasLimit, out UInt256 maxGasFee);
                 if (overflows || balanceLeft < maxGasFee)
                 {
                     if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas})");
@@ -565,7 +566,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (tx.SupportsBlobs)
                 {
-                    overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee);
+                    overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), tx.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 maxBlobGasFee);
                     if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
                     {
                         if (TLogTracing.IsActive) Logger.Trace($"Invalid tx {tx.Hash} (INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance})");
@@ -574,7 +575,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
+            overflows = UInt256.MultiplyOverflow(effectiveGasPrice, txGasLimit, out senderReservedGasPayment);
             if (!overflows && tx.SupportsBlobs)
             {
                 overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
