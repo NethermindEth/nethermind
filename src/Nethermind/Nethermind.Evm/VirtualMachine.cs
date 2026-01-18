@@ -1604,8 +1604,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 #endif
         return exception;
 
-        OutOfGas:
-            return EvmExceptionType.OutOfGas;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
