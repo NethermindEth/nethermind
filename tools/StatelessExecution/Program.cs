@@ -1,5 +1,6 @@
 // See https://aka.ms/new-console-template for more information
 
+using System;
 using System.Globalization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -12,6 +13,9 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.NativeAot;
 
 class Program
 {
@@ -246,7 +250,6 @@ class Program
     static int Main()
     {
 #nullable enable
-
         Witness witness = new Witness()
         {
             Codes = ToByteArrays(codes),
@@ -272,6 +275,9 @@ class Program
 
         ISpecProvider specProvider = HoodiSpecProvider.Instance;
 
+        IReleaseSpec preExecSpec = specProvider.GetSpec(suggestedBlock.Header);
+        EnsureNoTraceOpcodesInitialized(preExecSpec);
+
         StatelessBlockProcessingEnv blockProcessingEnv =
             new(witness, specProvider, Always.Valid, NullLogManager.Instance);
 
@@ -286,4 +292,48 @@ class Program
             ? 2  // Invalid block
             : 0; // Block processed successfully
     }
+
+    private static unsafe void EnsureNoTraceOpcodesInitialized(IReleaseSpec spec)
+    {
+        // Under NativeAOT we cannot rely on runtime generic opcode generation; it may require dynamic code.
+        // In that case we must use a compiled-in (precomputed) opcode table provider.
+        if (spec.EvmInstructionsNoTrace is not null)
+        {
+            return;
+        }
+
+#if ZKVM
+        // In ZKVM mode, always try to generate opcodes statically.
+        // The AOT compiler will compile this generically without needing dynamic code.
+        spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
+        return;
+#else
+        if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported)
+        {
+            spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
+            return;
+        }
+
+        Array? precomputed = NativeAotOpcodeTableProvider.TryGetNoTraceOpcodesForEthereumGasPolicy(spec);
+        if (precomputed is not null)
+        {
+            spec.EvmInstructionsNoTrace = precomputed;
+            return;
+        }
+
+        Console.WriteLine(
+            "EVM opcode table (no-trace) was not initialized and no NativeAOT precomputed table provider was linked in. " +
+            "Ensure NativeAotOpcodeTableProvider is generated/compiled for this build and assigned to spec.EvmInstructionsNoTrace.");
+        Environment.Exit(2);
+#endif
+    }
+
+#if !ZKVM
+    private static class NativeAotOpcodeTableProvider
+    {
+        // NativeAOT: provide a compiled-in no-trace opcode table for VirtualMachine<EthereumGasPolicy>.
+        public static Array? TryGetNoTraceOpcodesForEthereumGasPolicy(IReleaseSpec spec)
+            => NativeAotNoTraceOpcodeTableEthereumGasPolicy.TryGetAsArray(spec);
+    }
+#endif
 }
