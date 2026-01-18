@@ -58,7 +58,7 @@ namespace Nethermind.Core.Collections
         public bool Add(T item)
         {
 #if ZKVM
-            if (_set.Contains(item))
+            if (ContainsZkvm(item))
             {
                 return false;
             }
@@ -92,6 +92,39 @@ namespace Nethermind.Core.Collections
         public List<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => _set.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => _set.GetEnumerator();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool ContainsZkvm(T item)
+        {
+            // Avoid List<T>.Contains which pulls in EqualityComparer<T>.Default and may trigger generic construction in NativeAOT.
+            // Use a simple linear scan and reference equality when possible.
+            ReadOnlySpan<T> span = CollectionsMarshal.AsSpan(_set);
+            if (!typeof(T).IsValueType)
+            {
+                object? target = item;
+                for (int i = 0; i < span.Length; i++)
+                {
+                    if (ReferenceEquals(span[i], target))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            // Value types: fall back to EqualityComparer only when needed.
+            EqualityComparer<T> comparer = EqualityComparer<T>.Default;
+            for (int i = 0; i < span.Length; i++)
+            {
+                if (comparer.Equals(span[i], item))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 #else
         public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
@@ -106,7 +139,7 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
 #if ZKVM
-        public bool Contains(T item) => _set.Contains(item);
+        public bool Contains(T item) => ContainsZkvm(item);
         public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
 #else
         public bool Contains(T item) => _set.Contains(item);
