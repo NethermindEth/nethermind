@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Computes the Keccak-256 hash of a specified memory region.
@@ -45,7 +45,7 @@ internal static partial class EvmInstructions
         stack.Push32Bytes<TTracingInst>(in keccak);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

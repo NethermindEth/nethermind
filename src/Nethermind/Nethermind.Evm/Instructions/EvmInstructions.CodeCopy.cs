@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Provides a mechanism to retrieve a code segment for code copy operations.
@@ -91,7 +91,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -198,7 +198,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -308,7 +308,7 @@ internal static partial class EvmInstructions
             stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         }
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Pushes the current program counter (minus one) onto the EVM stack.
@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -123,7 +123,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -189,7 +189,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -274,7 +274,7 @@ internal static partial class EvmInstructions
         // Subtract the balance from the executing account.
         state.SubtractFromBalance(executingAccount, result, spec);
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
     OutOfGas:

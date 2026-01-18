@@ -17,7 +17,7 @@ namespace Nethermind.Evm;
 /// <summary>
 /// Contains implementations for EVM instructions including contract creation (CREATE and CREATE2).
 /// </summary>
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>
@@ -250,7 +250,7 @@ internal static partial class EvmInstructions
             snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

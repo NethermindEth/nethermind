@@ -13,7 +13,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
@@ -302,7 +302,7 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
@@ -362,7 +362,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

@@ -16,7 +16,7 @@ namespace Nethermind.Evm;
 using Word = Vector256<byte>;
 using static Unsafe;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Pops a value from the EVM stack.
@@ -186,7 +186,7 @@ internal static partial class EvmInstructions
         programCounter += Size;
     Success:
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
@@ -632,7 +632,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
