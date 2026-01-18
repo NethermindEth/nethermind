@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -32,7 +33,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionTLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -61,12 +62,12 @@ internal static partial class EvmInstructions
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -82,7 +83,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or failure.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTStore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionTStore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Increment the opcode metric for TSTORE.
@@ -116,14 +117,14 @@ internal static partial class EvmInstructions
             vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new(programCounter, EvmExceptionType.StaticCallViolation);
     }
 
     /// <summary>
@@ -140,7 +141,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMStore<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -164,12 +165,12 @@ internal static partial class EvmInstructions
         if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -186,7 +187,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMStore8<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -211,12 +212,12 @@ internal static partial class EvmInstructions
         if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(result, data);
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -233,7 +234,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -258,12 +259,12 @@ internal static partial class EvmInstructions
         // Push the loaded bytes onto the stack.
         stack.PushBytes<TTracingInst>(bytes);
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -280,7 +281,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -288,8 +289,13 @@ internal static partial class EvmInstructions
         Metrics.MCopyOpcode++;
 
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
-
+        if (!stack.PopUInt256(
+            out UInt256 a,
+            out UInt256 b,
+            out UInt256 c))
+        {
+            goto StackUnderflow;
+        }
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
@@ -314,12 +320,12 @@ internal static partial class EvmInstructions
         if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(a, bytes);
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -337,9 +343,10 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreUnmetered<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    internal static OpcodeResult InstructionSStoreUnmetered<TGasPolicy, TTracingInst, EIP3529>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where EIP3529 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -377,7 +384,7 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        long sClearRefunds = RefundOf.SClear(EIP3529.IsActive);
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -413,14 +420,14 @@ internal static partial class EvmInstructions
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new(programCounter, EvmExceptionType.StaticCallViolation);
     }
 
     /// <summary>
@@ -432,17 +439,18 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TTracingInst">A flag type indicating whether detailed tracing is enabled.</typeparam>
-    /// <typeparam name="TUseNetGasStipendFix">A flag type indicating whether stipend fix is enabled.</typeparam>
+    /// <typeparam name="EIP2200">A flag type indicating whether stipend fix is enabled.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gas">The gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    internal static OpcodeResult InstructionSStoreMetered<TGasPolicy, TTracingInst, EIP2200, EIP3529>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        where TUseNetGasStipendFix : struct, IFlag
+        where EIP2200 : struct, IFlag
+        where EIP3529 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -454,7 +462,7 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
-        if (TUseNetGasStipendFix.IsActive)
+        if (EIP2200.IsActive)
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
@@ -485,7 +493,7 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        long sClearRefunds = RefundOf.SClear(EIP3529.IsActive);
 
         if (newSameAsCurrent)
         {
@@ -575,14 +583,14 @@ internal static partial class EvmInstructions
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new(programCounter, EvmExceptionType.StaticCallViolation);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -608,7 +616,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this instruction).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    internal static OpcodeResult InstructionSLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -641,12 +649,12 @@ internal static partial class EvmInstructions
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -655,7 +663,7 @@ internal static partial class EvmInstructions
     /// zero-padding if necessary.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionCallDataLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -663,13 +671,22 @@ internal static partial class EvmInstructions
 
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))
-            goto StackUnderflow;
-        // Load 32 bytes from input data, applying zero padding as needed.
-        stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
+        {
+            return new(programCounter, EvmExceptionType.StackUnderflow);
+        }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        // Load 32 bytes from input data, applying zero padding as needed.
+        ReadOnlySpan<byte> span = vm.VmState.Env.InputData.Span;
+        if (!result.IsUint64 || result.u0 >= (uint)span.Length)
+        {
+            return new(programCounter, stack.PushZero<TTracingInst>());
+        }
+        else
+        {
+            uint offset = (uint)result.u0;
+            uint available = (uint)span.Length - offset;
+            uint copiedLength = available >= 32 ? 32 : available;
+            return new(programCounter, stack.PushRightPaddedBytes<TTracingInst>(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), offset), copiedLength));
+        }
     }
 }

@@ -129,6 +129,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         in UInt256 position,
         in UInt256 length, VmState<TSelf> vmState);
 
+    static abstract bool UpdateMemoryCost(ref TSelf gas,
+        in UInt256 position,
+        ulong length, VmState<TSelf> vmState);
     /// <summary>
     /// Deducts a specified gas cost from the available gas.
     /// </summary>

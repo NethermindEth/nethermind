@@ -16,6 +16,7 @@ namespace Nethermind.Evm.GasPolicy;
 /// <summary>
 /// Standard Ethereum single-dimensional gas.Value policy.
 /// </summary>
+[SkipLocalsInit]
 public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     public long Value;
@@ -118,6 +119,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
         in UInt256 length, VmState<EthereumGasPolicy> vmState)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, VmState<EthereumGasPolicy> vmState)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0L)
