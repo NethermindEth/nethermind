@@ -108,7 +108,7 @@ jobs:
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
-          DOTNET_EnableAVX2: ${{ matrix.intrinsics }}
+          DOTNET_EnableAVX: ${{ matrix.intrinsics }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
             ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
