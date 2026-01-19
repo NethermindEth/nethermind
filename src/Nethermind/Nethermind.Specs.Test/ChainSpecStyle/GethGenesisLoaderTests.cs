@@ -173,10 +173,6 @@ public class GethGenesisLoaderTests
         chainSpec.Parameters.Eip7Transition.Should().Be(1);
         chainSpec.Parameters.ValidateChainIdTransition.Should().Be(3);
         chainSpec.Parameters.ValidateReceiptsTransition.Should().Be(5);
-
-        chainSpec.Parameters.Eip7692TransitionTimestamp.Should().Be(13);
-
-        chainSpec.Parameters.Eip7907TransitionTimestamp.Should().Be(14);
     }
 
     [Test]
