@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Tracing;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
@@ -110,11 +111,12 @@ internal static partial class EvmInstructions
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
-        if (vm.TxTracer.IsTracingStorage)
+        ITxTracer txTracer = vm.TxTracer;
+        if (txTracer.IsTracingStorage)
         {
             if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
-            vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
+            txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
 
         return new(programCounter, EvmExceptionType.None);
@@ -358,6 +360,7 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         IReleaseSpec spec = vm.Spec;
+        ITxTracer txTracer = vm.TxTracer;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GetSStoreResetCost()))
@@ -375,7 +378,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, txTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -394,8 +397,8 @@ internal static partial class EvmInstructions
             if (!newSameAsCurrent)
             {
                 vmState.Refund += sClearRefunds;
-                if (vm.TxTracer.IsTracingRefunds)
-                    vm.TxTracer.ReportRefund(sClearRefunds);
+                if (txTracer.IsTracingRefunds)
+                    txTracer.ReportRefund(sClearRefunds);
             }
         }
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
@@ -417,9 +420,9 @@ internal static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (txTracer.IsTracingStorage)
         {
-            vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
         return new(programCounter, EvmExceptionType.None);
@@ -462,12 +465,14 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         IReleaseSpec spec = vm.Spec;
+        ITxTracer txTracer = vm.TxTracer;
+        bool isTracingRefunds = txTracer.IsTracingRefunds;
 
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
         if (EIP2200.IsActive)
         {
-            if (vm.TxTracer.IsTracingRefunds)
-                vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+            if (isTracingRefunds)
+                txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
             if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
                 goto OutOfGas;
         }
@@ -484,7 +489,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, txTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -524,8 +529,8 @@ internal static partial class EvmInstructions
                     if (newIsZero)
                     {
                         vmState.Refund += sClearRefunds;
-                        if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(sClearRefunds);
+                        if (isTracingRefunds)
+                            txTracer.ReportRefund(sClearRefunds);
                     }
                 }
             }
@@ -541,15 +546,15 @@ internal static partial class EvmInstructions
                     if (currentIsZero)
                     {
                         vmState.Refund -= sClearRefunds;
-                        if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(-sClearRefunds);
+                        if (isTracingRefunds)
+                            txTracer.ReportRefund(-sClearRefunds);
                     }
 
                     if (newIsZero)
                     {
                         vmState.Refund += sClearRefunds;
-                        if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(sClearRefunds);
+                        if (isTracingRefunds)
+                            txTracer.ReportRefund(sClearRefunds);
                     }
                 }
 
@@ -562,8 +567,8 @@ internal static partial class EvmInstructions
                         : spec.GetClearReversalRefund();
 
                     vmState.Refund += refundFromReversal;
-                    if (vm.TxTracer.IsTracingRefunds)
-                        vm.TxTracer.ReportRefund(refundFromReversal);
+                    if (isTracingRefunds)
+                        txTracer.ReportRefund(refundFromReversal);
                 }
             }
         }
@@ -580,9 +585,9 @@ internal static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (txTracer.IsTracingStorage)
         {
-            vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
         return new(programCounter, EvmExceptionType.None);

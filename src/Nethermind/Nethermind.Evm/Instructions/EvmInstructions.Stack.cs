@@ -416,21 +416,18 @@ internal static partial class EvmInstructions
         // Pop memory offset and length for the log data.
         if (!stack.PopUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
-        // The number of topics is defined by the generic parameter.
-        long topicsCount = TOpCount.Count;
-
         // Ensure that the memory expansion for the log data is accounted for.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, vmState)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
         long dataSize = (long)length;
-        if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
+        if (!TGasPolicy.ConsumeLogEmission(ref gas, TOpCount.Count, dataSize)) goto OutOfGas;
 
         // Load the log data from memory.
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
             goto OutOfGas;
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
-        Hash256[] topics = new Hash256[topicsCount];
+        Hash256[] topics = TOpCount.Count == 0 ? [] : new Hash256[TOpCount.Count];
         for (int i = 0; i < topics.Length; i++)
         {
             topics[i] = new Hash256(stack.PopWord256());

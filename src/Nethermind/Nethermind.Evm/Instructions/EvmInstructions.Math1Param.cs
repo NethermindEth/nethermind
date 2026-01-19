@@ -182,7 +182,7 @@ internal static partial class EvmInstructions
         ref byte bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         int position = 31 - (int)a;  // Byte position to sign-extend from
-    
+
         // Get sign of the byte at position
         sbyte sign = (sbyte)Unsafe.Add(ref bytesRef, position);
 
@@ -205,24 +205,24 @@ internal static partial class EvmInstructions
         {
             // Load current value
             Vector256<byte> value = Unsafe.As<byte, Vector256<byte>>(ref slot);
-    
+
             // Create mask: 0xFF for bytes we want to replace (indices < position)
             // Use comparison with broadcast position
             Vector256<byte> indices = Vector256.Create(
                 (byte)0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
                 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
             Vector256<byte> posVec = Vector256.Create((byte)position);
-    
+
             // mask[i] = 0xFF if i < position, else 0x00
             Vector256<byte> mask = Avx2.CompareGreaterThan(posVec.AsSByte(), indices.AsSByte()).AsByte();
-    
+
             // Fill value: 0x00 if sign >= 0, 0xFF if sign < 0
             // Arithmetic right shift of sign by 7 gives 0x00 or 0xFF
             Vector256<byte> fill = Vector256.Create((byte)(sign >> 7));
-    
+
             // Blend: keep original where mask is 0, use fill where mask is FF
             Vector256<byte> result = Avx2.BlendVariable(value, fill, mask);
-    
+
             Unsafe.As<byte, Vector256<byte>>(ref slot) = result;
         }
 
@@ -230,9 +230,26 @@ internal static partial class EvmInstructions
         static void SignExtendScalar(ref byte slot, int position, sbyte sign)
         {
             byte fill = (byte)(sign >> 7); // 0x00 or 0xFF
-    
-            // Unrolled for common cases, use Unsafe to avoid bounds checks
-            for (int i = 0; i < position; i++)
+            ulong fillWord = fill == 0 ? 0UL : 0xFFFFFFFFFFFFFFFFUL;
+
+            // Write in 8-byte, 4-byte, 2-byte, 1-byte chunks for efficiency
+            int i = 0;
+            while (i + 8 <= position)
+            {
+                WriteUnaligned(ref Unsafe.Add(ref slot, i), fillWord);
+                i += 8;
+            }
+            if (i + 4 <= position)
+            {
+                WriteUnaligned(ref Unsafe.Add(ref slot, i), (uint)fillWord);
+                i += 4;
+            }
+            if (i + 2 <= position)
+            {
+                WriteUnaligned(ref Unsafe.Add(ref slot, i), (ushort)fillWord);
+                i += 2;
+            }
+            if (i < position)
             {
                 Unsafe.Add(ref slot, i) = fill;
             }
