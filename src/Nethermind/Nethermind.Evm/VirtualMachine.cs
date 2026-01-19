@@ -97,7 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
     private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
@@ -1250,6 +1250,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
+                // Call gas policy hook before instruction execution.
+                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
+
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
                     StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
@@ -1278,6 +1281,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     OpCodeCount += opCodeCount;
                     goto OutOfGas;
                 }
+
+                // Call gas policy hook after instruction execution.
+                TGasPolicy.OnAfterInstructionTrace(in gas);
+
                 // If an exception occurred, exit the loop.
                 if (exceptionType != EvmExceptionType.None)
                     break;
@@ -1360,7 +1367,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
 
-    protected CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
+    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
     {
         if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
 
@@ -1380,7 +1387,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         };
     }
 
-    protected void UpdateCurrentState(int pc, in TGasPolicy gas, int stackHead)
+    private void UpdateCurrentState(int pc, in TGasPolicy gas, int stackHead)
     {
         VmState<TGasPolicy> state = VmState;
 
@@ -1391,7 +1398,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
+    private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
     {
         VmState<TGasPolicy> vmState = VmState;
         int sectionIndex = SectionIndex;
@@ -1441,13 +1448,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected internal void EndInstructionTrace(long gasAvailable)
+    internal void EndInstructionTrace(long gasAvailable)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
+    private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
