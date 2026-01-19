@@ -126,8 +126,8 @@ public interface IXdcReleaseSpec : IReleaseSpec
     Address FoundationWallet { get; set; }
     Address MasternodeVotingContract { get; set; }
 
-    bool IsBlackListingEnabled { get; internal set; }
-    bool IsTIP2019 { get; internal set; }
-    bool IsTIPXDCXMiner { get; internal set; }
+    bool IsBlackListingEnabled { get; set; }
+    bool IsTIP2019 { get; set; }
+    bool IsTIPXDCXMiner { get; set; }
     public void ApplyV2Config(ulong round);
 }
