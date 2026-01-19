@@ -133,7 +133,7 @@ public sealed class VmState<TGasPolicy> : IDisposable
     /// <summary>
     /// Constructor for a frame <see cref="VmState{TGasPolicy}"/> beneath top level.
     /// </summary>
-    public static VmState<TGasPolicy> RentFrame(
+    public static VmState<TGasPolicy> Rent(
         TGasPolicy gas,
         long outputDestination,
         long outputLength,

@@ -743,7 +743,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Set up the execution environment for the new contract.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -753,7 +753,7 @@ internal static partial class EvmInstructions
             value: in value,
             inputData: in callData);
 
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        vm.ReturnData = VmState<TGasPolicy>.Rent(
             gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,
@@ -1006,7 +1006,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Set up the new execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: targetCodeInfo,
             executingAccount: target,
             caller: caller,
@@ -1016,7 +1016,7 @@ internal static partial class EvmInstructions
             value: in callValue,
             inputData: in callData);
 
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        vm.ReturnData = VmState<TGasPolicy>.Rent(
             gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,

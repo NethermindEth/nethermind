@@ -228,7 +228,7 @@ namespace Nethermind.Evm.Test
                     RentExecutionEnvironment(),
                     new StackAccessTracker(),
                     Snapshot.Empty)
-                : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromLong(10000),
+                : VmState<EthereumGasPolicy>.Rent(EthereumGasPolicy.FromLong(10000),
                     0,
                     0,
                     ExecutionType.CALL,
@@ -239,6 +239,6 @@ namespace Nethermind.Evm.Test
                     Snapshot.Empty);
 
         private static ExecutionEnvironment RentExecutionEnvironment() =>
-            ExecutionEnvironment.RentEnvironment(null, null, null, null, 0, default, default, default);
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default);
     }
 }

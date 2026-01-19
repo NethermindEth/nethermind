@@ -67,7 +67,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Rents an ExecutionEnvironment from the pool and initializes it with the provided values.
         /// </summary>
-        public static ExecutionEnvironment RentEnvironment(
+        public static ExecutionEnvironment Rent(
             ICodeInfo codeInfo,
             Address executingAccount,
             Address caller,

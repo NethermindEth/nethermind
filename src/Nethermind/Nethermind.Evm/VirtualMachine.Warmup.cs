@@ -45,7 +45,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        using ExecutionEnvironment env = ExecutionEnvironment.RentEnvironment(
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
             executingAccount: addressOne,
             caller: addressOne,

@@ -225,7 +225,7 @@ internal static partial class EvmInstructions
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -236,7 +236,7 @@ internal static partial class EvmInstructions
             inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        vm.ReturnData = VmState<TGasPolicy>.Rent(
             gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,

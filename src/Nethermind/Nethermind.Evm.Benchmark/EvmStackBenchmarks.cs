@@ -54,21 +54,21 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            byte b = 1;
+            int b = 1;
 
-            stack.PushByte<OffFlag>(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            stack.PushByte<OffFlag>(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            stack.PushByte<OffFlag>(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            stack.PushByte<OffFlag>(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            return b;
+            return (byte)b;
         }
 
         [Benchmark(OperationsPerInvoke = 4)]

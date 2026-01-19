@@ -317,7 +317,7 @@ internal static partial class EvmInstructions
         if (overflowed) goto OutOfGas;
 
         // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
@@ -328,7 +328,7 @@ internal static partial class EvmInstructions
             inputData: in callData);
 
         // Rent a new call frame for executing the call.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        vm.ReturnData = VmState<TGasPolicy>.Rent(
             gas: TGasPolicy.FromLong(gasLimitUl),
             outputDestination: (long)outputOffset.u0,
             outputLength: (long)outputLength.u0,
