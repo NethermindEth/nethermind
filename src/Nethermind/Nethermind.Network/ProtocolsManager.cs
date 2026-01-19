@@ -67,12 +67,7 @@ namespace Nethermind.Network
         private readonly IRlpxHost _rlpxHost;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly IForkInfo _forkInfo;
-        private readonly IGossipPolicy _gossipPolicy;
-        private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly ILogManager _logManager;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
