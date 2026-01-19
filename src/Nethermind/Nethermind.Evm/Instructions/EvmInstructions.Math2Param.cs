@@ -165,7 +165,17 @@ internal static partial class EvmInstructions
     {
         public static long GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => UInt256.Mod(in a, in b, out result);
+        {
+            if (b.IsZeroOrOne)
+            {
+                // Modulo with 0 or 1 yields zero.
+                result = default;
+            }
+            else
+            {
+                UInt256.Mod(in a, in b, out result);
+            }
+        }
     }
 
     /// <summary>
@@ -269,15 +279,15 @@ internal static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         TGasPolicy.Consume(ref gas, GasCostOf.Exp);
 
-        // Pop the base value from the stack.
-        if (!stack.PopUInt256(out UInt256 a))
+        // Pop the base value and exponent from the stack.
+        if (!stack.PopUInt256(out UInt256 a) ||
+            !stack.PopUInt256(out UInt256 exponent))
+        {
             goto StackUnderflow;
-
-        // Pop the exponent as a 256-bit word.
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        }
 
         // Determine the effective byte-length of the exponent.
-        int leadingZeros = bytes.LeadingZerosCount();
+        int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
@@ -300,7 +310,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(a, new UInt256(bytes, true), out UInt256 result);
+                UInt256.Exp(in a, in exponent, out UInt256 result);
                 stack.PushUInt256<TTracingInst>(in result);
             }
         }

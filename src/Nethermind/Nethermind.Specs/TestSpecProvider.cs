@@ -30,7 +30,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : NextForkSpec;
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : NextForkSpec;
 
         public IReleaseSpec NextForkSpec { get; set; }
         public long? ForkOnBlockNumber { get; set; }

@@ -1222,6 +1222,55 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.CachedNodesCount.Should().Be(36);
         }
 
+        [Test]
+        public void Can_Prune_StorageTreeRoot()
+        {
+            if (_scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
+
+            MemDb memDb = new();
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
+                shouldPrune: false,
+                deleteObsoleteKeys: true
+            );
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 4,
+                    PrunePersistedNodePortion = 1.0,
+                    DirtyNodeShardBit = 4,
+                    MaxBufferedCommitCount = 0,
+                    TrackPastKeys = true
+                });
+
+            StateTree ptree = new StateTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            void WriteRandomData(int seed)
+            {
+                Hash256 address = Keccak.Compute(seed.ToBigEndianByteArray());
+                StorageTree storageTree = new StorageTree(fullTrieStore.GetTrieStore(address), LimboLogs.Instance);
+                storageTree.Set(Keccak.Compute((seed * 2).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                storageTree.Commit();
+
+                ptree.Set(address, new Account(0, 0, storageTree.RootHash, Keccak.OfAnEmptyString));
+                ptree.Commit();
+            }
+
+            for (int i = 0; i < 16; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i);
+                }
+                fullTrieStore.PersistAndPruneDirtyCache();
+                fullTrieStore.PrunePersistedNodes();
+            }
+            fullTrieStore.CachedNodesCount.Should().Be(19);
+        }
+
         [TestCase(27, 1000, 31, 7)]
         [TestCase(27, 1000, 2, 2)]
         public void Will_HaveConsistentState_AfterPrune(int possibleSeed, int totalBlock, int snapshotInterval, int prunePersistedInterval)
@@ -1306,7 +1355,7 @@ namespace Nethermind.Trie.Test.Pruning
                 // Persist sometimes
                 testPruningStrategy.ShouldPruneEnabled = i % snapshotInterval == 0;
                 testPruningStrategy.ShouldPrunePersistedEnabled = i % prunePersistedInterval == 0;
-                fullTrieStore.SyncPruneCheck();
+                fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
                 testPruningStrategy.ShouldPrunePersistedEnabled = false;
 
@@ -1393,7 +1442,7 @@ namespace Nethermind.Trie.Test.Pruning
             Task persistTask = Task.Run(() =>
             {
                 testPruningStrategy.ShouldPruneEnabled = true;
-                fullTrieStore.SyncPruneCheck();
+                fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
             });
             Thread.Sleep(100);
@@ -1425,7 +1474,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // Persisted nodes should be from block 12
             testPruningStrategy.ShouldPruneEnabled = true;
-            fullTrieStore.SyncPruneCheck();
+            fullTrieStore.SyncPruneQueue();
             testPruningStrategy.ShouldPruneEnabled = false;
             fullTrieStore.LastPersistedBlockNumber.Should().Be(12);
 

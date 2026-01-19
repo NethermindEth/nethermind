@@ -348,6 +348,14 @@ public class AbiTests
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
     }
 
+    [TestCase("uint64[abc]")]
+    [TestCase("bytes32[xyz]")]
+    [TestCase("address[!@#]")]
+    public void Test_invalid_array_syntax_exception(string type)
+    {
+        Assert.Throws<ArgumentException>(() => System.Text.Json.JsonSerializer.Deserialize<AbiType>($"\"{type}\""));
+    }
+
     [TestCase(AbiEncodingStyle.IncludeSignature)]
     [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
     [TestCase(AbiEncodingStyle.Packed)]
@@ -595,6 +603,49 @@ public class AbiTests
         public byte[] PaymasterData { get; set; }
         public Address Signer { get; set; }
         public byte[] Signature { get; set; }
+    }
+
+    [TestCase(AbiEncodingStyle.IncludeSignature)]
+    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+    [TestCase(AbiEncodingStyle.Packed)]
+    [TestCase(AbiEncodingStyle.None)]
+    public void Dynamic_array_of_fixed_array_of_uint64(AbiEncodingStyle encodingStyle)
+    {
+        AbiType type = new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3));
+        ulong[] element = [100UL, 200UL, 300UL];
+        ulong[][] data = [element, [400UL, 500UL, 600UL]];
+        AbiSignature signature = new("abc", type);
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, [data]);
+        object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+        Assert.That(arguments[0], Is.EqualTo(data));
+    }
+
+    [TestCase(AbiEncodingStyle.IncludeSignature)]
+    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+    [TestCase(AbiEncodingStyle.Packed)]
+    [TestCase(AbiEncodingStyle.None)]
+    public void Dynamic_array_of_fixed_array_of_uint64_single_element(AbiEncodingStyle encodingStyle)
+    {
+        AbiType type = new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3));
+        ulong[][] data = [[1000000UL, 7UL, 3600UL]];
+        AbiSignature signature = new("abc", type);
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, [data]);
+        object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+        Assert.That(arguments[0], Is.EqualTo(data));
+    }
+
+    [TestCase(AbiEncodingStyle.IncludeSignature)]
+    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+    [TestCase(AbiEncodingStyle.Packed)]
+    [TestCase(AbiEncodingStyle.None)]
+    public void Dynamic_array_of_fixed_array_of_uint64_empty(AbiEncodingStyle encodingStyle)
+    {
+        AbiType type = new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3));
+        ulong[][] data = [];
+        AbiSignature signature = new("abc", type);
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, [data]);
+        object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     /// <summary>

@@ -112,16 +112,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         FallAsleep();
         PostFinishCleanUp();
     }
-
-    protected override void PostFinishCleanUp()
-    {
-        HeadersSyncProgressLoggerReport.Update(TotalBlocks);
-        HeadersSyncProgressLoggerReport.MarkEnd();
-        ClearDependencies(); // there may be some dependencies from wrong branches
-        _pending.Clear(); // there may be pending wrong branches
-        _sent.Clear(); // we my still be waiting for some bad branches
-    }
-
     public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
     {
         if (_pivotNumber != ExpectedPivotNumber)

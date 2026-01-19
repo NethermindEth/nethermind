@@ -28,7 +28,7 @@ public class DebugSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateSerialisationPayload(chain);
+        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateSerializationPayload(chain);
 
         //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
@@ -67,7 +67,7 @@ public class DebugSimulateTestsBlocksAndTransactions
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
-        //Force persistancy of head block in main chain
+        //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
@@ -105,7 +105,7 @@ public class DebugSimulateTestsBlocksAndTransactions
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
-        //Force persistancy of head block in main chain
+        //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
