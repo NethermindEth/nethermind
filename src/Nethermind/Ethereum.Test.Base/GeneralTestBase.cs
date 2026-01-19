@@ -64,6 +64,7 @@ namespace Ethereum.Test.Base
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
 
             EofValidator.Logger = _logger;
 
@@ -105,6 +106,15 @@ namespace Ethereum.Test.Base
                 stateProvider.RecalculateStateRoot();
             }
 
+            if (test.Transaction.ChainId is null)
+            {
+                test.Transaction.ChainId = test.ChainId;
+            }
+
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+            Transaction[] transactions = [test.Transaction];
+            Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? [] : null;
+
             BlockHeader header = new(
                 test.PreviousHash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -119,37 +129,23 @@ namespace Ethereum.Test.Base
                 StateRoot = test.PostHash,
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
-                WithdrawalsRoot = test.CurrentWithdrawalsRoot,
+                WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
                 ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
-                RequestsHash = test.RequestsHash
+                RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
+                TxRoot = TxTrie.CalculateRoot(transactions),
+                ReceiptsRoot = test.PostReceiptsRoot,
             };
+
             header.Hash = header.CalculateHash();
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
-
-            if (test.Transaction.ChainId is null)
-            {
-                test.Transaction.ChainId = test.ChainId;
-            }
-
-            Transaction[] transactions = test.Transaction is null ? [] : [test.Transaction];
-            Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? [] : null;
             Block block = new(header, new BlockBody(transactions, [], withdrawals));
 
-            header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
-            header.ReceiptsRoot ??= test.PostReceiptsRoot;
-            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null);
-            header.RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null);
-            header.Hash = header.CalculateHash();
-
-            bool txIsValid = blockValidator.ValidateOrphanedBlock(block, out string blockValidationError);
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
             TransactionResult? txResult = null;
 
-            if (txIsValid)
+            if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
             {
                 txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
