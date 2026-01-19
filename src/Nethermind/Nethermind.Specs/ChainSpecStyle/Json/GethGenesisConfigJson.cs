@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -76,29 +74,15 @@ public class GethGenesisConfigJson
 
     public ulong? Bpo5Time { get; set; }
 
-    /// <summary>
-    /// The terminal total difficulty for the merge.
-    /// This is a hex string as defined in EIP-7949.
-    /// </summary>
     public UInt256? TerminalTotalDifficulty { get; set; }
 
     public bool? TerminalTotalDifficultyPassed { get; set; }
 
     public Address? DepositContractAddress { get; set; }
 
-    /// <summary>
-    /// The blob schedule mapping hardforks to their EIP-4844 DAS configuration parameters.
-    /// </summary>
     public Dictionary<string, GethBlobScheduleEntry> BlobSchedule { get; set; }
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement> ExtensionData { get; set; }
 }
 
-/// <summary>
-/// Represents a blob schedule entry in the EIP-7949 format.
-/// Extended to support explicit timestamps for custom hardforks.
-/// </summary>
 public class GethBlobScheduleEntry
 {
     public ulong Target { get; set; }
@@ -106,10 +90,4 @@ public class GethBlobScheduleEntry
     public ulong Max { get; set; }
 
     public ulong BaseFeeUpdateFraction { get; set; }
-
-    /// <summary>
-    /// Explicit timestamp for custom hardforks that don't have a corresponding hardfork time in config.
-    /// This is an extension to the EIP-7949 format for practical use.
-    /// </summary>
-    public ulong? Timestamp { get; set; }
 }

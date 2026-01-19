@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using FluentAssertions;
@@ -13,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -22,15 +22,15 @@ public class GethGenesisLoaderTests
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
-        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 
     private static ChainSpec LoadFromString(string json)
     {
-        var loader = new GethGenesisLoader(new EthereumJsonSerializer());
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        GethGenesisLoader loader = new(new EthereumJsonSerializer());
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
         return loader.Load(stream);
     }
 
@@ -211,7 +211,7 @@ public class GethGenesisLoaderTests
 
         chainSpec.Parameters.BlobSchedule.Should().HaveCount(2);
 
-        var blobScheduleList = chainSpec.Parameters.BlobSchedule.ToList();
+        List<BlobScheduleSettings> blobScheduleList = [.. chainSpec.Parameters.BlobSchedule];
         // Sorted by timestamp
         blobScheduleList[0].Timestamp.Should().Be(1710338135);
         blobScheduleList[0].Target.Should().Be(3);
@@ -306,8 +306,8 @@ public class GethGenesisLoaderTests
         }
         """;
 
-        var loader = new AutoDetectingChainSpecLoader(new EthereumJsonSerializer());
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(gethGenesis));
+        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer());
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(gethGenesis));
         ChainSpec chainSpec = loader.Load(stream);
 
         chainSpec.ChainId.Should().Be(12345);
@@ -332,8 +332,8 @@ public class GethGenesisLoaderTests
         }
         """;
 
-        var loader = new AutoDetectingChainSpecLoader(new EthereumJsonSerializer());
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(parityChainspec));
+        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer());
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(parityChainspec));
         ChainSpec chainSpec = loader.Load(stream);
 
         chainSpec.Name.Should().Be("TestNet");
@@ -416,7 +416,6 @@ public class GethGenesisLoaderTests
 
         differences.Should().BeEmpty($"at activation {forkActivation}, the following EIPs differ:\n{string.Join("\n", differences)}");
 
-        // Check chain and network IDs
         provider.ChainId.Should().Be(hardCodedSpec.ChainId);
         provider.NetworkId.Should().Be(hardCodedSpec.NetworkId);
         provider.TerminalTotalDifficulty.Should().Be(hardCodedSpec.TerminalTotalDifficulty);

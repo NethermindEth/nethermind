@@ -92,7 +92,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MinGasLimit = 5000,
             MinHistoryRetentionEpochs = 82125,
 
-            Eip7Transition = config.HomesteadBlock,
+            Eip7Transition = config.HomesteadBlock ?? 0,
 
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,
@@ -295,7 +295,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private static void LoadTransitions(ChainSpec chainSpec)
     {
-        chainSpec.HomesteadBlockNumber = 0;
+        chainSpec.HomesteadBlockNumber = chainSpec.Parameters.Eip7Transition;
         chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
         chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;

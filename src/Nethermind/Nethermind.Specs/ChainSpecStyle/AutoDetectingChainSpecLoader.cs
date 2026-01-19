@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Text.Json;
 using Nethermind.Serialization.Json;
@@ -10,7 +9,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 
 /// <summary>
 /// A chain spec loader that auto-detects the format of the input file and delegates
-/// to either the Parity-style ChainSpecLoader or the Geth-style GethGenesisLoader.
+/// to either the regular ChainSpecLoader or the Geth-style GethGenesisLoader.
 /// </summary>
 public class AutoDetectingChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 {

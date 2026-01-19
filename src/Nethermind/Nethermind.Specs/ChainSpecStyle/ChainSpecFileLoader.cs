@@ -20,8 +20,7 @@ public class ChainSpecFileLoader
 
     public ChainSpecFileLoader(IJsonSerializer serializer, ILogger logger)
     {
-        // Use auto-detecting loader that can handle both Parity-style and Geth-style (EIP-7949) genesis files
-        var jsonLoader = new AutoDetectingChainSpecLoader(serializer);
+        AutoDetectingChainSpecLoader jsonLoader = new(serializer);
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
