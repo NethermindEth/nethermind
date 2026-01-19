@@ -176,7 +176,7 @@ internal static partial class EvmInstructions
             else
             {
                 TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
-                if(CheckStackUnderflow(ref stack, 1))
+                if (CheckStackUnderflow(ref stack, 1))
                 {
                     goto StackUnderflow;
                 }
