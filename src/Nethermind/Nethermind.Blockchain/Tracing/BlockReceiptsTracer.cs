@@ -75,24 +75,30 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected virtual TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         Transaction transaction = CurrentTx!;
+        Block block = Block;
+        bool isContractCreation = transaction.IsContractCreation;
+    
         TxReceipt txReceipt = new()
         {
-            Logs = logEntries,
-            TxType = transaction.Type,
-            // Bloom calculated in parallel with other receipts
-            GasUsedTotal = Block.GasUsed,
-            StatusCode = statusCode,
-            Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = Block.Hash,
-            BlockNumber = Block.Number,
-            Index = _currentIndex,
-            GasUsed = spentGas,
-            Sender = transaction.SenderAddress,
-            ContractAddress = transaction.IsContractCreation ? recipient : null,
+            // 0x10-0x48: Reference fields in order
+            BlockHash = block.Hash,
             TxHash = transaction.Hash,
-            PostTransactionState = stateRoot
+            Sender = transaction.SenderAddress,
+            ContractAddress = isContractCreation ? recipient : null,
+            Recipient = isContractCreation ? null : recipient,
+            PostTransactionState = stateRoot,
+            Logs = logEntries,
+        
+            // 0x58-0x68: Long fields
+            BlockNumber = block.Number,
+            GasUsed = spentGas,
+            GasUsedTotal = block.GasUsed,
+        
+            // 0x70-0x75: Small fields
+            Index = _currentIndex,
+            TxType = transaction.Type,
+            StatusCode = statusCode
         };
-
         return txReceipt;
     }
 
