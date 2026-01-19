@@ -46,7 +46,7 @@ public class VerifierRegistry(EthProofsApiClient apiClient): IDisposable
 
     private void RegisterVerifier(string clusterId, string zkVm, string? vkBinary)
     {
-        if (string.IsNullOrEmpty(vkBinary)) return;
+        if (string.IsNullOrEmpty(vkBinary) && !ZkTypeMapper.IsVerifiableZkvmWithoutVk(ZkTypeMapper.Parse(zkVm))) return;
 
         ZKType zkType = ZkTypeMapper.Parse(zkVm);
         if (zkType == ZKType.Unknown) return;

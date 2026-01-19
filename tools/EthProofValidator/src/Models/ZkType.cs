@@ -9,6 +9,7 @@ public enum ZKType
     OpenVM = 1,
     Pico = 2,
     Sp1Hypercube = 3,
+    Airbender = 4,
     Unknown = -1
 }
 
@@ -22,10 +23,16 @@ public static class ZkTypeMapper
         { "sp1", ZKType.Sp1Hypercube },
         { "sp1-hypercube", ZKType.Sp1Hypercube },
         { "sp1-turbo", ZKType.Sp1Hypercube },
+        { "airbender", ZKType.Airbender }
     };
 
     public static ZKType Parse(string name)
     {
         return TypeMap.TryGetValue(name, out var type) ? type : ZKType.Unknown;
+    }
+
+    // Verifier(s) handles vk internally
+    public static bool IsVerifiableZkvmWithoutVk(ZKType zkType) {
+        return zkType == ZKType.Airbender;
     }
 }

@@ -10,6 +10,7 @@ pub enum VerifierType {
     OpenVm = 1,
     Pico = 2,
     Sp1Hypercube = 3,
+    Airbender = 4,
 }
 
 impl TryFrom<u32> for VerifierType {
@@ -21,6 +22,7 @@ impl TryFrom<u32> for VerifierType {
             1 => Ok(VerifierType::OpenVm),
             2 => Ok(VerifierType::Pico),
             3 => Ok(VerifierType::Sp1Hypercube),
+            4 => Ok(VerifierType::Airbender),
             _ => Err(anyhow::anyhow!("Unknown verifier type: {}", value)),
         }
     }
@@ -34,3 +36,4 @@ pub mod zisk;
 pub mod openvm;
 pub mod pico;
 pub mod sp1_hypercube;
+pub mod airbender;

@@ -19,7 +19,7 @@ This project is strictly connected to [Ethproofs.org](https://ethproofs.org/). D
 The repository is composed of two main parts:
 
 -   **`src/`**: The main C# .NET project (EthProofValidator). This contains the application logic, models, and interfaces for interacting with the ZK verifiers.
--   **`native-zk-verifier/`**: A Rust project that implements the actual ZK verifier logic for different proof systems (e.g., Zisk, OpenVM, Pico, SP1 Hypercube). The .NET application communicates with this Rust library.
+-   **`native-zk-verifier/`**: A Rust project that implements the actual ZK verifier logic for different proof systems (e.g., Zisk, OpenVM, Pico, SP1 Hypercube, Airbender). The .NET application communicates with this Rust library.
 
 ## Building and Running
 
@@ -51,7 +51,5 @@ This will execute the `Program.cs` which should then utilize the compiled Rust v
 ## Demo Behavior
 
 The current implementation in `src/Program.cs` is configured to run a demonstration that validates a sequence of Ethereum blocks.
-It defines a `LatestBlockId` validates the preceding `BlockCount` blocks (currently set to 25).
 The application sequentially attempts to fetch and validate the proofs for each of these blocks, printing the elapsed time for each validation to the console.
-
-
+It showcases the integration between the .NET application and the native Rust ZK verifiers, providing insights into the performance and reliability of the proof validation process.

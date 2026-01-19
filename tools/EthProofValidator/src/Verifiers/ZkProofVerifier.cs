@@ -17,10 +17,10 @@ public class ZkProofVerifier : IDisposable
 
     public ZKType ZkType => _zkType;
 
-    public ZkProofVerifier(ZKType zkType, string vkBinary)
+    public ZkProofVerifier(ZKType zkType, string? vkBinary)
     {
         _zkType = zkType;
-        AllocateVkMemory(vkBinary);
+        if (!string.IsNullOrEmpty(vkBinary)) AllocateVkMemory(vkBinary);
     }
 
     public ZkResult Verify(byte[] proof)
