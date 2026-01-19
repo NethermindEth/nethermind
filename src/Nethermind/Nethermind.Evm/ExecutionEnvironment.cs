@@ -67,7 +67,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Rents an ExecutionEnvironment from the pool and initializes it with the provided values.
         /// </summary>
-        public static ExecutionEnvironment Rent(
+        public static ExecutionEnvironment RentEnvironment(
             ICodeInfo codeInfo,
             Address executingAccount,
             Address caller,
@@ -83,8 +83,8 @@ namespace Nethermind.Evm
             env.Caller = caller;
             env.CodeSource = codeSource;
             env.CallDepth = callDepth;
-            env._transferValue = transferValue;
             env._value = value;
+            env._transferValue = transferValue;
             env.InputData = inputData;
             return env;
         }
@@ -105,8 +105,8 @@ namespace Nethermind.Evm
                 Caller = null!;
                 CodeSource = null;
                 CallDepth = 0;
-                _transferValue = default;
                 _value = default;
+                _transferValue = default;
                 InputData = default;
                 _pool.Enqueue(this);
             }

@@ -317,7 +317,7 @@ internal static partial class EvmInstructions
         if (overflowed) goto OutOfGas;
 
         // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,

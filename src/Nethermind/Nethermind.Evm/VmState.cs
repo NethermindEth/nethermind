@@ -116,7 +116,7 @@ public sealed class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot)
     {
         VmState<TGasPolicy> state = Rent();
-        state.Initialize(
+        state.InitializeFrame(
             gas,
             outputDestination: 0L,
             outputLength: 0L,
@@ -146,7 +146,7 @@ public sealed class VmState<TGasPolicy> : IDisposable
         bool isTopLevel = false)
     {
         VmState<TGasPolicy> state = Rent();
-        state.Initialize(
+        state.InitializeFrame(
             gas,
             outputDestination,
             outputLength,
@@ -165,7 +165,7 @@ public sealed class VmState<TGasPolicy> : IDisposable
         => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
 
     [SkipLocalsInit]
-    private void Initialize(
+    private void InitializeFrame(
         TGasPolicy gas,
         long outputDestination,
         long outputLength,
@@ -177,15 +177,23 @@ public sealed class VmState<TGasPolicy> : IDisposable
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
     {
-        _env = env;
-        _snapshot = snapshot;
+        if (!_isDisposed)
+        {
+            ThrowIsInUse();
+        }
+        _isDisposed = false;
+
+        // Upper region first (0x78-0x98)
         _accessTracker = stateForAccessLists;
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
-        Gas = gas;
+        _snapshot = snapshot;
+
+        // Lower region sequential (0x18-0x50)
+        _env = env;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -199,13 +207,7 @@ public sealed class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-
-        if (!_isDisposed)
-        {
-            ThrowIsInUse();
-        }
-        _isDisposed = false;
-
+        Gas = gas;
 #if DEBUG
         _creationStackTrace = new StackTrace();
 #endif

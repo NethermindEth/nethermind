@@ -239,6 +239,6 @@ namespace Nethermind.Evm.Test
                     Snapshot.Empty);
 
         private static ExecutionEnvironment RentExecutionEnvironment() =>
-            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default);
+            ExecutionEnvironment.RentEnvironment(null, null, null, null, 0, default, default, default);
     }
 }

@@ -225,7 +225,7 @@ internal static partial class EvmInstructions
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,

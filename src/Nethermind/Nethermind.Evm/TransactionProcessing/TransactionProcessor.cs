@@ -658,7 +658,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.SenderAddress!);
             }
 
-            env = ExecutionEnvironment.Rent(
+            env = ExecutionEnvironment.RentEnvironment(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
                 caller: tx.SenderAddress!,

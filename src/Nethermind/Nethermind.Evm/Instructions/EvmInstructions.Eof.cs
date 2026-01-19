@@ -743,7 +743,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Set up the execution environment for the new contract.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -1006,7 +1006,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Set up the new execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.RentEnvironment(
             codeInfo: targetCodeInfo,
             executingAccount: target,
             caller: caller,
