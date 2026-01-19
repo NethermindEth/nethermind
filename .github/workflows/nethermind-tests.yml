@@ -23,7 +23,7 @@ env:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }}
+    name: "Run ${{ matrix.project }} (hw: ${{ matrix.intrinsics }})"
     runs-on: ubuntu-latest
     continue-on-error: true
     outputs:
@@ -104,11 +104,11 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: "${{ matrix.project }} (hw: ${{ matrix.intrinsics }})"
+      - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
-          DOTNET_EnableHWIntrinsic: ${{ matrix.intrinsics }}
+          DOTNET_EnableAVX2: ${{ matrix.intrinsics }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
             ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
