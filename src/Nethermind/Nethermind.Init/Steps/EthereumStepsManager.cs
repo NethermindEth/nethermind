@@ -254,10 +254,7 @@ namespace Nethermind.Init.Steps
                 List<string> deps = deduplicatedDependency[node];
                 sb.Append(dependentsMap[node].Count == 0 ? "● " : "○ ");
                 sb.Append(node);
-                if (deps.Count != 0)
-                {
-                    sb.AppendLine($" (depends on {string.Join(", ", deps)})");
-                }
+                sb.AppendLine(deps.Count != 0 ? $" (depends on {string.Join(", ", deps)})" : "");
             }
 
             return sb.ToString();
