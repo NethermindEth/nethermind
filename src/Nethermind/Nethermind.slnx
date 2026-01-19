@@ -116,6 +116,10 @@
   <Project Path="Nethermind.Runner/Nethermind.Runner.csproj" />
   <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
   <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+  <Project Path="Nethermind.Serialization.Rlp.Benchmark/Nethermind.Serialization.Rlp.Benchmark.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp/Nethermind.Serialization.FluentRlp.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Test/Nethermind.Serialization.FluentRlp.Test.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Generator/Nethermind.Serialization.FluentRlp.Generator.csproj" />
   <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
   <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
   <Project Path="Nethermind.Shutter/Nethermind.Shutter.csproj" />
