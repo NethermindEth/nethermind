@@ -58,8 +58,9 @@ internal static partial class EvmInstructions
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
-        // Pop the shift amount from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        // Only need to check if a < 256 and get the value - no full UInt256 needed
+        if (!stack.TryPopSmallIndex(out uint a))
+            goto StackUnderflow;
 
         // If the shift amount is 256 or more, per EVM semantics, discard the second operand and push zero.
         if (a >= 256)
@@ -73,7 +74,8 @@ internal static partial class EvmInstructions
             // Otherwise, pop the value to be shifted.
             if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
             // Perform the shift operation using the specific implementation.
-            TOpShift.Operation(in a, in b, out UInt256 result);
+            UInt256 large = new UInt256(a);
+            TOpShift.Operation(in large, in b, out UInt256 result);
             return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
         }
     // Jump forward to be unpredicted by the branch predictor.
@@ -104,7 +106,11 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the shift amount and the value to be shifted.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        // Only need to check if a < 256 and get the value - no full UInt256 needed
+        if (!stack.TryPopSmallIndex(out uint a))
+            goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 b))
+            goto StackUnderflow;
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         if (a >= 256)

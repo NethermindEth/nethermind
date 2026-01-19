@@ -1298,7 +1298,7 @@ public ref partial struct EvmStack
             Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 24)));
 
         // If > uint.MaxValue, clamp to signal "large"
-        value = low > uint.MaxValue ? uint.MaxValue : (uint)low;
+        value = low <= uint.MaxValue ? (uint)low : uint.MaxValue;
         return true;
     }
 
