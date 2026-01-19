@@ -3,8 +3,8 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Api.Steps;
 using Nethermind.Abi;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -19,9 +19,11 @@ using Nethermind.Init.Modules;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Contracts;
 
 namespace Nethermind.Xdc;
 
@@ -90,7 +92,14 @@ public class XdcModule : Module
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
-            ;
+
+            //Sync
+            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
+                {
+                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
+                });
+        ;
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)

@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.StateSync
                 task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
             }
             // If the NodeData protocol is not supported, try eth66
-            else if (peer.ProtocolVersion < EthVersions.Eth67)
+            else if (peer.ProtocolVersion < 101)
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);

@@ -42,7 +42,7 @@ public static class XdcExtensions
         return spec;
     }
 
-    public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
+    public static Address[]? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
             return null;
@@ -52,7 +52,7 @@ public static class XdcExtensions
         {
             addresses[i] = new Address(data.Slice(i * Address.Size, Address.Size));
         }
-        return addresses.ToImmutableArray();
+        return addresses;
     }
 
     public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>

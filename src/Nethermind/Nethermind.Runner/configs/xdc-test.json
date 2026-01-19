@@ -3,17 +3,19 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc-test.json",
     "BaseDbPath": "nethermind_db/xdc-test",
-    "LogFileName": "xdc.log"
+    "LogFileName": "xdc.log",
+    "StateDbKeyScheme": "Hash"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
     "FastSync": true,
-    "SnapSync": true,
-    "PivotNumber": 200000,
-    "PivotHash": "0x7c3d289822ab2e8127b8fa2e41f82437c243a9d5b2387c0183aab74a852a58f0",
-    "PivotTotalDifficulty": 200001
+    "NeedToWaitForHeader": false,
+    "PivotNumber": 387871,
+    "PivotHash": "0x7e5eb4c31772bb5f9851b470c2e95d099309faf6e6fc54c658f595c5cf939ad5",
+    "PivotTotalDifficulty": 387872,
+    "VerifyTrieOnStateSyncFinished": true
   },
   "JsonRpc": {
     "Enabled": false
