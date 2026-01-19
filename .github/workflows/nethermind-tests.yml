@@ -104,7 +104,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: ${{ matrix.project }}
+      - name: "${{ matrix.project }} (hw: ${{ matrix.intrinsics }})"
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
@@ -121,7 +121,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-outcome
+          name: ${{ matrix.project }}-${{ matrix.intrinsics }}-outcome
           path: test.outcome
           retention-days: 1
 
@@ -129,7 +129,7 @@ jobs:
         if: env.COLLECT_COVERAGE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-coverage
+          name: ${{ matrix.project }}-${{ matrix.intrinsics }}-coverage
           path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
           retention-days: 1
 
