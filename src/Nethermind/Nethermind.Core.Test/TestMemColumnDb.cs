@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Db;
 
@@ -30,6 +31,12 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
     {
         return new InMemoryColumnWriteBatch<TKey>(this);
     }
+
+    public IColumnDbSnapshot<TKey> CreateSnapshot()
+    {
+        throw new InvalidOperationException("Snapshot not implemented");
+    }
+
     public void Dispose() { }
     public void Flush(bool onlyWal = false) { }
 }
