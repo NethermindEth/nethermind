@@ -183,16 +183,15 @@ internal static partial class EvmInstructions
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         int position = 31 - (int)a;  // Byte position to sign-extend from
 
-        // Get sign of the byte at position
-        sbyte sign = (sbyte)Unsafe.Add(ref bytesRef, position);
-
-        if (Avx2.IsSupported)
+        // Based on benchmarks: AVX2 has ~1.8ns constant overhead but processes all 32 bytes at once.
+        // For small fills (0-7 bytes), scalar is faster. For large fills (8+ bytes), AVX2 wins.
+        if (Avx2.IsSupported && position >= 8)
         {
-            SignExtendAvx2(ref bytesRef, position, sign);
+            SignExtendAvx2(ref bytesRef, position);
         }
         else
         {
-            SignExtendScalar(ref bytesRef, position, sign);
+            SignExtendScalar(ref bytesRef, position);
         }
 
         return new(programCounter, EvmExceptionType.None);
@@ -201,10 +200,13 @@ internal static partial class EvmInstructions
         return new(programCounter, EvmExceptionType.StackUnderflow);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void SignExtendAvx2(ref byte slot, int position, sbyte sign)
+        static void SignExtendAvx2(ref byte slot, int position)
         {
             // Load current value
             Vector256<byte> value = Unsafe.As<byte, Vector256<byte>>(ref slot);
+
+            // Extract sign from already-loaded vector (avoids separate narrow memory read)
+            sbyte sign = (sbyte)value.GetElement(position);
 
             // Create mask: 0xFF for bytes we want to replace (indices < position)
             // Use comparison with broadcast position
@@ -226,13 +228,21 @@ internal static partial class EvmInstructions
             Unsafe.As<byte, Vector256<byte>>(ref slot) = result;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void SignExtendScalar(ref byte slot, int position, sbyte sign)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void SignExtendScalar(ref byte slot, int position)
         {
-            byte fill = (byte)(sign >> 7); // 0x00 or 0xFF
-            ulong fillWord = fill == 0 ? 0UL : 0xFFFFFFFFFFFFFFFFUL;
+            // Early exit for no-op (position = 0 means nothing to fill)
+            if (position == 0) return;
 
-            // Write in 8-byte, 4-byte, 2-byte, 1-byte chunks for efficiency
+            // Read sign byte via wider load to avoid narrow read penalty
+            // For position 0-7: read ulong at 0, for 8-15: at 8, etc.
+            int ulongOffset = position & ~7;
+            int byteOffset = position & 7;
+            ulong word = ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, ulongOffset));
+            byte fill = (byte)((sbyte)(word >> (byteOffset * 8)) >> 7); // 0x00 or 0xFF
+            ulong fillWord = fill == 0 ? 0UL : ulong.MaxValue;
+
+            // Use chunked writes for efficiency: 8-byte, 4-byte, 2-byte, 1-byte
             int i = 0;
             while (i + 8 <= position)
             {
