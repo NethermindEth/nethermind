@@ -151,7 +151,7 @@ namespace Nethermind.Db
             _spanDb[key] = value;
         }
 
-        public virtual IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => new() { Size = Count };
+        public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
 
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
