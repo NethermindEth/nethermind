@@ -121,10 +121,7 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
-        public IDbMeta.DbMetric GatherMetric()
-        {
-            return _currentDb.GatherMetric();
-        }
+        public IDbMeta.DbMetric GatherMetric() => _currentDb.GatherMetric();
 
         public string Name => _settings.DbName;
 

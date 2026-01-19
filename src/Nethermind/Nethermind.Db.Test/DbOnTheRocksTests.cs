@@ -224,7 +224,7 @@ namespace Nethermind.Db.Test
                 });
 
             using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
-                _rocksdbConfigFactory, LimboLogs.Instance);
+                rocksDbConfigFactory, LimboLogs.Instance);
 
             Random rng = new Random();
             byte[] buffer = new byte[1024];
@@ -236,7 +236,7 @@ namespace Nethermind.Db.Test
             }
             db.Flush();
 
-            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(0));
+            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(cache.GetUsage()));
             Assert.That(cache.GetUsage(), Is.LessThan(cacheSize));
         }
 

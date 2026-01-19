@@ -93,7 +93,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
-    private bool _isUsingExternalCache;
+    private bool _isUsingSharedBlockCache;
 
     public DbOnTheRocks(
         string basePath,
@@ -399,7 +399,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         try
         {
-            if (_isUsingExternalCache)
+            if (_isUsingSharedBlockCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -518,12 +518,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (dbConfig.BlockCache is not null)
         {
             tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
-            _isUsingExternalCache = true;
         }
         else if (sharedCache is not null && blockCacheSize == 0)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
-            _isUsingExternalCache = true;
+            _isUsingSharedBlockCache = true;
         }
 
         // Note: the ordering is important.

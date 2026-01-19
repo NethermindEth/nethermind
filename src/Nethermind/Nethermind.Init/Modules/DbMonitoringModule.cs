@@ -91,7 +91,7 @@ public class DbMonitoringModule : Module
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
-                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(); // Only include shared cache if state db
+                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
                     Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
                     Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
                     Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
