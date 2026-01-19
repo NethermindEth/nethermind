@@ -2,75 +2,74 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.Http.Json;
-using EthProofValidator.src.Models;
+using Nethermind.EthProofValidator.Models;
 
-namespace EthProofValidator.src.Clients
+namespace Nethermind.EthProofValidator.Clients;
+
+public class EthProofsApiClient
 {
-    public class EthProofsApiClient
+    private readonly HttpClient _httpClient;
+    private const string BaseUrl = "https://ethproofs.org";
+
+    public EthProofsApiClient()
     {
-        private readonly HttpClient _httpClient;
-        private const string BaseUrl = "https://ethproofs.org";
-
-        public EthProofsApiClient()
+        var handler = new SocketsHttpHandler
         {
-            var handler = new SocketsHttpHandler
-            {
-                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-                MaxConnectionsPerServer = 20
-            };
-            _httpClient = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            MaxConnectionsPerServer = 20
+        };
+        _httpClient = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+    }
+
+    public async Task<List<ClusterVerifier>?> GetActiveKeysAsync()
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<List<ClusterVerifier>>("/api/v0/verification-keys/active");
         }
-
-        public async Task<List<ClusterVerifier>?> GetActiveKeysAsync()
+        catch (HttpRequestException ex)
         {
-            try
-            {
-                return await _httpClient.GetFromJsonAsync<List<ClusterVerifier>>("/api/v0/verification-keys/active");
-            }
-            catch (HttpRequestException ex)
-            {
-                Console.WriteLine($"[API Error] Failed to fetch active clusters: {ex.Message}");
-                return null;
-            }
+            Console.WriteLine($"[API Error] Failed to fetch active clusters: {ex.Message}");
+            return null;
         }
+    }
 
-        public async Task<string?> GetVerificationKeyBinaryAsync(long proofId)
+    public async Task<string?> GetVerificationKeyBinaryAsync(long proofId)
+    {
+        try
         {
-            try
-            {
-                var vkBytes = await _httpClient.GetByteArrayAsync($"/api/verification-keys/download/{proofId}");
-                return Convert.ToBase64String(vkBytes);
-            }
-            catch (HttpRequestException)
-            {
-                return null;
-            }
+            var vkBytes = await _httpClient.GetByteArrayAsync($"/api/verification-keys/download/{proofId}");
+            return Convert.ToBase64String(vkBytes);
         }
-
-        public async Task<List<ProofMetadata>?> GetProofsForBlockAsync(long blockId)
+        catch (HttpRequestException)
         {
-            try
-            {
-                var results = await _httpClient.GetFromJsonAsync<ProofResponse>($"/api/blocks/{blockId}/proofs?page_size=20");
-                return results?.Rows.Where(p => p.Status == "proved").ToList();
-            }
-            catch (HttpRequestException ex)
-            {
-                Console.WriteLine($"[API Error] Failed to fetch proofs for block {blockId}: {ex.Message}");
-                return null;
-            }
+            return null;
         }
+    }
 
-        public async Task<byte[]?> DownloadProofAsync(long proofId)
+    public async Task<List<ProofMetadata>?> GetProofsForBlockAsync(long blockId)
+    {
+        try
         {
-            try
-            {
-                return await _httpClient.GetByteArrayAsync($"/api/proofs/download/{proofId}");
-            }
-            catch (HttpRequestException)
-            {
-                return null;
-            }
+            var results = await _httpClient.GetFromJsonAsync<ProofResponse>($"/api/blocks/{blockId}/proofs?page_size=20");
+            return results?.Rows.Where(p => p.Status == "proved").ToList();
+        }
+        catch (HttpRequestException ex)
+        {
+            Console.WriteLine($"[API Error] Failed to fetch proofs for block {blockId}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<byte[]?> DownloadProofAsync(long proofId)
+    {
+        try
+        {
+            return await _httpClient.GetByteArrayAsync($"/api/proofs/download/{proofId}");
+        }
+        catch (HttpRequestException)
+        {
+            return null;
         }
     }
 }
