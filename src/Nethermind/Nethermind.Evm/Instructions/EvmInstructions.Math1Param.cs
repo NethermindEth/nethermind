@@ -7,7 +7,6 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
-using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -114,9 +113,7 @@ internal static partial class EvmInstructions
 
         int remainingCode = code.Length - programCounter;
 
-        if (!TTracingInst.IsActive &&
-            remainingCode >= 4 &&                                         // need PUSH2 + 2 data bytes + JUMPI
-            stack.Head < EvmStack.MaxStackSize - 1)
+        if (!TTracingInst.IsActive && remainingCode >= 4)// need PUSH2 + 2 data bytes + JUMPI
         {
             // At this point programCounter points to the next opcode after ISZERO.
             // Expect: PUSH2 <hi> <lo> JUMPI
@@ -125,6 +122,8 @@ internal static partial class EvmInstructions
 
             if (opPush2 == Instruction.PUSH2 && opJumpi == Instruction.JUMPI)
             {
+                stack.PopLimbo(); // remove ISZERO argument from stack
+
                 TGasPolicy.Consume(ref gas, GasCostOf.JumpI + GasCostOf.VeryLow);
                 if (value == default)
                 {
