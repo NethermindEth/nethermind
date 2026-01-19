@@ -108,7 +108,6 @@ internal static partial class EvmInstructions
 
         // Compute ISZERO result on top-of-stack word
         Word value = ReadUnaligned<Word>(ref bytesRef);
-        Word result = value == default ? OpBitwiseEq.One : default;
 
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
         ref byte codeRef = ref MemoryMarshal.GetReference(code);
@@ -127,10 +126,10 @@ internal static partial class EvmInstructions
             if (opPush2 == Instruction.PUSH2 && opJumpi == Instruction.JUMPI)
             {
                 TGasPolicy.Consume(ref gas, GasCostOf.JumpI + GasCostOf.VeryLow);
-                if (result == OpBitwiseEq.One)
+                if (value == default)
                 {
                     // value was zero, ISZERO is true: perform the jump immediately.
-                    ushort destination = As<byte, ushort>(ref Add(ref codeRef, programCounter));
+                    ushort destination = As<byte, ushort>(ref Add(ref codeRef, programCounter + 1));
                     if (BitConverter.IsLittleEndian)
                     {
                         destination = BinaryPrimitives.ReverseEndianness(destination);
@@ -152,6 +151,7 @@ internal static partial class EvmInstructions
         }
 
         // Fallback: behave like plain ISZERO, writing result to the same stack slot.
+        Word result = value == default ? OpBitwiseEq.One : default;
         WriteUnaligned(ref bytesRef, result);
         return EvmExceptionType.None;
     }
