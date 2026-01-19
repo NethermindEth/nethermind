@@ -1242,18 +1242,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// A struct implementing <see cref="IFlag"/> that indicates, via a compile-time constant,
     /// whether tracing-specific opcodes and behavior should be used.
     /// </typeparam>
-    /// <param name="vmState">
-    /// The current EVM state containing the execution environment, gas, memory, and stack information.
-    /// </param>
-    /// <param name="previousCallResult">
-    /// An optional read-only memory buffer containing the output of a previous call; if provided, its bytes
-    /// will be pushed onto the stack for further processing.
-    /// </param>
+    /// <typeparam name="TCancellable">
+    /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether cancellation support is enabled.
+    /// </typeparam>
     /// <param name="previousCallOutput">
     /// A zero-padded span containing output from the previous call used for updating the memory state.
-    /// </param>
-    /// <param name="previousCallOutputDestination">
-    /// The memory destination address where the previous call's output should be stored.
     /// </param>
     /// <returns>
     /// A <see cref="CallResult"/> that encapsulates the result of executing the EVM call, including success,
@@ -1375,7 +1368,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether tracing-specific logic should be enabled.
     /// </typeparam>
-    /// <typeparam name="TCancelable">
+    /// <typeparam name="TCancellable">
     /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether cancellation support is enabled.
     /// </typeparam>
     /// <param name="stack">
@@ -1393,14 +1386,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual CallResult RunByteCode<TTracingInst, TCancellable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         int version)
         where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag
+        where TCancellable : struct, IFlag
     {
-        return DispatchExecution<TTracingInst, TCancelable>(ref stack, ref gas, version);
+        return DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas, version);
     }
 
     /// <summary>
@@ -1411,24 +1404,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// This is the boundary between frame orchestration and the opcode engine.
     ///
     /// <para>
-    /// <typeparamref name="TTracingInst"/> and <typeparamref name="TCancelable"/> are compile-time flags used to
+    /// <typeparamref name="TTracingInst"/> and <typeparamref name="TCancellable"/> are compile-time flags used to
     /// specialize the hot path (tracing and cancellation) without runtime branches.
     /// </para>
     /// </remarks>
     /// <typeparam name="TTracingInst">Compile-time flag that enables or disables tracing instrumentation.</typeparam>
-    /// <typeparam name="TCancelable">Compile-time flag that enables or disables cancellation checks.</typeparam>
+    /// <typeparam name="TCancellable">Compile-time flag that enables or disables cancellation checks.</typeparam>
     /// <param name="stack">The EVM stack for the current invocation.</param>
     /// <param name="gas">The gas tracker/policy state for the current invocation.</param>
     /// <param name="version">Protocol version used when constructing <see cref="CallResult"/>.</param>
     /// <returns>A <see cref="CallResult"/> describing success, revert, or failure.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected CallResult DispatchExecution<TTracingInst, TCancelable>(
+    protected CallResult DispatchExecution<TTracingInst, TCancellable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         int version)
         where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag
+        where TCancellable : struct, IFlag
     {
         // Per-invocation reset. ReturnData is set by the opcode engine on RETURN/REVERT/EOF return paths.
         ReturnData = null;
@@ -1442,7 +1435,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             var opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>*)pOpcodeMethods;
 
             // Run the opcode engine. It returns a final exception classification (None/Return/Revert/OutOfGas/etc).
-            EvmExceptionType exceptionType = ExecuteOpcodes<TTracingInst, TCancelable>(ref stack, ref gas, opcodeMethods);
+            EvmExceptionType exceptionType = ExecuteOpcodes<TTracingInst, TCancellable>(ref stack, ref gas, opcodeMethods);
 
             // Fast classification - only Revert/OutOfGas/non-return exceptions need special handling.
             // None/Return fall through to result materialization.
