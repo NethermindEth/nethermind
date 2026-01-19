@@ -1237,13 +1237,20 @@ public ref partial struct EvmStack
         return true;
     }
 
-    public byte PopByte()
+    public int PopByte()
     {
-        ref byte bytes = ref PopBytesByRef();
+        int head = Head;
+        if (head == 0) goto Underflow;
+    
+        Head = head - 1;
+        ref byte slot = ref Unsafe.Add(ref _stack, (head - 1) << 5);
+    
+        // Read 8 bytes ending at position 31, extract MSB (byte 31 -> bits 56-63)
+        ulong value = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 24));
+        return (byte)(value >> 56);
 
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
-
-        return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
+    Underflow:
+        return -1;
     }
 
     [SkipLocalsInit]

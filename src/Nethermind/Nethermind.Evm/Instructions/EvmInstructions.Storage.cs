@@ -197,13 +197,15 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         // Pop a single byte from the stack.
-        byte data = stack.PopByte();
+        int dataResult = stack.PopByte();
+        if (dataResult < 0) goto StackUnderflow;
 
+        byte data = (byte)(uint)dataResult;
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, in UInt256.One, vmState) ||
-        !vmState.Memory.TrySaveByte(in result, data))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, sizeof(byte), vmState) ||
+            !vmState.Memory.TrySaveByte(in result, data))
         {
             goto OutOfGas;
         }
