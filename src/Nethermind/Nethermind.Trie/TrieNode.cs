@@ -1258,8 +1258,10 @@ namespace Nethermind.Trie
 
                                 if (IsPersisted && !child.IsPersisted)
                                 {
+                                    /*
                                     child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
                                         NullLogger.Instance);
+                                        */
                                 }
 
                                 break;
@@ -1450,8 +1452,10 @@ namespace Nethermind.Trie
 
                                     if (node.IsPersisted && !child.IsPersisted)
                                     {
+                                        /*
                                         child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
                                             NullLogger.Instance);
+                                            */
                                     }
 
                                     break;
