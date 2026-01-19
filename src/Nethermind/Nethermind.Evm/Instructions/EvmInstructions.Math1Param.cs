@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
@@ -156,43 +157,85 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static OpcodeResult InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
+    public static OpcodeResult InstructionSignExtend<TGasPolicy>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume(ref gas, GasCostOf.Low);
 
-        // Pop the index to determine which byte to use for sign extension.
-        if (!stack.PopUInt256(out UInt256 a))
+        // Only need to check if a < 32 and get the value - no full UInt256 needed
+        if (!stack.TryPopSmallIndex(out uint a))
             goto StackUnderflow;
-        if (a >= BigInt32)
+
+        // If a >= 32, the value already fits - no sign extension needed
+        if (a >= 32)
         {
-            // If the index is out-of-range, no extension is needed.
             if (!stack.EnsureDepth(1))
                 goto StackUnderflow;
             return new(programCounter, EvmExceptionType.None);
         }
 
-        int position = 31 - (int)a;
+        // Get direct reference to the stack slot (big-endian, so position 0 is MSB)
+        ref byte bytesRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+        int position = 31 - (int)a;  // Byte position to sign-extend from
+    
+        // Get sign of the byte at position
+        sbyte sign = (sbyte)Unsafe.Add(ref bytesRef, position);
 
-        // Peek at the 256-bit word without removing it.
-        Span<byte> bytes = stack.PeekWord256();
-        sbyte sign = (sbyte)bytes[position];
-
-        // Extend the sign by replacing higher-order bytes.
-        if (sign >= 0)
+        if (Avx2.IsSupported)
         {
-            // Fill with zero bytes.
-            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+            SignExtendAvx2(ref bytesRef, position, sign);
         }
         else
         {
-            // Fill with 0xFF bytes.
-            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+            SignExtendScalar(ref bytesRef, position, sign);
         }
 
         return new(programCounter, EvmExceptionType.None);
-    // Jump forward to be unpredicted by the branch predictor.
+
     StackUnderflow:
         return new(programCounter, EvmExceptionType.StackUnderflow);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void SignExtendAvx2(ref byte slot, int position, sbyte sign)
+        {
+            // Load current value
+            Vector256<byte> value = Unsafe.As<byte, Vector256<byte>>(ref slot);
+    
+            // Create mask: 0xFF for bytes we want to replace (indices < position)
+            // Use comparison with broadcast position
+            Vector256<byte> indices = Vector256.Create(
+                (byte)0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+            Vector256<byte> posVec = Vector256.Create((byte)position);
+    
+            // mask[i] = 0xFF if i < position, else 0x00
+            Vector256<byte> mask = Avx2.CompareGreaterThan(posVec.AsSByte(), indices.AsSByte()).AsByte();
+    
+            // Fill value: 0x00 if sign >= 0, 0xFF if sign < 0
+            // Arithmetic right shift of sign by 7 gives 0x00 or 0xFF
+            Vector256<byte> fill = Vector256.Create((byte)(sign >> 7));
+    
+            // Blend: keep original where mask is 0, use fill where mask is FF
+            Vector256<byte> result = Avx2.BlendVariable(value, fill, mask);
+    
+            Unsafe.As<byte, Vector256<byte>>(ref slot) = result;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void SignExtendScalar(ref byte slot, int position, sbyte sign)
+        {
+            byte fill = (byte)(sign >> 7); // 0x00 or 0xFF
+    
+            // Unrolled for common cases, use Unsafe to avoid bounds checks
+            for (int i = 0; i < position; i++)
+            {
+                Unsafe.Add(ref slot, i) = fill;
+            }
+        }
     }
 }

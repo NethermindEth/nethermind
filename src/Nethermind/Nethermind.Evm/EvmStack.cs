@@ -1253,6 +1253,55 @@ public ref partial struct EvmStack
         return -1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryPopSmallIndex(out uint value)
+    {
+        int head = Head;
+        if (head == 0)
+        {
+            value = 0;
+            return false;
+        }
+
+        Head = head - 1;
+        ref byte slot = ref Unsafe.Add(ref _stack, (head - 1) << 5);
+
+        // Check upper 24 bytes are zero (big-endian stack)
+        // If any are non-zero, return uint.MaxValue to signal "large value"
+        if (Avx2.IsSupported)
+        {
+            // Load bytes 0-23, check all zero
+            HalfWord lower = Unsafe.As<byte, Vector128<byte>>(ref slot);
+            ulong upper = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 16));
+        
+            if (!lower.Equals(default) | upper != 0)
+            {
+                value = uint.MaxValue; // Signals a >= 32
+                return true;
+            }
+        }
+        else
+        {
+            ulong u0 = Unsafe.As<byte, ulong>(ref slot);
+            ulong u1 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 8));
+            ulong u2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 16));
+        
+            if ((u0 | u1 | u2) != 0)
+            {
+                value = uint.MaxValue;
+                return true;
+            }
+        }
+
+        // Read lower 8 bytes and extract (big-endian, so byte-swap)
+        ulong low = BinaryPrimitives.ReverseEndianness(
+            Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 24)));
+    
+        // If > uint.MaxValue, clamp to signal "large"
+        value = low > uint.MaxValue ? uint.MaxValue : (uint)low;
+        return true;
+    }
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType Dup<TTracingInst>(int depth)
