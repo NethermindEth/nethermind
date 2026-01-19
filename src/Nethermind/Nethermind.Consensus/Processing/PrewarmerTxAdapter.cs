@@ -14,7 +14,7 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
 {
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        if (worldState is IPreBlockCaches preBlockCaches && preBlockCaches.IsWarmWorldState)
+        if (worldState.ScopeProvider is IPreBlockCaches { IsWarmWorldState: true })
         {
             preWarmer.OnBeforeTxExecution(transaction);
         }
