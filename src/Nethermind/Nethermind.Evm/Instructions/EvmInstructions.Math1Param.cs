@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm.GasPolicy;
-using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using static Nethermind.Evm.VirtualMachineStatics;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
