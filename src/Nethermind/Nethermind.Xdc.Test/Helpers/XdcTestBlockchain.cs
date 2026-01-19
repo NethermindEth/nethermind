@@ -275,8 +275,6 @@ public class XdcTestBlockchain : TestBlockchain
             ];
         xdcSpec.MergeSignRange = 15;
 
-        xdcSpec.TIP2019Block = 0;
-
         xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
         xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
 
