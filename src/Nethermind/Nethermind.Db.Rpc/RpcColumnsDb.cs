@@ -48,7 +48,7 @@ namespace Nethermind.Db.Rpc
 
         public IColumnDbSnapshot<T> CreateSnapshot()
         {
-            throw new Exception("Snapshot not implemented");
+            throw new NotSupportedException("Snapshot not implemented");
         }
 
         public void Dispose() { }
