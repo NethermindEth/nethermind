@@ -256,7 +256,7 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
+        // On a 7950x (32 logical cores), assuming write buffer is large enough, the pruning time is about 3 second
         // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
         long maximumDirtyCacheMb = Environment.ProcessorCount * 250;
         // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
@@ -264,7 +264,7 @@ public class MainPruningTrieStoreFactory
         if (pruningConfig.DirtyCacheMb > maximumDirtyCacheMb)
         {
             // The user can also change `--Db.StateDbWriteBufferSize`.
-            // Which may or may not be better as each read will need to go through eacch write buffer.
+            // Which may or may not be better as each read will need to go through each write buffer.
             // So having less of them is probably better..
             if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.DirtyCacheMb}MB of dirty pruning cache config. Dirty cache more than {maximumDirtyCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
         }

@@ -15,6 +15,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;

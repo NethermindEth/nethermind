@@ -31,7 +31,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong BPO1BlockTimestamp = 0x69383057;
     public const ulong BPO2BlockTimestamp = 0x695db057;
 
-    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
         {
             { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,

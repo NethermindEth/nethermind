@@ -143,9 +143,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Address[] result = _wallet.GetAccounts();
-            Address[] data = result.ToArray();
-            return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
+            return ResultWrapper<IEnumerable<Address>>.Success(_wallet.GetAccounts());
         }
         catch (Exception)
         {

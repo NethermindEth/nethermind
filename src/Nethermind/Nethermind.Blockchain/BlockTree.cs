@@ -767,7 +767,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < level.BlockInfos.Length; i++)
             {
                 BlockInfo current = level.BlockInfos[i];
-                if (level.BlockInfos[i].TotalDifficulty >= bestDifficultySoFar)
+                if (current.TotalDifficulty >= bestDifficultySoFar)
                 {
                     bestDifficultySoFar = current.TotalDifficulty;
                     bestHash = current.BlockHash;
