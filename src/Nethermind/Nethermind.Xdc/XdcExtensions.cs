@@ -13,7 +13,7 @@ using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
-public static class XdcExtensions
+internal static partial class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static readonly XdcHeaderDecoder _headerDecoder = new();
@@ -23,7 +23,6 @@ public static class XdcExtensions
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
-
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();
@@ -43,6 +42,16 @@ public static class XdcExtensions
     }
 
     public static Address[]? ExtractAddresses(this Span<byte> data)
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
+    {
+        IXdcReleaseSpec spec = specProvider.GetSpec(blockNumber, null) as IXdcReleaseSpec;
+        if (spec is null)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        spec.ApplyV2Config(round);
+        return spec;
+    }
+
+    public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
             return null;

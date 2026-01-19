@@ -9,12 +9,16 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -26,6 +30,10 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Contracts;
+using Nethermind.State;
+using Nethermind.Logging;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Xdc;
 
@@ -40,6 +48,7 @@ public class XdcModule : Module
         base.Load(builder);
 
         builder
+            .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
@@ -86,6 +95,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -102,11 +112,21 @@ public class XdcModule : Module
                     ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
                 });
         ;
+
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+            ;
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
         return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
+    }
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
+    {
+        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

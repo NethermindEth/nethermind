@@ -22,8 +22,14 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long SwitchBlock { get; set; }
     public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
-    public Address MasternodeVotingContract { get; set; }
     public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+
+    public Address MasternodeVotingContract { get; set; }
 
 
     private List<V2ConfigParams> _v2Configs = new();
@@ -37,6 +43,11 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             CheckConfig(_v2Configs);
         }
     }
+
+    public long TIP2019Block { get; internal set; }
+    public long MergeSignRange { get; internal set; }
+    public Address[] BlackListedAddresses { get; internal set; }
+    public long BlackListHFNumber { get; internal set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {
