@@ -107,4 +107,21 @@ public class ColumnsDbTests
         _db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA).Should()
             .BeEquivalentTo(TestItem.KeccakB.BytesToArray());
     }
+
+    [Test]
+    public void SmokeTest_Snapshot()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+
+        colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        colA.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
+        colA.Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakB.BytesToArray());
+
+        snapshot.GetColumn(ReceiptsColumns.Blocks)
+            .Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
+    }
 }
