@@ -61,7 +61,7 @@ namespace Nethermind.Db
 
         public IWriteBatch StartWriteBatch() => this.LikeABatch();
 
-        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => wrappedDb.GatherMetric(includeSharedCache);
+        public IDbMeta.DbMetric GatherMetric() => wrappedDb.GatherMetric();
 
         public void Remove(ReadOnlySpan<byte> key) { }
 
