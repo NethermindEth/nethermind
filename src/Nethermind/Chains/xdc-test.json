@@ -29,6 +29,13 @@
             "minimumSigningTx": 0
           }
         ],
+
+        "mergeSignRange": 15,
+        "tip2019Block": 1,
+        "blackListHFNumber": 0,
+        "blackListedAddresses": [         
+          "0x0000000000000000000000000000000000000011"
+        ],
         "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
         "blockSignerContract": "0x0000000000000000000000000000000000000089"
       }

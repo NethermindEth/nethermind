@@ -41,7 +41,6 @@ internal static partial class XdcExtensions
         return spec;
     }
 
-    public static Address[]? ExtractAddresses(this Span<byte> data)
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
     {
         IXdcReleaseSpec spec = specProvider.GetSpec(blockNumber, null) as IXdcReleaseSpec;
@@ -50,8 +49,7 @@ internal static partial class XdcExtensions
         spec.ApplyV2Config(round);
         return spec;
     }
-
-    public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
+    public static Address[]? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
             return null;

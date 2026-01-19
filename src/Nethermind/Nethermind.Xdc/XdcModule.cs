@@ -30,10 +30,9 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Contracts;
 using Nethermind.State;
 using Nethermind.Logging;
-using Nethermind.Api.Steps;
+using Nethermind.TxPool;
 
 namespace Nethermind.Xdc;
 
@@ -105,18 +104,18 @@ public class XdcModule : Module
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
 
-            //Sync
-            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
-                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
-                {
-                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
-                });
-        ;
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+
+            //Sync
+            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
+                {
+                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
+                })
             ;
     }
 
