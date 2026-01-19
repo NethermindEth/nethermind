@@ -23,12 +23,13 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _expiringQueueLimit;
     private readonly int _maxRetryRequests;
     private readonly Task _mainLoopTask;
-    private static readonly ObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>> _handlerBagsPool = new DefaultObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>>(new ConcurrentBagPolicy<IMessageHandler<TMessage>>());
+    private static readonly ObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>> _handlerBagsPool = new DefaultObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>>(new ConcurrentHashSetPolicy<IMessageHandler<TMessage>>());
     private readonly ConcurrentDictionary<TResourceId, ConcurrentHashSet<IMessageHandler<TMessage>>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
     private int _expiringQueueCounter = 0;
     private readonly ClockKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
+    private readonly Func<TResourceId, ConcurrentHashSet<IMessageHandler<TMessage>>, IMessageHandler<TMessage>, ConcurrentHashSet<IMessageHandler<TMessage>>> _announceUpdate;
 
     internal int ResourcesInRetryQueue => _expiringQueueCounter;
 
@@ -42,6 +43,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _requestingResources = new(requestingCacheSize);
         _expiringQueueLimit = expiringQueueLimit;
         _maxRetryRequests = maxRetryRequests;
+        // Closure capture
+        _announceUpdate = AnnounceUpdate;
 
         _mainLoopTask = Task.Run(async () =>
         {
@@ -102,7 +105,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }, token);
     }
 
-    public AnnounceResult Announced(in TResourceId resourceId, IMessageHandler<TMessage> retryHandler)
+    public AnnounceResult Announced(in TResourceId resourceId, IMessageHandler<TMessage> handler)
     {
         if (_token.IsCancellationRequested)
         {
@@ -119,35 +122,41 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (!_requestingResources.Contains(resourceId))
         {
             AnnounceResult result = AnnounceResult.Delayed;
-
-            _retryRequests.AddOrUpdate(resourceId, (resourceId) =>
+            _retryRequests.AddOrUpdate(resourceId, (resourceId, retryHandler) =>
             {
-                if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: NEW");
-
-                _expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(_timeoutMs)));
-                Interlocked.Increment(ref _expiringQueueCounter);
-
-                result = AnnounceResult.RequestRequired;
-
-                return _handlerBagsPool.Get();
-            }, (resourceId, requests) =>
-            {
-                if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
-
-                if (requests.Count < _maxRetryRequests)
-                {
-                    requests.Add(retryHandler);
-                }
-
-                return requests;
-            });
+                return AnnounceAdd(resourceId, retryHandler, out result);
+            }, _announceUpdate, handler);
 
             return result;
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}, but a retry is in progress already, immediately firing");
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {handler}, but a retry is in progress already, immediately firing");
 
         return AnnounceResult.RequestRequired;
+    }
+
+    private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceAdd(TResourceId resourceId, IMessageHandler<TMessage> retryHandler, out AnnounceResult result)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: NEW");
+
+        _expiringQueue.Enqueue((resourceId, DateTimeOffset.UtcNow.AddMilliseconds(_timeoutMs)));
+        Interlocked.Increment(ref _expiringQueueCounter);
+
+        result = AnnounceResult.RequestRequired;
+
+        return _handlerBagsPool.Get();
+    }
+
+    private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
+
+        if (requests.Count < _maxRetryRequests)
+        {
+            requests.Add(retryHandler);
+        }
+
+        return requests;
     }
 
     public void Received(in TResourceId resourceId)
@@ -194,7 +203,7 @@ public enum AnnounceResult
     Delayed
 }
 
-internal class ConcurrentBagPolicy<TItem> : IPooledObjectPolicy<ConcurrentHashSet<TItem>>
+internal class ConcurrentHashSetPolicy<TItem> : IPooledObjectPolicy<ConcurrentHashSet<TItem>>
 {
     public ConcurrentHashSet<TItem> Create() => [];
 

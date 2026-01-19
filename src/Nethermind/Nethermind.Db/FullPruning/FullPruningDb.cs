@@ -17,7 +17,7 @@ namespace Nethermind.Db.FullPruning
     /// Allows to start pruning with <see cref="TryStartPruning"/> in a thread safe way.
     /// When pruning is started it duplicates all writes to current DB as well as the new one for full pruning, this includes write batches.
     /// When <see cref="IPruningContext"/> returned in <see cref="TryStartPruning"/> is <see cref="IDisposable.Dispose"/>d it will delete the pruning DB if the pruning was not successful.
-    /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organised.
+    /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organized.
     /// </remarks>
     public class FullPruningDb : IDb, IFullPruningDb, ITunableDb
     {
@@ -121,10 +121,7 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
-        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
-        {
-            return _currentDb.GatherMetric(includeSharedCache);
-        }
+        public IDbMeta.DbMetric GatherMetric() => _currentDb.GatherMetric();
 
         public string Name => _settings.DbName;
 

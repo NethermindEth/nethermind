@@ -25,7 +25,7 @@ public class GnosisSpecProvider : ISpecProvider
 
     private GnosisSpecProvider() { }
 
-    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation)
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
         return forkActivation.BlockNumber switch
         {

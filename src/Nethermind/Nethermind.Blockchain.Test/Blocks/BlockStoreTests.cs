@@ -37,7 +37,7 @@ public class BlockStoreTests
     }
 
     [Test]
-    public void Test_insert_would_pass_in_writeflag()
+    public void Test_insert_would_pass_in_write_flag()
     {
         TestMemDb db = new();
         BlockStore store = new(db);
