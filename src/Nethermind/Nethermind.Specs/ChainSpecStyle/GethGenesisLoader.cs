@@ -92,6 +92,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MinGasLimit = 5000,
             MinHistoryRetentionEpochs = 82125,
 
+            Eip7Transition = config.HomesteadBlock,
+
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,
             MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
@@ -105,10 +107,15 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             Eip140Transition = config.ByzantiumBlock,
             Eip211Transition = config.ByzantiumBlock,
+
+            ValidateChainIdTransition = config.Eip155Block ?? config.SpuriousDragonBlock,
+
             Eip214Transition = config.ByzantiumBlock,
             Eip658Transition = config.ByzantiumBlock,
 
             Eip145Transition = config.ConstantinopleBlock,
+
+            ValidateReceiptsTransition = config.ByzantiumBlock,
             Eip1014Transition = config.ConstantinopleBlock,
             Eip1052Transition = config.ConstantinopleBlock,
             Eip1283Transition = config.ConstantinopleBlock,
@@ -154,11 +161,14 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7623TransitionTimestamp = config.PragueTime,
             Eip7702TransitionTimestamp = config.PragueTime,
 
+            Eip7692TransitionTimestamp = config.Eip7692Time ?? config.PragueTime,
+
             Eip7594TransitionTimestamp = config.OsakaTime,
             Eip7823TransitionTimestamp = config.OsakaTime,
             Eip7825TransitionTimestamp = config.OsakaTime,
             Eip7883TransitionTimestamp = config.OsakaTime,
             Eip7918TransitionTimestamp = config.OsakaTime,
+            Eip7907TransitionTimestamp = config.Eip7907Time ?? config.OsakaTime,
             Eip7934TransitionTimestamp = config.OsakaTime,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
             Eip7939TransitionTimestamp = config.OsakaTime,

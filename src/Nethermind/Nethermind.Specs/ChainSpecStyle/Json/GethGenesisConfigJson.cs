@@ -67,6 +67,10 @@ public class GethGenesisConfigJson
 
     public ulong? AmsterdamTime { get; set; }
 
+    public ulong? Eip7692Time { get; set; }
+
+    public ulong? Eip7907Time { get; set; }
+
     public ulong? Bpo1Time { get; set; }
 
     public ulong? Bpo2Time { get; set; }

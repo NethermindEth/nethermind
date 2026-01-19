@@ -140,6 +140,46 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Maps_additional_eips_to_standard_fork_timestamps()
+    {
+        const string genesis = """
+        {
+          "config": {
+            "chainId": 1,
+            "homesteadBlock": 1,
+            "eip150Block": 2,
+            "eip155Block": 3,
+            "eip158Block": 4,
+            "byzantiumBlock": 5,
+            "constantinopleBlock": 6,
+            "petersburgBlock": 7,
+            "istanbulBlock": 8,
+            "berlinBlock": 9,
+            "londonBlock": 10,
+            "terminalTotalDifficulty": "0x0",
+            "shanghaiTime": 11,
+            "cancunTime": 12,
+            "pragueTime": 13,
+            "osakaTime": 14
+          },
+          "difficulty": "0x1",
+          "gasLimit": "0x8000000",
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadFromString(genesis);
+
+        chainSpec.Parameters.Eip7Transition.Should().Be(1);
+        chainSpec.Parameters.ValidateChainIdTransition.Should().Be(3);
+        chainSpec.Parameters.ValidateReceiptsTransition.Should().Be(5);
+
+        chainSpec.Parameters.Eip7692TransitionTimestamp.Should().Be(13);
+
+        chainSpec.Parameters.Eip7907TransitionTimestamp.Should().Be(14);
+    }
+
+    [Test]
     public void Can_load_genesis_with_blob_schedule()
     {
         const string genesis = """
