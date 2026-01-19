@@ -46,7 +46,7 @@ internal class XdcTransactionProcessor(
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
-        if (xdcSpec.BlackListHFNumber >= header.Number)
+        if (xdcSpec.BlackListHFNumber <= header.Number)
         {
             if (IsBlackListed(xdcSpec, sender) || IsBlackListed(xdcSpec, target))
             {
@@ -56,31 +56,6 @@ internal class XdcTransactionProcessor(
         }
 
         return base.ValidateSender(tx, header, spec, tracer, opts);
-    }
-
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
-    {
-        var xdcSpec = spec as XdcReleaseSpec;
-        Address target = tx.To;
-
-        if (tx.IsSignTransaction(xdcSpec))
-        {
-            if (tx.Data.Length < 68)
-            {
-                return TransactionResult.MalformedTransaction;
-            }
-
-            UInt256 blkNumber = new UInt256(tx.Data.Span.Slice(4, 32), true);
-            if (blkNumber >= header.Number || blkNumber <= (header.Number - (xdcSpec.EpochLength * 2)))
-            {
-                // Invalid block number in special transaction data
-                return TransactionResult.MalformedTransaction;
-            }
-
-            return TransactionResult.Ok;
-        }
-
-        return base.ValidateStatic(tx, header, spec, opts, intrinsicGas);
     }
 
     private bool IsBlackListed(IXdcReleaseSpec spec, Address sender)

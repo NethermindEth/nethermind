@@ -11,6 +11,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -31,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -198,9 +200,38 @@ public class XdcTestBlockchain : TestBlockchain
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
+
+            .AddSingleton<ITxPool>((ctx) =>
+            {
+                var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
+
+                var compoundPolicy = new CompositeTxGossipPolicy();
+                if (gossipPolicy != null) {
+                    compoundPolicy.Policies.Add(gossipPolicy);
+                }
+
+                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider));
+
+                TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
+                    ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
+                    ctx.Resolve<IChainHeadInfoProvider>(),
+                    ctx.Resolve<ITxPoolConfig>(),
+                    ctx.Resolve<ITxValidator>(),
+                    ctx.Resolve<ILogManager>(),
+                    new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
+                    compoundPolicy,
+                    new SignTransactionFilter(Signer, BlockTree, SpecProvider),
+                    ctx.Resolve<ITxValidator>()
+                );
+
+                return txPool;
+            })
+
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
+
+
 
             .AddSingleton((ctx) => new PoWTestBlockchainUtil(
                 ctx.Resolve<IBlockProducerRunner>(),

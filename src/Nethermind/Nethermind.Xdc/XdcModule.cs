@@ -28,6 +28,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Contracts;
 using Nethermind.State;
 using Nethermind.Logging;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Xdc;
 
@@ -40,6 +41,7 @@ public class XdcModule : Module
         base.Load(builder);
 
         builder
+            .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
@@ -85,7 +87,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
-            .AddSingleton<ISignTransactionManager, ISigner, ITxPool>(CreateSignTransactionManager)
+            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -101,9 +103,9 @@ public class XdcModule : Module
     {
         return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
     }
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool)
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
     {
-        return new SignTransactionManager(signer, txPool);
+        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

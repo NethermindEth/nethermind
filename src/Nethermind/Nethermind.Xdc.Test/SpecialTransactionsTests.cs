@@ -316,9 +316,8 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation(bool isSpecialTx)
+    [Test]
+    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -337,41 +336,16 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        Transaction? tx = null;
-
-        if (isSpecialTx)
-        {
-            tx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address), spec.BlockSignerContract, blockChain.Signer.Address);
-        }
-        else
-        {
-            tx = Build.A.Transaction.WithSenderAddress(blockChain.Signer.Address).WithTo(TestItem.AddressA).TestObject;
-        }
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address), spec.BlockSignerContract, blockChain.Signer.Address);
 
         // damage the data field in the tx
         tx.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
         await blockChain.Signer.Sign(tx);
 
-        TransactionResult? result = null;
+        var result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
-        try
-        {
-            result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
-        }
-        catch
-        {
-            result = TransactionResult.Ok;
-        }
-
-        if (isSpecialTx)
-        {
-            result.Value.Error.Should().Be(TransactionResult.ErrorType.MalformedTransaction);
-        }
-        else
-        {
-            result.Value.Error.Should().NotBe(TransactionResult.ErrorType.MalformedTransaction);
-        }
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
     [Test]
@@ -518,12 +492,14 @@ internal class SpecialTransactionsTests
     }
 
     [Test]
-    public async Task Malformed_WrongBlockNumber_BlockLessThanCurrent_SignTx_Fails_Validation()
+    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation()
     {
-        var blockChain = await XdcTestBlockchain.Create(5, false);
+        var epochLength = 10;
+        var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = false;
+            spec.EpochLength = epochLength;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -538,25 +514,30 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
+        UInt256 tooHighBlockNumber = (UInt256)head.Number;
+        Transaction txTooHigh = SignTransactionManager.CreateTxSign(
+            tooHighBlockNumber,
+            head.Hash!,
+            blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address),
+            spec.BlockSignerContract,
+            blockChain.Signer.Address);
 
+        await blockChain.Signer.Sign(txTooHigh);
 
-        var blockNumber = head.Number - 1;
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address), spec.BlockSignerContract, blockChain.Signer.Address);
+        var result = blockChain.TxPool.SubmitTx(txTooHigh, TxHandlingOptions.PersistentBroadcast);
 
-        await blockChain.Signer.Sign(tx);
-
-        TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
-
-        result.Value.Error.Should().NotBe(TransactionResult.ErrorType.MalformedTransaction);
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
     [Test]
-    public async Task Malformed_WrongBlockNumber_BlockEqualToCurrent_SignTx_Fails_Validation()
+    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation()
     {
-        var blockChain = await XdcTestBlockchain.Create(5, false);
+        var epochLength = 10;
+        var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = false;
+            spec.EpochLength = epochLength;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -571,47 +552,58 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
+        long lowerBound = head.Number - (spec.EpochLength * 2);
+        UInt256 tooLowBlockNumber = (UInt256)lowerBound;
+        Transaction txTooLow = SignTransactionManager.CreateTxSign(
+            tooLowBlockNumber,
+            head.Hash!,
+            blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address),
+            spec.BlockSignerContract,
+            blockChain.Signer.Address);
 
-        var blockNumber = head.Number;
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address), spec.BlockSignerContract, blockChain.Signer.Address);
+        await blockChain.Signer.Sign(txTooLow);
 
-        await blockChain.Signer.Sign(tx);
+        var result = blockChain.TxPool.SubmitTx(txTooLow, TxHandlingOptions.PersistentBroadcast);
 
-        TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
-
-        result.Value.Error.Should().Be(TransactionResult.ErrorType.MalformedTransaction);
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
     [Test]
-    public async Task Malformed_WrongBlockNumber_BlockBiggerThanCurrent_SignTx_Fails_Validation()
+    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation()
     {
-        var blockChain = await XdcTestBlockchain.Create(5, false);
+        var epochLength = 10;
+        var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = false;
+            spec.EpochLength = epochLength;
         });
-
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
-
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
-
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.MainWorldState.BeginScope(head);
+        // Header.Number is current block; we must pass:
+        //   blkNumber < header.Number
+        //   blkNumber > header.Number - (EpochLength * 2)
+        //
+        // Pick something comfortably in the middle of that interval.
+        long upper = head.Number - 1;
+        long lower = head.Number - (spec.EpochLength * 2) + 1;
+        long validBlockNumber = lower + (upper - lower) / 2;
 
-        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
-
-
-        var blockNumber = head.Number + 1;
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address), spec.BlockSignerContract, blockChain.Signer.Address);
+        Transaction tx =
+            SignTransactionManager.CreateTxSign(
+                (UInt256)validBlockNumber,
+                head.Hash!,
+                blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address),
+                spec.BlockSignerContract,
+                blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
-        TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
+        var result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
-        result.Value.Error.Should().Be(TransactionResult.ErrorType.MalformedTransaction);
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
     [Test]
