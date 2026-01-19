@@ -135,26 +135,6 @@ namespace Ethereum.Test.Base
                 test.Transaction.ChainId = test.ChainId;
             }
 
-            BlockHeader parent = new(
-                   parentHash: Keccak.Zero,
-                   unclesHash: Keccak.OfAnEmptySequenceRlp,
-                   beneficiary: test.CurrentCoinbase,
-                   difficulty: test.CurrentDifficulty,
-                   number: test.CurrentNumber - 1,
-                   gasLimit: test.CurrentGasLimit,
-                   timestamp: test.CurrentTimestamp,
-                   extraData: []
-               )
-            {
-                BlobGasUsed = (ulong?)test.ParentBlobGasUsed,
-                ExcessBlobGas = (ulong?)test.ParentExcessBlobGas,
-            };
-
-            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
-            {
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-            }
-
             Transaction[] transactions = test.Transaction is null ? [] : [test.Transaction];
             Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? [] : null;
             Block block = new(header, new BlockBody(transactions, [], withdrawals));
