@@ -43,7 +43,7 @@ namespace Nethermind.Db
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
-            throw new InvalidOperationException("Snapshot not supported");
+            throw new NotSupportedException("Snapshot not supported");
         }
 
         public void Dispose() { }

@@ -168,9 +168,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         Snapshot snapshot
     ) : IColumnDbSnapshot<T>
     {
-        Dictionary<T, IReadOnlyKeyValueStore> _columnDbs = columnsDb.ColumnKeys.ToDictionary((k) => k, (k) =>
-        {
-            return (IReadOnlyKeyValueStore)(new RocksDbReader(
+        private readonly Dictionary<T, IReadOnlyKeyValueStore> _columnDbs = columnsDb.ColumnKeys.ToDictionary(k => k, k =>
+            (IReadOnlyKeyValueStore)new RocksDbReader(
                 columnsDb,
                 () =>
                 {
@@ -178,9 +177,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                     options.SetSnapshot(snapshot);
                     return options;
                 },
-                null,
-                columnsDb._columnDbs[k]._columnFamily));
-        });
+                columnFamily: columnsDb._columnDbs[k]._columnFamily));
 
         public IReadOnlyKeyValueStore GetColumn(T key)
         {

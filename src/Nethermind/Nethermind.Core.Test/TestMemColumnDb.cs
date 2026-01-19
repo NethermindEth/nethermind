@@ -34,7 +34,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     public IColumnDbSnapshot<TKey> CreateSnapshot()
     {
-        throw new InvalidOperationException("Snapshot not implemented");
+        throw new NotSupportedException("Snapshot not implemented");
     }
 
     public void Dispose() { }
