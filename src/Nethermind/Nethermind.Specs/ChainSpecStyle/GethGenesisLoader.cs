@@ -266,6 +266,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
 
+        chainSpec.Bootnodes = [];
+
         chainSpec.Genesis = !withdrawalsEnabled
             ? new Block(genesisHeader)
             : new Block(
