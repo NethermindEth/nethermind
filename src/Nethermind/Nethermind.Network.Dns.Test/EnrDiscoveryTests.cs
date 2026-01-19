@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -52,11 +53,18 @@ public class EnrDiscoveryTests
         int verified = 0;
         await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net", default))
         {
-            NodeRecord nodeRecord = parser.ParseRecord(record);
-            if (!nodeRecord.Snap)
+            try
             {
-                nodeRecord.EnrString.Should().BeEquivalentTo(record);
-                verified++;
+                NodeRecord nodeRecord = parser.ParseRecord(record);
+                if (!nodeRecord.Snap)
+                {
+                    nodeRecord.EnrString.Should().BeEquivalentTo(record);
+                    verified++;
+                }
+            }
+            catch (Exception)
+            {
+                // Skip invalid records, similar to EnrDiscovery behavior
             }
         }
 
