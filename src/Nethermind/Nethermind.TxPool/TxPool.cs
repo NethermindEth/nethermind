@@ -481,8 +481,9 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
-        public long LastProcessedBlockNumber => Volatile.Read(ref _lastBlockNumber);
 
+        /// This is a debug/testing method that clears the entire txpool state.
+        /// Currently only used in the Taiko integration tests after chain reorgs.
         public void ResetTxPoolState()
         {
             _newHeadLock.EnterWriteLock();
@@ -506,6 +507,10 @@ namespace Nethermind.TxPool
                 {
                     RemoveTransaction(tx.Hash);
                 }
+
+                // Update metrics after removal
+                Metrics.TransactionCount = _transactions.Count;
+                Metrics.BlobTransactionCount = _blobTransactions.Count;
 
                 // Reset snapshots
                 _transactionSnapshot = null;

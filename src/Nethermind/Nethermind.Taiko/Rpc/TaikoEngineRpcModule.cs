@@ -378,13 +378,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 
-    /// <summary>
-    /// Clears txpool state (hash cache, account cache, pending transactions) after a chain reorg.
-    /// This is specifically designed for Taiko integration tests where the chain is reset to a base block.
-    /// After a reorg, stale txpool caches would reject transaction resubmissions with "already known" or "nonce too low".
-    /// Pending transactions must also be cleared because tests resubmit transactions with the same hash/nonce,
-    /// which would be rejected as "ReplacementNotAllowed" if they remain in the pool.
-    /// </summary>
+    /// <inheritdoc />
     public ResultWrapper<bool> taikoDebug_clearTxPoolForReorg()
     {
         txPool.ResetTxPoolState();

@@ -64,12 +64,6 @@ namespace Nethermind.TxPool
         long PendingTransactionsAdded { get; }
 
         /// <summary>
-        /// The last block number that the txpool has processed.
-        /// This may be different from the blockchain head if txpool is still processing head changes.
-        /// </summary>
-        long LastProcessedBlockNumber { get; }
-
-        /// <summary>
         /// Resets txpool state by clearing all caches (hash cache, account cache) 
         /// and removing all pending transactions. Used for integration testing after chain reorgs.
         /// </summary>
