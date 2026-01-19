@@ -46,16 +46,16 @@ public class VerifierRegistry(EthProofsApiClient apiClient): IDisposable
 
     private void RegisterVerifier(string clusterId, string zkVm, string? vkBinary)
     {
-        if (string.IsNullOrEmpty(vkBinary) && !ZkTypeMapper.IsVerifiableZkvmWithoutVk(ZkTypeMapper.Parse(zkVm))) return;
-
         ZKType zkType = ZkTypeMapper.Parse(zkVm);
         if (zkType == ZKType.Unknown) return;
+
+        if (string.IsNullOrEmpty(vkBinary) && !IsVerifiableWithoutVk(zkType)) return;
 
         _verifiers.AddOrUpdate(clusterId,
             _ => new ZkProofVerifier(zkType, vkBinary),
             (_, oldVerifier) =>
             {
-                oldVerifier.Dispose(); 
+                oldVerifier.Dispose();
                 return new ZkProofVerifier(zkType, vkBinary);
             });
     }
@@ -68,5 +68,10 @@ public class VerifierRegistry(EthProofsApiClient apiClient): IDisposable
         }
         _verifiers.Clear();
         GC.SuppressFinalize(this);
+    }
+
+    // Verifier(s) handles vk internally
+    private static bool IsVerifiableWithoutVk(ZKType zkType) {
+        return zkType == ZKType.Airbender;
     }
 }

@@ -30,9 +30,4 @@ public static class ZkTypeMapper
     {
         return TypeMap.TryGetValue(name, out var type) ? type : ZKType.Unknown;
     }
-
-    // Verifier(s) handles vk internally
-    public static bool IsVerifiableZkvmWithoutVk(ZKType zkType) {
-        return zkType == ZKType.Airbender;
-    }
 }
