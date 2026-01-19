@@ -47,6 +47,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long MergeSignRange { get; internal set; }
     public Address[] BlackListedAddresses { get; internal set; }
     public long BlackListHFNumber { get; internal set; }
+    public long TipXDCX { get; internal set; }
+    public long TIPXDCXMinerDisable { get; internal set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {

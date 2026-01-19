@@ -249,7 +249,7 @@ namespace Nethermind.Xdc
             }
 
             if (IsMasternode(epochInfo, _signer.Address)
-                && ((roundParent.Number % spec.MergeSignRange == 0) || roundParent.Number < spec.TIP2019Block))
+                && ((roundParent.Number % spec.MergeSignRange == 0)))
             {
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }

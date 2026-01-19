@@ -20,10 +20,10 @@ internal static partial class XdcExtensions
             || IsLendingFinalizedTradeTransaction(currentTx, spec)
             || IsTradingStateTransaction(currentTx, spec);
     public static bool IsSignTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.BlockSignerContract;
-    public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary;
-    public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary;
-    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary;
-    public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary;
+    public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary && spec.IsTIPXDCXMiner;
+    public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary && spec.IsTIPXDCXMiner;
+    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary && spec.IsTIPXDCXMiner;
+    public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary && spec.IsTIPXDCXMiner;
 
     public static bool IsSkipNonceTransaction(this Transaction currentTx, IXdcReleaseSpec spec) =>
         currentTx.To is not null
@@ -31,4 +31,5 @@ internal static partial class XdcExtensions
             || IsTradingTransaction(currentTx, spec)
             || IsLendingTransaction(currentTx, spec)
             || IsLendingFinalizedTradeTransaction(currentTx, spec));
+
 }

@@ -34,7 +34,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address[] GenesisMasterNodes { get; set; }
     public long BlackListHFNumber { get; set; }
     public long MergeSignRange { get; set; }
-    public long TIP2019Block { get; set; }
     public Address[] BlackListedAddresses { get; set; }
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
@@ -44,6 +43,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address TradingStateAddressBinary { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public bool IsBlackListingEnabled { get; set; }
+    public bool IsTIP2019 { get; set; }
+    public bool IsTIPXDCXMiner { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -111,9 +113,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
-    long BlackListHFNumber { get; set; }
     long MergeSignRange { get; set; }
-    long TIP2019Block { get; set; }
 
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
@@ -126,5 +126,8 @@ public interface IXdcReleaseSpec : IReleaseSpec
     Address FoundationWallet { get; set; }
     Address MasternodeVotingContract { get; set; }
 
+    bool IsBlackListingEnabled { get; internal set; }
+    bool IsTIP2019 { get; internal set; }
+    bool IsTIPXDCXMiner { get; internal set; }
     public void ApplyV2Config(ulong round);
 }
