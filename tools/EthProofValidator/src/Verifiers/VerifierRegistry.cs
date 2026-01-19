@@ -16,7 +16,7 @@ public class VerifierRegistry(EthProofsApiClient apiClient): IDisposable
     {
         var clusters = await _apiClient.GetActiveKeysAsync();
 
-        if (clusters == null)
+        if (clusters is null)
         {
             Console.WriteLine("No keys found.");
             return;

@@ -26,7 +26,7 @@ public class BlockValidator
         Console.WriteLine($"\n📦 Processing Block #{blockId}");
 
         var proofs = await _apiClient.GetProofsForBlockAsync(blockId);
-        if (proofs == null || proofs.Count == 0)
+        if (proofs is null || proofs.Count == 0)
         {
             Console.WriteLine("No proofs found.");
             return;
