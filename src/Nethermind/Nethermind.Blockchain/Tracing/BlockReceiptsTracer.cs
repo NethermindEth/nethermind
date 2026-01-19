@@ -77,7 +77,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         Transaction transaction = CurrentTx!;
         Block block = Block;
         bool isContractCreation = transaction.IsContractCreation;
-    
+
         TxReceipt txReceipt = new()
         {
             // 0x10-0x48: Reference fields in order
@@ -88,12 +88,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             Recipient = isContractCreation ? null : recipient,
             PostTransactionState = stateRoot,
             Logs = logEntries,
-        
+
             // 0x58-0x68: Long fields
             BlockNumber = block.Number,
             GasUsed = spentGas,
             GasUsedTotal = block.GasUsed,
-        
+
             // 0x70-0x75: Small fields
             Index = _currentIndex,
             TxType = transaction.Type,

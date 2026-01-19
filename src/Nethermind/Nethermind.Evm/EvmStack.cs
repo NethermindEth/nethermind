@@ -1241,10 +1241,10 @@ public ref partial struct EvmStack
     {
         int head = Head;
         if (head == 0) goto Underflow;
-    
+
         Head = head - 1;
         ref byte slot = ref Unsafe.Add(ref _stack, (head - 1) << 5);
-    
+
         // Read 8 bytes ending at position 31, extract MSB (byte 31 -> bits 56-63)
         ulong value = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 24));
         return (byte)(value >> 56);
@@ -1273,7 +1273,7 @@ public ref partial struct EvmStack
             // Load bytes 0-23, check all zero
             HalfWord lower = Unsafe.As<byte, Vector128<byte>>(ref slot);
             ulong upper = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 16));
-        
+
             if (!lower.Equals(default) | upper != 0)
             {
                 value = uint.MaxValue; // Signals a >= 32
@@ -1285,7 +1285,7 @@ public ref partial struct EvmStack
             ulong u0 = Unsafe.As<byte, ulong>(ref slot);
             ulong u1 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 8));
             ulong u2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 16));
-        
+
             if ((u0 | u1 | u2) != 0)
             {
                 value = uint.MaxValue;
@@ -1296,7 +1296,7 @@ public ref partial struct EvmStack
         // Read lower 8 bytes and extract (big-endian, so byte-swap)
         ulong low = BinaryPrimitives.ReverseEndianness(
             Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 24)));
-    
+
         // If > uint.MaxValue, clamp to signal "large"
         value = low > uint.MaxValue ? uint.MaxValue : (uint)low;
         return true;
