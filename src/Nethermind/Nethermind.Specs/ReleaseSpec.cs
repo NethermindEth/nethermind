@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
@@ -57,16 +58,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip2565Enabled { get; set; }
     public bool IsEip2929Enabled { get; set; }
     public bool IsEip2930Enabled { get; set; }
-
-    // used only in testing
-    public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
-
-    public bool IsEip1559Enabled
-    {
-        get => _isEip1559Enabled || IsEip4844Enabled;
-        set => _isEip1559Enabled = value;
-    }
-
+    public bool IsEip1559Enabled { get => field || IsEip4844Enabled; set; }
     public bool IsEip158IgnoredAccount(Address address) => false;
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
@@ -77,7 +69,7 @@ public class ReleaseSpec : IReleaseSpec
     public long Eip1559TransitionBlock { get; set; }
     public ulong WithdrawalTimestamp { get; set; }
     public ulong Eip4844TransitionTimestamp { get; set; }
-    public Address FeeCollector { get; set; }
+    public Address? FeeCollector { get; set; }
     public UInt256? Eip1559BaseFeeMinValue { get; set; }
     public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
     public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
@@ -110,68 +102,26 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7934Enabled { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
     public bool IsEip7907Enabled { get; set; }
-
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
-
-    public ulong MaxBlobsPerTx =>
-        IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
-
+    public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
     public UInt256 BlobBaseFeeUpdateFraction { get; set; }
-
-
-    private Address _eip7251ContractAddress;
-
-    public Address Eip7251ContractAddress
-    {
-        get => IsEip7251Enabled ? _eip7251ContractAddress : null;
-        set => _eip7251ContractAddress = value;
-    }
-
-    private Address _eip7002ContractAddress;
-
-    public Address Eip7002ContractAddress
-    {
-        get => IsEip7002Enabled ? _eip7002ContractAddress : null;
-        set => _eip7002ContractAddress = value;
-    }
-
-    private Address _eip4788ContractAddress;
-
-    public Address Eip4788ContractAddress
-    {
-        get => IsEip4788Enabled ? _eip4788ContractAddress : null;
-        set => _eip4788ContractAddress = value;
-    }
-
+    [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
+    public Address? Eip7251ContractAddress { get => IsEip7251Enabled ? field : null; set; }
+    [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
+    public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
+    [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
+    public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
     public bool IsEofEnabled { get; set; }
-
     public bool IsEip6110Enabled { get; set; }
-
-    private Address _depositContractAddress;
-
-    public Address DepositContractAddress
-    {
-        get => IsEip6110Enabled ? _depositContractAddress : null;
-        set => _depositContractAddress = value;
-    }
-
+    [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
+    public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }
     public bool IsEip2935Enabled { get; set; }
     public bool IsEip7709Enabled { get; set; }
-
-    private Address _eip2935ContractAddress;
-    private bool _isEip1559Enabled;
-
-    public Address Eip2935ContractAddress
-    {
-        get => IsEip2935Enabled ? _eip2935ContractAddress : null;
-        set => _eip2935ContractAddress = value;
-    }
-
+    [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
+    public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
-
     Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
-
     Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
     public bool IsRip7728Enabled { get; set; }
@@ -217,4 +167,7 @@ public class ReleaseSpec : IReleaseSpec
 
         return cache.ToFrozenSet();
     }
+
+    // used only in testing
+    public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
 }
