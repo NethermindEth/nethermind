@@ -22,19 +22,14 @@ public class GethGenesisConfigJson
 
     public bool? DaoForkSupport { get; set; }
 
-    [JsonPropertyName("eip150Block")]
     public long? Eip150Block { get; set; }
 
-    [JsonPropertyName("eip155Block")]
     public long? Eip155Block { get; set; }
 
-    [JsonPropertyName("eip158Block")]
     public long? Eip158Block { get; set; }
 
-    [JsonPropertyName("tangerineWhistleBlock")]
     public long? TangerineWhistleBlock { get; set; }
 
-    [JsonPropertyName("spuriousDragonBlock")]
     public long? SpuriousDragonBlock { get; set; }
 
     public long? ByzantiumBlock { get; set; }
