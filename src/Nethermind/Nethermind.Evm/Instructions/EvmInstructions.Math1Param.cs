@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using System;
+using System.Buffers.Binary;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -92,6 +93,7 @@ internal static partial class EvmInstructions
     /// Compares the input 256‐bit vector to zero and returns a predefined marker if the value is zero;
     /// otherwise, returns a zero vector.
     /// </summary>
+    [SkipLocalsInit]
     public static EvmExceptionType InstructionIsZero<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -128,9 +130,11 @@ internal static partial class EvmInstructions
                 if (result == OpBitwiseEq.One)
                 {
                     // value was zero, ISZERO is true: perform the jump immediately.
-                    byte hi = Add(ref codeRef, programCounter + 1);
-                    byte lo = Add(ref codeRef, programCounter + 2);
-                    ushort destination = (ushort)((hi << 8) | lo);
+                    ushort destination = As<byte, ushort>(ref Add(ref codeRef, programCounter));
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        destination = BinaryPrimitives.ReverseEndianness(destination);
+                    }
 
                     if (!Jump(destination, ref programCounter, vm.VmState.Env))
                     {
