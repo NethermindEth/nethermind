@@ -123,28 +123,22 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 a))
+        // Only need to check if a < 32 and get the value - no full UInt256 needed
+        if (!stack.TryPopSmallIndex(out uint a))
             goto StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
+
+        ref byte bytes = ref stack.PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes))
+            goto StackUnderflow;
 
         // If the position is out-of-range, push zero.
-        if (a >= BigInt32)
+        if (a >= EvmStack.WordSize)
         {
             return new(programCounter, stack.PushZero<TTracingInst>());
         }
         else
         {
-            int adjustedPosition = bytes.Length - 32 + (int)a;
-            if (adjustedPosition < 0)
-            {
-                return new(programCounter, stack.PushZero<TTracingInst>());
-            }
-            else
-            {
-                // Push the extracted byte.
-                return new(programCounter, stack.PushByte<TTracingInst>(bytes[adjustedPosition]));
-            }
+            return new(programCounter, stack.PushByte<TTracingInst>(Unsafe.Add(ref bytes, (nuint)a)));
         }
 
     // Jump forward to be unpredicted by the branch predictor.
@@ -171,7 +165,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // If a >= 32, the value already fits - no sign extension needed
-        if (a >= 32)
+        if (a >= EvmStack.WordSize)
         {
             if (!stack.EnsureDepth(1))
                 goto StackUnderflow;
