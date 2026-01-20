@@ -22,6 +22,18 @@ public readonly ref struct TransactionSubstate
     private static readonly JournalSet<Address> _emptyDestroyList = new JournalSet<Address>();
     private static readonly JournalCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
 
+    /// <summary>
+    /// Returns a successful substate for simple transfers (no code execution, no logs, no refunds).
+    /// </summary>
+    public static TransactionSubstate SuccessfulTransfer => new(
+        refund: 0,
+        destroyList: _emptyDestroyList,
+        logs: _emptyLogs,
+        shouldRevert: false,
+        tracer: Tracing.NullTxTracer.Instance,
+        deployCode: null!,
+        outputBytes: default);
+
     private const string SomeError = "error";
     public const string Revert = "revert";
 

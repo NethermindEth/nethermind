@@ -232,9 +232,22 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
-            int statusCode = !tracer.IsTracingInstructions ?
-                InvokeEvm<TLogTracing, OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                InvokeEvm<TLogTracing, OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+            int statusCode;
+            scoped TransactionSubstate substate;
+            GasConsumed spentGas;
+
+            // Fast path: simple ETH transfer (not create, empty code)
+            // Skip InvokeEvm's prologue entirely
+            if (!tx.IsContractCreation && env.CodeInfo?.IsEmpty == true)
+            {
+                statusCode = ExecuteSimpleTransfer<TLogTracing>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+            }
+            else
+            {
+                statusCode = !tracer.IsTracingInstructions ?
+                    InvokeEvm<TLogTracing, OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas) :
+                    InvokeEvm<TLogTracing, OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+            }
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
@@ -672,6 +685,54 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
+
+        /// <summary>
+        /// Fast path for simple ETH transfers to accounts without code.
+        /// Completely bypasses InvokeEvm and its heavy prologue.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int ExecuteSimpleTransfer<TLogTracing>(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            int delegationRefunds,
+            IntrinsicGas<TGasPolicy> gas,
+            in StackAccessTracker accessedItems,
+            TGasPolicy gasAvailable,
+            ExecutionEnvironment env,
+            out TransactionSubstate substate,
+            out GasConsumed spentGas)
+            where TLogTracing : struct, IFlag
+        {
+            // Transfer: subtract from sender (via virtual PayValue), add to recipient
+            PayValue(tx, spec, opts);
+            WorldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+
+            // Maintain action tracing if enabled
+            if (tracer.IsTracingActions)
+            {
+                long gasRemaining = TGasPolicy.GetRemainingGas(gasAvailable);
+                tracer.ReportAction(gasRemaining, env.Value, tx.SenderAddress!, env.ExecutingAccount, env.InputData, ExecutionType.TRANSACTION);
+                tracer.ReportActionEnd(gasRemaining, default);
+            }
+
+            if (tracer.IsTracingAccess)
+            {
+                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
+            }
+
+            substate = TransactionSubstate.SuccessfulTransfer;
+            spentGas = Refund<TLogTracing>(tx, header, spec, opts, in substate, gasAvailable,
+                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+
+            // Update header gas used (same as InvokeEvm's Complete: label)
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                header.GasUsed += spentGas.SpentGas;
+
+            return StatusCode.Success;
+        }
 
         private int InvokeEvm<TLogTracing, TTracingInst>(
             Transaction tx,
