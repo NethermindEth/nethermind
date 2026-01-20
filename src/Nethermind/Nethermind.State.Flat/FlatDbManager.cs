@@ -49,6 +49,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
+    private readonly CancellationTokenSource _cancelTokenSource;
+    private int _isDisposed = 0;
 
     internal static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
     {
@@ -69,8 +71,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public FlatDbManager(
-        IProcessExitSource exitSource,
-        IPersistence persistedPersistence,
         ResourcePool resourcePool,
         IProcessExitSource processExitSource,
         TrieNodeCache trieNodeCache,
@@ -92,13 +92,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _midCompactSize = config.MidCompactSize;
         _inlineCompaction = config.InlineCompaction;
 
+        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
         _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
-        _compactorTask = RunCompactor(exitSource.Token);
-        _populateTrieNodeCacheTask = RunTrieCachePopulator(exitSource.Token);
-        _persistenceTask = RunPersistence(exitSource.Token);
+        _compactorTask = RunCompactor(_cancelTokenSource.Token);
+        _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
+        _persistenceTask = RunPersistence(_cancelTokenSource.Token);
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -412,7 +414,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_inlineCompaction)
         {
-            RunCompactJobSync(endBlock, transientResource, _processExitSource.Token).Wait();
+            RunCompactJobSync(endBlock, transientResource, _cancelTokenSource.Token).Wait();
         }
         else
         {
@@ -424,7 +426,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
-                if (_processExitSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
+                if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
                 _flatdiffimes.WithLabels("add_snapshot", "try_write_failed").Observe(Stopwatch.GetTimestamp() - sw);
                 sw = Stopwatch.GetTimestamp();
@@ -472,8 +474,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
+
+        _cancelTokenSource.Cancel();
+
+        _compactorJobs.Writer.Complete();
+        _populateTrieNodeCacheJobs.Writer.Complete();
+        _persistenceJobs.Writer.Complete();
+
         await _compactorTask;
-        await _persistenceTask;
         await _populateTrieNodeCacheTask;
+        await _persistenceTask;
+
+        _cancelTokenSource.Dispose();
     }
 }

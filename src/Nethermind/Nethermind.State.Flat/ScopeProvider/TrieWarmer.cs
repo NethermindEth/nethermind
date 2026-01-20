@@ -76,6 +76,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     // needed. Only the main worker spin.
     private readonly Semaphore _executionSlots;
 
+    private CancellationTokenSource _cancelTokenSource;
+
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager, IFlatDbConfig flatDbConfig)
     {
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
@@ -87,6 +89,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         _executionSlots = new Semaphore(0, _secondaryWorkerCount);
 
+        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+
         if (_secondaryWorkerCount > 0)
         {
             _warmerJob = Task.Run(() =>
@@ -94,7 +98,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 using ArrayPoolList<Thread> tasks = new ArrayPoolList<Thread>(_secondaryWorkerCount);
                 Thread primaryWorkerThread = new Thread(() =>
                 {
-                    RunPrimaryWorker(processExitSource.Token);
+                    RunPrimaryWorker(_cancelTokenSource.Token);
                 });
                 primaryWorkerThread.Name = "TrieWarmer-Primary";
                 primaryWorkerThread.Start();
@@ -104,7 +108,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 {
                     Thread t = new Thread(() =>
                     {
-                        RunSecondaryWorker(processExitSource.Token);
+                        RunSecondaryWorker(_cancelTokenSource.Token);
                     });
                     t.Name = $"TrieWarmer-Secondary-{i}";
                     t.Priority = ThreadPriority.Lowest;
@@ -393,9 +397,14 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     {
     }
 
+    private bool _isDisposed = false;
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+
+        _cancelTokenSource.Cancel();
         if (_warmerJob is not null) await _warmerJob;
         _executionSlots.Dispose();
+        _cancelTokenSource.Dispose();
     }
 }

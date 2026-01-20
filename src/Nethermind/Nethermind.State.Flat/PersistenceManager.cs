@@ -41,6 +41,8 @@ public class PersistenceManager: IAsyncDisposable
     private readonly Task _clearReaderTask;
     private bool _mustNotClearReaderCache = false;
     private StateId _currentPersistedStateId = StateId.PreGenesis;
+    private readonly CancellationTokenSource _cancelTokenSource;
+    private int _isDisposed = 0;
 
     private readonly IPersistence _persistence;
     private readonly ISnapshotRepository _snapshotRepository;
@@ -61,16 +63,17 @@ public class PersistenceManager: IAsyncDisposable
         _minimumPruningBoundary = configuration.PruningBoundary;
         _compactSize = configuration.CompactSize;
 
+        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(exitSource.Token);
+
         _clearReaderTask = Task.Run(async () =>
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
-            var cancellation = exitSource.Token;
 
             try
             {
                 while (true)
                 {
-                    await timer.WaitForNextTickAsync(cancellation);
+                    await timer.WaitForNextTickAsync(_cancelTokenSource.Token);
 
                     ClearReaderCache();
                 }
@@ -410,7 +413,11 @@ public class PersistenceManager: IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
+
+        _cancelTokenSource.Cancel();
         await _clearReaderTask;
         _cachedReader?.Dispose();
+        _cancelTokenSource.Dispose();
     }
 }
