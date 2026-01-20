@@ -52,6 +52,7 @@ public class Eth70ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)2.MB();
         NetworkDiagTracer.IsEnabled = true;
 
         _session = Substitute.For<ISession>();
@@ -129,6 +130,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public async Task Should_request_additional_pages_until_complete()
     {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
         TxReceipt[] receipts =
         {
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
@@ -158,6 +160,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public async Task Should_merge_partial_first_block_and_continue_to_next_block()
     {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
         TxReceipt[] block1 =
         {
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
@@ -216,7 +219,7 @@ public class Eth70ProtocolHandlerTests
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         await act.Should().ThrowAsync<SubprotocolException>()
-            .WithMessage("*non-truncated receipts response below minimum size*");
+            .WithMessage("Received partial receipts response below minimum size*");
     }
 
     [Test]
