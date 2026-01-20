@@ -2,8 +2,12 @@ name: Remove GH Runner
 description: "Remove a self-hosted GitHub Actions runner and destroy its machine"
 inputs:
   gh-token:
-    description: "The token of the GitHub App to use for authentication"
+    description: "The token of the GitHub App to use for workflow invocations"
     required: true
+  gh-runner-token:
+    description: "The token to use for runner deregistration (optional, defaults to gh-token)"
+    required: false
+    default: ""
   runner-name:
     description: "Name of the runner to remove from GitHub Actions"
     required: true
@@ -19,7 +23,7 @@ runs:
       if: ${{ inputs.runner-name != '' }}
       continue-on-error: true
       env:
-        GH_TOKEN: ${{ inputs.gh-token }}
+        GH_TOKEN: ${{ inputs.gh-runner-token != '' && inputs.gh-runner-token || inputs.gh-token }}
         TARGET_RUNNER_NAME: ${{ inputs.runner-name }}
         ORG_NAME: ${{ github.repository_owner }}
         REPO_NAME: ${{ github.event.repository.name }}

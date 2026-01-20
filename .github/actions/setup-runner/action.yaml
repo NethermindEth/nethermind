@@ -2,8 +2,12 @@
 description: "Setup a self-hosted GitHub Actions runner"
 inputs:
   gh-token:
-    description: "The token of the GitHub App to use for authentication"
+    description: "The token of the GitHub App to use for workflow invocations"
     required: true
+  gh-runner-token:
+    description: "The token to use for runner registration (optional, defaults to gh-token)"
+    required: false
+    default: ""
   gh-username:
     description: "GitHub username that manages this runner"
     required: true
@@ -85,7 +89,7 @@ runs:
         ALLOWED_IPS: ${{ inputs.allowed-ips }}
         SSH_KEYS: ${{ inputs.ssh-keys }}
         TIMEOUT: ${{ inputs.timeout }}
-        GH_TOKEN: ${{ inputs.gh-token }}
+        GH_TOKEN: ${{ inputs.gh-runner-token != '' && inputs.gh-runner-token || inputs.gh-token }}
         ORG_NAME: ${{ github.repository_owner }}
         REPO_NAME: ${{ github.event.repository.name }}
         OUTPUT_FILE: workflow-inputs.json

@@ -22,15 +22,24 @@ jobs:
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v2
+        with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
+          repositories: "nethermind"
 
       - name: Setup self-hosted runner
         id: setup-runner
         uses: ./.github/actions/setup-runner
         with:
           gh-token: ${{ steps.gh-app.outputs.token }}
+          gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
           gh-username: ${{ github.actor }}
           runner-name: "gas-benchmark"
           runner-type: g6-standard-2
@@ -62,13 +71,22 @@ jobs:
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v2
+        with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
+          repositories: "nethermind"
 
       - name: Remove self-hosted runner
         uses: ./.github/actions/remove-runner
         with:
           gh-token: ${{ steps.gh-app.outputs.token }}
+          gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
           runner-name: ${{ needs.setup-runner.outputs.runner-name }}
           workflow-run-id: ${{ needs.setup-runner.outputs.run-id }}
