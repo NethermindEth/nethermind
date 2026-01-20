@@ -22,7 +22,6 @@ public class DbConfig : IDbConfig
     public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
-
     public string RocksDbOptions { get; set; } =
 
         // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
