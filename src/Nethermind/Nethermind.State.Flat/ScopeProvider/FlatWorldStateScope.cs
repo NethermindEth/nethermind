@@ -54,9 +54,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     internal bool _pausePrewarmer = false;
     private readonly string _isPrewarmerLabel;
 
-    public static bool _disableHintSet = Environment.GetEnvironmentVariable("DISABLE_HINT_SET") == "1";
-    public static bool _disableOutOfScopeWarmUp = Environment.GetEnvironmentVariable("DISABLE_OUT_OF_SCOPE_WARMUP") == "1";
-
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -101,14 +98,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _disableLocalSlotTriewarmerQueue = false;
     }
 
-    private bool _isDisposed = false;
     private readonly Counter.Child _statePrewarmPaused;
     private readonly Counter.Child _statePrewarmWrongNum;
     private readonly Histogram.Child _stateTreePrewarm;
 
     public void Dispose()
     {
-        _isDisposed = true;
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
     }
@@ -150,32 +145,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_disableLocalAddressTriewarmerQueue)
         {
             if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId, false);
-        }
-    }
-
-    public void HintSet(Address address)
-    {
-        if (_disableHintSet) return;
-        if (!_disableLocalAddressTriewarmerQueue)
-        {
-            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId, true);
-        }
-    }
-
-    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
-    {
-        if (_isDisposed) return;
-        if (_pausePrewarmer) return;
-        if (isWrite && _disableHintSet) return;
-        if (_disableOutOfScopeWarmUp) return;
-
-        if (slot is null)
-        {
-            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushJobMulti(this, address, null, null, _hintSequenceId, isWrite);
-        }
-        else
-        {
-            CreateStorageTreeImpl(address).QueueOutOfScopeWarmup(slot.Value, isWrite);
         }
     }
 

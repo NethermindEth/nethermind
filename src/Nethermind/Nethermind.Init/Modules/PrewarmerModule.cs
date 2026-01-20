@@ -54,7 +54,6 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
-                        null,
                         ctx.Resolve<PreBlockCaches>(),
                         populatePreBlockCache: false
                     );

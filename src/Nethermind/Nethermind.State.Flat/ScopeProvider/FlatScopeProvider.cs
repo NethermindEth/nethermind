@@ -22,7 +22,6 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     private readonly ITrieWarmer _trieWarmer;
     private readonly ResourcePool _resourcePool;
     private readonly ResourcePool.Usage _usage;
-    private FlatWorldStateScope? _lastScope;
 
     public FlatScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
@@ -61,7 +60,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             warmer = new NoopTrieWarmer();
         }
 
-        return _lastScope = new FlatWorldStateScope(
+        return new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -69,10 +68,5 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             _configuration,
             warmer,
             _logManager);
-    }
-
-    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
-    {
-        _lastScope?.WarmUpOutOfScope(address, slot, isWrite);
     }
 }

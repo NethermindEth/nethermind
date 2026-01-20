@@ -63,9 +63,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             new WriteBatchWrapper(innerScope.StartWriteBatch(estimatedAccountNum), scopeId, logger);
 
         public void Commit(long blockNumber) => innerScope.Commit(blockNumber);
-        public void HintSet(Address address)
-        {
-        }
     }
 
     private class StorageTreeWrapper(IWorldStateScopeProvider.IStorageTree storageTree, Address address, long scopeId, ILogger logger) : IWorldStateScopeProvider.IStorageTree
@@ -86,10 +83,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             byte[]? bytes = storageTree.Get(in hash);
             logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
             return bytes;
-        }
-
-        public void HintSet(in UInt256 index)
-        {
         }
     }
 

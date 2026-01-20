@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -10,13 +9,12 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, IWorldStateScopeProvider parentScopeProvider, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
         var worldState = new PrewarmerScopeProvider(
             worldStateManager.CreateResettableWorldState(),
-            parentScopeProvider,
             preBlockCaches,
             populatePreBlockCache: true
         );

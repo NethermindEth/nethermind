@@ -14,7 +14,6 @@ namespace Nethermind.State;
 
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
-    IWorldStateScopeProvider? outerScopeProvider,
     PreBlockCaches preBlockCaches,
     bool populatePreBlockCache = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
@@ -31,12 +30,7 @@ public class PrewarmerScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        return new ScopeWrapper(baseProvider.BeginScope(baseBlock), outerScopeProvider, preBlockCaches, populatePreBlockCache);
-    }
-
-    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
-    {
-        baseProvider.WarmUpOutOfScope(address, slot, isWrite);
+        return new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
     }
 
     public PreBlockCaches? Caches => preBlockCaches;
@@ -44,7 +38,6 @@ public class PrewarmerScopeProvider(
 
     private sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
-        IWorldStateScopeProvider? outerScopeProvider,
         PreBlockCaches preBlockCaches,
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
@@ -52,7 +45,6 @@ public class PrewarmerScopeProvider(
         private Histogram.Child _addressGetHit = _timer.WithLabels("address_hit", populatePreBlockCache.ToString());
         private Histogram.Child _addressGetMiss = _timer.WithLabels("address_miss", populatePreBlockCache.ToString());
         private Histogram.Child _addressGetHint = _timer.WithLabels("address_get_hint", populatePreBlockCache.ToString());
-        private Histogram.Child _addressSetHint = _timer.WithLabels("address_set_hint", populatePreBlockCache.ToString());
         private Histogram.Child _disposeTime = _timer.WithLabels("dispose", populatePreBlockCache.ToString());
 
         ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
@@ -70,7 +62,6 @@ public class PrewarmerScopeProvider(
         {
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
-                outerScopeProvider,
                 preBlockCaches.StorageCache,
                 address,
                 populatePreBlockCache);
@@ -99,7 +90,6 @@ public class PrewarmerScopeProvider(
                 long priorReads = Metrics.ThreadLocalStateTreeReads;
                 Account? account = preBlockCache.GetOrAdd(address, GetFromBaseTree);
 
-                outerScopeProvider.WarmUpOutOfScope(address, null, false);
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
                     _addressGetHit.Observe(Stopwatch.GetTimestamp() - sw);
@@ -137,14 +127,6 @@ public class PrewarmerScopeProvider(
             _addressGetHint.Observe(Stopwatch.GetTimestamp() - sw);
         }
 
-        public void HintSet(Address address)
-        {
-            long sw = Stopwatch.GetTimestamp();
-            baseScope.HintSet(address);
-            outerScopeProvider?.WarmUpOutOfScope(address, null, true);
-            _addressSetHint.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-
         private Account? GetFromBaseTree(AddressAsKey address)
         {
             return baseScope.Get(address);
@@ -153,7 +135,6 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        IWorldStateScopeProvider? outerWorldStateScopeProvider,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache
@@ -161,7 +142,6 @@ public class PrewarmerScopeProvider(
     {
         private Histogram.Child _slotGetHit = _timer.WithLabels("slot_get_hit", populatePreBlockCache.ToString());
         private Histogram.Child _slotGetHint = _timer.WithLabels("slot_get_hint", populatePreBlockCache.ToString());
-        private Histogram.Child _slotSetHint = _timer.WithLabels("slot_set_hint", populatePreBlockCache.ToString());
         private Histogram.Child _slotGetMiss = _timer.WithLabels("slot_get_miss", populatePreBlockCache.ToString());
         public Hash256 RootHash => baseStorageTree.RootHash;
 
@@ -174,8 +154,6 @@ public class PrewarmerScopeProvider(
                 long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
                 byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
-
-                outerWorldStateScopeProvider.WarmUpOutOfScope(storageCell.Address, storageCell.Index, false);
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
@@ -212,15 +190,7 @@ public class PrewarmerScopeProvider(
         {
             long sw = Stopwatch.GetTimestamp();
             baseStorageTree.HintGet(in index, value);
-            _slotSetHint.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-
-        public void HintSet(in UInt256 index)
-        {
-            long sw = Stopwatch.GetTimestamp();
-            baseStorageTree.HintSet(in index);
-            outerWorldStateScopeProvider?.WarmUpOutOfScope(address, index, true);
-            _slotSetHint.Observe(Stopwatch.GetTimestamp() - sw);
+            _slotGetHint.Observe(Stopwatch.GetTimestamp() - sw);
         }
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)

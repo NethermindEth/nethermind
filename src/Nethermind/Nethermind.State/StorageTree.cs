@@ -159,10 +159,6 @@ namespace Nethermind.State
             return GetArray(in hash, null);
         }
 
-        public void HintSet(in UInt256 index)
-        {
-        }
-
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
