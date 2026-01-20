@@ -26,7 +26,6 @@ public class VisitorProgressTracker
     private long _nodeCount;
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
     private long _maxReportedProgress; // Track max to avoid going backwards
-    private int _activeLevel; // Current deepest level with >5% coverage
     private readonly DateTime _startTime;
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
@@ -45,7 +44,6 @@ public class VisitorProgressTracker
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
-        _activeLevel = 0; // Start at level 0
 
         _seen = new int[MaxLevel + 1][];
         for (int level = 0; level <= MaxLevel; level++)
@@ -70,45 +68,44 @@ public class VisitorProgressTracker
     /// </summary>
     /// <param name="path">The path to the node (used for progress estimation)</param>
     /// <param name="isStorage">True if this is a storage node (tracked in total but not used for progress)</param>
-    public void OnNodeVisited(in TreePath path, bool isStorage = false)
+    /// <param name="isLeaf">True if this is a leaf node (used to estimate coverage at level 3)</param>
+    public void OnNodeVisited(in TreePath path, bool isStorage = false, bool isLeaf = false)
     {
         // Always count the work done
         Interlocked.Increment(ref _totalWorkDone);
 
-        // Only track state nodes for progress estimation
+        // Only track state nodes for progress estimation at level 3
         if (!isStorage)
         {
             int depth = Math.Min(path.Length, MaxLevel + 1);
-            int currentActiveLevel = _activeLevel;
 
-            // Only track at the active level or deeper
-            if (depth > currentActiveLevel)
+            if (depth == MaxLevel + 1)
             {
+                // Node at level 3: track normally
                 int prefix = 0;
-
-                // Build prefix up to active level
-                for (int level = 0; level < currentActiveLevel; level++)
+                for (int i = 0; i < MaxLevel + 1; i++)
                 {
-                    prefix = (prefix << 4) | path[level];
+                    prefix = (prefix << 4) | path[i];
                 }
 
-                // Track from active level onwards
-                for (int level = currentActiveLevel; level < depth; level++)
+                if (Interlocked.CompareExchange(ref _seen[MaxLevel][prefix], 1, 0) == 0)
                 {
-                    prefix = (prefix << 4) | path[level];
-
-                    // Mark prefix as seen (thread-safe)
-                    if (Interlocked.CompareExchange(ref _seen[level][prefix], 1, 0) == 0)
-                    {
-                        int newCount = Interlocked.Increment(ref _seenCounts[level]);
-
-                        // Check if we should move to a deeper level
-                        if (level > currentActiveLevel && newCount > MaxAtLevel[level] / 20)
-                        {
-                            Interlocked.CompareExchange(ref _activeLevel, level, currentActiveLevel);
-                        }
-                    }
+                    Interlocked.Increment(ref _seenCounts[MaxLevel]);
                 }
+            }
+            else if (isLeaf && depth > 0)
+            {
+                // Leaf at lower depth: estimate how many level-3 nodes it covers
+                // Each level has 16 children, so a leaf at depth d covers 16^(3-d+1) level-3 nodes
+                int coverageDepth = MaxLevel + 1 - depth;
+                int estimatedNodes = 1;
+                for (int i = 0; i < coverageDepth; i++)
+                {
+                    estimatedNodes *= 16;
+                }
+
+                // Add estimated coverage to level 3
+                Interlocked.Add(ref _seenCounts[MaxLevel], estimatedNodes);
             }
 
             // Log progress at intervals (based on state nodes only)
@@ -127,13 +124,12 @@ public class VisitorProgressTracker
             return;
         }
 
-        // Use the active level for progress estimation
-        int level = _activeLevel;
-        int seen = _seenCounts[level];
-        double progress = Math.Min((double)seen / MaxAtLevel[level], 1.0);
+        // Always use level 3 for progress
+        int seen = _seenCounts[MaxLevel];
+        double progress = Math.Min((double)seen / MaxAtLevel[MaxLevel], 1.0);
         long progressValue = (long)(progress * 10000);
 
-        // Never report progress lower than previously reported (due to level switching)
+        // Never report progress lower than previously reported
         long currentMax = _maxReportedProgress;
         while (progressValue > currentMax)
         {
@@ -163,9 +159,9 @@ public class VisitorProgressTracker
     /// </summary>
     public double GetProgress()
     {
-        int level = _activeLevel;
-        int seen = _seenCounts[level];
-        return Math.Min((double)seen / MaxAtLevel[level], 1.0);
+        // Always use level 3 for progress
+        int seen = _seenCounts[MaxLevel];
+        return Math.Min((double)seen / MaxAtLevel[MaxLevel], 1.0);
     }
 
     /// <summary>

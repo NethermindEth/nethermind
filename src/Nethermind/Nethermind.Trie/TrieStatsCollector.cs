@@ -94,7 +94,7 @@ namespace Nethermind.Trie
                 Interlocked.Increment(ref Stats._missingState);
             }
 
-            IncrementLevel(nodeContext);
+            IncrementLevel(nodeContext, isLeaf: false);
         }
 
         public void VisitBranch(in Context nodeContext, TrieNode node)
@@ -112,7 +112,7 @@ namespace Nethermind.Trie
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
 
-            IncrementLevel(nodeContext);
+            IncrementLevel(nodeContext, isLeaf: false);
         }
 
         public void VisitExtension(in Context nodeContext, TrieNode node)
@@ -128,7 +128,7 @@ namespace Nethermind.Trie
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
 
-            IncrementLevel(nodeContext);
+            IncrementLevel(nodeContext, isLeaf: false);
         }
 
         public void VisitLeaf(in Context nodeContext, TrieNode node)
@@ -144,7 +144,7 @@ namespace Nethermind.Trie
                 Interlocked.Increment(ref Stats._accountCount);
             }
 
-            IncrementLevel(nodeContext);
+            IncrementLevel(nodeContext, isLeaf: true);
         }
 
         public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account)
@@ -177,13 +177,13 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, Stats._codeLevels);
         }
 
-        private void IncrementLevel(Context context)
+        private void IncrementLevel(Context context, bool isLeaf)
         {
             long[] levels = context.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(context, levels);
 
             // Track all nodes for display; only state nodes used for progress calculation
-            _progressTracker.OnNodeVisited(context.Path, context.IsStorage);
+            _progressTracker.OnNodeVisited(context.Path, context.IsStorage, isLeaf);
         }
 
         private static void IncrementLevel(Context context, long[] levels)

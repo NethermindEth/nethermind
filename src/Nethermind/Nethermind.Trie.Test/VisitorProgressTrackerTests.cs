@@ -16,14 +16,15 @@ public class VisitorProgressTrackerTests
         // Arrange
         var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 1000);
 
-        // Act - visit paths starting with nibbles 0-7 (half the keyspace)
+        // Act - visit leaf paths with single nibble, each covers 16^3 = 4096 level-3 nodes
+        // Visit half the keyspace (8 out of 16) = 8 * 4096 = 32768 out of 65536 = 50%
         for (int i = 0; i < 8; i++)
         {
-            TreePath path = TreePath.FromNibble(new byte[] { (byte)i, 0, 0, 0 });
-            tracker.OnNodeVisited(path);
+            TreePath path = TreePath.FromNibble(new byte[] { (byte)i });
+            tracker.OnNodeVisited(path, isStorage: false, isLeaf: true);
         }
 
-        // Assert - should be ~50% progress at level 0
+        // Assert - should be ~50% progress
         double progress = tracker.GetProgress();
         progress.Should().BeApproximately(0.5, 0.01);
     }
@@ -34,15 +35,16 @@ public class VisitorProgressTrackerTests
         // Arrange
         var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
 
-        // Act - visit enough prefixes at level 1 to trigger level 1 reporting
-        // Need >5% of 256 = 13 unique prefixes at level 1
-        for (int i = 0; i < 64; i++) // 64 unique 2-nibble prefixes
+        // Act - visit leaf nodes at 2-nibble depth
+        // Each leaf at depth 2 covers 16^(3-2+1) = 16^2 = 256 level-3 nodes
+        // Visit 64 leaves = 64 * 256 = 16384 out of 65536 = 25%
+        for (int i = 0; i < 64; i++)
         {
-            TreePath path = TreePath.FromNibble(new byte[] { (byte)(i / 16), (byte)(i % 16), 0, 0 });
-            tracker.OnNodeVisited(path);
+            TreePath path = TreePath.FromNibble(new byte[] { (byte)(i / 16), (byte)(i % 16) });
+            tracker.OnNodeVisited(path, isStorage: false, isLeaf: true);
         }
 
-        // Assert - should use level 1 (64/256 = 25%)
+        // Assert - should be ~25% progress
         double progress = tracker.GetProgress();
         progress.Should().BeApproximately(0.25, 0.01);
     }
@@ -79,21 +81,20 @@ public class VisitorProgressTrackerTests
         // Arrange
         var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
 
-        // Act - visit paths with only 1 nibble to stay at level 0
-        // With single nibble paths, only level 0 gets coverage, so progress is monotonic
+        // Act - visit leaf nodes with single nibble paths
+        // Each covers 16^3 = 4096 level-3 nodes
         double lastProgress = 0;
         for (int i = 0; i < 16; i++)
         {
-            // Each prefix visits a unique nibble at level 0 only
             TreePath path = TreePath.FromNibble(new byte[] { (byte)i });
-            tracker.OnNodeVisited(path);
+            tracker.OnNodeVisited(path, isStorage: false, isLeaf: true);
 
             double progress = tracker.GetProgress();
             progress.Should().BeGreaterThanOrEqualTo(lastProgress);
             lastProgress = progress;
         }
 
-        // Assert - after visiting all 16 level 0 prefixes, progress should be 100%
+        // Assert - after visiting all 16 single-nibble leaves, progress should be 100%
         tracker.GetProgress().Should().Be(1.0);
     }
 
