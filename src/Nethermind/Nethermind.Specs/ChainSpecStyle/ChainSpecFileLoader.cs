@@ -18,15 +18,15 @@ public class ChainSpecFileLoader
     private readonly Dictionary<string, IChainSpecLoader> _chainSpecLoaders;
     private readonly ILogger _logger;
 
-    public ChainSpecFileLoader(IJsonSerializer serializer, ILogger logger)
+    public ChainSpecFileLoader(IJsonSerializer serializer, ILogManager logManager)
     {
-        AutoDetectingChainSpecLoader jsonLoader = new(serializer);
+        AutoDetectingChainSpecLoader jsonLoader = new(serializer, logManager);
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
             { ".zst", new ZstdChainSpecLoader(jsonLoader) }
         };
-        _logger = logger;
+        _logger = logManager.GetClassLogger<ChainSpecFileLoader>();
     }
 
     public ChainSpec LoadEmbeddedOrFromFile(string fileName)

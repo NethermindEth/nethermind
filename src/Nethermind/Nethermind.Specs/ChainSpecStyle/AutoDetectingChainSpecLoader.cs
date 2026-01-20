@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Text.Json;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
@@ -11,8 +13,9 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// A chain spec loader that auto-detects the format of the input file and delegates
 /// to either the regular ChainSpecLoader or the Geth-style GethGenesisLoader.
 /// </summary>
-public class AutoDetectingChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManager logManager) : IChainSpecLoader
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<AutoDetectingChainSpecLoader>();
     private readonly ChainSpecLoader _parityLoader = new(serializer);
     private readonly GethGenesisLoader _gethLoader = new(serializer);
 
@@ -28,55 +31,43 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer) : IChainSp
         return format switch
         {
             GenesisFormat.Geth => _gethLoader.Load(memoryStream),
-            GenesisFormat.Parity => _parityLoader.Load(memoryStream),
-            _ => throw new InvalidDataException("Unable to detect genesis file format")
+            _ => _parityLoader.Load(memoryStream),
         };
     }
 
-    private static GenesisFormat DetectFormat(Stream stream)
+    private GenesisFormat DetectFormat(Stream stream)
     {
+        GenesisFormat result = GenesisFormat.Unknown;
+
         try
         {
             using JsonDocument document = JsonDocument.Parse(stream, new JsonDocumentOptions { AllowTrailingCommas = true });
             JsonElement root = document.RootElement;
 
-            // Geth-style (EIP-7949) has "config" and "alloc" at top level
-            // The "config" object contains chainId and hardfork blocks/times
-            if (root.TryGetProperty("config", out JsonElement config) &&
+            if (root.TryGetProperty("config", out JsonElement config) ||
                 root.TryGetProperty("alloc", out _))
             {
-                // Additional validation: check for chainId in config (required in EIP-7949)
-                if (config.TryGetProperty("chainId", out _))
-                {
-                    return GenesisFormat.Geth;
-                }
+                result = GenesisFormat.Geth;
             }
 
-            // Parity-style has "engine" and "params" at top level
-            if (root.TryGetProperty("engine", out _) &&
-                root.TryGetProperty("params", out _))
+            if (root.TryGetProperty("engine", out _) ||
+                root.TryGetProperty("params", out _) ||
+                root.TryGetProperty("accounts", out _))
             {
-                return GenesisFormat.Parity;
+                result = GenesisFormat.Parity;
             }
-
-            // Additional check: if it has "accounts" (Parity) vs "alloc" (Geth)
-            if (root.TryGetProperty("accounts", out _))
-            {
-                return GenesisFormat.Parity;
-            }
-
-            // If we have "alloc" without "engine", assume Geth format
-            if (root.TryGetProperty("alloc", out _))
-            {
-                return GenesisFormat.Geth;
-            }
-
-            return GenesisFormat.Unknown;
         }
-        catch
+        catch (Exception e)
         {
-            return GenesisFormat.Unknown;
+            if (_logger.IsError) _logger.Error("Error parsing specification", e);
         }
+
+        if (result is GenesisFormat.Unknown)
+        {
+            if (_logger.IsWarn) _logger.Warn("Failed to parse genesis file for format detection, assuming Parity-like style.");
+        }
+
+        return result;
     }
 
     private enum GenesisFormat

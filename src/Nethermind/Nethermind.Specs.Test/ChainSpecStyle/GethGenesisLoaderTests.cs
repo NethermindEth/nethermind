@@ -22,7 +22,7 @@ public class GethGenesisLoaderTests
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }

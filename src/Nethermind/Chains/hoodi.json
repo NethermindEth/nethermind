@@ -41,7 +41,7 @@
     }
   },
   "nonce": "0x1234",
-  "timestamp": "0x67d80ec0",
+  "timestamp": 1742212800,
   "extraData": "0x",
   "gasLimit": "0x2255100",
   "difficulty": "0x01",
