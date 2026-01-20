@@ -58,6 +58,14 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec, out ICodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
     {
         delegatedAddress = null;
+
+        // Check precompile overrides first (same order as GetCachedCodeInfo)
+        if (_precompileOverrides.TryGetValue(address, out var precompile))
+        {
+            codeInfo = precompile.codeInfo;
+            return false; // Precompiles don't have delegation
+        }
+
         if (_codeOverrides.TryGetValue(address, out var result))
         {
             codeInfo = result.codeInfo;
