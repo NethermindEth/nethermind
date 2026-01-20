@@ -237,7 +237,7 @@ namespace Nethermind.Evm.TransactionProcessing
             GasConsumed spentGas;
 
             // Fast path: simple ETH transfer (not create, empty code)
-            // Skip InvokeEvm's prologue entirely
+            // Skip InvokeEvm prologue entirely
             if (!tx.IsContractCreation && env.CodeInfo?.IsEmpty == true)
             {
                 statusCode = ExecuteSimpleTransfer<TLogTracing>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
@@ -706,9 +706,12 @@ namespace Nethermind.Evm.TransactionProcessing
             out GasConsumed spentGas)
             where TLogTracing : struct, IFlag
         {
-            // Transfer: subtract from sender (via virtual PayValue), add to recipient
-            PayValue(tx, spec, opts);
-            WorldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            // Transfer: subtract from sender, add to recipient (skip if self-transfer)
+            if (tx.SenderAddress != env.ExecutingAccount)
+            {
+                PayValue(tx, spec, opts);
+                WorldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            }
 
             // Maintain action tracing if enabled
             if (tracer.IsTracingActions)
@@ -727,7 +730,7 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Refund<TLogTracing>(tx, header, spec, opts, in substate, gasAvailable,
                 VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
 
-            // Update header gas used (same as InvokeEvm's Complete: label)
+            // Update header gas used (same as InvokeEvm Complete: label)
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 header.GasUsed += spentGas.SpentGas;
 
