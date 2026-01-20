@@ -102,6 +102,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected VmState<TGasPolicy> _currentState;
+    private VmState<TGasPolicy> _stateToDispose; // Pending dispose - cleared by outer exception handler
     protected ReadOnlyMemory<byte> _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
 
@@ -198,8 +199,55 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return substate;
     }
 
+    /// <summary>
+    /// Outer wrapper that handles exception recovery. Keeps try/catch out of the hot loop
+    /// so the JIT can fully optimize <see cref="ProcessCallFramesCore{TTracingInst,TTracingActions,TCancellable}"/>.
+    /// </summary>
     [SkipLocalsInit]
     private void ProcessCallFrames<TTracingInst, TTracingActions, TCancellable>(
+        IReleaseSpec spec,
+        out TransactionSubstate substate)
+        where TTracingInst : struct, IFlag
+        where TTracingActions : struct, IFlag
+        where TCancellable : struct, IFlag
+    {
+        while (true)
+        {
+            try
+            {
+                // Inner loop runs without exception handling - JIT can optimize aggressively
+                ProcessCallFramesCore<TTracingInst, TTracingActions, TCancellable>(spec, out substate);
+                return;
+            }
+            catch (EvmException) { }
+            catch (OverflowException) { }
+            finally
+            {
+                // Dispose any state that was pending when exception occurred
+                _stateToDispose?.Dispose();
+                _stateToDispose = null;
+            }
+
+            // Recovery path - only reached after catching an exception
+            VmState<TGasPolicy> current = _currentState;
+            if (current.IsTopLevel)
+            {
+                substate = HandleTopLevelFailure<TTracingInst>(current);
+                return;
+            }
+
+            HandleFailure<TTracingInst, TTracingActions>(current);
+            // Loop back to re-enter ProcessCallFramesCore (previousCallOutput resets to default in inner loop)
+        }
+    }
+
+    /// <summary>
+    /// Hot loop for processing call frames. No exception handling here - exceptions propagate
+    /// to <see cref="ProcessCallFrames{TTracingInst,TTracingActions,TCancellable}"/> for recovery.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ProcessCallFramesCore<TTracingInst, TTracingActions, TCancellable>(
         IReleaseSpec spec,
         out TransactionSubstate substate)
         where TTracingInst : struct, IFlag
@@ -209,143 +257,120 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ZeroPaddedSpan previousCallOutput = default;
         while (true)
         {
-            try
+            VmState<TGasPolicy> currentState = _currentState;
+            bool isContinuation = currentState.IsContinuation;
+            if (!isContinuation)
             {
-                VmState<TGasPolicy> currentState = _currentState;
-                bool isContinuation = currentState.IsContinuation;
-                if (!isContinuation)
+                ReturnDataBuffer = Array.Empty<byte>();
+            }
+
+            CallResult callResult;
+            // Cache CodeInfo to avoid repeated null-conditional access
+            ICodeInfo? codeInfo = currentState.Env.CodeInfo;
+            if (codeInfo is null)
+            {
+                // null code (invalid)
+                InvalidCodeException(out callResult);
+                if (!callResult.IsReturn)
                 {
-                    ReturnDataBuffer = Array.Empty<byte>();
+                    PrepareNextCallFrame(currentState, in callResult);
+                    goto ClearOutput;
+                }
+            }
+            else if (codeInfo.IsPrecompile)
+            {
+                // precompile execution
+                callResult = ExecutePrecompile<TTracingActions>(currentState, out Exception? precompileFailure, out string? substateError);
+                if (precompileFailure is not null)
+                {
+                    if (currentState.IsTopLevel)
+                    {
+                        substate = HandleTopLevelPrecompileFailure<TTracingInst, TTracingActions>(currentState, precompileFailure, substateError);
+                        return;
+                    }
+                    HandlePrecompileFailure<TTracingInst, TTracingActions>(currentState, precompileFailure);
+                    goto ClearOutput;
+                }
+            }
+            else
+            {
+                // Hot path: regular code execution (non-precompile)
+                if (TTracingActions.IsActive && !isContinuation)
+                {
+                    TraceTransactionActionStart(currentState);
                 }
 
-                CallResult callResult;
-                // Cache CodeInfo to avoid repeated null-conditional access
-                ICodeInfo? codeInfo = currentState.Env.CodeInfo;
-                if (codeInfo is null)
+                ExecuteCallFrame<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
+
+                if (!callResult.IsReturn)
                 {
-                    // null code (invalid)
-                    InvalidCodeException(out callResult);
-                    if (!callResult.IsReturn)
-                    {
-                        PrepareNextCallFrame(currentState, in callResult);
-                        goto ClearOutput;
-                    }
+                    PrepareNextCallFrame(currentState, in callResult);
+                    goto ClearOutput;
                 }
-                else if (codeInfo.IsPrecompile)
+            }
+
+            // Single top-level check for all terminal outcomes
+            if (currentState.IsTopLevel)
+            {
+                if (callResult.IsException)
                 {
-                    // precompile execution
-                    callResult = ExecutePrecompile<TTracingActions>(currentState, out Exception? precompileFailure, out string? substateError);
-                    if (precompileFailure is not null)
+                    substate = HandleTopLevelException<TTracingActions>(currentState, in callResult);
+                    return;
+                }
+                substate = PrepareTopLevelSubstate<TTracingActions>(currentState, in callResult);
+                return;
+            }
+
+            if (callResult.IsException)
+            {
+                HandleException<TTracingActions>(currentState, in callResult);
+                goto ClearOutput;
+            }
+
+            VmState<TGasPolicy> previousState = currentState;
+            // Mark for disposal - outer method will dispose if exception occurs
+            _stateToDispose = previousState;
+
+            VmState<TGasPolicy> current = _currentState = _stateStack.Pop();
+            current.IsContinuation = true;
+
+            TGasPolicy.Refund(ref current.Gas, in previousState.Gas);
+
+            if (!callResult.ShouldRevert)
+            {
+                ExecutionType executionType = previousState.ExecutionType;
+                // Inline bit check for IsAnyCreate - calls are more common than creates
+                if ((executionType & ExecutionType.IsCreate) != 0)
+                {
+                    long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
+                    bool previousStateSucceeded = ExecuteCreate<TTracingActions>(
+                        in callResult,
+                        previousState,
+                        gasAvailableForCodeDeposit,
+                        executionType);
+                    if (previousStateSucceeded)
                     {
-                        if (currentState.IsTopLevel)
-                        {
-                            substate = HandleTopLevelPrecompileFailure<TTracingInst, TTracingActions>(currentState, precompileFailure, substateError);
-                            return;
-                        }
-                        HandlePrecompileFailure<TTracingInst, TTracingActions>(currentState, precompileFailure);
-                        goto ClearOutput;
+                        previousState.CommitToParent(current);
                     }
+                    previousState.Dispose();
+                    _stateToDispose = null;
+                    goto ClearOutput;
                 }
                 else
                 {
-                    // Hot path: regular code execution (non-precompile)
-                    if (TTracingActions.IsActive && !isContinuation)
-                    {
-                        TraceTransactionActionStart(currentState);
-                    }
-
-                    ExecuteCallFrame<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
-
-                    if (!callResult.IsReturn)
-                    {
-                        PrepareNextCallFrame(currentState, in callResult);
-                        goto ClearOutput;
-                    }
-                }
-
-                // Single top-level check for all terminal outcomes
-                if (currentState.IsTopLevel)
-                {
-                    if (callResult.IsException)
-                    {
-                        substate = HandleTopLevelException<TTracingActions>(currentState, in callResult);
-                        return;
-                    }
-                    substate = PrepareTopLevelSubstate<TTracingActions>(currentState, in callResult);
-                    return;
-                }
-
-                if (callResult.IsException)
-                {
-                    HandleException<TTracingActions>(currentState, in callResult);
-                    goto ClearOutput;
-                }
-
-                VmState<TGasPolicy> previous = currentState;
-                try
-                {
-                    VmState<TGasPolicy> previousState = previous;
-                    VmState<TGasPolicy> current = _currentState = _stateStack.Pop();
-                    current.IsContinuation = true;
-
-                    TGasPolicy.Refund(ref current.Gas, in previousState.Gas);
-
-                    if (!callResult.ShouldRevert)
-                    {
-                        ExecutionType executionType = previousState.ExecutionType;
-                        // Inline bit check for IsAnyCreate - calls are more common than creates
-                        if ((executionType & ExecutionType.IsCreate) != 0)
-                        {
-                            long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
-                            bool previousStateSucceeded = ExecuteCreate<TTracingActions>(
-                                in callResult,
-                                previousState,
-                                gasAvailableForCodeDeposit,
-                                executionType);
-                            if (previousStateSucceeded)
-                            {
-                                previousState.CommitToParent(current);
-                            }
-                            goto ClearOutput;
-                        }
-                        else
-                        {
-                            previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(in callResult, previousState);
-                            previousState.CommitToParent(current);
-                        }
-                    }
-                    else
-                    {
-                        previousCallOutput = HandleRevert<TTracingActions>(previousState, in callResult);
-                    }
-                }
-                finally
-                {
-                    previous.Dispose();
+                    previousCallOutput = HandleRegularReturn<TTracingInst, TTracingActions>(in callResult, previousState);
+                    previousState.CommitToParent(current);
                 }
             }
-            catch (EvmException)
+            else
             {
-                goto RecoverableFailure;
-            }
-            catch (OverflowException)
-            {
-                goto RecoverableFailure;
+                previousCallOutput = HandleRevert<TTracingActions>(previousState, in callResult);
             }
 
+            _stateToDispose = null;
+            previousState.Dispose();
             continue;
 
-        RecoverableFailure:
-            {
-                VmState<TGasPolicy> current = _currentState;
-                if (current.IsTopLevel)
-                {
-                    substate = HandleTopLevelFailure<TTracingInst>(current);
-                    return;
-                }
-
-                HandleFailure<TTracingInst, TTracingActions>(current);
-            }
         ClearOutput:
             previousCallOutput = default;
         }
