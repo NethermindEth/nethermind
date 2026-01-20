@@ -10,6 +10,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -28,7 +29,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) GetSpecProvider()
             {
-                ChainSpecLoader loader = new(new EthereumJsonSerializer());
+                ChainSpecLoader loader = new(new EthereumJsonSerializer(), NullLogManager.Instance);
                 string name = string.IsNullOrEmpty(testSuffix) ? $"{typeof(TTestClass).FullName}.json" : $"{typeof(TTestClass).FullName}.{testSuffix}.json";
                 using Stream? stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
                 ChainSpec chainSpec = loader.Load(stream);

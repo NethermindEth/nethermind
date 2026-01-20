@@ -66,26 +66,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
-                // Was in `UpdateDiscoveryConfig` step.
-                if (discoveryConfig.Bootnodes != string.Empty)
-                {
-                    if (!string.IsNullOrWhiteSpace(chainSpec.Bootnodes))
-                    {
-                        discoveryConfig.Bootnodes += "," + chainSpec.Bootnodes;
-                    }
-                }
-                else if (chainSpec.Bootnodes is not null)
-                {
-                    discoveryConfig.Bootnodes = chainSpec.Bootnodes;
-                }
-
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
                 }
 
-                networkConfig.Bootnodes = string.IsNullOrWhiteSpace(networkConfig.Bootnodes) ? discoveryConfig.Bootnodes : string.Join(",", networkConfig.Bootnodes, discoveryConfig.Bootnodes);
+                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
 
                 return networkConfig;
             })

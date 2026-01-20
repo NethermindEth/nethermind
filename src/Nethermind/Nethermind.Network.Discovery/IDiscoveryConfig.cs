@@ -83,7 +83,7 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Boot nodes connection details
     /// </summary>
-    string Bootnodes { get; set; }
+    NetworkNode[] Bootnodes { get; set; }
 
     /// <summary>
     /// Timeout for closing UDP channel in milliseconds

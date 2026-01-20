@@ -4,7 +4,6 @@
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Text.RegularExpressions;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
@@ -14,6 +13,7 @@ using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Wallet;
+using System.Linq;
 
 namespace Nethermind.Init.Steps
 {
@@ -68,13 +68,7 @@ namespace Nethermind.Init.Steps
 
             get.LogManager.SetGlobalVariable("enode", enode.ToString());
 
-            if (!string.IsNullOrWhiteSpace(networkConfig.Bootnodes))
-            {
-                // TODO: Rework this check when adding ENR support in NetworkNodes
-                string publicKeyHex = nodeKey.PublicKey.ToString();
-                string pattern = $",[^,]*{publicKeyHex}[^,]*|[^,]*{publicKeyHex}[^,]*,|^[^,]*{publicKeyHex}[^,]*$";
-                networkConfig.Bootnodes = Regex.Replace(networkConfig.Bootnodes, pattern, string.Empty);
-            }
+            networkConfig.Bootnodes = [.. networkConfig.Bootnodes.Where(bn => bn.NodeId != nodeKey.PublicKey)];
 
             return Task.CompletedTask;
         }

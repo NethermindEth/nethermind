@@ -71,8 +71,6 @@ public sealed class DiscoveryV5App : IDiscoveryApp
             SessionKeys = new SessionKeys(privateKey.KeyBytes),
         };
 
-        string[] bootstrapNodes = [.. (networkConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
-
         IServiceCollection services = new ServiceCollection()
            .AddSingleton<ILoggerFactory, NullLoggerFactory>()
            .AddSingleton(_sessionOptions.Verifier)
@@ -81,8 +79,8 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _enrFactory = new EnrFactory(new EnrEntryRegistry());
 
         ENR[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(e => Enode.IsEnode(e, out _)).Select(e => ToEnr(new Enode(e))),
-            .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(ToEnr),
+            .. networkConfig.Bootnodes.Where(bn => bn.IsEnr).Select(bn => bn.Enode).Select(ToEnr),
+            .. networkConfig.Bootnodes.Where(bn => bn.IsEnr).Select(bn => bn.Enr).Distinct(),
             .. (discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : []),
             .. LoadStoredEnrs(),
             ];

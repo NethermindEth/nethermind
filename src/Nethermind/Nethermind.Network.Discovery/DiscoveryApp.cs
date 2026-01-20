@@ -267,7 +267,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
     {
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_networkConfig.Bootnodes, _logger);
+        NetworkNode[] bootnodes = _networkConfig.Bootnodes;
 
         if (bootnodes.Length == 0)
         {
@@ -279,6 +279,13 @@ public class DiscoveryApp : IDiscoveryApp
         for (int i = 0; i < bootnodes.Length; i++)
         {
             NetworkNode bootnode = bootnodes[i];
+
+            if (!bootnode.IsEnode)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Ingoreing ENR in discvery V4: {bootnode}");
+                continue;
+            }
+
             if (bootnode.NodeId is null)
             {
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");

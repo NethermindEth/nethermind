@@ -43,7 +43,7 @@ public class DiscoveryV5AppTests
         _identityVerifier = new IdentityVerifierV4();
         NetworkConfig networkConfig = new()
         {
-            Bootnodes = "",
+            Bootnodes = [],
             ExternalIp = IPAddress.Loopback.ToString()
         };
         _discoveryV5App = new DiscoveryV5App(
