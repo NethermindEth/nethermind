@@ -111,7 +111,7 @@ runs:
       id: wait-workflow
       env:
         GITHUB_TOKEN: ${{ inputs.gh-token }}
-        WORKFLOW_ID: "create-custom-node.yml"
+        WORKFLOW_ID: "run-custom-node.yml"
         MAX_WAIT_MINUTES: "5"
         INTERVAL: "5"
         TIMEOUT: "20"
