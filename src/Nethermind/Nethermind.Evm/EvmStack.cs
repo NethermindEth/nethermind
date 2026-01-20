@@ -312,101 +312,1325 @@ public ref partial struct EvmStack
         _tracer.ReportStackPush(padded);
     }
 
-    [GenerateStackPushBytes(1, PadDirection.Left)]
-    public partial EvmExceptionType PushByte<TTracingInst>(byte value) where TTracingInst : struct, IFlag;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push10Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 10);
+        }
 
-    [GenerateStackPushBytes(2, PadDirection.Left)]
-    public partial EvmExceptionType Push2Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
 
-    [GenerateStackPushBytes(3, PadDirection.Left)]
-    public partial EvmExceptionType Push3Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        Head = (int)newOffset;
 
-    [GenerateStackPushBytes(4, PadDirection.Left)]
-    public partial EvmExceptionType Push4Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
 
-    [GenerateStackPushBytes(5, PadDirection.Left)]
-    public partial EvmExceptionType Push5Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            head128 = default;
 
-    [GenerateStackPushBytes(6, PadDirection.Left)]
-    public partial EvmExceptionType Push6Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2))
+            );
+        }
 
-    [GenerateStackPushBytes(7, PadDirection.Left)]
-    public partial EvmExceptionType Push7Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        return EvmExceptionType.None;
+    }
 
-    [GenerateStackPushBytes(8, PadDirection.Left)]
-    public partial EvmExceptionType Push8Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push11Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 11);
+        }
 
-    [GenerateStackPushBytes(9, PadDirection.Left)]
-    public partial EvmExceptionType Push9Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
 
-    [GenerateStackPushBytes(10, PadDirection.Left)]
-    public partial EvmExceptionType Push10Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        Head = (int)newOffset;
 
-    [GenerateStackPushBytes(11, PadDirection.Left)]
-    public partial EvmExceptionType Push11Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
 
-    [GenerateStackPushBytes(12, PadDirection.Left)]
-    public partial EvmExceptionType Push12Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            head128 = default;
 
-    [GenerateStackPushBytes(13, PadDirection.Left)]
-    public partial EvmExceptionType Push13Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3))
+            );
+        }
 
-    [GenerateStackPushBytes(14, PadDirection.Left)]
-    public partial EvmExceptionType Push14Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        return EvmExceptionType.None;
+    }
 
-    [GenerateStackPushBytes(15, PadDirection.Left)]
-    public partial EvmExceptionType Push15Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push12Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 12);
+        }
 
-    [GenerateStackPushBytes(16, PadDirection.Left)]
-    public partial EvmExceptionType Push16Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
 
-    [GenerateStackPushBytes(17, PadDirection.Left)]
-    public partial EvmExceptionType Push17Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        Head = (int)newOffset;
 
-    [GenerateStackPushBytes(18, PadDirection.Left)]
-    public partial EvmExceptionType Push18Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
 
-    [GenerateStackPushBytes(19, PadDirection.Left)]
-    public partial EvmExceptionType Push19Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            head128 = default;
 
-    [GenerateStackPushBytes(20, PadDirection.Left)]
-    public partial EvmExceptionType Push20Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4))
+            );
+        }
 
-    [GenerateStackPushBytes(21, PadDirection.Left)]
-    public partial EvmExceptionType Push21Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        return EvmExceptionType.None;
+    }
 
-    [GenerateStackPushBytes(22, PadDirection.Left)]
-    public partial EvmExceptionType Push22Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push13Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 13);
+        }
 
-    [GenerateStackPushBytes(23, PadDirection.Left)]
-    public partial EvmExceptionType Push23Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
 
-    [GenerateStackPushBytes(24, PadDirection.Left)]
-    public partial EvmExceptionType Push24Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        Head = (int)newOffset;
 
-    [GenerateStackPushBytes(25, PadDirection.Left)]
-    public partial EvmExceptionType Push25Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
 
-    [GenerateStackPushBytes(26, PadDirection.Left)]
-    public partial EvmExceptionType Push26Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            head128 = default;
 
-    [GenerateStackPushBytes(27, PadDirection.Left)]
-    public partial EvmExceptionType Push27Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5))
+            );
+        }
 
-    [GenerateStackPushBytes(28, PadDirection.Left)]
-    public partial EvmExceptionType Push28Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        return EvmExceptionType.None;
+    }
 
-    [GenerateStackPushBytes(29, PadDirection.Left)]
-    public partial EvmExceptionType Push29Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push14Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 14);
+        }
 
-    [GenerateStackPushBytes(30, PadDirection.Left)]
-    public partial EvmExceptionType Push30Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
 
-    [GenerateStackPushBytes(31, PadDirection.Left)]
-    public partial EvmExceptionType Push31Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        Head = (int)newOffset;
 
-    [GenerateStackPushBytes(32, PadDirection.Left)]
-    public partial EvmExceptionType Push32Bytes<TTracingInst>(ref byte value) where TTracingInst : struct, IFlag;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = default;
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push15Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 15);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = default;
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push16Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 16);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        HalfWord src = Unsafe.ReadUnaligned<HalfWord>(ref value);
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(default, src);
+        }
+        else
+        {
+            ref HalfWord head128 = ref Unsafe.As<Word, HalfWord>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = src;
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push17Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 17);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                ((ulong)Unsafe.Add(ref value, 0)) << 56,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                ((ulong)Unsafe.Add(ref value, 0)) << 56
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push18Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 18);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push19Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 19);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56)
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push20Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 20);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push21Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 21);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56)
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push22Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 22);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48)
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push23Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 23);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56)
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push24Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 24);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                Unsafe.ReadUnaligned<ulong>(ref value),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                0UL,
+                Unsafe.ReadUnaligned<ulong>(ref value)
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push25Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 25);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                ((ulong)Unsafe.Add(ref value, 0)) << 56,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 17))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                ((ulong)Unsafe.Add(ref value, 0)) << 56,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 17))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push26Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 26);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 18))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 18))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push27Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 27);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 19))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 19))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push28Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 28);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 20))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 20))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push29Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 29);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 21))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 21))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push2Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 2);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push30Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 30);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 22))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 22))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push31Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 31);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 23))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = Vector128.Create(
+                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7))
+            );
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15)),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 23))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push32Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 32);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        head = Unsafe.ReadUnaligned<Word>(ref value);
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push3Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 3);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push4Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 4);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push5Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 5);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push6Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 6);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push7Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 7);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push8Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 8);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = Unsafe.ReadUnaligned<ulong>(ref value);
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType Push9Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.TraceBytes(in value, 9);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = Vector256.Create(
+                0UL,
+                0UL,
+                ((ulong)Unsafe.Add(ref value, 0)) << 56,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1))
+            ).AsByte();
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+
+            head128 = default;
+
+            Unsafe.Add(ref head128, 1) = Vector128.Create(
+                ((ulong)Unsafe.Add(ref value, 0)) << 56,
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1))
+            );
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType PushByte<TTracingInst>(byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+        {
+            _tracer.ReportStackPush(value);
+        }
+
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 1;
+        ref Word head = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize)));
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ulong lane3 = (ulong)value << 56;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            head = CreateWordFromUInt64(lane3);
+        }
+        else
+        {
+            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
+            head128 = default;
+            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
+        }
+
+        return EvmExceptionType.None;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushAddress<TTracingInst>(Address address)
@@ -562,7 +1786,7 @@ public ref partial struct EvmStack
         }
         else
         {
-            ref Vector128<uint> head128 = ref Unsafe.As<Vector256<byte>, Vector128<uint>>(ref head);
+            ref Vector128<uint> head128 = ref Unsafe.As<Word, Vector128<uint>>(ref head);
             head128 = default;
             Unsafe.Add(ref head128, 1) = default;
         }
@@ -1271,7 +2495,7 @@ public ref partial struct EvmStack
         if (Avx2.IsSupported)
         {
             // Load bytes 0-23, check all zero
-            HalfWord lower = Unsafe.As<byte, Vector128<byte>>(ref slot);
+            HalfWord lower = Unsafe.As<byte, HalfWord>(ref slot);
             ulong upper = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref slot, 16));
 
             if (!lower.Equals(default) | upper != 0)
