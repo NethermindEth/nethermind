@@ -14,28 +14,10 @@ namespace Ethereum.Test.Base;
 /// </summary>
 public static class TestChunkFilter
 {
-    private static (int Index, int Total)? GetChunkConfig()
-    {
-        string? chunkEnv = Environment.GetEnvironmentVariable("TEST_CHUNK");
-        if (string.IsNullOrEmpty(chunkEnv))
-            return null;
-
-        string[] parts = chunkEnv.Split("of", StringSplitOptions.None);
-
-        if (parts.Length != 2 ||
-            !int.TryParse(parts[0], out int index) ||
-            !int.TryParse(parts[1], out int total) ||
-            index < 1 || index > total || total < 1)
-        {
-            throw new ArgumentException($"Invalid TEST_CHUNK format: '{chunkEnv}'. Expected format: '1of3', '2of5', etc.");
-        }
-
-        return (index, total);
-    }
-
     public static IEnumerable<T> FilterByChunk<T>(IEnumerable<T> tests)
     {
         (int Index, int Total)? chunkConfig = GetChunkConfig();
+
         if (chunkConfig is null)
         {
             return tests;
@@ -48,9 +30,31 @@ public static class TestChunkFilter
         int chunkSize = count / totalChunks;
         int remainder = count % totalChunks;
 
-        int start = (chunkIndex - 1) * chunkSize + Math.Min(chunkIndex - 1, remainder);
-        int end = start + chunkSize + (chunkIndex <= remainder ? 1 : 0);
+        int skip = (chunkIndex - 1) * chunkSize;
+        int take = chunkSize + (chunkIndex == totalChunks ? remainder : 0);
 
-        return testList.Skip(start).Take(end - start);
+        return testList.Skip(skip).Take(take);
+
+        static (int Index, int Total)? GetChunkConfig()
+        {
+            string? chunkEnv = Environment.GetEnvironmentVariable("TEST_CHUNK");
+
+            if (string.IsNullOrEmpty(chunkEnv))
+            {
+                return null;
+            }
+
+            string[] parts = chunkEnv.Split("of", StringSplitOptions.None);
+
+            if (parts.Length != 2 ||
+                !int.TryParse(parts[0], out int index) ||
+                !int.TryParse(parts[1], out int total) ||
+                index < 1 || index > total || total < 1)
+            {
+                throw new ArgumentException($"Invalid TEST_CHUNK format: '{chunkEnv}'. Expected format: '1of3', '2of5', etc.");
+            }
+
+            return (index, total);
+        }
     }
 }
