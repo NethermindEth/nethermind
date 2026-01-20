@@ -212,14 +212,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             try
             {
                 VmState<TGasPolicy> currentState = _currentState;
-                if (!currentState.IsContinuation)
+                bool isContinuation = currentState.IsContinuation;
+                if (!isContinuation)
                 {
                     ReturnDataBuffer = Array.Empty<byte>();
                 }
 
                 CallResult callResult;
-                if (currentState.IsPrecompile)
+                // Cache CodeInfo to avoid repeated null-conditional access
+                ICodeInfo? codeInfo = currentState.Env.CodeInfo;
+                if (codeInfo is null)
                 {
+                    // null code (invalid)
+                    InvalidCodeException(out callResult);
+                    if (!callResult.IsReturn)
+                    {
+                        PrepareNextCallFrame(currentState, in callResult);
+                        goto ClearOutput;
+                    }
+                }
+                else if (codeInfo.IsPrecompile)
+                {
+                    // precompile execution
                     callResult = ExecutePrecompile<TTracingActions>(currentState, out Exception? precompileFailure, out string? substateError);
                     if (precompileFailure is not null)
                     {
@@ -234,19 +248,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
                 else
                 {
-                    if (TTracingActions.IsActive && !currentState.IsContinuation)
+                    // Hot path: regular code execution (non-precompile)
+                    if (TTracingActions.IsActive && !isContinuation)
                     {
                         TraceTransactionActionStart(currentState);
                     }
 
-                    if (currentState.Env.CodeInfo is not null)
-                    {
-                        ExecuteCallFrame<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
-                    }
-                    else
-                    {
-                        InvalidCodeException(out callResult);
-                    }
+                    ExecuteCallFrame<TTracingInst, TCancellable>(spec, in previousCallOutput, out callResult);
 
                     if (!callResult.IsReturn)
                     {
@@ -284,9 +292,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                     if (!callResult.ShouldRevert)
                     {
-
                         ExecutionType executionType = previousState.ExecutionType;
-                        if (executionType.IsAnyCreate())
+                        // Inline bit check for IsAnyCreate - calls are more common than creates
+                        if ((executionType & ExecutionType.IsCreate) != 0)
                         {
                             long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
                             bool previousStateSucceeded = ExecuteCreate<TTracingActions>(
@@ -383,16 +391,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReadOnlyMemory<byte> returnDataBuffer = callResult.OutputBytes;
         ReturnDataBuffer = returnDataBuffer;
         ReadOnlySpan<byte> returnSpan = returnDataBuffer.Span;
-        _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
-            callResult.PrecompileSuccess.HasValue
-            ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
-            : StatusCode.SuccessBytes;
+
+        // Determine status code - EOF uses different codes than legacy
+        bool isEof = previousState.ExecutionType.IsAnyCallEof();
+        bool? precompileSuccess = callResult.PrecompileSuccess;
+        // For EOF: always success. For legacy: success unless precompile explicitly failed
+        _previousCallResult = isEof
+            ? EofStatusCode.SuccessBytes
+            : (precompileSuccess.GetValueOrDefault(true) ? StatusCode.SuccessBytes : StatusCode.FailureBytes);
+
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+
+        // Compute output length once - branchless min via conditional move
+        int spanLen = returnSpan.Length;
+        int outputLen = (int)previousState.OutputLength;
+        int sliceLength = spanLen < outputLen ? spanLen : outputLen;
+
+        // Compute the result span once and reuse for tracing if needed
+        ZeroPaddedSpan result = returnSpan.SliceWithZeroPadding(UInt256.Zero, sliceLength);
+
         if (TTracingInst.IsActive && previousState.IsPrecompile)
         {
             // parity induced if else for vmtrace
-            ZeroPaddedSpan previousCallOutput = returnSpan.SliceWithZeroPadding(0, Math.Min(returnSpan.Length, (int)previousState.OutputLength));
-            _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
+            _txTracer.ReportMemoryChange(_previousCallOutputDestination, result);
         }
 
         if (TTracingActions.IsActive)
@@ -400,7 +421,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
 
-        return returnSpan.SliceWithZeroPadding(0, Math.Min(returnSpan.Length, (int)previousState.OutputLength));
+        return result;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -633,12 +654,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ReturnDataBuffer = outputBytes;
 
         // Determine the appropriate failure status code.
-        // For calls with EOF semantics, differentiate between precompile failure and regular revert.
-        // Otherwise, use the standard failure status code.
-        _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
-            ? (callResult.PrecompileSuccess is not null
-                ? EofStatusCode.FailureBytes
-                : EofStatusCode.RevertBytes)
+        // For EOF: distinguish precompile failure (has value) from revert (null). Legacy always uses FailureBytes.
+        bool isEof = previousState.ExecutionType.IsAnyCallEof();
+        bool isPrecompileFailure = callResult.PrecompileSuccess is not null;
+        _previousCallResult = isEof
+            ? (isPrecompileFailure ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
             : StatusCode.FailureBytes;
 
         // Record the output destination address for subsequent operations.
@@ -650,9 +670,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
         }
 
+        // Compute output length once - branchless min via conditional move
+        int spanLen = outputBytes.Length;
+        int outputLen = (int)previousState.OutputLength;
+        int sliceLength = spanLen < outputLen ? spanLen : outputLen;
+
         // Slice the output bytes, zero-padding if necessary, to match the expected output length.
-        // This ensures that the returned data conforms to the caller's output length expectations.
-        return outputBytes.Span.SliceWithZeroPadding(0, Math.Min(outputBytes.Length, (int)previousState.OutputLength));
+        return outputBytes.Span.SliceWithZeroPadding(UInt256.Zero, sliceLength);
     }
 
     /// <summary>
@@ -1465,10 +1489,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         DataReturn:
             // Materialize the return based on what the engine stored into ReturnData.
-            // - null: no return data
-            // - byte[]: raw return buffer (RETURN/REVERT)
-            // - VmState: continuation/resume state
-            // - other: EOF return type (see ReturnEof)
+            // Ordered by fastest check: null (STOP), then frequency: byte[] (RETURN/REVERT with data) > VmState (nested calls) > EOF (rare)
             return ReturnData switch
             {
                 null => CallResult.Empty(version),
@@ -1598,6 +1619,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return exception;
 
     OutOfGas:
+        OpCodeCount += opCodeCount;
         return EvmExceptionType.OutOfGas;
 
         [DoesNotReturn]
