@@ -1,4 +1,4 @@
-name: Gas
+name: Execute Gas benchmarks
 
 on:
   workflow_dispatch:
@@ -22,8 +22,8 @@ jobs:
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Setup self-hosted runner
@@ -62,8 +62,8 @@ jobs:
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Remove self-hosted runner
