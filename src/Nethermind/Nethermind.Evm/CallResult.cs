@@ -41,49 +41,41 @@ public partial class VirtualMachine<TGasPolicy>
         {
             StateToExecute = stateToExecute;
             DeployCode = null;
-            OutputBytes = Array.Empty<byte>();
             _resultType = CallResultType.EvmCall;
             ShouldRevert = false;
             ExceptionType = EvmExceptionType.None;
         }
 
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        /// <summary>
+        /// Constructor for regular EVM call returns where output is stored in ReturnDataBuffer externally.
+        /// </summary>
+        public CallResult(ICodeInfo? container, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
-            DeployCode = null;
-            OutputBytes = output;
-            _resultType = precompileSuccess switch
-            {
-                null => CallResultType.EvmCall,
-                true => CallResultType.PrecompileSuccess,
-                false => CallResultType.PrecompileFailure
-            };
+            DeployCode = container;
+            _resultType = CallResultType.EvmCall;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
             _fromVersion = (byte)fromVersion;
         }
 
-        public CallResult(ICodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        /// <summary>
+        /// Constructor for precompile results where output is stored in ReturnDataBuffer externally.
+        /// </summary>
+        public CallResult(bool precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
-            DeployCode = container;
-            OutputBytes = output;
-            _resultType = precompileSuccess switch
-            {
-                null => CallResultType.EvmCall,
-                true => CallResultType.PrecompileSuccess,
-                false => CallResultType.PrecompileFailure
-            };
+            DeployCode = null;
+            _resultType = precompileSuccess ? CallResultType.PrecompileSuccess : CallResultType.PrecompileFailure;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
-            _fromVersion = (byte)fromVersion;
+            _fromVersion = 0;
         }
 
         private CallResult(EvmExceptionType exceptionType)
         {
             StateToExecute = null;
             DeployCode = null;
-            OutputBytes = StatusCode.FailureBytes;
             _resultType = CallResultType.EvmCall;
             ShouldRevert = false;
             ExceptionType = exceptionType;
@@ -93,7 +85,6 @@ public partial class VirtualMachine<TGasPolicy>
 
         public VmState<TGasPolicy>? StateToExecute { get; }
         public ICodeInfo? DeployCode { get; }
-        public readonly ReadOnlyMemory<byte> OutputBytes;
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess => _resultType switch
