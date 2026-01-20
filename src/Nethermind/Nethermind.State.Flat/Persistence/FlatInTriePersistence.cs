@@ -1,40 +1,21 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IPersistenceWithConcurrentTrie
+/// <summary>
+/// Persistence implementation that stores flat state data in the trie node columns (StateNodes/StorageNodes)
+/// instead of separate Account/Storage columns.
+/// </summary>
+public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IPersistenceWithConcurrentTrie
 {
-    private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
-
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
-    {
-        byte[]? bytes = kv.Get(CurrentStateKey);
-        if (bytes is null || bytes.Length == 0)
-        {
-            return new StateId(-1, Keccak.EmptyTreeHash);
-        }
-
-        long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
-        Hash256 stateHash = new Hash256(bytes[8..]);
-        return new StateId(blockNumber, stateHash);
-    }
-
-    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, StateId stateId)
-    {
-        Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
-        stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
-
-        kv.PutSpan(CurrentStateKey, bytes);
-    }
-
     public IPersistence.IPersistenceReader CreateReader()
     {
         var snapshot = db.CreateSnapshot();
@@ -47,13 +28,13 @@ public class RocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IP
                 snapshot.GetColumn(FlatDbColumns.FallbackNodes)
             );
 
-            var currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+            var currentState = RocksdbPersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
 
             return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
                 new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
                     new BaseFlatPersistence.Reader(
-                        snapshot.GetColumn(FlatDbColumns.Account),
-                        snapshot.GetColumn(FlatDbColumns.Storage)
+                        snapshot.GetColumn(FlatDbColumns.StateNodes),
+                        snapshot.GetColumn(FlatDbColumns.StorageNodes)
                     )
                 ),
                 trieReader,
@@ -74,7 +55,7 @@ public class RocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IP
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         var dbSnap = db.CreateSnapshot();
-        var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
+        var currentState = RocksdbPersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (currentState != from)
         {
             dbSnap.Dispose();
@@ -96,16 +77,16 @@ public class RocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IP
         return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
                 new BaseFlatPersistence.WriteBatch(
-                    (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
-                    batch.GetColumnBatch(FlatDbColumns.Account),
-                    batch.GetColumnBatch(FlatDbColumns.Storage),
+                    (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
+                    batch.GetColumnBatch(FlatDbColumns.StateNodes),
+                    batch.GetColumnBatch(FlatDbColumns.StorageNodes),
                     flags
                 )
             ),
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
+                RocksdbPersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
                 batch.Dispose();
                 dbSnap.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))

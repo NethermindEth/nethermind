@@ -44,21 +44,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
             .AddSingleton<IPersistence, IFlatDbConfig, IComponentContext>((flatDbConfig, ctx) =>
             {
-                IPersistence persistence;
-                if (flatDbConfig.Layout == FlatLayout.Flat
-                    || flatDbConfig.Layout == FlatLayout.FlatInTrie
-                   )
+                IPersistence persistence = flatDbConfig.Layout switch
                 {
-                    persistence = ctx.Resolve<RocksdbPersistence>();
-                }
-                else if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
-                {
-                    persistence = ctx.Resolve<PreimageRocksdbPersistence>();
-                }
-                else
-                {
-                    throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
-                }
+                    FlatLayout.Flat => ctx.Resolve<RocksdbPersistence>(),
+                    FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
+                    FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
+                    _ => throw new Exception($"Unsupported layout {flatDbConfig.Layout}")
+                };
 
                 if (flatDbConfig.EnablePreimageRecording)
                 {
@@ -73,10 +65,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddDatabase(DbNames.Preimage)
 
             .AddSingleton<RocksdbPersistence>()
-            .AddSingleton<RocksdbPersistence.Configuration, IFlatDbConfig>((config) => new RocksdbPersistence.Configuration()
-            {
-                FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
-            })
+            .AddSingleton<FlatInTriePersistence>()
 
             .AddSingleton<IStateReader, FlatStateReader>()
 

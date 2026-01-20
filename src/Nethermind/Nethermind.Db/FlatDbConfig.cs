@@ -22,7 +22,6 @@ public class FlatDbConfig: IFlatDbConfig
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public long BlockCacheSizeBudget { get; set; } = 1.GiB();
     public int MaxPruningBoundary { get; set; } = 1024;
-    public bool WarmUpPersistence { get; set; } = false;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public bool EnablePreimageRecording { get; set; } = false;
 }

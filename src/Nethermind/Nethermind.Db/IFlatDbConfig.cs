@@ -46,9 +46,6 @@ public interface IFlatDbConfig: IConfig
     [ConfigItem(Description = "Max pruning boundary", DefaultValue = "1024")]
     int MaxPruningBoundary { get; set; }
 
-    [ConfigItem(Description = "Warmup key by key", DefaultValue = "false")]
-    bool WarmUpPersistence { get; set; }
-
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
