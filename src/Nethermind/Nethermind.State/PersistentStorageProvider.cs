@@ -21,6 +21,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
+using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -108,7 +109,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         return value;
     }
-
 
     public Hash256 GetStorageRoot(Address address)
     {
@@ -285,8 +285,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
                 ))
                 .ToPooledList(_storages.Count);
-            // Sort by decreasing changes. Slightly better parallelism.
-            storages.Sort((it1, it2) => it1.ContractState.EstimatedChanges.CompareTo(it2.ContractState.EstimatedChanges) * -1);
 
             ParallelUnbalancedWork.For(
                 0,
@@ -342,7 +340,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
-        if (!isEmpty)
+        if (isEmpty)
+        {
+        }
+        else
         {
             LoadFromTree(in storageCell);
         }
