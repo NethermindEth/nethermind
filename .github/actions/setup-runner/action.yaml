@@ -70,17 +70,17 @@ runs:
         echo "Generated BASE_TAG: $BASE_TAG"
 
         # Create unique runner label to avoid collisions
-        RUNNER_LABEL="${{ inputs.runner-name }}-${USER_NAME}-${BASE_TAG}"
-        echo "RUNNER_LABEL=$RUNNER_LABEL" >> $GITHUB_ENV
-        echo "Generated RUNNER_LABEL: $RUNNER_LABEL"
+        GH_RUNNER_LABEL="${{ inputs.runner-name }}-${USER_NAME}-${BASE_TAG}"
+        echo "GH_RUNNER_LABEL=$GH_RUNNER_LABEL" >> $GITHUB_ENV
+        echo "Generated GH_RUNNER_LABEL: $GH_RUNNER_LABEL"
 
     - name: Generate workflow inputs with setup script
       env:
         BASE_TAG: ${{ env.BASE_TAG }}
         GITHUB_USERNAME: ${{ inputs.gh-username }}
-        RUNNER_NAME: ${{ inputs.runner-name }}
-        RUNNER_TYPE: ${{ inputs.runner-type }}
-        RUNNER_LABEL: ${{ env.RUNNER_LABEL }}
+        CUSTOM_RUNNER_NAME: ${{ inputs.runner-name }}
+        CUSTOM_RUNNER_TYPE: ${{ inputs.runner-type }}
+        GH_RUNNER_LABEL: ${{ env.GH_RUNNER_LABEL }}
         TAGS: ${{ inputs.tags }}
         ALLOWED_IPS: ${{ inputs.allowed-ips }}
         SSH_KEYS: ${{ inputs.ssh-keys }}
@@ -178,8 +178,8 @@ runs:
 
         # Use the runner label we generated (combines input label + username + random number)
         # This is the actual GitHub Actions runner label registered in the setup script
-        echo "Runner Label: ${{ env.RUNNER_LABEL }}"
-        echo "runner_name=${{ env.RUNNER_LABEL }}" >> $GITHUB_OUTPUT
+        echo "Runner Label: ${{ env.GH_RUNNER_LABEL }}"
+        echo "runner_name=${{ env.GH_RUNNER_LABEL }}" >> $GITHUB_OUTPUT
 
     - name: Wait for runner setup to complete
       shell: bash

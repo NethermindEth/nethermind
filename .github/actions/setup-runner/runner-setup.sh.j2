@@ -27,10 +27,10 @@ sudo apt-get update
 sudo apt-get install -y curl jq
 
 # Create runner directory
-RUNNER_DIR="${HOME}/actions-runner"
-echo "Creating runner directory: ${RUNNER_DIR}"
-mkdir -p "${RUNNER_DIR}"
-cd "${RUNNER_DIR}"
+GH_RUNNER_DIR="${HOME}/actions-runner"
+echo "Creating runner directory: ${GH_RUNNER_DIR}"
+mkdir -p "${GH_RUNNER_DIR}"
+cd "${GH_RUNNER_DIR}"
 
 # Download the latest runner package
 echo "Downloading GitHub Actions runner..."
@@ -65,18 +65,16 @@ fi
 echo "Registration token obtained successfully"
 
 # Configure the runner
-RUNNER_NAME="{{ runner_name | default('$(hostname)', true) }}"
-LABELS="{{ runner_label }}"
+GH_RUNNER_LABEL="{{ runner_label }}"
 
 echo "Configuring runner..."
 echo "  Repository: {{ org_name }}/{{ repo_name }}"
-echo "  Runner name: ${RUNNER_NAME}"
-echo "  Labels: ${LABELS}"
+echo "  Runner label: ${GH_RUNNER_LABEL}"
 
 ./config.sh --url "https://github.com/{{ org_name }}/{{ repo_name }}" \
   --token "$REGISTRATION_TOKEN" \
-  --name "${RUNNER_NAME}" \
-  --labels "${LABELS}" \
+  --name "${GH_RUNNER_LABEL}" \
+  --labels "${GH_RUNNER_LABEL}" \
   --unattended \
   --replace
 
@@ -106,8 +104,7 @@ echo "Completed at: $(date)"
 echo "========================================="
 echo ""
 echo "Runner Information:"
-echo "  Name: ${RUNNER_NAME}"
-echo "  Labels: ${LABELS}"
-echo "  Directory: ${RUNNER_DIR}"
+echo "  Label: ${GH_RUNNER_LABEL}"
+echo "  Directory: ${GH_RUNNER_DIR}"
 echo "  Log file: ${LOG_FILE}"
 echo ""

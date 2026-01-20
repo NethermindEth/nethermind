@@ -15,7 +15,11 @@ import sys
 from pathlib import Path
 
 try:
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    from jinja2 import (  # ty:ignore[unresolved-import]
+        Environment,
+        FileSystemLoader,
+        select_autoescape,
+    )
 except ImportError:
     print(
         "Error: jinja2 is required. Install with: pip install jinja2", file=sys.stderr
@@ -64,11 +68,12 @@ def generate_workflow_inputs():
     """Generate the complete workflow inputs JSON."""
 
     # Get environment variables
+    # Note: Avoid RUNNER_* names as they are reserved by GitHub Actions
     base_tag = get_env_var("BASE_TAG")
     github_username = get_env_var("GITHUB_USERNAME")
-    runner_name = get_env_var("RUNNER_NAME")
-    runner_type = get_env_var("RUNNER_TYPE")
-    runner_label = get_env_var("RUNNER_LABEL")
+    custom_runner_name = get_env_var("CUSTOM_RUNNER_NAME")
+    custom_runner_type = get_env_var("CUSTOM_RUNNER_TYPE")
+    gh_runner_label = get_env_var("GH_RUNNER_LABEL")
     tags = get_env_var("TAGS", required=False, default="")
     allowed_ips = get_env_var("ALLOWED_IPS", required=False, default="")
     ssh_keys = get_env_var("SSH_KEYS", required=False, default="")
@@ -84,8 +89,7 @@ def generate_workflow_inputs():
         "gh_token": gh_token,
         "org_name": org_name,
         "repo_name": repo_name,
-        "runner_name": runner_name,
-        "runner_label": runner_label,
+        "runner_label": gh_runner_label,
     }
 
     # Find template file
@@ -108,8 +112,8 @@ def generate_workflow_inputs():
     workflow_inputs = {
         "base_tag": base_tag,
         "github_username": github_username,
-        "custom_node_name": runner_name,
-        "custom_node_type": runner_type,
+        "custom_node_name": custom_runner_name,
+        "custom_node_type": custom_runner_type,
         "setup_script": encoded_script,
         "tags": tags,
         "allowed_ips": allowed_ips,

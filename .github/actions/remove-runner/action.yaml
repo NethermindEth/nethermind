@@ -18,12 +18,12 @@ runs:
     - name: Remove runner from GitHub Actions
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
-        RUNNER_NAME: ${{ inputs.runner-name }}
+        TARGET_RUNNER_NAME: ${{ inputs.runner-name }}
         ORG_NAME: ${{ github.repository_owner }}
         REPO_NAME: ${{ github.event.repository.name }}
       shell: bash
       run: |
-        echo "Removing runner '$RUNNER_NAME' from GitHub Actions..."
+        echo "Removing runner '$TARGET_RUNNER_NAME' from GitHub Actions..."
 
         # Get the runner ID
         RUNNER_ID=$(gh api \
@@ -31,10 +31,10 @@ runs:
           -H "Accept: application/vnd.github+json" \
           -H "X-GitHub-Api-Version: 2022-11-28" \
           "/repos/${ORG_NAME}/${REPO_NAME}/actions/runners" \
-          --jq ".runners[] | select(.name == \"$RUNNER_NAME\") | .id")
+          --jq ".runners[] | select(.name == \"$TARGET_RUNNER_NAME\") | .id")
 
         if [ -z "$RUNNER_ID" ]; then
-          echo "Warning: Runner '$RUNNER_NAME' not found in repository. It may have already been removed."
+          echo "Warning: Runner '$TARGET_RUNNER_NAME' not found in repository. It may have already been removed."
         else
           echo "Found runner with ID: $RUNNER_ID"
 
