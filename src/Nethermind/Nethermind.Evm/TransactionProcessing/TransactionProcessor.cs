@@ -1052,7 +1052,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, TGasPolicy floorGas)
+            in TransactionSubstate substate, TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, TGasPolicy floorGas)
             where TLogTracing : struct, IFlag
         {
             long spentGas = tx.GasLimit;
@@ -1103,7 +1103,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return new GasConsumed(spentGas, operationGas);
         }
 
-        protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+        protected virtual void PayRefund(Transaction tx, in UInt256 refundAmount, IReleaseSpec spec)
         {
             if (!refundAmount.IsZero)
                 WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);

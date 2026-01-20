@@ -84,5 +84,5 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
                && base.RecoverSenderIfNeeded<TLogTracing>(tx, spec, opts, in effectiveGasPrice);
     }
 
-    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec) { }
+    protected override void PayRefund(Transaction tx, in UInt256 refundAmount, IReleaseSpec spec) { }
 }

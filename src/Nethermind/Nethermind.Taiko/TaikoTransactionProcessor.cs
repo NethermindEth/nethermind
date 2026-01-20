@@ -93,7 +93,7 @@ public class TaikoTransactionProcessor(
         return base.IncrementNonce<TLogTracing>(tx, header, spec, tracer, opts);
     }
 
-    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+    protected override void PayRefund(Transaction tx, in UInt256 refundAmount, IReleaseSpec spec)
     {
         if (!tx.IsAnchorTx)
         {
