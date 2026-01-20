@@ -51,4 +51,7 @@ public interface IFlatDbConfig: IConfig
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
+
+    [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
+    bool EnablePreimageRecording { get; set; }
 }

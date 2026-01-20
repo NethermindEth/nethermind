@@ -26,8 +26,6 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class PreimageRocksdbPersistence : IPersistence
 {
-    private const int PreimageLookupSize = 12; // Store only 12 byte
-
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
 
@@ -99,7 +97,6 @@ public class PreimageRocksdbPersistence : IPersistence
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
-        IWriteBatch preimageWriteBatch = _preimageDb.StartWriteBatch();
         IColumnDbSnapshot<FlatDbColumns> dbSnap = _db.CreateSnapshot();
         StateId currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (currentState != from)
@@ -116,7 +113,6 @@ public class PreimageRocksdbPersistence : IPersistence
                 batch.GetColumnBatch(FlatDbColumns.Storage),
                 flags
             ),
-            preimageWriteBatch,
             _preimageDb
         );
 
@@ -136,7 +132,6 @@ public class PreimageRocksdbPersistence : IPersistence
             {
                 SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
                 batch.Dispose();
-                preimageWriteBatch.Dispose();
                 dbSnap.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
@@ -153,7 +148,6 @@ public class PreimageRocksdbPersistence : IPersistence
 
     public struct FakeHashWriter<TWriteBatch>(
         TWriteBatch flatWriteBatch,
-        IWriteBatch preimageWriteBatch,
         IKeyValueStore preimageDb
     ) : BasePersistence.IFlatWriteBatch
         where TWriteBatch : struct, BasePersistence.IHashedFlatWriteBatch
@@ -166,9 +160,6 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
 
-            ValueHash256 computed = addr.ToAccountPath;
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
-
             return _flatWriteBatch.SelfDestruct(fakeAddrHash);
         }
 
@@ -176,9 +167,6 @@ public class PreimageRocksdbPersistence : IPersistence
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
-
-            ValueHash256 computed = addr.ToAccountPath;
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
 
             if (account is null)
             {
@@ -197,12 +185,6 @@ public class PreimageRocksdbPersistence : IPersistence
 
             ValueHash256 fakeSlotHash = ValueKeccak.Zero;
             slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
-
-            ValueHash256 computed = addr.ToAccountPath;
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
-
-            StorageTree.ComputeKeyWithLookup(slot,  ref computed);
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
 
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }

@@ -24,4 +24,5 @@ public class FlatDbConfig: IFlatDbConfig
     public int MaxPruningBoundary { get; set; } = 1024;
     public bool WarmUpPersistence { get; set; } = false;
     public int TrieWarmerWorkerCount { get; set; } = -1;
+    public bool EnablePreimageRecording { get; set; } = false;
 }

@@ -44,19 +44,29 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
             .AddSingleton<IPersistence, IFlatDbConfig, IComponentContext>((flatDbConfig, ctx) =>
             {
+                IPersistence persistence;
                 if (flatDbConfig.Layout == FlatLayout.Flat
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
                    )
                 {
-                    return ctx.Resolve<RocksdbPersistence>();
+                    persistence = ctx.Resolve<RocksdbPersistence>();
                 }
-
-                if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
+                else if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
                 {
-                    return ctx.Resolve<PreimageRocksdbPersistence>();
+                    persistence = ctx.Resolve<PreimageRocksdbPersistence>();
+                }
+                else
+                {
+                    throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
                 }
 
-                throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
+                if (flatDbConfig.EnablePreimageRecording)
+                {
+                    IDb preimageDb = ctx.ResolveKeyed<IDb>(DbNames.Preimage);
+                    persistence = new PreimageRecordingPersistence(persistence, preimageDb);
+                }
+
+                return persistence;
             })
 
             .AddSingleton<PreimageRocksdbPersistence>()
