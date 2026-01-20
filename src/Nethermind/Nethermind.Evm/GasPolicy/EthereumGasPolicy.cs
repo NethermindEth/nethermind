@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -191,10 +189,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
 
-    public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long tokensInCallData)
     {
         long gas = GasCostOf.Transaction
-            + DataCost(tx, spec)
+            + DataCost(tx, spec, tokensInCallData)
             + CreateCost(tx, spec)
             + IntrinsicGasCalculator.AccessListCost(tx, spec)
             + AuthorizationListCost(tx, spec);
@@ -208,24 +206,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     private static long CreateCost(Transaction tx, IReleaseSpec spec) =>
         tx.IsContractCreation && spec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
-    private static long DataCost(Transaction tx, IReleaseSpec spec)
+    private static long DataCost(Transaction tx, IReleaseSpec spec, long tokensInCallData)
     {
         long baseDataCost = tx.IsContractCreation && spec.IsEip3860Enabled
             ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
             : 0;
 
-        long tokensInCallData = CalculateTokensInCallData(tx, spec);
         return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
-    }
-
-    private static long CalculateTokensInCallData(Transaction tx, IReleaseSpec spec)
-    {
-        long txDataNonZeroMultiplier = spec.IsEip2028Enabled
-            ? GasCostOf.TxDataNonZeroMultiplierEip2028
-            : GasCostOf.TxDataNonZeroMultiplier;
-        ReadOnlySpan<byte> data = tx.Data.Span;
-        int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
     }
 
     private static long AuthorizationListCost(Transaction tx, IReleaseSpec spec)
