@@ -12,7 +12,7 @@ namespace Nethermind.EngineApiProxy.Models;
 /// </summary>
 public class PayloadTracker(ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256, string> _headBlockToPayloadId = new();
     private readonly ConcurrentDictionary<string, Hash256> _payloadIdToHeadBlock = new();
     private readonly ConcurrentDictionary<Hash256, string> _headBlockToParentBeaconBlockRoot = new();
@@ -29,24 +29,17 @@ public class PayloadTracker(ILogManager logManager)
     public string LastTrackedBlockHash { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Stores a mapping between a head block hash and a Payload ID
+    /// Stores a mapping between a head block hash and a Payload ID.
     /// </summary>
-    /// <param name="headBlockHash">The hash of the head block from forkChoiceUpdated</param>
-    /// <param name="payloadId">The Payload ID returned from the execution client</param>
-    /// <param name="parentBeaconBlockRoot">Optional parent beacon block root to store with this head block</param>
-    public void TrackPayload(Hash256 headBlockHash, string payloadId, string? parentBeaconBlockRoot = null)
-    {
-        TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot, null);
-    }
-
-    /// <summary>
-    /// Stores a mapping between a head block hash and a Payload ID with blob versioned hashes
-    /// </summary>
-    /// <param name="headBlockHash">The hash of the head block from forkChoiceUpdated</param>
-    /// <param name="payloadId">The Payload ID returned from the execution client</param>
-    /// <param name="parentBeaconBlockRoot">Optional parent beacon block root to store with this head block</param>
-    /// <param name="blobVersionedHashes">Optional blob versioned hashes to store with this head block</param>
-    public void TrackPayload(Hash256 headBlockHash, string payloadId, string? parentBeaconBlockRoot, string[]? blobVersionedHashes)
+    /// <param name="headBlockHash">The hash of the head block from forkChoiceUpdated.</param>
+    /// <param name="payloadId">The Payload ID returned from the execution client.</param>
+    /// <param name="parentBeaconBlockRoot">Optional parent beacon block root to store with this head block.</param>
+    /// <param name="blobVersionedHashes">Optional blob versioned hashes to store with this head block.</param>
+    public void TrackPayload(
+        Hash256 headBlockHash,
+        string payloadId,
+        string? parentBeaconBlockRoot = null,
+        string[]? blobVersionedHashes = null)
     {
         if (headBlockHash is null || string.IsNullOrEmpty(payloadId))
         {
@@ -83,14 +76,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The hash of the head block</param>
     /// <returns>The associated Payload ID or null if not found</returns>
     public string? GetPayloadId(Hash256 headBlockHash)
-    {
-        if (_headBlockToPayloadId.TryGetValue(headBlockHash, out var payloadId))
-        {
-            return payloadId;
-        }
-
-        return null;
-    }
+        => _headBlockToPayloadId.TryGetValue(headBlockHash, out var payloadId) ? payloadId : null;
 
     /// <summary>
     /// Tries to get the Payload ID associated with a head block hash
@@ -114,14 +100,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="payloadId">The Payload ID</param>
     /// <returns>The associated head block hash or null if not found</returns>
     public Hash256? GetHeadBlock(string payloadId)
-    {
-        if (_payloadIdToHeadBlock.TryGetValue(payloadId, out var headBlockHash))
-        {
-            return headBlockHash;
-        }
-
-        return null;
-    }
+        => _payloadIdToHeadBlock.TryGetValue(payloadId, out var headBlockHash) ? headBlockHash : null;
 
     /// <summary>
     /// Removes a Payload ID and its associated head block hash from tracking
@@ -207,14 +186,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The hash of the head block</param>
     /// <returns>The associated parent beacon block root or null if not found</returns>
     public string? GetParentBeaconBlockRoot(Hash256 headBlockHash)
-    {
-        if (_headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out var parentBeaconBlockRoot))
-        {
-            return parentBeaconBlockRoot;
-        }
-
-        return null;
-    }
+        => _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out var parentBeaconBlockRoot) ? parentBeaconBlockRoot : null;
 
     /// <summary>
     /// Associates a parent beacon block root with a head block hash
@@ -257,14 +229,7 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="headBlockHash">The hash of the head block</param>
     /// <returns>The associated blob versioned hashes or null if not found</returns>
     public string[]? GetBlobVersionedHashes(Hash256 headBlockHash)
-    {
-        if (_headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out var blobVersionedHashes))
-        {
-            return blobVersionedHashes;
-        }
-
-        return null;
-    }
+        => _headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out var blobVersionedHashes) ? blobVersionedHashes : null;
 
     /// <summary>
     /// Tries to get the blob versioned hashes associated with a head block hash

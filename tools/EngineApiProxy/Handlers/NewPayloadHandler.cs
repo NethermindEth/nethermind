@@ -20,59 +20,53 @@ public class NewPayloadHandler(
     RequestOrchestrator requestOrchestrator,
     ILogManager logManager)
 {
-    private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
-    private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
-    private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
-    private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator ?? throw new ArgumentNullException(nameof(requestOrchestrator));
+    private const string ZeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    private const string ParentHashKey = "parentHash";
+    private const string BlockHashKey = "blockHash";
+    private const string HeadBlockHashKey = "headBlockHash";
+    private const string FinalizedBlockHashKey = "finalizedBlockHash";
+    private const string SafeBlockHashKey = "safeBlockHash";
+
+    private readonly ProxyConfig _config = config;
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly RequestForwarder _requestForwarder = requestForwarder;
+    private readonly MessageQueue _messageQueue = messageQueue;
+    private readonly PayloadTracker _payloadTracker = payloadTracker;
+    private readonly RequestOrchestrator _requestOrchestrator = requestOrchestrator;
 
     public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
     {
         _logger.Debug($"Processing NewPayload request {request.Id}");
 
-        // Check if the request should be validated
-        if (_config.ValidationMode == ValidationMode.Fcu)
+        return _config.ValidationMode switch
         {
-            _logger.Debug("Validation for NewPayload disabled in FCU mode");
-            return await _requestForwarder.ForwardRequestToExecutionClient(request);
-        }
+            ValidationMode.ForkChoiceUpdated => await ForwardWithoutValidation(request, "Validation disabled in FCU mode"),
+            ValidationMode.Merged or ValidationMode.Lighthouse => await ProcessWithMergedValidation(request),
+            ValidationMode.NewPayload when ShouldValidateBlock(request) => await ProcessWithValidation(request),
+            _ => await _requestForwarder.ForwardRequestToExecutionClient(request)
+        };
+    }
 
-        if (_config.ValidationMode == ValidationMode.Merged || _config.ValidationMode == ValidationMode.LH)
-        {
-            _logger.Debug($"Processing NewPayload in {_config.ValidationMode} validation mode");
-            return await ProcessWithMergedValidation(request);
-        }
-
-        // Check if we should validate this request
-        bool shouldValidate = ShouldValidateBlock(request);
-        _logger.Info($"ShouldValidateBlock for NewPayload: {shouldValidate}");
-
-        if (shouldValidate)
-        {
-            return await ProcessWithValidation(request);
-        }
-
-        // Directly forward to EC without validation
+    private async Task<JsonRpcResponse> ForwardWithoutValidation(JsonRpcRequest request, string reason)
+    {
+        _logger.Debug(reason);
         return await _requestForwarder.ForwardRequestToExecutionClient(request);
     }
 
     private bool ShouldValidateBlock(JsonRpcRequest request)
     {
-        bool shouldValidate = _config.ValidateAllBlocks &&
-                             request.Params is not null &&
-                             request.Params.Count > 0 &&
-                             IsEmptyOrMissingPayloadAttributes(request.Params);
+        if (!_config.ValidateAllBlocks)
+            return false;
 
-        // Add detailed logging to show validation decision
-        if (_config.ValidateAllBlocks)
+        if (request.Params is not { Count: > 0 })
+            return false;
+
+        bool shouldValidate = HasNoPayloadAttributes(request.Params);
+
+        _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params.Count}, shouldValidate: {shouldValidate}");
+        if (!shouldValidate)
         {
-            _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
-
-            if (request.Params?.Count > 1 && request.Params[1] is JObject)
-            {
-                _logger.Debug("Skipping validation because request already contains payload attributes");
-            }
+            _logger.Debug("Skipping validation because request already contains payload attributes");
         }
 
         return shouldValidate;
@@ -240,78 +234,6 @@ public class NewPayloadHandler(
         }
     }
 
-    private async Task<JsonRpcResponse> ProcessWithLHValidation(JsonRpcRequest request)
-    {
-        // Log that we're starting validation for this block
-        var blockHash = ExtractBlockHashFromPayload(request);
-        var parentHash = request.Params is not null
-            ? ExtractParentHash(request.Params)
-            : string.Empty;
-
-        // Extract parent beacon block root if available in the request
-        var parentBeaconBlockRoot = request.Params is not null
-            ? ExtractParentBeaconBlockRoot(request.Params)
-            : string.Empty;
-
-        _logger.Info($"LH validation for block with hash: {blockHash}, parent: {parentHash}, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
-
-        // Check if we have a payloadId for the parent hash, indicating that this was from a previous FCU
-        var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
-        if (_payloadTracker.TryGetPayloadId(parentHashObj, out var payloadId) && !string.IsNullOrEmpty(payloadId))
-        {
-            _logger.Info($"Found payloadId {payloadId} for parent hash {parentHash}, starting validation");
-
-            // If parentBeaconBlockRoot is not provided in the request, try to get it from the tracker
-            if (string.IsNullOrEmpty(parentBeaconBlockRoot) &&
-                _payloadTracker.TryGetParentBeaconBlockRoot(parentHashObj, out var trackedParentBeaconBlockRoot) &&
-                !string.IsNullOrEmpty(trackedParentBeaconBlockRoot))
-            {
-                parentBeaconBlockRoot = trackedParentBeaconBlockRoot;
-                _logger.Info($"ProcessWithLHValidation: Using parentBeaconBlockRoot {parentBeaconBlockRoot} from payload tracker for parent hash {parentHash}");
-            }
-
-            try
-            {
-                // First check if we should run validation by comparing block hashes
-                bool shouldValidate = await _requestOrchestrator.ValidatePayloadWithBlockHashCheck(payloadId, blockHash);
-
-                if (shouldValidate)
-                {
-                    // Run the validation only if the previous check passed
-                    // Pass parentBeaconBlockRoot from the original request to ensure it's used
-                    bool validationResult = await _requestOrchestrator.DoValidationForFCU(payloadId, parentBeaconBlockRoot);
-
-                    if (validationResult)
-                    {
-                        _logger.Info($"LH validation successful for payloadId {payloadId}");
-                    }
-                    else
-                    {
-                        _logger.Warn($"LH validation failed for payloadId {payloadId}, but still forwarding original request");
-                    }
-                }
-                else
-                {
-                    _logger.Info($"Skipping validation due to potential block hash mismatch, forwarding original request");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"Error during LH validation: {ex.Message}. Falling back to direct forwarding.");
-            }
-        }
-        else
-        {
-            _logger.Info($"No payloadId found for parent hash {parentHash}, forwarding request as-is");
-        }
-
-        // Register this payload for future reference
-        _payloadTracker.RegisterNewPayload(blockHash, parentHash);
-
-        // Forward the original request to the execution client
-        return await _requestForwarder.ForwardRequestToExecutionClient(request);
-    }
-
     private static JsonRpcRequest GenerateSyntheticFcuRequest(JsonRpcRequest originalRequest, string parentHash)
     {
         return originalRequest.Method switch
@@ -321,9 +243,9 @@ public class NewPayloadHandler(
                 new JArray(
                     new JObject
                     {
-                        ["headBlockHash"] = parentHash,
-                        ["finalizedBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000",
-                        ["safeBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        [HeadBlockHashKey] = parentHash,
+                        [FinalizedBlockHashKey] = ZeroHash,
+                        [SafeBlockHashKey] = ZeroHash
                     }
                 ),
                 Guid.NewGuid().ToString()
@@ -333,9 +255,9 @@ public class NewPayloadHandler(
                 new JArray(
                     new JObject
                     {
-                        ["headBlockHash"] = parentHash,
-                        ["finalizedBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000",
-                        ["safeBlockHash"] = "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        [HeadBlockHashKey] = parentHash,
+                        [FinalizedBlockHashKey] = ZeroHash,
+                        [SafeBlockHashKey] = ZeroHash
                     }
                 ),
                 Guid.NewGuid().ToString()
@@ -345,53 +267,48 @@ public class NewPayloadHandler(
 
     private static string ExtractBlockHashFromPayload(JsonRpcRequest request)
     {
-        if (request.Params != null && request.Params.Count > 0 && request.Params[0] is JObject payload)
+        if (request.Params is { Count: > 0 } && request.Params[0] is JObject payload)
         {
-            return payload["blockHash"]?.ToString() ?? string.Empty;
+            return payload[BlockHashKey]?.ToString() ?? string.Empty;
         }
         return string.Empty;
     }
 
-    private static bool IsEmptyOrMissingPayloadAttributes(JArray parameters)
+    /// <summary>
+    /// Checks if the request has no payload attributes (empty, missing, or null second parameter).
+    /// </summary>
+    private static bool HasNoPayloadAttributes(JArray parameters)
     {
-        // No second parameter
         if (parameters.Count == 1)
             return true;
 
-        // Second parameter is null, empty array, or has a null type
-        var secondParam = parameters[1];
-        if (secondParam is null)
-            return true;
-
-        if (secondParam.Type == JTokenType.Null)
-            return true;
-
-        if (secondParam is JArray arr && arr.Count == 0)
-            return true;
-
-        // Not a JObject (which would contain payload attributes)
-        return !(secondParam is JObject);
+        return parameters[1] switch
+        {
+            null => true,
+            JToken { Type: JTokenType.Null } => true,
+            JArray { Count: 0 } => true,
+            JObject => false,
+            _ => true
+        };
     }
 
+    /// <summary>
+    /// Extracts the parent hash from the newPayload request parameters.
+    /// The first parameter can be either:
+    /// - A JObject containing the execution payload with a "parentHash" field
+    /// - A JArray where the first element is a JObject with a "parentHash" field
+    /// </summary>
     private static string ExtractParentHash(JArray parameters)
     {
-        if (parameters is null || parameters.Count == 0)
+        if (parameters is not { Count: > 0 })
             return string.Empty;
 
-        var param = parameters[0];
-        if (param is null)
-            return string.Empty;
-
-        if (param is JObject payload && payload["parentHash"] is not null)
-            return payload["parentHash"]?.ToString() ?? string.Empty;
-
-        if (param is JArray array &&
-            array.Count > 0 &&
-            array[0] is JObject obj &&
-            obj["parentHash"] is not null)
-            return obj["parentHash"]?.ToString() ?? string.Empty;
-
-        return string.Empty;
+        return parameters[0] switch
+        {
+            JObject payload => payload[ParentHashKey]?.ToString() ?? string.Empty,
+            JArray { Count: > 0 } arr when arr[0] is JObject nested => nested[ParentHashKey]?.ToString() ?? string.Empty,
+            _ => string.Empty
+        };
     }
 
     private static string ExtractParentBeaconBlockRoot(JArray parameters)

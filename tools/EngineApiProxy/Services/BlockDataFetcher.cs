@@ -183,7 +183,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
     /// <returns>Head beacon block header data or null if request fails</returns>
     public virtual async Task<JObject?> GetBeaconBlockHeader()
     {
-        if (_consensusClient == null)
+        if (_consensusClient is null)
         {
             _logger.Error("Cannot get beacon block header: no CL client configured");
             return null;
@@ -225,7 +225,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
     /// <returns>Beacon block data or null if request fails</returns>
     public virtual async Task<JObject?> GetBeaconBlock(string blockId)
     {
-        if (_consensusClient == null)
+        if (_consensusClient is null)
         {
             _logger.Error("Cannot get beacon block: no CL client configured");
             return null;

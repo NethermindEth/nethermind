@@ -51,76 +51,72 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
     public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
     {
-        if (_config.ValidationMode == ValidationMode.NewPayload)
+        return _config.ValidationMode switch
         {
-            _logger.Debug($"Processing engine_forkchoiceUpdated (NewPayload flow): {request}");
-            return await _requestForwarder.ForwardRequestToExecutionClient(request);
-        }
-        else if (_config.ValidationMode == ValidationMode.Merged)
-        {
-            // Log the request
-            _logger.Debug($"Processing engine_forkchoiceUpdated (Merged flow): {request}");
+            ValidationMode.NewPayload => await HandleNewPayloadMode(request),
+            ValidationMode.Merged => await HandleMergedMode(request),
+            ValidationMode.Lighthouse => await HandleLighthouseMode(request),
+            ValidationMode.ForkChoiceUpdated => await HandleForkChoiceUpdatedMode(request),
+            _ => await HandleForkChoiceUpdatedMode(request)
+        };
+    }
 
-            try
-            {
-                // Check if we should validate this block
-                bool shouldValidate = ShouldValidateBlock(request);
-                _logger.Info($"---------------(Merged flow - FCU processing - Validation: {shouldValidate})-----------------");
+    private async Task<JsonRpcResponse> HandleNewPayloadMode(JsonRpcRequest request)
+    {
+        _logger.Debug($"Processing engine_forkchoiceUpdated (NewPayload flow): {request}");
+        return await _requestForwarder.ForwardRequestToExecutionClient(request);
+    }
 
-                // For Merged mode:
-                // 1. Send FCU with payload attributes to EL
-                // 2. Store the payloadID from the response
-                // 3. Return FCU response without payloadID to CL
-                return await ProcessMergedFCU(request);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling forkChoiceUpdated in Merged mode: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
-            }
-        }
-        else if (_config.ValidationMode == ValidationMode.LH)
-        {
-            // Log the request
-
-            _logger.Debug($"Processing engine_forkchoiceUpdated (LH flow): {request}");
-
-            try
-            {
-                // Check if we should validate this block
-                bool shouldValidate = ShouldValidateBlock(request);
-                _logger.Info($"---------------(LH flow - FCU processing - Validation: {!shouldValidate})-----------------");
-
-                // For LH mode:
-                // 1. Intercept existing PayloadAttributes from FCU request (if present)
-                // 2. Forward FCU with intercepted PayloadAttributes to EL
-                // 3. Store the payloadID from the response
-                // 4. Return FCU response without payloadID to CL
-                return await ProcessLHFCU(request);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling forkChoiceUpdated in LH mode: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
-            }
-        }
-
-        // Log the forkChoiceUpdated request
-
-        _logger.Debug($"Processing engine_forkchoiceUpdated (FCU flow): {request}");
+    private async Task<JsonRpcResponse> HandleMergedMode(JsonRpcRequest request)
+    {
+        _logger.Debug($"Processing engine_forkchoiceUpdated (Merged flow): {request}");
 
         try
         {
-            // Check if we should validate this block
             bool shouldValidate = ShouldValidateBlock(request);
-            _logger.Info($"---------------(FCU flow - FCU processing - Validation: {shouldValidate})-----------------");
+            _logger.Info($"---------------(Merged flow - FCU processing - Validation: {shouldValidate})-----------------");
+
+            return await ProcessMergedFCU(request);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Error handling forkChoiceUpdated in Merged mode: {ex.Message}", ex);
+            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
+        }
+    }
+
+    private async Task<JsonRpcResponse> HandleLighthouseMode(JsonRpcRequest request)
+    {
+        _logger.Debug($"Processing engine_forkchoiceUpdated (Lighthouse flow): {request}");
+
+        try
+        {
+            bool shouldValidate = ShouldValidateBlock(request);
+            _logger.Info($"---------------(Lighthouse flow - FCU processing - Validation: {!shouldValidate})-----------------");
+
+            return await ProcessLHFCU(request);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Error handling forkChoiceUpdated in Lighthouse mode: {ex.Message}", ex);
+            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
+        }
+    }
+
+    private async Task<JsonRpcResponse> HandleForkChoiceUpdatedMode(JsonRpcRequest request)
+    {
+        _logger.Debug($"Processing engine_forkchoiceUpdated (ForkChoiceUpdated flow): {request}");
+
+        try
+        {
+            bool shouldValidate = ShouldValidateBlock(request);
+            _logger.Info($"---------------(ForkChoiceUpdated flow - FCU processing - Validation: {shouldValidate})-----------------");
 
             if (shouldValidate)
             {
                 return await ProcessWithValidation(request);
             }
 
-            // Forward the request to EC without modification if not validating
             return await ProcessWithoutValidation(request);
         }
         catch (Exception ex)
@@ -132,28 +128,36 @@ public class ForkChoiceUpdatedHandler : IDisposable
 
     private bool ShouldValidateBlock(JsonRpcRequest request)
     {
-        bool shouldValidate = _config.ValidateAllBlocks &&
-                              request.Params is not null &&
-                              request.Params.Count > 0 &&
-                              (request.Params.Count == 1 ||
-                               request.Params[1] is null ||
-                               (request.Params[1] is JValue jv && jv.Type == JTokenType.Null) ||
-                               (request.Params[1]?.Type == JTokenType.Null)) &&
-                              !(request.Params.Count > 1 && request.Params[1] is JObject);
-
-        // Add detailed logging to show validation decision
-        if (_config.ValidateAllBlocks)
+        if (!_config.ValidateAllBlocks)
         {
-            _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params?.Count}, second param type: {(request.Params?.Count > 1 ? request.Params[1]?.GetType().Name : "none")}");
-
-            if (request.Params?.Count > 1 && request.Params[1] is JObject)
-            {
-                _logger.Debug($"Skipping validation because request already contains payload attributes. shouldValidate: {shouldValidate}");
-            }
+            return false;
         }
 
-        return shouldValidate;
+        if (request.Params is null || request.Params.Count == 0)
+        {
+            return false;
+        }
+
+        // Check if payload attributes (second parameter) is present and is an actual object
+        bool hasPayloadAttributes = HasPayloadAttributes(request);
+
+        _logger.Debug($"ValidateAllBlocks is enabled, params count: {request.Params.Count}, hasPayloadAttributes: {hasPayloadAttributes}");
+
+        if (hasPayloadAttributes)
+        {
+            _logger.Debug("Skipping validation because request already contains payload attributes");
+            return false;
+        }
+
+        return true;
     }
+
+    /// <summary>
+    /// Checks if the request contains non-null payload attributes (second parameter).
+    /// </summary>
+    private static bool HasPayloadAttributes(JsonRpcRequest request)
+        => request.Params is { Count: > 1 }
+           && request.Params[1] is JObject { Type: not JTokenType.Null };
 
     private async Task<JsonRpcResponse> ProcessWithValidation(JsonRpcRequest request)
     {
@@ -189,7 +193,8 @@ public class ForkChoiceUpdatedHandler : IDisposable
             catch (Exception ex)
             {
                 // If the validation flow fails due to unsupported methods, log and fall back to normal flow
-                if (ex.ToString().Contains("is not supported") || ex.ToString().Contains("is not implemented"))
+                string exceptionMessage = ex.ToString();
+                if (exceptionMessage.Contains("is not supported") || exceptionMessage.Contains("is not implemented"))
                 {
                     _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
                     _logger.Info("Falling back to direct forwarding of request to execution client");

@@ -66,8 +66,8 @@ public class Program
 
         var validationModeOption = new Option<ValidationMode>(
             name: "--validation-mode",
-            description: "Mode for block validation (Fcu, NewPayload, Merged, or LH)",
-            getDefaultValue: () => ValidationMode.LH);
+            description: "Mode for block validation (ForkChoiceUpdated, NewPayload, Merged, or Lighthouse)",
+            getDefaultValue: () => ValidationMode.Lighthouse);
 
         var requestTimeoutOption = new Option<int>(
             name: "--request-timeout",
@@ -269,7 +269,7 @@ public class Program
         Console.WriteLine("  -f, --log-file <path>             Log file path (default: console only)");
         Console.WriteLine("  --validate-all-blocks             Validate all blocks, even without CL request");
         Console.WriteLine("  --fee-recipient <address>         Default fee recipient address");
-        Console.WriteLine("  --validation-mode <mode>          Validation mode (Fcu, NewPayload, Merged, LH)");
+        Console.WriteLine("  --validation-mode <mode>          Validation mode (ForkChoiceUpdated, NewPayload, Merged, Lighthouse)");
         Console.WriteLine("  --request-timeout <seconds>       HTTP request timeout in seconds (default: 100)");
         Console.WriteLine("  --get-payload-method <method>     Engine API method for getting payloads (default: engine_getPayloadV4)");
         Console.WriteLine("  --new-payload-method <method>     Engine API method for sending new payloads (default: engine_newPayloadV4)");

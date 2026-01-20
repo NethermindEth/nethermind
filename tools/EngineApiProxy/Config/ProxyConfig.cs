@@ -3,12 +3,34 @@
 
 namespace Nethermind.EngineApiProxy.Config;
 
+/// <summary>
+/// Mode for block validation flow.
+/// </summary>
 public enum ValidationMode
 {
-    Fcu,
+    /// <summary>
+    /// Validation happens at ForkChoiceUpdated request.
+    /// The proxy generates synthetic payload attributes and performs validation during FCU processing.
+    /// </summary>
+    ForkChoiceUpdated,
+
+    /// <summary>
+    /// Validation happens at NewPayload request.
+    /// The proxy generates a synthetic FCU request when NewPayload arrives to trigger validation.
+    /// </summary>
     NewPayload,
+
+    /// <summary>
+    /// FCU stores PayloadID and defers validation to the next NewPayload request.
+    /// The proxy returns a synthetic response with null payloadId to the CL, then validates when NewPayload arrives.
+    /// </summary>
     Merged,
-    LH
+
+    /// <summary>
+    /// Intercepts PayloadAttributes from existing FCU requests sent by Lighthouse CL (with --always-prepare-payload).
+    /// Most accurate mode as it uses real CL-provided attributes rather than synthetic ones.
+    /// </summary>
+    Lighthouse
 }
 
 public class ProxyConfig
@@ -60,13 +82,9 @@ public class ProxyConfig
     public int RequestTimeoutSeconds { get; set; } = 100;
 
     /// <summary>
-    /// Mode for block validation:
-    /// - Fcu: Validation happens at FCU request
-    /// - NewPayload: Validation happens at new payload request
-    /// - Merged: FCU stores PayloadID without validation, and validation happens at next new_payload request
-    /// - LH: Similar to Merged, but intercepts PayloadAttributes from existing FCU requests instead of generating them
+    /// Mode for block validation (see ValidationMode enum for descriptions)
     /// </summary>
-    public ValidationMode ValidationMode { get; set; } = ValidationMode.LH;
+    public ValidationMode ValidationMode { get; set; } = ValidationMode.Lighthouse;
 
     /// <summary>
     /// Engine API method to use when getting payloads for validation

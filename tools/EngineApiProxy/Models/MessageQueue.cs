@@ -11,7 +11,7 @@ namespace Nethermind.EngineApiProxy.Models;
 /// </summary>
 public class MessageQueue(ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentQueue<QueuedMessage> _messageQueue = new();
     private readonly ConcurrentDictionary<string, QueuedMessage> _messageById = new();
 
@@ -76,7 +76,7 @@ public class MessageQueue(ILogManager logManager)
 
         if (message.Id is not null)
         {
-            string messageId = message.Id.ToString() ?? "null";
+            string messageId = message.Id.ToString()!;
             _messageById[messageId] = queuedMessage;
         }
 
@@ -111,7 +111,7 @@ public class MessageQueue(ILogManager logManager)
         {
             if (message.Request.Id is not null)
             {
-                string messageId = message.Request.Id.ToString() ?? "null";
+                string messageId = message.Request.Id.ToString()!;
                 _messageById.TryRemove(messageId, out _);
             }
             var host = message.Request.OriginalHeaders?.FirstOrDefault(h => h.Key == "Host").Value;
@@ -127,14 +127,14 @@ public class MessageQueue(ILogManager logManager)
     /// </summary>
     /// <param name="id">The message ID to check</param>
     /// <returns>True if a message with the ID is queued, false otherwise</returns>
-    public bool IsMessageQueued(object id)
+    public bool IsMessageQueued(object? id)
     {
-        if (id == null)
+        if (id is null)
         {
             return false;
         }
 
-        string messageId = id.ToString() ?? "null";
+        string messageId = id.ToString() ?? string.Empty;
         return _messageById.ContainsKey(messageId);
     }
 
@@ -143,20 +143,15 @@ public class MessageQueue(ILogManager logManager)
     /// </summary>
     /// <param name="id">The message ID to get</param>
     /// <returns>The queued message, or null if not found</returns>
-    public QueuedMessage? GetMessage(object id)
+    public QueuedMessage? GetMessage(object? id)
     {
-        if (id == null)
+        if (id is null)
         {
             return null;
         }
 
-        string messageId = id.ToString() ?? "null";
-        if (_messageById.TryGetValue(messageId, out var message))
-        {
-            return message;
-        }
-
-        return null;
+        string messageId = id.ToString() ?? string.Empty;
+        return _messageById.TryGetValue(messageId, out var message) ? message : null;
     }
 
     /// <summary>

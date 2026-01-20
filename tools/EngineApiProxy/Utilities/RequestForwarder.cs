@@ -42,7 +42,7 @@ public class RequestForwarder(
             };
 
             // Copy all original headers from the client request
-            if (request.OriginalHeaders != null)
+            if (request.OriginalHeaders is not null)
             {
                 _logger.Debug($"Forwarding {request.OriginalHeaders.Count} original headers from client request");
 

@@ -22,7 +22,7 @@ dotnet build -c Release
 ### Using Docker
 
 ```bash
-# Build the Docker image
+# Build the Docker image (must be run from the repository root)
 docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-proxy:latest .
 ```
 
@@ -30,18 +30,18 @@ docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-prox
 
 The proxy supports four validation modes:
 
-1. **FCU Mode**: Validates through the ForkChoiceUpdated pipeline
+1. **ForkChoiceUpdated Mode**: Validates through the ForkChoiceUpdated pipeline
 2. **NewPayload Mode**: Validates through the NewPayload pipeline
 3. **Merged Mode**: Validates through the ForkChoiceUpdated pipeline and stores PayloadID without validation, and validation happens at next new_payload request
-4. **LH Mode**: Similar to Merged, but intercepts PayloadAttributes from existing FCU requests instead of generating them
+4. **Lighthouse Mode**: Similar to Merged, but intercepts PayloadAttributes from existing FCU requests instead of generating them
 
-Note: for LH mode we should use Lighthouse consensus client with `--always-prepare-payload` flag enabled. At the moment LH mode is the most accurate validation mode.
+Note: for Lighthouse mode we should use Lighthouse consensus client with `--always-prepare-payload` flag enabled. At the moment Lighthouse mode is the most accurate validation mode.
 
 ## Configuration
 
 Key configuration options:
 
-- **ValidationMode**: FCU, NewPayload, Merged, LH
+- **ValidationMode**: ForkChoiceUpdated, NewPayload, Merged, Lighthouse
 - **ValidateAllBlocks**: Whether to validate all blocks or only specific ones
 - **DefaultFeeRecipient**: The default fee recipient address to use when generating payload attributes
 - **TimestampOffsetSeconds**: The time offset in seconds for block timestamp calculation
@@ -67,7 +67,7 @@ dotnet run --project tools/EngineApiProxy -- --ec-endpoint http://localhost:8551
 - `--log-level` or `-l`: Log level (Trace, Debug, Info, Warn, Error) (default: Info)
 - `--validate-all-blocks`: Enable validation for all blocks, even those where CL doesn't request validation
 - `--fee-recipient`: Default fee recipient address for generated payload attributes (default: 0x0000000000000000000000000000000000000000)
-- `--validation-mode`: Mode for block validation (Fcu or NewPayload) (default: NewPayload)
+- `--validation-mode`: Mode for block validation (ForkChoiceUpdated, NewPayload, Merged, or Lighthouse) (default: Lighthouse)
 - `--get-payload-method`: Engine API method to use when getting payloads for validation (default: engine_getPayloadV4)
 - `--new-payload-method`: Engine API method to use when sending new payloads for validation (default: engine_newPayloadV4)
 
@@ -88,8 +88,8 @@ dotnet run -c Release -- --ec-endpoint http://localhost:8551 --port 9551 --log-l
 # With auto-validation of all blocks enabled
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks
 
-# Using Fcu validation mode instead of NewPayload
-dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
+# Using ForkChoiceUpdated validation mode instead of NewPayload
+dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks --validation-mode ForkChoiceUpdated
 
 # Using a specific engine_getPayload version
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 --get-payload-method engine_getPayloadV3
@@ -209,13 +209,13 @@ sequenceDiagram
 
 ```
 
-2.Validation of payloads based on `engine_forkchoiceUpdated` request (`--validation-mode=Fcu` or `--validation-mode=LH`)
+2.Validation of payloads based on `engine_forkchoiceUpdated` request (`--validation-mode=ForkChoiceUpdated` or `--validation-mode=Lighthouse`)
 
 The difference between this flow is that we are not waiting for `engine_newPayload` request from CL, but only for `engine_forkchoiceUpdated` with null payload attributes. The validation payload should be very close to the original one (since we are using the same `forkchoiceState`), but with different `blockHash` and `blockNumber`.
 
 The flow may be safely used with both validator and non-validator nodes, since we are ignoring FCU requests when payload attributes are not null.
 
-With LH mode we are not generating PayloadAttributes, but intercepting them from the existing FCU request.
+With Lighthouse mode we are not generating PayloadAttributes, but intercepting them from the existing FCU request.
 
 #### FCU Flow
 
@@ -230,9 +230,9 @@ sequenceDiagram
     Note over P: Intercept & delay engine_forkchoiceUpdated
     
     %% Step 1.1: based on request (1) PR generates PayloadAttributes
-    alt Validation enabled && PayloadAttributes null (FCU flow) || PayloadAttributes not null (LH flow)
-    
-    P->>P: (1.1) generate or intercept PayloadAttributes (based on the current head block or existing FCU request for LH flow)
+    alt Validation enabled && PayloadAttributes null (ForkChoiceUpdated flow) || PayloadAttributes not null (Lighthouse flow)
+
+    P->>P: (1.1) generate or intercept PayloadAttributes (based on the current head block or existing FCU request for Lighthouse flow)
     Note over P: Append PayloadAttributes to FCU
     
     %% Step 2: PR sends generated request (1.1) to EL
@@ -275,7 +275,7 @@ sequenceDiagram
 - in FCU flow `engine_forkchoiceUpdatedV3` will be generated using `latestValidHash` from the current `engine_newPayload` request (because EL already has this block), in NewPayload flow we will use `latestValidHash` from the previous block (since current block is not exist in EL DB yet)
 - thus, we may have different payloads in FCU and NewPayload flows, but FCU one will be more close to the original one
 - in FCU we start validation only if we have null payload attributes, in NewPayload we will validate every payload (since there is no way to know if the payload was already validated by another CL before `engine_newPayload` request was sent)
-- in LH mode we are not generating PayloadAttributes, but intercepting them from the existing FCU request.
+- in Lighthouse mode we are not generating PayloadAttributes, but intercepting them from the existing FCU request.
 
 ## Testing with Kurtosis
 
@@ -322,7 +322,7 @@ additional_services:
   - spamoor
 ```
 
-Note: there should be at least 2 nodes with one validator. `el_proxy_enabled: true` should be set for one of them (not validator one) and `snooper_enabled` should be set to `false` for it. LH mode is used by default (`--always-prepare-payload` flag enabled in Lighthouse consensus client). To test blob transactions, you need to set `blobber_enabled: true`, `blobber_extra_params` to the correct values and use `spamoor` service.
+Note: there should be at least 2 nodes with one validator. `el_proxy_enabled: true` should be set for one of them (not validator one) and `snooper_enabled` should be set to `false` for it. Lighthouse mode is used by default (`--always-prepare-payload` flag enabled in Lighthouse consensus client). To test blob transactions, you need to set `blobber_enabled: true`, `blobber_extra_params` to the correct values and use `spamoor` service.
 
 5.Run kurtosis stack
 

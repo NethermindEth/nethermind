@@ -71,7 +71,7 @@ public class RequestOrchestrator(
         try
         {
             // Check if Authorization header is present in original request
-            if (originalRequest.OriginalHeaders != null &&
+            if (originalRequest.OriginalHeaders is not null &&
                 originalRequest.OriginalHeaders.TryGetValue("Authorization", out var authHeader))
             {
                 _logger.Debug($"Original request contains Authorization header: {authHeader.Substring(0, Math.Min(10, authHeader.Length))}...");
@@ -92,11 +92,11 @@ public class RequestOrchestrator(
                 _logger.Debug("HttpClient DefaultRequestHeaders does not contain Authorization");
             }
 
-            // For LH mode, we don't need to do any special processing here as the ForkChoiceUpdatedHandler
+            // For Lighthouse mode, we don't need to do any special processing here as the ForkChoiceUpdatedHandler
             // will directly forward the original request and extract the payloadId from the response
-            if (_config.ValidationMode == ValidationMode.LH)
+            if (_config.ValidationMode == ValidationMode.Lighthouse)
             {
-                _logger.Info("LH mode: Skipping GetPayloadID processing as we're using the original request/response flow");
+                _logger.Info("Lighthouse mode: Skipping GetPayloadID processing as we're using the original request/response flow");
                 return string.Empty;
             }
 
@@ -153,7 +153,7 @@ public class RequestOrchestrator(
             modifiedRequest.Params ??= [];
 
             // Make sure we explicitly copy the originalRequest headers to ensure auth is preserved
-            modifiedRequest.OriginalHeaders = originalRequest.OriginalHeaders != null
+            modifiedRequest.OriginalHeaders = originalRequest.OriginalHeaders is not null
                 ? new Dictionary<string, string>(originalRequest.OriginalHeaders)
                 : null;
 
@@ -183,7 +183,7 @@ public class RequestOrchestrator(
             var fcuResponse = await SendJsonRpcRequest(modifiedRequest);
 
             // 5. Extract payload ID from response
-            if (fcuResponse.Result is JObject resultObj && resultObj["payloadId"] != null)
+            if (fcuResponse.Result is JObject resultObj && resultObj["payloadId"] is not null)
             {
                 string payloadId = resultObj["payloadId"]?.ToString() ?? string.Empty;
 
@@ -257,7 +257,7 @@ public class RequestOrchestrator(
         {
             // If the configured getPayload method fails, log it but don't throw an exception
             if (ex.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported") ||
-                (ex.InnerException != null && ex.InnerException.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported")))
+                (ex.InnerException is not null && ex.InnerException.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported")))
             {
                 _logger.Warn($"Execution client does not support {_config.GetPayloadMethod}. Skipping payload validation for payloadId: {payloadId}");
                 return false;
@@ -512,7 +512,7 @@ public class RequestOrchestrator(
             bool authHeaderAdded = false;
 
             // First, check if the request already has an Authorization header
-            if (request.OriginalHeaders != null &&
+            if (request.OriginalHeaders is not null &&
                 request.OriginalHeaders.TryGetValue("Authorization", out var requestAuthHeader) &&
                 !string.IsNullOrEmpty(requestAuthHeader))
             {
@@ -534,7 +534,7 @@ public class RequestOrchestrator(
             }
 
             // Then, copy any remaining original headers if present
-            if (request.OriginalHeaders != null)
+            if (request.OriginalHeaders is not null)
             {
                 foreach (var header in request.OriginalHeaders)
                 {
@@ -615,7 +615,7 @@ public class RequestOrchestrator(
             request.Params?.DeepClone() as JArray,
             request.Id)
         {
-            OriginalHeaders = request.OriginalHeaders != null
+            OriginalHeaders = request.OriginalHeaders is not null
                 ? new Dictionary<string, string>(request.OriginalHeaders)
                 : null
         };
