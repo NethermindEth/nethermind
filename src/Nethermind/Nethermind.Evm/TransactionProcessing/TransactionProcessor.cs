@@ -234,8 +234,13 @@ namespace Nethermind.Evm.TransactionProcessing
             GasConsumed spentGas;
             int statusCode;
             Address? executingAccount = tx.To;
-            // Fast path: simple ETH transfer (not create, no auth list, recipient has no code)
-            if (!tx.IsContractCreation && tx.AuthorizationList is null && executingAccount is not null && !WorldState.IsContract(executingAccount))
+            // Fast path: simple ETH transfer (not create, no auth list, no overrides, not precompile, no code)
+            if (executingAccount is not null &&
+                !tx.IsContractCreation &&
+                tx.AuthorizationList is null &&
+                !WorldState.IsContract(executingAccount) &&
+                !spec.IsPrecompile(executingAccount) &&
+                _codeInfoRepository is not IOverridableCodeInfoRepository)
             {
                 statusCode = ExecuteSimpleTransfer<TLogTracing>(tx, executingAccount, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, out substate, out spentGas);
             }
