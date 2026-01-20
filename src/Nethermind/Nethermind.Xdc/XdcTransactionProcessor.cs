@@ -29,7 +29,7 @@ internal class XdcTransactionProcessor(
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
     {
-        if(tx.IsSpecialTransaction((IXdcReleaseSpec)spec)) return;
+        if (tx.IsSpecialTransaction((IXdcReleaseSpec)spec)) return;
 
         base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
     }

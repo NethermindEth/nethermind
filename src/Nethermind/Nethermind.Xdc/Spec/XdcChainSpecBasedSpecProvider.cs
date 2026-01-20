@@ -39,7 +39,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.XDCXLendingFinalizedTradeAddressBinary = chainSpecEngineParameters.XDCXLendingFinalizedTradeAddressBinary;
         releaseSpec.XDCXLendingAddressBinary = chainSpecEngineParameters.XDCXLendingAddressBinary;
         releaseSpec.XDCXAddressBinary = chainSpecEngineParameters.XDCXAddressBinary;
-        releaseSpec.TradingStateAddressBinary = chainSpecEngineParameters.TradingStateAddressBinary;    
+        releaseSpec.TradingStateAddressBinary = chainSpecEngineParameters.TradingStateAddressBinary;
 
         releaseSpec.ApplyV2Config(0);
 

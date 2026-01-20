@@ -206,7 +206,8 @@ public class XdcTestBlockchain : TestBlockchain
                 var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
 
                 var compoundPolicy = new CompositeTxGossipPolicy();
-                if (gossipPolicy != null) {
+                if (gossipPolicy != null)
+                {
                     compoundPolicy.Policies.Add(gossipPolicy);
                 }
 
