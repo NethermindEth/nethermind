@@ -277,6 +277,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
         xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
+        xdcSpec.FoundationWallet = new Address("0x0000000000000000000000000000000000000068");
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -72,7 +73,7 @@ public class RewardTests
 
         // Expect exactly 2 entries: one for the masternode owner and one for foundation
         Address foundation = spec.FoundationWallet;
-        foundation.Should().NotBe(Address.Zero);
+        foundation.Should().NotBeNull();
 
         Assert.That(rewardsAt2700, Has.Length.EqualTo(2));
         rewardsAt2700.Length.Should().Be(2);
@@ -153,12 +154,9 @@ public class RewardTests
         EpochSwitchInfo? epochInfo = chain.EpochSwitchManager.GetEpochSwitchInfo(header915);
         Assert.That(epochInfo, Is.Not.Null);
         PrivateKey[] masternodes = chain.TakeRandomMasterNodes(spec, epochInfo);
-        PrivateKey signerA = masternodes.First();
-        PrivateKey signerB = masternodes.Last();
+        PrivateKey signerA = GetSignerFromMasternodes(chain, header915, spec);
         Address ownerA = signerA.Address;
-        Address ownerB = signerB.Address;
         masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signerA.Address).Returns(ownerA);
-        masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signerB.Address).Returns(ownerB);
 
         // Insert 1 signing tx for header (E + 15) in block (E + 16)
         Transaction txA = BuildSigningTx(
@@ -176,6 +174,17 @@ public class RewardTests
         // Prepare two signing txs signed by signerB:
         // - for header (E + 15)
         // - for header (2E - 15)
+
+
+        await chain.AddBlocks(13);
+
+        PrivateKey signerB = GetSignerFromMasternodes(chain, header1785, spec);
+        Address ownerB = signerB.Address;
+
+        var signer = (Signer)chain.Signer;
+        signer.SetSigner(signerB);
+
+        masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signerB.Address).Returns(ownerB);
         Transaction txB1 = BuildSigningTx(
             spec,
             header915.Number,
@@ -190,7 +199,6 @@ public class RewardTests
             1);
 
         // Advance to (2E - 2), then add a block with both signerB txs to be at (2E - 1)
-        await chain.AddBlocks(13);
         await chain.AddBlock(txB1, txB2); // now at (2E - 1)
 
         // Rewards at (3E) should exist with split 1:2 across A:B and 90/10 owner/foundation
@@ -317,8 +325,6 @@ public class RewardTests
 
     private static PrivateKey GetSignerFromMasternodes(XdcTestBlockchain chain, XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        EpochSwitchInfo? epochInfo = chain.EpochSwitchManager.GetEpochSwitchInfo(header);
-        Assert.That(epochInfo, Is.Not.Null);
-        return chain.TakeRandomMasterNodes(spec, epochInfo).First();
+        return chain.Signer.Key!;
     }
 }

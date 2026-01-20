@@ -14,25 +14,24 @@ namespace Nethermind.TxPool.Filters;
 
 internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
 {
-    private (XdcBlockHeader, IXdcReleaseSpec) GetSpecAndHeader()
+    private (long, IXdcReleaseSpec) GetSpecAndHeader()
     {
         XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        var xdcSpec = specProvider.GetXdcSpec(header);
+        var currentHeaderNumber = header.Number + 1;
+        var xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
 
-        return (header, xdcSpec);
+        return (currentHeaderNumber, xdcSpec);
     }
 
-    private AcceptTxResult ValidateSignTransaction(Transaction tx, XdcBlockHeader header, IXdcReleaseSpec xdcSpec)
+    private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
     {
-        Address target = tx.To;
-
         if (tx.Data.Length < 68)
         {
             return AcceptTxResult.Invalid;
         }
 
         UInt256 blkNumber = new UInt256(tx.Data.Span.Slice(4, 32), true);
-        if (blkNumber >= header.Number || blkNumber <= (header.Number - (xdcSpec.EpochLength * 2)))
+        if (blkNumber >= headerNumber || blkNumber <= (headerNumber - (xdcSpec.EpochLength * 2)))
         {
             // Invalid block number in special transaction data
             return AcceptTxResult.Invalid;
@@ -43,11 +42,11 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        var (header, spec) = GetSpecAndHeader();
+        var (headerNumber, spec) = GetSpecAndHeader();
 
         if (tx.IsSpecialTransaction((IXdcReleaseSpec)specProvider.GetFinalSpec()))
         {
-            if(tx.IsSignTransaction(spec) && !ValidateSignTransaction(tx, header, spec))
+            if(tx.IsSignTransaction(spec) && !ValidateSignTransaction(tx, headerNumber, spec))
             {
                 return AcceptTxResult.Invalid;
             }
