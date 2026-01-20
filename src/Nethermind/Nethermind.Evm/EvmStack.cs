@@ -312,6 +312,109 @@ public ref partial struct EvmStack
         _tracer.ReportStackPush(padded);
     }
 
+    /// <summary>
+    /// Reports a UInt256 value at the given stack slot to the tracer (for tracing without push).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void ReportPushUInt256(ref byte slot) =>
+        _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref slot, WordSize));
+
+    /// <summary>
+    /// Reads a UInt256 value from a stack slot with big-endian to native conversion (no bounds check).
+    /// Used when the slot was already validated by a previous operation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt256 ReadUInt256FromSlot(ref byte slot)
+    {
+        if (Avx2.IsSupported)
+        {
+            Word data = Unsafe.ReadUnaligned<Word>(ref slot);
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
+                return Unsafe.As<Word, UInt256>(ref convert);
+            }
+            else
+            {
+                Word convert = Avx2.Shuffle(data, shuffle);
+                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+                return Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
+            }
+        }
+        else
+        {
+            ulong u3, u2, u1, u0;
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref slot));
+                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, sizeof(ulong))));
+                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 2 * sizeof(ulong))));
+                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 3 * sizeof(ulong))));
+            }
+            else
+            {
+                u3 = Unsafe.ReadUnaligned<ulong>(ref slot);
+                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, sizeof(ulong)));
+                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 2 * sizeof(ulong)));
+                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref slot, 3 * sizeof(ulong)));
+            }
+            return new UInt256(u0, u1, u2, u3);
+        }
+    }
+
+    /// <summary>
+    /// Writes a UInt256 value to a stack slot with big-endian conversion (no bounds check).
+    /// Used when the slot was already validated by a previous pop operation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteUInt256ToSlot(ref byte slot, in UInt256 value)
+    {
+        ref Word head = ref Unsafe.As<byte, Word>(ref slot);
+        if (Avx2.IsSupported)
+        {
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
+                head = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
+            }
+            else
+            {
+                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
+                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
+                head = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle);
+            }
+        }
+        else
+        {
+            ulong u3, u2, u1, u0;
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
+                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
+                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
+                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
+            }
+            else
+            {
+                u3 = value.u3;
+                u2 = value.u2;
+                u1 = value.u1;
+                u0 = value.u0;
+            }
+            head = Vector256.Create(u3, u2, u1, u0).AsByte();
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType Push10Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag

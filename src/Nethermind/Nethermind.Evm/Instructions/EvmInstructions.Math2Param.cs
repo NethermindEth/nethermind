@@ -58,15 +58,24 @@ internal static partial class EvmInstructions
         // Deduct the gas cost for the specific math operation.
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
-        // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        // Single bounds check: pop one, peek one. Result written to top (no push bounds check needed).
+        ref byte top = ref stack.PopPeekBytesByRef();
+        if (IsNullRef(ref top)) goto StackUnderflow;
 
-        // Execute the math operation defined by TOpMath.
+        // Read both operands with big-endian conversion (popped is at top + WordSize)
+        ref byte popped = ref Add(ref top, EvmStack.WordSize);
+        UInt256 a = EvmStack.ReadUInt256FromSlot(ref popped);
+        UInt256 b = EvmStack.ReadUInt256FromSlot(ref top);
+
+        // Execute the math operation and write result to top with big-endian conversion
         TOpMath.Operation(in a, in b, out UInt256 result);
+        EvmStack.WriteUInt256ToSlot(ref top, in result);
 
-        // Push the computed result onto the stack.
-        return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
-    // Jump forward to be unpredicted by the branch predictor.
+        if (TTracingInst.IsActive)
+            stack.ReportPushUInt256(ref top);
+
+        return new(programCounter);
+
     StackUnderflow:
         return new(programCounter, EvmExceptionType.StackUnderflow);
     }
