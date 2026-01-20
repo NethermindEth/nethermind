@@ -36,7 +36,7 @@ jobs:
         with:
           repository: NethermindEth/surge-taiko-mono
           path: ${{ env.TAIKO_MONO_MAIN_DIR }}
-          ref: jmadibekov/integration-tests
+          ref: surge-shasta
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
