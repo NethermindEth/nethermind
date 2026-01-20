@@ -446,7 +446,7 @@ namespace Nethermind.Evm.TransactionProcessing
             BlockHeader header,
             IReleaseSpec spec,
             ExecutionOptions opts,
-            IntrinsicGas<TGasPolicy> intrinsicGas)
+            in IntrinsicGas<TGasPolicy> intrinsicGas)
             where TLogTracing : struct, IFlag
         {
 
@@ -722,7 +722,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            IntrinsicGas<TGasPolicy> gas,
+            in IntrinsicGas<TGasPolicy> gas,
             in StackAccessTracker accessTracker,
             TGasPolicy gasAvailable,
             out TransactionSubstate substate,
@@ -778,7 +778,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            IntrinsicGas<TGasPolicy> gas,
+            in IntrinsicGas<TGasPolicy> gas,
             in StackAccessTracker accessedItems,
             TGasPolicy gasAvailable,
             ExecutionEnvironment env,

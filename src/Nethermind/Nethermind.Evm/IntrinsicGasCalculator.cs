@@ -21,7 +21,7 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
-    public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+    public static explicit operator TGasPolicy(in IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 }
 
 /// <summary>
