@@ -23,7 +23,6 @@ public class VisitorProgressTracker
 
     private long _nodeCount;
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
-    private long _maxReportedProgress; // Track max to avoid going backwards
     private readonly DateTime _startTime;
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
@@ -69,18 +68,16 @@ public class VisitorProgressTracker
         // Only track state nodes for progress estimation at level 3
         if (!isStorage)
         {
-            int depth = Math.Min(path.Length, Level3Depth);
-
-            if (depth == Level3Depth)
+            if (path.Length == Level3Depth)
             {
-                // Node at level 3 (4 nibbles): count as 1 node
+                // Node at exactly level 3 (4 nibbles): count as 1 node
                 Interlocked.Increment(ref _seenCount);
             }
-            else if (isLeaf && depth > 0)
+            else if (isLeaf && path.Length > 0 && path.Length < Level3Depth)
             {
                 // Leaf at lower depth: estimate how many level-3 nodes it covers
                 // Each level has 16 children, so a leaf at depth d covers 16^(4-d) level-3 nodes
-                int coverageDepth = Level3Depth - depth;
+                int coverageDepth = Level3Depth - path.Length;
                 int estimatedNodes = 1;
                 for (int i = 0; i < coverageDepth; i++)
                 {
@@ -90,6 +87,7 @@ public class VisitorProgressTracker
                 // Add estimated coverage
                 Interlocked.Add(ref _seenCount, estimatedNodes);
             }
+            // Nodes at depth > Level3Depth are ignored for progress calculation
 
             // Log progress at intervals (based on state nodes only)
             if (Interlocked.Increment(ref _nodeCount) % _reportingInterval == 0)
@@ -102,7 +100,7 @@ public class VisitorProgressTracker
     private void LogProgress()
     {
         // Skip logging for first 5 seconds OR until we've seen at least 1% of nodes
-        // This prevents early estimates from getting stuck in _maxReportedProgress
+        // This avoids showing noisy early estimates
         double elapsed = (DateTime.UtcNow - _startTime).TotalSeconds;
         int seen = _seenCount;
         double progress = Math.Min((double)seen / MaxNodes, 1.0);
@@ -114,18 +112,7 @@ public class VisitorProgressTracker
 
         long progressValue = (long)(progress * 10000);
 
-        // Never report progress lower than previously reported
-        long currentMax = _maxReportedProgress;
-        while (progressValue > currentMax)
-        {
-            if (Interlocked.CompareExchange(ref _maxReportedProgress, progressValue, currentMax) == currentMax)
-            {
-                break;
-            }
-            currentMax = _maxReportedProgress;
-        }
-
-        _logger.Update(Math.Max(progressValue, _maxReportedProgress));
+        _logger.Update(progressValue);
         _logger.LogProgress();
     }
 
