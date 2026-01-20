@@ -198,6 +198,28 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_reject_when_receipts_response_below_minimum_size()
+    {
+        TxReceipt[] receipts =
+        {
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        };
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<SubprotocolException>()
+            .WithMessage("*non-truncated receipts response below minimum size*");
+    }
+
+    [Test]
     public void Should_reject_when_intrinsic_exceeds_block_gas()
     {
         TxReceipt[] receipts =

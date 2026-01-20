@@ -150,7 +150,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
         int blockIndex = 0;
         int firstBlockReceiptIndex = 0;
         ArrayPoolList<TxReceipt>? partialReceipts = null;
-        long totalResponseSize = 0;
+        ulong totalResponseSize = 0;
 
         using ArrayPoolList<long> expectedGasUsed = new(blockHashes.Count);
 
@@ -165,26 +165,32 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
             while (blockIndex < blockHashes.Count)
             {
                 using GetReceiptsMessage70 request = BuildRequest(blockHashes, blockIndex, firstBlockReceiptIndex);
-                (ReceiptsMessage70 Response, long Size) response = await SendRequest(request, token);
+                (ReceiptsMessage70 response, ulong size) = await SendRequest(request, token);
+
                 try
                 {
-                    totalResponseSize += response.Size;
+                    totalResponseSize += size;
 
-                    if (response.Response.EthMessage.TxReceipts.Count == 0)
+                    if (response.EthMessage.TxReceipts.Count == 0)
                     {
                         throw new SubprotocolException("Received empty Receipts payload in eth/70 response");
                     }
 
-                    if (response.Response.EthMessage.TxReceipts.Count > blockHashes.Count - blockIndex)
+                    if (response.EthMessage.TxReceipts.Count > blockHashes.Count - blockIndex)
                     {
                         throw new SubprotocolException("Received more receipts than requested in eth/70 response");
                     }
 
-                    for (int i = 0; i < response.Response.EthMessage.TxReceipts.Count; i++)
+                    if (!response.LastBlockIncomplete && size < SoftOutgoingMessageSizeLimit / 4)
+                    {
+                        throw new SubprotocolException($"Received partial receipts response below minimum size ({size} bytes < {SoftOutgoingMessageSizeLimit / 4} bytes)");
+                    }
+
+                    for (int i = 0; i < response.EthMessage.TxReceipts.Count; i++)
                     {
                         bool isFirst = i == 0;
-                        bool isLast = i == response.Response.EthMessage.TxReceipts.Count - 1;
-                        TxReceipt[] blockReceipts = response.Response.EthMessage.TxReceipts[i];
+                        bool isLast = i == response.EthMessage.TxReceipts.Count - 1;
+                        TxReceipt[] blockReceipts = response.EthMessage.TxReceipts[i];
 
                         if (isFirst && firstBlockReceiptIndex > 0)
                         {
@@ -194,9 +200,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                             }
 
                             partialReceipts.AddRange(blockReceipts);
-                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], firstBlockReceiptIndex, isLast && !response.Response.LastBlockIncomplete);
+                            ValidateBlockReceipts(blockReceipts, expectedGasUsed[blockIndex], firstBlockReceiptIndex, isLast && !response.LastBlockIncomplete);
 
-                            if (response.Response.LastBlockIncomplete && isLast)
+                            if (response.LastBlockIncomplete && isLast)
                             {
                                 if (blockReceipts.Length == 0)
                                 {
@@ -219,7 +225,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                             continue;
                         }
 
-                        if (response.Response.LastBlockIncomplete && isLast)
+                        if (response.LastBlockIncomplete && isLast)
                         {
                             if (blockReceipts.Length == 0)
                             {
@@ -242,11 +248,11 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                 }
                 finally
                 {
-                    response.Response.Dispose();
+                    response.Dispose();
                 }
             }
 
-            return (aggregated, totalResponseSize);
+            return (aggregated, (long)totalResponseSize);
         }
         catch
         {
@@ -271,13 +277,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
         };
     }
 
-    private async Task<(ReceiptsMessage70 Response, long Size)> SendRequest(GetReceiptsMessage70 message, CancellationToken token)
+    private async Task<(ReceiptsMessage70 response, ulong size)> SendRequest(GetReceiptsMessage70 message, CancellationToken token)
     {
         Request<GetReceiptsMessage70, ReceiptsMessage70> request = new(message);
         _receiptsRequests70.Send(request);
 
         ReceiptsMessage70 response = await HandleResponse(request, TransferSpeedType.Receipts, static _ => nameof(GetReceiptsMessage70), token);
-        return (response, request.ResponseSize);
+        return (response, (ulong)request.ResponseSize);
     }
 
     private readonly struct ReceiptsResponse(IOwnedReadOnlyList<TxReceipt[]> txReceipts, bool lastBlockIncomplete)
