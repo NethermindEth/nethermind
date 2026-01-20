@@ -215,7 +215,7 @@ public partial class EthRpcModuleTests
         if (eip1559)
         {
             specProvider = Substitute.For<ISpecProvider>();
-            ReleaseSpec releaseSpec = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
+            ReleaseSpec releaseSpec = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         }
 
@@ -774,7 +774,6 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_protocol_version()
     {
-        // TODO: test case when eth/69 is added dynamically
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_protocolVersion");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x44\",\"id\":67}"));

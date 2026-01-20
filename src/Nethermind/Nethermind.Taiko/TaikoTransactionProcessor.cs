@@ -63,7 +63,7 @@ public class TaikoTransactionProcessor(
             var taikoSpec = (ITaikoReleaseSpec)spec;
             if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
             {
-                byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaExtraData() : header.DecodeOntakeExtraData()) ?? 0;
+                byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;
 
                 UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
 

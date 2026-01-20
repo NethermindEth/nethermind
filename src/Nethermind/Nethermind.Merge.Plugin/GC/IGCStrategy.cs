@@ -8,6 +8,7 @@ namespace Nethermind.Merge.Plugin.GC;
 public interface IGCStrategy
 {
     int CollectionsPerDecommit { get; }
+    int PostBlockDelayMs { get; }
     bool CanStartNoGCRegion();
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();
 }

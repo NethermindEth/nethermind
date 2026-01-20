@@ -5,13 +5,13 @@
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet",
     "LogFileName": "mainnet.log",
-    "MemoryHint": 2048000000
+    "MemoryHint": 1024000000
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 24106000,
-    "PivotHash": "0x2d2ac74ae7ca57ee08feef9e0cb6241f5c761e9408fa15fc0c9b944873a60895",
+    "PivotNumber": 24257000,
+    "PivotHash": "0x3a3aa93772ec060df348b5824ab9458704873215cc5a4abd354a7c4f83379efe",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": 10000000000,
     "AncientReceiptsBarrier": 15537394,
