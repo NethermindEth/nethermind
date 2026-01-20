@@ -16,104 +16,88 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public class FlatWorldStateManager : IWorldStateManager
+public class FlatWorldStateManager(
+    IFlatDbManager flatDbManager,
+    IFlatDbConfig configuration,
+    FlatStateReader flatStateReader,
+    ITrieWarmer trieWarmer,
+    IProcessExitSource exitSource,
+    [KeyFilter(DbNames.Code)] IDb codeDb,
+    ResourcePool resourcePool,
+    ILogManager logManager)
+    : IWorldStateManager
 {
-    private readonly IFlatDbManager _flatDbManager;
-    private readonly FlatStateReader _flatStateReader;
-    private readonly IProcessExitSource _exitSource;
-    private readonly IDb _codeDb;
-    private readonly ILogManager _logManager;
-    private readonly IFlatDbConfig _configuration;
-    private readonly FlatScopeProvider _mainWorldState;
-    private readonly ResourcePool _resourcePool;
-
-    public FlatWorldStateManager(
-        IFlatDbManager flatDbManager,
-        IFlatDbConfig configuration,
-        FlatStateReader flatStateReader,
-        ITrieWarmer trieWarmer,
-        IProcessExitSource exitSource,
-        [KeyFilter(DbNames.Code)] IDb codeDb,
-        ResourcePool resourcePool,
-        ILogManager logManager
-    )
-    {
-        _flatDbManager = flatDbManager;
-        _flatStateReader = flatStateReader;
-        _codeDb = codeDb;
-        _logManager = logManager;
-        _configuration = configuration;
-        _exitSource = exitSource;
-        _resourcePool = resourcePool;
-        _mainWorldState = new FlatScopeProvider(
-            codeDb,
-            flatDbManager,
-            configuration,
-            trieWarmer,
-            resourcePool,
-            ResourcePool.Usage.MainBlockProcessing,
-            logManager);
-    }
+    private readonly FlatScopeProvider _mainWorldState = new(
+        codeDb,
+        flatDbManager,
+        configuration,
+        trieWarmer,
+        resourcePool,
+        ResourcePool.Usage.MainBlockProcessing,
+        logManager);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
-    public IStateReader GlobalStateReader => _flatStateReader;
+    public IStateReader GlobalStateReader => flatStateReader;
     public ISnapServer? SnapServer => null;
     public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
         return new FlatScopeProvider(
-            _codeDb,
-            _flatDbManager,
-            _configuration,
+            codeDb,
+            flatDbManager,
+            configuration,
             new NoopTrieWarmer(),
-            _resourcePool,
+            resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            _logManager,
+            logManager,
             isReadOnly: true);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
     {
-        add => _flatDbManager.ReorgBoundaryReached += value;
-        remove => _flatDbManager.ReorgBoundaryReached -= value;
+        add => flatDbManager.ReorgBoundaryReached += value;
+        remove => flatDbManager.ReorgBoundaryReached -= value;
     }
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        var scopeProvider = new FlatScopeProvider(
-            _codeDb,
-            _flatDbManager,
-            _configuration,
+        FlatScopeProvider scopeProvider = new FlatScopeProvider(
+            codeDb,
+            flatDbManager,
+            configuration,
             new NoopTrieWarmer(),
-            _resourcePool,
+            resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            _logManager,
+            logManager,
             isReadOnly: true);
-        return new FakeOverridableWorldScope(scopeProvider, _flatStateReader);
+        return new FakeOverridableWorldScope(scopeProvider, flatStateReader);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
-        using IPersistence.IPersistenceReader reader = _flatDbManager.CreateReader();
-        FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(_codeDb, reader, _logManager, cancellationToken);
+        using IPersistence.IPersistenceReader reader = flatDbManager.CreateReader();
+        FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(codeDb, reader, logManager, cancellationToken);
 
-        _flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock, new VisitingOptions()
+        flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock, new VisitingOptions()
         {
         });
 
         if (trieVisitor.Stats.MismatchedAccount > 0 || trieVisitor.Stats.MismatchedSlot > 0)
         {
-            _exitSource.Exit(10);
+            exitSource.Exit(10);
         }
 
         return true;
     }
 
-    public void FlushCache(CancellationToken cancellationToken)
-    {
-        _flatDbManager.FlushCache(cancellationToken);
-    }
+    public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 
+    /// <summary>
+    /// TODO: Add actual support for ResetOverrides. Meaning, in SnapshotBundle, clear the changed entries. Dont forget
+    /// to return to resourccec pool.
+    /// </summary>
+    /// <param name="worldState"></param>
+    /// <param name="stateReader"></param>
     public class FakeOverridableWorldScope(IWorldStateScopeProvider worldState, IStateReader stateReader) : IOverridableWorldScope
     {
         public IWorldStateScopeProvider WorldState => worldState;
