@@ -69,21 +69,30 @@ namespace Nethermind.Blockchain.FullPruning
             throw new TrieException($"Trie {nodeHash} missing");
         }
 
-        public void VisitBranch(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitBranch(in TContext ctx, TrieNode node)
+        {
+            PersistNode(ctx.Storage, ctx.Path, node, isLeaf: false);
+        }
 
-        public void VisitExtension(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitExtension(in TContext ctx, TrieNode node)
+        {
+            PersistNode(ctx.Storage, ctx.Path, node, isLeaf: false);
+        }
 
-        public void VisitLeaf(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitLeaf(in TContext ctx, TrieNode node)
+        {
+            PersistNode(ctx.Storage, ctx.Path, node, isLeaf: true);
+        }
 
         public void VisitAccount(in TContext ctx, TrieNode node, in AccountStruct account) { }
 
-        private void PersistNode(Hash256 storage, in TreePath path, TrieNode node)
+        private void PersistNode(Hash256? storage, in TreePath path, TrieNode node, bool isLeaf)
         {
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
                 _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.Span, _writeFlags);
-                _progressTracker.OnNodeVisited(path);
+                _progressTracker.OnNodeVisited(path, isStorage: storage is not null, isLeaf);
             }
         }
 

@@ -118,15 +118,17 @@ public class VisitorProgressTracker
 
     private void LogProgress()
     {
-        // Skip logging for first second to avoid early high values getting stuck in _maxReportedProgress
-        if ((DateTime.UtcNow - _startTime).TotalSeconds < 1.0)
+        // Skip logging for first 5 seconds OR until we've seen at least 1% of nodes
+        // This prevents early estimates from getting stuck in _maxReportedProgress
+        double elapsed = (DateTime.UtcNow - _startTime).TotalSeconds;
+        int seen = _seenCounts[MaxLevel];
+        double progress = Math.Min((double)seen / MaxAtLevel[MaxLevel], 1.0);
+
+        if (elapsed < 5.0 && progress < 0.01)
         {
             return;
         }
 
-        // Always use level 3 for progress
-        int seen = _seenCounts[MaxLevel];
-        double progress = Math.Min((double)seen / MaxAtLevel[MaxLevel], 1.0);
         long progressValue = (long)(progress * 10000);
 
         // Never report progress lower than previously reported
