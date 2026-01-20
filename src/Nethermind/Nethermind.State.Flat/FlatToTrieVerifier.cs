@@ -18,43 +18,28 @@ namespace Nethermind.State.Flat;
 /// Verifies flat storage against trie by iterating flat storage entries and comparing with trie values.
 /// This complements FlatVerifyTrieVisitor which does the reverse direction (trie -> flat).
 /// </summary>
-public class FlatToTrieVerifier
+public class FlatToTrieVerifier(
+    IPersistence.IPersistenceReader reader,
+    IScopedTrieStore trieStore,
+    Hash256 stateRoot,
+    ILogManager logManager,
+    CancellationToken cancellationToken)
 {
-    private readonly IPersistence.IPersistenceReader _reader;
-    private readonly IScopedTrieStore _trieStore;
-    private readonly Hash256 _stateRoot;
-    private readonly ILogManager _logManager;
-    private readonly ILogger _logger;
-    private readonly CancellationToken _cancellationToken;
+    private readonly ILogger _logger = logManager.GetClassLogger<FlatToTrieVerifier>();
     private long _lastLoggedCount;
-
-    public FlatToTrieVerifier(
-        IPersistence.IPersistenceReader reader,
-        IScopedTrieStore trieStore,
-        Hash256 stateRoot,
-        ILogManager logManager,
-        CancellationToken cancellationToken)
-    {
-        _reader = reader;
-        _trieStore = trieStore;
-        _stateRoot = stateRoot;
-        _logManager = logManager;
-        _logger = logManager.GetClassLogger<FlatToTrieVerifier>();
-        _cancellationToken = cancellationToken;
-    }
 
     public VerificationStats Stats { get; } = new();
 
     public void Verify()
     {
-        StateTree stateTree = new StateTree(_trieStore, _logManager);
-        stateTree.RootHash = _stateRoot;
+        StateTree stateTree = new StateTree(trieStore, logManager);
+        stateTree.RootHash = stateRoot;
 
-        using IPersistence.IFlatIterator accountIterator = _reader.CreateAccountIterator();
+        using IPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator();
 
         while (accountIterator.MoveNext())
         {
-            _cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             ValueHash256 accountKey = accountIterator.CurrentKey;
             ReadOnlySpan<byte> flatAccountRlp = accountIterator.CurrentValue;
@@ -67,7 +52,7 @@ public class FlatToTrieVerifier
             // In non-preimage mode, we only have the truncated 20-byte hash
             ValueHash256 triePath;
             byte[]? trieAccountRlp;
-            if (_reader.IsPreimageMode)
+            if (reader.IsPreimageMode)
             {
                 // Preimage mode: hash the raw address to get full 32-byte path
                 triePath = ValueKeccak.Compute(accountKey.Bytes[..20]);
@@ -228,47 +213,39 @@ public class FlatToTrieVerifier
     {
         // Decode both accounts and compare semantically since encoding may differ
         // (flat uses slim encoding, trie uses standard encoding)
-        try
+        Rlp.ValueDecoderContext flatCtx = new Rlp.ValueDecoderContext(flatRlp);
+        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
+
+        Rlp.ValueDecoderContext trieCtx = new Rlp.ValueDecoderContext(trieRlp);
+        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieCtx);
+
+        if (flatAccount != trieAccount)
         {
-            Rlp.ValueDecoderContext flatCtx = new Rlp.ValueDecoderContext(flatRlp);
-            Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
-
-            Rlp.ValueDecoderContext trieCtx = new Rlp.ValueDecoderContext(trieRlp);
-            Account? trieAccount = AccountDecoder.Instance.Decode(ref trieCtx);
-
-            if (flatAccount != trieAccount)
-            {
-                if (_logger.IsWarn) _logger.Warn($"FlatToTrie: Mismatched account. Key: {accountKey}. Flat: {flatAccount}, Trie: {trieAccount}");
-                return false;
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsWarn) _logger.Warn($"FlatToTrie: Error decoding account. Key: {accountKey}. Error: {ex.Message}");
+            if (_logger.IsWarn) _logger.Warn($"FlatToTrie: Mismatched account. Key: {accountKey}. Flat: {flatAccount}, Trie: {trieAccount}");
             return false;
         }
+
+        return true;
     }
 
     private void VerifyAccountStorage(in ValueHash256 accountKey, in ValueHash256 triePath)
     {
-        using IPersistence.IFlatIterator storageIterator = _reader.CreateStorageIterator(accountKey);
+        using IPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(accountKey);
 
         // Get storage root from trie for this account
-        byte[]? accountRlp = _reader.GetAccountRaw(new Hash256(triePath));
+        byte[]? accountRlp = reader.GetAccountRaw(new Hash256(triePath));
         if (accountRlp is null) return;
 
         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(accountRlp);
         Account? account = AccountDecoder.Slim.Decode(ref ctx);
         if (account is null || account.StorageRoot == Keccak.EmptyTreeHash) return;
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(new Hash256(triePath));
-        StorageTree storageTree = new StorageTree(storageTrieStore, account.StorageRoot, _logManager);
+        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(new Hash256(triePath));
+        StorageTree storageTree = new StorageTree(storageTrieStore, account.StorageRoot, logManager);
 
         while (storageIterator.MoveNext())
         {
-            _cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             ValueHash256 slotKey = storageIterator.CurrentKey;
             ReadOnlySpan<byte> flatValue = storageIterator.CurrentValue;
@@ -277,7 +254,7 @@ public class FlatToTrieVerifier
 
             // In preimage mode, hash the slot key to get the trie path
             // In non-preimage mode, the slotKey is already the hashed path
-            ValueHash256 trieSlotPath = _reader.IsPreimageMode
+            ValueHash256 trieSlotPath = reader.IsPreimageMode
                 ? ValueKeccak.Compute(slotKey.Bytes)
                 : slotKey;
 

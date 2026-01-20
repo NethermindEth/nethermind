@@ -597,7 +597,7 @@ public sealed class SnapshotBundle : IDisposable
 
     public void Reset()
     {
-        GuardDispose();
+        if (_isDisposed) return;
 
         // Dispose all snapshots in the list
         _snapshots.Dispose();
