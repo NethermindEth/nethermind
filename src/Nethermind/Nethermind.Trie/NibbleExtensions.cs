@@ -8,8 +8,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.Arm;
-using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Trie
 {
@@ -46,8 +44,7 @@ namespace Nethermind.Trie
             }
 
             int processed = 0;
-            // Vector256.Shuffle requires AVX2 on x86 or AdvSimd on ARM64
-            if (Vector256.IsHardwareAccelerated && (Avx2.IsSupported || AdvSimd.Arm64.IsSupported))
+            if (Vector256.IsHardwareAccelerated)
             {
                 int len256 = (bytes.Length - processed) / Vector256<byte>.Count;
                 if (len256 > 0)
