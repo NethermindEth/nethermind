@@ -24,12 +24,12 @@ namespace Nethermind.Blockchain.FullPruning
     {
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
-        private long _persistedNodes = 0;
         private bool _finished = false;
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
         private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
+        private readonly VisitorProgressTracker _progressTracker;
 
         public CopyTreeVisitor(
             INodeStorage nodeStorage,
@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain.FullPruning
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
             _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
+            _progressTracker = new VisitorProgressTracker("Full Pruning", logManager);
         }
 
         public bool IsFullDbScan => true;
@@ -82,20 +83,8 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 // simple copy of nodes RLP
                 _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.Span, _writeFlags);
-                Interlocked.Increment(ref _persistedNodes);
-
-                // log message every 1 mln nodes
-                if (_persistedNodes % Million == 0)
-                {
-                    LogProgress("In Progress");
-                }
+                _progressTracker.OnNodeVisited(path);
             }
-        }
-
-        private void LogProgress(string state)
-        {
-            if (_logger.IsInfo)
-                _logger.Info($"Full Pruning {state}: {_stopwatch.Elapsed} {_persistedNodes / (double)Million:N} mln nodes mirrored.");
         }
 
         public void Dispose()
@@ -109,7 +98,9 @@ namespace Nethermind.Blockchain.FullPruning
         public void Finish()
         {
             _finished = true;
-            LogProgress("Finished");
+            _progressTracker.Finish();
+            if (_logger.IsInfo)
+                _logger.Info($"Full Pruning Finished: {_stopwatch.Elapsed} {_progressTracker.NodeCount / (double)Million:N} mln nodes mirrored.");
             _concurrentWriteBatcher.Dispose();
         }
     }
