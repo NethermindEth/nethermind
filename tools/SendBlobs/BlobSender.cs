@@ -66,15 +66,7 @@ internal class BlobSender
     {
         List<(Signer, ulong)> signers = [];
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
+        waitForInclusion = await ShouldWaitForInclusionAsync(waitForInclusion);
 
         string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
         ulong chainId = HexConvert.ToUInt64(chainIdString);
@@ -217,15 +209,7 @@ internal class BlobSender
         }
         data = normalized.ToArray();
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
+        waitForInclusion = await ShouldWaitForInclusionAsync(waitForInclusion);
 
         string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
         ulong chainId = HexConvert.ToUInt64(chainIdString);
@@ -277,6 +261,23 @@ internal class BlobSender
 
         if (waitForInclusion)
             await WaitForBlobInclusion(_rpcClient, hash, blockResult.Number);
+    }
+
+    private async Task<bool> ShouldWaitForInclusionAsync(bool waitForInclusion)
+    {
+        if (!waitForInclusion)
+        {
+            return false;
+        }
+
+        bool isSyncing = await _rpcClient.Post<dynamic>("eth_syncing") is not bool;
+        if (isSyncing)
+        {
+            Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
+            return false;
+        }
+
+        return true;
     }
 
     private async Task<(UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas)> GetGasPrices
