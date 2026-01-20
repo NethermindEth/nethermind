@@ -14,6 +14,8 @@ namespace Nethermind.Crypto.Blake2;
 public unsafe partial class Blake2Compression
 {
     // SIMD algorithm described in https://eprint.iacr.org/2012/275.pdf
+    // NOTE: This method uses AVX2 intrinsics without runtime checks.
+    // The caller (Compress method in Blake2Compression.cs) is responsible for checking Avx2.IsSupported.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     [SkipLocalsInit]
     private static void ComputeAvx2(ulong* sh, ulong* m, uint rounds)
