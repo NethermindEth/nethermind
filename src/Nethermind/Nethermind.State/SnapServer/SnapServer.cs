@@ -36,7 +36,6 @@ public class SnapServer : ISnapServer
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
-    private readonly IStateReader _stateReader;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
