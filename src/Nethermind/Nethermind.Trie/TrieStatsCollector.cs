@@ -14,9 +14,9 @@ namespace Nethermind.Trie
     {
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
-        private long _lastAccountNodeCount = 0;
 
         private readonly ILogger _logger;
+        private readonly VisitorProgressTracker _progressTracker;
         private readonly CancellationToken _cancellationToken;
 
         // Combine both `TreePathContextWithStorage` and `OldStyleTrieVisitContext`
@@ -66,6 +66,7 @@ namespace Nethermind.Trie
             _logger = logManager.GetClassLogger();
             ExpectAccounts = expectAccounts;
             _cancellationToken = cancellationToken;
+            _progressTracker = new VisitorProgressTracker("Trie Verification", logManager);
         }
 
         public TrieStats Stats { get; } = new();
@@ -132,13 +133,6 @@ namespace Nethermind.Trie
 
         public void VisitLeaf(in Context nodeContext, TrieNode node)
         {
-            long lastAccountNodeCount = _lastAccountNodeCount;
-            long currentNodeCount = Stats.NodesCount;
-            if (currentNodeCount - lastAccountNodeCount > 1_000_000 && Interlocked.CompareExchange(ref _lastAccountNodeCount, currentNodeCount, lastAccountNodeCount) == lastAccountNodeCount)
-            {
-                _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
-            }
-
             if (nodeContext.IsStorage)
             {
                 Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
@@ -187,11 +181,22 @@ namespace Nethermind.Trie
         {
             long[] levels = context.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(context, levels);
+
+            // Only track state trie nodes for progress (not storage)
+            if (!context.IsStorage)
+            {
+                _progressTracker.OnNodeVisited(context.Path);
+            }
         }
 
         private static void IncrementLevel(Context context, long[] levels)
         {
             Interlocked.Increment(ref levels[context.Level]);
+        }
+
+        public void Finish()
+        {
+            _progressTracker.Finish();
         }
     }
 }

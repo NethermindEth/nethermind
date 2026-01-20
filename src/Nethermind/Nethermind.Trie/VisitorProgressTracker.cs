@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -23,7 +24,9 @@ public class VisitorProgressTracker
     private static readonly int[] MaxAtLevel = { 16, 256, 4096, 65536 };
 
     private long _nodeCount;
+    private long _maxReportedProgress; // Track max to avoid going backwards
     private readonly ProgressLogger _logger;
+    private readonly string _operationName;
     private readonly int _reportingInterval;
 
     public VisitorProgressTracker(
@@ -33,8 +36,10 @@ public class VisitorProgressTracker
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
+        _operationName = operationName;
         _logger = new ProgressLogger(operationName, logManager);
-        _logger.Reset(0, 100); // Use 100 as target for percentage display
+        _logger.Reset(0, 10000); // Use 10000 for 0.01% precision
+        _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
 
         _seen = new int[MaxLevel + 1][];
@@ -42,6 +47,16 @@ public class VisitorProgressTracker
         {
             _seen[level] = new int[MaxAtLevel[level]];
         }
+    }
+
+    private string FormatProgress(ProgressLogger logger)
+    {
+        float percentage = Math.Clamp(logger.CurrentValue / 10000f, 0, 1);
+        long nodes = Interlocked.Read(ref _nodeCount);
+        string nodesStr = nodes >= 1_000_000 ? $"{nodes / 1_000_000.0:F1}M" : $"{nodes:N0}";
+        return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
+               Progress.GetMeter(percentage, 1) +
+               $" nodes: {nodesStr,8}";
     }
 
     /// <summary>
@@ -74,20 +89,36 @@ public class VisitorProgressTracker
     private void LogProgress()
     {
         // Use deepest level with >5% coverage for best granularity
+        long progressValue = 0;
         for (int level = MaxLevel; level >= 0; level--)
         {
             int seen = _seenCounts[level];
             if (seen > MaxAtLevel[level] / 20)
             {
                 double progress = Math.Min((double)seen / MaxAtLevel[level], 1.0);
-                _logger.Update((long)(progress * 100));
-                _logger.LogProgress();
-                return;
+                progressValue = (long)(progress * 10000);
+                break;
             }
         }
 
-        // Fallback to level 0
-        _logger.Update((long)((double)_seenCounts[0] / 16 * 100));
+        // Fallback to level 0 if no level had >5% coverage
+        if (progressValue == 0)
+        {
+            progressValue = (long)((double)_seenCounts[0] / 16 * 10000);
+        }
+
+        // Never report progress lower than previously reported (due to level switching)
+        long currentMax = _maxReportedProgress;
+        while (progressValue > currentMax)
+        {
+            if (Interlocked.CompareExchange(ref _maxReportedProgress, progressValue, currentMax) == currentMax)
+            {
+                break;
+            }
+            currentMax = _maxReportedProgress;
+        }
+
+        _logger.Update(Math.Max(progressValue, _maxReportedProgress));
         _logger.LogProgress();
     }
 
@@ -96,7 +127,7 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
-        _logger.Update(100);
+        _logger.Update(10000);
         _logger.MarkEnd();
         _logger.LogProgress();
     }
