@@ -9,7 +9,6 @@ namespace Nethermind.Monitoring
     public interface IMonitoringService
     {
         Task StartAsync();
-        Task StopAsync();
         void AddMetricsUpdateAction(Action callback);
     }
 }
