@@ -84,7 +84,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(string blockHash, string parentHash)
         => base.forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(blockHash, parentHash);
 
-    [Ignore("Withdrawals are not withdrawan due to lack of Aura contract in tests")]
+    [Ignore("Withdrawals are not withdrawn due to lack of Aura contract in tests")]
     public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
         return base.Can_apply_withdrawals_correctly(input);
