@@ -17,10 +17,8 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     private readonly IFlatDbManager _flatDbManager;
     private readonly ILogManager _logManager;
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb;
-    private readonly bool _isReadOnly;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _trieWarmer;
-    private readonly ResourcePool _resourcePool;
     private readonly ResourcePool.Usage _usage;
     private FlatWorldStateScope? _activeScope;
 
@@ -29,19 +27,15 @@ public class FlatScopeProvider : IWorldStateScopeProvider
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
         ITrieWarmer trieWarmer,
-        ResourcePool resourcePool,
         ResourcePool.Usage usage,
-        ILogManager logManager,
-        bool isReadOnly = false)
+        ILogManager logManager)
     {
         _flatDbManager = flatDbManager;
         _configuration = configuration;
         _trieWarmer = trieWarmer;
-        _resourcePool = resourcePool;
         _usage = usage;
         _logManager = logManager;
         _codeDb = new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb);
-        _isReadOnly = isReadOnly;
     }
 
     public bool HasRoot(BlockHeader? baseBlock)

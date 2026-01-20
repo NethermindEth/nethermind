@@ -23,7 +23,6 @@ public class FlatWorldStateManager(
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    ResourcePool resourcePool,
     ILogManager logManager)
     : IWorldStateManager
 {
@@ -33,7 +32,6 @@ public class FlatWorldStateManager(
         flatDbManager,
         configuration,
         trieWarmer,
-        resourcePool,
         ResourcePool.Usage.MainBlockProcessing,
         logManager);
 
@@ -48,10 +46,8 @@ public class FlatWorldStateManager(
             flatDbManager,
             configuration,
             new NoopTrieWarmer(),
-            resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            logManager,
-            isReadOnly: true);
+            logManager);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
@@ -67,10 +63,8 @@ public class FlatWorldStateManager(
             flatDbManager,
             configuration,
             new NoopTrieWarmer(),
-            resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            logManager,
-            isReadOnly: true);
+            logManager);
         return new FlatOverridableWorldScope(scopeProvider, flatStateReader);
     }
 

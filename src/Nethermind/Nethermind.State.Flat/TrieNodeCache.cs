@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat;
 public class TrieNodeCache
 {
     private const int EstimatedSizePerNode = 700;
-    private const double UtilRatio = 0.5;
+    private const double UtilRatio = 0.25;
     private const int ShardCount = 256;
 
     private readonly ILogger _logger;

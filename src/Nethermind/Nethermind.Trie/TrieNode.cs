@@ -1272,11 +1272,13 @@ namespace Nethermind.Trie
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 data = childOrRef = child;
 
+                                /*
                                 if (IsPersisted && !child.IsPersisted)
                                 {
                                     child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
                                         NullLogger.Instance);
                                 }
+                                */
 
                                 break;
                             }
