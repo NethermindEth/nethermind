@@ -16,6 +16,8 @@ runs:
 
   steps:
     - name: Remove runner from GitHub Actions
+      if: ${{ inputs.runner-name != '' }}
+      continue-on-error: true
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
         TARGET_RUNNER_NAME: ${{ inputs.runner-name }}
@@ -49,6 +51,7 @@ runs:
         fi
 
     - name: Trigger machine destruction workflow
+      if: ${{ inputs.workflow-run-id != '' }}
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
       shell: bash

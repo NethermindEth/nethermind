@@ -127,6 +127,10 @@ runs:
         echo "Run ID extracted is: $run_id"
         echo "run_id=$run_id" >> $GITHUB_OUTPUT
 
+        # Set runner name output early (even if machine setup fails later)
+        # This ensures cleanup can always identify and remove the runner
+        echo "runner_name=${{ env.GH_RUNNER_LABEL }}" >> $GITHUB_OUTPUT
+
     - name: Download machine specs artifact
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
@@ -145,41 +149,35 @@ runs:
       id: extract-details
       shell: bash
       run: |
-        # Find the machine details file
-        DETAILS_DIR="./downloaded-artifacts/machine-details"
-        if [ ! -d "$DETAILS_DIR" ]; then
-          echo "Error: machine-details directory not found"
+        # The artifact contains a directory structure with machine-details/machine-specs.txt
+        # After gh run download, it extracts to ./downloaded-artifacts/<artifact-name>/machine-details/machine-specs.txt
+
+        # Find the machine-specs.txt file
+        SPECS_FILE=$(find ./downloaded-artifacts -type f -name "machine-specs.txt" | head -n 1)
+
+        if [ -z "$SPECS_FILE" ]; then
+          echo "Error: Could not find machine-specs.txt in downloaded artifacts"
+          echo "Contents of downloaded-artifacts:"
+          find ./downloaded-artifacts -type f
           exit 1
         fi
 
-        FILE=$(ls "$DETAILS_DIR" | head -n 1)
-        if [ -z "$FILE" ]; then
-          echo "Error: Could not find machine details file"
-          exit 1
-        fi
-
-        DETAILS_FILE="$DETAILS_DIR/$FILE"
-        echo "Machine details file: $DETAILS_FILE"
+        echo "Found machine specs file: $SPECS_FILE"
 
         # Display details in summary
         echo "<details>" >> $GITHUB_STEP_SUMMARY
         echo "<summary>Self-hosted runner machine details</summary>" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        cat "$DETAILS_FILE" >> $GITHUB_STEP_SUMMARY
+        cat "$SPECS_FILE" >> $GITHUB_STEP_SUMMARY
         echo "</details>" >> $GITHUB_STEP_SUMMARY
 
         # Extract details from the artifact
-        cat "$DETAILS_FILE" | tee machine-output.txt
+        cat "$SPECS_FILE" | tee machine-output.txt
 
         # Extract machine IP (format: "   IP: 123.456.789.012")
         MACHINE_IP=$(grep -oP '^\s+IP:\s+\K[0-9.]+' machine-output.txt | head -n 1 || echo "unknown")
         echo "Machine IP: $MACHINE_IP"
         echo "machine_ip=$MACHINE_IP" >> $GITHUB_OUTPUT
-
-        # Use the runner label we generated (combines input label + username + random number)
-        # This is the actual GitHub Actions runner label registered in the setup script
-        echo "Runner Label: ${{ env.GH_RUNNER_LABEL }}"
-        echo "runner_name=${{ env.GH_RUNNER_LABEL }}" >> $GITHUB_OUTPUT
 
     - name: Wait for runner setup to complete
       shell: bash
