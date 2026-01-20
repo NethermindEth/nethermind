@@ -15,6 +15,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
+/// <summary>
+/// Go through the trie and check for the corresponding value in flat.
+/// </summary>
 public class FlatVerifyTrieVisitor : ITreeVisitor<FlatVerifyTrieVisitor.Context>
 {
     private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);

@@ -21,12 +21,12 @@ public class FlatWorldStateManager(
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
-    IProcessExitSource exitSource,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     ResourcePool resourcePool,
     ILogManager logManager)
     : IWorldStateManager
 {
+    private ILogger _logger = logManager.GetClassLogger<FlatWorldStateManager>();
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
@@ -76,16 +76,22 @@ public class FlatWorldStateManager(
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
         using IPersistence.IPersistenceReader reader = flatDbManager.CreateReader();
-        FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(codeDb, reader, logManager, cancellationToken);
 
-        flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock, new VisitingOptions()
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(codeDb, reader, logManager, cts.Token);
+
+        Task runTreeCommand = Task.Run(() =>
         {
+            flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock);
         });
 
+        runTreeCommand.Wait();
         if (trieVisitor.Stats.MismatchedAccount > 0 || trieVisitor.Stats.MismatchedSlot > 0)
         {
-            exitSource.Exit(10);
+            if (_logger.IsWarn) _logger.Warn($"{trieVisitor.Stats.MismatchedAccount} mismatched account and {trieVisitor.Stats.MismatchedSlot} found!");
+            return false;
         }
+
 
         return true;
     }
