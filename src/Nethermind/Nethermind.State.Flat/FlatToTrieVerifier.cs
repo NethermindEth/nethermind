@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,11 +47,6 @@ public class FlatToTrieVerifier
 
     public void Verify()
     {
-        if (!_reader.IsPreimageMode)
-        {
-            if (_logger.IsInfo) _logger.Info("FlatToTrie: Running in non-preimage mode. Storage verification will be skipped (requires full 32-byte address hash).");
-        }
-
         StateTree stateTree = new StateTree(_trieStore, _logManager);
         stateTree.RootHash = _stateRoot;
 
@@ -70,22 +66,21 @@ public class FlatToTrieVerifier
             // If preimage mode, we need to hash the key to get the full trie path
             // In non-preimage mode, we only have the truncated 20-byte hash
             ValueHash256 triePath;
-            ReadOnlySpan<byte> trieAccountRlp;
+            byte[]? trieAccountRlp;
             if (_reader.IsPreimageMode)
             {
                 // Preimage mode: hash the raw address to get full 32-byte path
                 triePath = ValueKeccak.Compute(accountKey.Bytes[..20]);
-                trieAccountRlp = stateTree.Get(triePath.Bytes);
+                trieAccountRlp = stateTree.Get(triePath.Bytes).ToArray();
             }
             else
             {
                 // Non-preimage mode: use partial key matching with the 20-byte truncated hash
-                // The triePath for storage lookups still needs to be the accountKey
-                triePath = accountKey;
-                trieAccountRlp = stateTree.GetWithPartialKey(accountKey.Bytes[..20]);
+                // and get the full 32-byte path from the trie for storage lookups
+                trieAccountRlp = GetWithPartialKeyAndFullPath(stateTree, accountKey.Bytes[..20], out triePath);
             }
 
-            if (trieAccountRlp.IsEmpty)
+            if (trieAccountRlp is null || trieAccountRlp.Length == 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"FlatToTrie: Account in flat not found in trie. Key: {accountKey}");
                 Interlocked.Increment(ref Stats._missingInTrie);
@@ -101,6 +96,132 @@ public class FlatToTrieVerifier
             // Verify storage for this account
             VerifyAccountStorage(accountKey, triePath);
         }
+    }
+
+    /// <summary>
+    /// Gets value from trie using partial key and returns the full 32-byte path.
+    /// This walks the trie to find a leaf matching the partial key prefix and extracts the full path.
+    /// </summary>
+    private static byte[]? GetWithPartialKeyAndFullPath(StateTree stateTree, ReadOnlySpan<byte> partialKey, out ValueHash256 fullPath)
+    {
+        fullPath = default;
+
+        // Convert partial key to nibbles
+        int nibblesCount = 2 * partialKey.Length;
+        byte[]? array = nibblesCount > 64 ? ArrayPool<byte>.Shared.Rent(nibblesCount) : null;
+        Span<byte> nibbles = array is not null ? array.AsSpan(0, nibblesCount) : stackalloc byte[nibblesCount];
+
+        try
+        {
+            Nibbles.BytesToNibbleBytes(partialKey, nibbles);
+
+            TreePath path = TreePath.Empty;
+            TrieNode? node = stateTree.RootRef;
+
+            while (node is not null)
+            {
+                node.ResolveNode(stateTree.TrieStore, path);
+
+                if (node.IsLeaf)
+                {
+                    // Check if partial key matches
+                    int commonPrefix = nibbles.CommonPrefixLength(node.Key);
+                    if (commonPrefix == nibbles.Length)
+                    {
+                        // Match found - construct full path
+                        path = path.Append(node.Key);
+                        fullPath = ConstructFullPath(path);
+                        return node.Value.ToArray();
+                    }
+                    return null;
+                }
+
+                if (node.IsExtension)
+                {
+                    int commonPrefix = nibbles.CommonPrefixLength(node.Key);
+                    if (commonPrefix == node.Key!.Length)
+                    {
+                        // Continue through extension
+                        path = path.Append(node.Key);
+                        nibbles = nibbles[node.Key.Length..];
+                        node = node.GetChildWithChildPath(stateTree.TrieStore, ref path, 0);
+                        continue;
+                    }
+                    else if (commonPrefix == nibbles.Length)
+                    {
+                        // Partial key consumed within extension - find first leaf
+                        path = path.Append(node.Key);
+                        node = node.GetChildWithChildPath(stateTree.TrieStore, ref path, 0);
+                        return GetFirstLeafWithPath(stateTree, path, node, out fullPath);
+                    }
+                    return null;
+                }
+
+                // Branch node
+                if (nibbles.Length == 0)
+                {
+                    // Partial key consumed - find first leaf
+                    return GetFirstLeafWithPath(stateTree, path, node, out fullPath);
+                }
+
+                int nib = nibbles[0];
+                path.AppendMut(nib);
+                node = node.GetChildWithChildPath(stateTree.TrieStore, ref path, nib);
+                nibbles = nibbles[1..];
+            }
+
+            return null;
+        }
+        finally
+        {
+            if (array is not null) ArrayPool<byte>.Shared.Return(array);
+        }
+    }
+
+    private static byte[]? GetFirstLeafWithPath(StateTree stateTree, TreePath path, TrieNode? node, out ValueHash256 fullPath)
+    {
+        fullPath = default;
+
+        while (node is not null)
+        {
+            node.ResolveNode(stateTree.TrieStore, path);
+
+            if (node.IsLeaf)
+            {
+                path = path.Append(node.Key);
+                fullPath = ConstructFullPath(path);
+                return node.Value.ToArray();
+            }
+
+            if (node.IsExtension)
+            {
+                path = path.Append(node.Key);
+                node = node.GetChildWithChildPath(stateTree.TrieStore, ref path, 0);
+                continue;
+            }
+
+            // Branch - find first non-null child
+            for (int i = 0; i < 16; i++)
+            {
+                path = path.Append(i);
+                TrieNode? child = node.GetChildWithChildPath(stateTree.TrieStore, ref path, i);
+                if (child is not null)
+                {
+                    node = child;
+                    break;
+                }
+                path = path.Truncate(path.Length - 1);
+            }
+        }
+
+        return null;
+    }
+
+    private static ValueHash256 ConstructFullPath(TreePath path)
+    {
+        // TreePath contains nibbles, convert to 32-byte hash
+        byte[] bytes = Nibbles.ToBytes(path);
+        return new ValueHash256(bytes);
     }
 
     private bool CompareAccountRlp(ReadOnlySpan<byte> flatRlp, ReadOnlySpan<byte> trieRlp, in ValueHash256 accountKey)
@@ -132,14 +253,6 @@ public class FlatToTrieVerifier
 
     private void VerifyAccountStorage(in ValueHash256 accountKey, in ValueHash256 triePath)
     {
-        // In non-preimage mode, we only have the 20-byte truncated address hash,
-        // but the storage trie resolver requires the full 32-byte hash to identify
-        // which storage trie to use. Skip storage verification in non-preimage mode.
-        if (!_reader.IsPreimageMode)
-        {
-            return;
-        }
-
         using IPersistence.IFlatIterator storageIterator = _reader.CreateStorageIterator(accountKey);
 
         // Get storage root from trie for this account
@@ -162,7 +275,8 @@ public class FlatToTrieVerifier
 
             Interlocked.Increment(ref Stats._slotCount);
 
-            // If preimage mode, hash the slot key
+            // In preimage mode, hash the slot key to get the trie path
+            // In non-preimage mode, the slotKey is already the hashed path
             ValueHash256 trieSlotPath = _reader.IsPreimageMode
                 ? ValueKeccak.Compute(slotKey.Bytes)
                 : slotKey;
