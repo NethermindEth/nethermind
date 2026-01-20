@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.InstructionsBenchmark")]
 namespace Nethermind.Evm;
 
 internal static unsafe partial class EvmInstructions

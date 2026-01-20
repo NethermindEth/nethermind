@@ -14,8 +14,8 @@ internal static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for shift operations.
-    /// Implementers define a shift operation that uses a shift amount (provided as a UInt256)
-    /// to shift a second UInt256 value, returning the shifted result.
+    /// Implementers define a shift operation that uses a shift amount (provided as int)
+    /// to shift a UInt256 value, returning the shifted result.
     /// </summary>
     public interface IOpShift
     {
@@ -26,12 +26,11 @@ internal static partial class EvmInstructions
 
         /// <summary>
         /// Performs the shift operation.
-        /// The lower 8 bits of <paramref name="a"/> (accessed as a.u0) are used as the shift amount.
         /// </summary>
-        /// <param name="a">The shift amount.</param>
-        /// <param name="b">The value to be shifted.</param>
+        /// <param name="shiftAmount">The shift amount (0-255).</param>
+        /// <param name="value">The value to be shifted.</param>
         /// <param name="result">The resulting shifted value.</param>
-        abstract static void Operation(in UInt256 a, in UInt256 b, out UInt256 result);
+        abstract static void Operation(int shiftAmount, in UInt256 value, out UInt256 result);
     }
 
     /// <summary>
@@ -73,9 +72,8 @@ internal static partial class EvmInstructions
         {
             // Otherwise, pop the value to be shifted.
             if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
-            // Perform the shift operation using the specific implementation.
-            UInt256 large = new UInt256(a);
-            TOpShift.Operation(in large, in b, out UInt256 result);
+            // Perform the shift operation directly with int shift amount (no UInt256 construction).
+            TOpShift.Operation((int)a, in b, out UInt256 result);
             return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
         }
     // Jump forward to be unpredicted by the branch predictor.
@@ -141,35 +139,33 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Implements a left shift operation.
-    /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
     /// </summary>
     public struct OpShl : IOpShift
     {
         /// <summary>
-        /// Performs a left shift: shifts <paramref name="b"/> left by the number of bits specified in <paramref name="a"/>.
+        /// Performs a left shift: shifts <paramref name="value"/> left by the specified number of bits.
         /// </summary>
-        /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
-        /// <param name="b">The value to be shifted.</param>
+        /// <param name="shiftAmount">The shift amount (0-255).</param>
+        /// <param name="value">The value to be shifted.</param>
         /// <param name="result">The result of the left shift operation.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = b << (int)a.u0; // Use only the lowest limb (u0) as the shift count.
+        public static void Operation(int shiftAmount, in UInt256 value, out UInt256 result)
+            => result = value << shiftAmount;
     }
 
     /// <summary>
     /// Implements a right shift operation.
-    /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
     /// </summary>
     public struct OpShr : IOpShift
     {
         /// <summary>
-        /// Performs a logical right shift: shifts <paramref name="b"/> right by the number of bits specified in <paramref name="a"/>.
+        /// Performs a logical right shift: shifts <paramref name="value"/> right by the specified number of bits.
         /// </summary>
-        /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
-        /// <param name="b">The value to be shifted.</param>
+        /// <param name="shiftAmount">The shift amount (0-255).</param>
+        /// <param name="value">The value to be shifted.</param>
         /// <param name="result">The result of the right shift operation.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = b >> (int)a.u0; // Use only the lowest limb (u0) as the shift count.
+        public static void Operation(int shiftAmount, in UInt256 value, out UInt256 result)
+            => result = value >> shiftAmount;
     }
 }

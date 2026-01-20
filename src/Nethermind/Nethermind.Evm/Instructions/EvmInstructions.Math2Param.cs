@@ -219,58 +219,69 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Implements the less-than comparison.
     /// Returns 1 if the first operand is less than the second; otherwise, returns 0.
+    /// Uses branchless pattern to avoid conditional jumps.
     /// </summary>
     public struct OpLt : IOpMath2Param
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = a < b ? UInt256.One : default;
+            // Branchless: convert bool to ulong (0 or 1) without conditional
+            bool cmp = a < b;
+            result = new UInt256(As<bool, byte>(ref cmp), 0UL, 0UL, 0UL);
         }
     }
 
     /// <summary>
     /// Implements the greater-than comparison.
     /// Returns 1 if the first operand is greater than the second; otherwise, returns 0.
+    /// Uses branchless pattern to avoid conditional jumps.
     /// </summary>
     public struct OpGt : IOpMath2Param
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = a > b ? UInt256.One : default;
+            // Branchless: convert bool to ulong (0 or 1) without conditional
+            bool cmp = a > b;
+            result = new UInt256(As<bool, byte>(ref cmp), 0UL, 0UL, 0UL);
         }
     }
 
     /// <summary>
     /// Implements the signed less-than comparison.
     /// Converts unsigned operands to signed representations and returns 1 if the first is less than the second.
+    /// Uses branchless pattern: extracts sign bit from comparison result.
     /// </summary>
     public struct OpSLt : IOpMath2Param
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = As<UInt256, Int256>(ref AsRef(in a))
-                .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) < 0 ?
-                UInt256.One :
-                default;
+            // CompareTo returns: negative if a < b, zero if a == b, positive if a > b
+            // Extract sign bit branchlessly: (uint)cmp >> 31 gives 1 if negative, 0 otherwise
+            int cmp = As<UInt256, Int256>(ref AsRef(in a))
+                .CompareTo(As<UInt256, Int256>(ref AsRef(in b)));
+            result = new UInt256((uint)cmp >> 31, 0UL, 0UL, 0UL);
         }
     }
 
     /// <summary>
     /// Implements the signed greater-than comparison.
     /// Converts unsigned operands to signed representations and returns 1 if the first is greater than the second.
+    /// Uses branchless pattern: negates and extracts sign bit from comparison result.
     /// </summary>
     public struct OpSGt : IOpMath2Param
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = As<UInt256, Int256>(ref AsRef(in a))
-                .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) > 0 ?
-                UInt256.One :
-                default;
+            // CompareTo returns: negative if a < b, zero if a == b, positive if a > b
+            // For cmp > 0: negate then extract sign bit
+            // -(-1) = 1 → 0, -(0) = 0 → 0, -(1) = -1 → 1
+            int cmp = As<UInt256, Int256>(ref AsRef(in a))
+                .CompareTo(As<UInt256, Int256>(ref AsRef(in b)));
+            result = new UInt256((uint)(-cmp) >> 31, 0UL, 0UL, 0UL);
         }
     }
 
