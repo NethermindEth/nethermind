@@ -19,9 +19,7 @@ public class VisitorProgressTracker
     private const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
 
-    // Track which level-3 prefixes we've seen (65536 entries)
-    private readonly int[] _seen;
-    private int _seenCount;
+    private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
     private long _nodeCount;
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
@@ -44,8 +42,6 @@ public class VisitorProgressTracker
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
-
-        _seen = new int[MaxNodes];
     }
 
     private string FormatProgress(ProgressLogger logger)
@@ -77,17 +73,8 @@ public class VisitorProgressTracker
 
             if (depth == Level3Depth)
             {
-                // Node at level 3 (4 nibbles): track the prefix
-                int prefix = 0;
-                for (int i = 0; i < Level3Depth; i++)
-                {
-                    prefix = (prefix << 4) | path[i];
-                }
-
-                if (Interlocked.CompareExchange(ref _seen[prefix], 1, 0) == 0)
-                {
-                    Interlocked.Increment(ref _seenCount);
-                }
+                // Node at level 3 (4 nibbles): count as 1 node
+                Interlocked.Increment(ref _seenCount);
             }
             else if (isLeaf && depth > 0)
             {
