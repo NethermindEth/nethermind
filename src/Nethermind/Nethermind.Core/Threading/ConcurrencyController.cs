@@ -52,7 +52,7 @@ public class ConcurrencyController(int concurrency)
 
     public bool TryRequestConcurrencyQuota()
     {
-        if (Interlocked.Decrement(ref _slots) >= 0)
+        if (Interlocked.Decrement(ref _slots) > 0)
         {
             return true;
         }
