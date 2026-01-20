@@ -26,12 +26,30 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
 
+      - name: Get triggering user
+        id: get-user
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          # Get the user who triggered the workflow
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            USERNAME="${{ github.triggering_actor }}"
+          else
+            USERNAME="${{ github.actor }}"
+          fi
+
+          # remove spaces and special characters from username
+          USERNAME=$(echo "$USERNAME" | tr -d ' ' | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
+
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "Using username: $USERNAME"
+
       - name: Setup self-hosted runner
         id: setup-runner
         uses: ./.github/actions/setup-runner
         with:
           gh-token: ${{ steps.gh-app.outputs.token }}
-          gh-username: ${{ github.actor }}
+          gh-username: ${{ steps.get-user.outputs.username }}
           runner-name: "gas-benchmark"
           runner-type: g6-standard-2
           timeout: "5"
