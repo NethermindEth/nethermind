@@ -1647,6 +1647,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             if (TCancelable.IsActive && _txTracer.IsCancelled)
                 ThrowOperationCanceledException();
 
+            // Call gas policy hook before instruction execution.
+            TGasPolicy.OnBeforeInstructionTrace(in gas, result.ProgramCounter, instruction, VmState.Env.CallDepth);
+
             // If tracing is enabled, start an instruction trace.
             if (TTracingInst.IsActive)
                 StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), result.ProgramCounter, in stack);
@@ -1655,6 +1658,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             // Dispatch via function pointer (calli). The handler returns the next PC and exception classification.
             result = opcodeMethods[(nuint)(byte)instruction](this, ref stack, ref gas, result.ProgramCounter + 1);
+
+            // Call gas policy hook after instruction execution.
+            TGasPolicy.OnAfterInstructionTrace(in gas);
 
             // If gas is exhausted, jump to the out-of-gas handler.
             if (TGasPolicy.GetRemainingGas(in gas) < 0)
