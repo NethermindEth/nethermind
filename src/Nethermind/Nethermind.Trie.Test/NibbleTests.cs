@@ -99,7 +99,7 @@ public class NibbleTests
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
-            
+
             result[i * 2].Should().Be(expectedHigh, $"high nibble at position {i} (byte value 0x{input[i]:X2})");
             result[i * 2 + 1].Should().Be(expectedLow, $"low nibble at position {i} (byte value 0x{input[i]:X2})");
         }
@@ -157,7 +157,7 @@ public class NibbleTests
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
-            
+
             result[i * 2].Should().Be(expectedHigh, $"high nibble at position {i} (byte value 0x{input[i]:X2})");
             result[i * 2 + 1].Should().Be(expectedLow, $"low nibble at position {i} (byte value 0x{input[i]:X2})");
         }
@@ -187,10 +187,10 @@ public class NibbleTests
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
-            
-            result[i * 2].Should().Be(expectedHigh, 
+
+            result[i * 2].Should().Be(expectedHigh,
                 $"high nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
-            result[i * 2 + 1].Should().Be(expectedLow, 
+            result[i * 2 + 1].Should().Be(expectedLow,
                 $"low nibble at position {i} (byte value 0x{input[i]:X2}, expected from input[{i}])");
         }
     }
@@ -216,10 +216,10 @@ public class NibbleTests
         {
             byte expectedHigh = (byte)(input[i] >> 4);
             byte expectedLow = (byte)(input[i] & 0x0F);
-            
-            result[i * 2].Should().Be(expectedHigh, 
+
+            result[i * 2].Should().Be(expectedHigh,
                 $"high nibble at position {i} (byte value 0x{input[i]:X2})");
-            result[i * 2 + 1].Should().Be(expectedLow, 
+            result[i * 2 + 1].Should().Be(expectedLow,
                 $"low nibble at position {i} (byte value 0x{input[i]:X2})");
         }
     }
