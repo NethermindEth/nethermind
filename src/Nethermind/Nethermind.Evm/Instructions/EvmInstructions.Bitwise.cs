@@ -50,26 +50,23 @@ internal static partial class EvmInstructions
         // Deduct the operation's gas cost.
         TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
-        // Pop the first operand from the stack by reference to minimize copying.
-        ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef))
-        {
-            return new(programCounter, EvmExceptionType.StackUnderflow);
-        }
-        // Read the 256-bit vector from unaligned memory.
-        Word aVec = ReadUnaligned<Word>(ref bytesRef);
+        // Single bounds check: pop one and get ref to new top (popped is at top + WordSize)
+        ref byte top = ref stack.PopPeekBytesByRef();
+        if (IsNullRef(ref top)) goto StackUnderflow;
 
-        // Peek at the top of the stack for the second operand without removing it.
-        bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef))
-        {
-            return new(programCounter, EvmExceptionType.StackUnderflow);
-        }
-        Word bVec = ReadUnaligned<Word>(ref bytesRef);
-        // Write the result directly into the memory of the top stack element.
-        WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
+        // Read both 256-bit vectors (popped element is 32 bytes after top)
+        ref byte popped = ref Add(ref top, EvmStack.WordSize);
+        Word aVec = ReadUnaligned<Word>(ref popped);
+        Word bVec = ReadUnaligned<Word>(ref top);
 
-        return new(programCounter, EvmExceptionType.None);
+        // Write the result directly into the memory of the new top stack element
+        WriteUnaligned(ref top, TOpBitwise.Operation(aVec, bVec));
+
+        return new(programCounter);
+
+    // Forward jump - unpredicted by branch predictor for error path
+    StackUnderflow:
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>

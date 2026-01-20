@@ -2441,6 +2441,24 @@ public ref partial struct EvmStack
         return ref Unsafe.Add(ref baseRef, (nint)(head * WordSize));
     }
 
+    /// <summary>
+    /// Combined pop and peek for binary operations - single bounds check.
+    /// Pops one element and returns ref to new top. The popped element is at top + WordSize.
+    /// Returns null ref if stack underflow.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ref byte PopPeekBytesByRef()
+    {
+        ref byte baseRef = ref _stack;
+        uint head = (uint)Head;
+        if (head < 2)
+        {
+            return ref Unsafe.NullRef<byte>();
+        }
+        Head = (int)(head - 1);
+        return ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
+    }
+
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();
