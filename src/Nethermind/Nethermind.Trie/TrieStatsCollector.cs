@@ -182,11 +182,8 @@ namespace Nethermind.Trie
             long[] levels = context.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(context, levels);
 
-            // Only track state trie nodes for progress (not storage)
-            if (!context.IsStorage)
-            {
-                _progressTracker.OnNodeVisited(context.Path);
-            }
+            // Track all nodes for display; only state nodes used for progress calculation
+            _progressTracker.OnNodeVisited(context.Path, context.IsStorage);
         }
 
         private static void IncrementLevel(Context context, long[] levels)

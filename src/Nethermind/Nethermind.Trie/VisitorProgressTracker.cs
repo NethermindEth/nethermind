@@ -24,6 +24,7 @@ public class VisitorProgressTracker
     private static readonly int[] MaxAtLevel = { 16, 256, 4096, 65536 };
 
     private long _nodeCount;
+    private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
     private long _maxReportedProgress; // Track max to avoid going backwards
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
@@ -52,37 +53,46 @@ public class VisitorProgressTracker
     private string FormatProgress(ProgressLogger logger)
     {
         float percentage = Math.Clamp(logger.CurrentValue / 10000f, 0, 1);
-        long nodes = Interlocked.Read(ref _nodeCount);
-        string nodesStr = nodes >= 1_000_000 ? $"{nodes / 1_000_000.0:F1}M" : $"{nodes:N0}";
+        long work = Interlocked.Read(ref _totalWorkDone);
+        string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
         return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
                Progress.GetMeter(percentage, 1) +
-               $" nodes: {nodesStr,8}";
+               $" nodes: {workStr,8}";
     }
 
     /// <summary>
     /// Called when a node is visited during traversal.
     /// Thread-safe: can be called concurrently from multiple threads.
     /// </summary>
-    public void OnNodeVisited(in TreePath path)
+    /// <param name="path">The path to the node (used for progress estimation)</param>
+    /// <param name="isStorage">True if this is a storage node (tracked in total but not used for progress)</param>
+    public void OnNodeVisited(in TreePath path, bool isStorage = false)
     {
-        int depth = Math.Min(path.Length, MaxLevel + 1);
-        int prefix = 0;
+        // Always count the work done
+        Interlocked.Increment(ref _totalWorkDone);
 
-        for (int level = 0; level < depth; level++)
+        // Only track state nodes for progress estimation
+        if (!isStorage)
         {
-            prefix = (prefix << 4) | path[level];
+            int depth = Math.Min(path.Length, MaxLevel + 1);
+            int prefix = 0;
 
-            // Mark prefix as seen (thread-safe)
-            if (Interlocked.CompareExchange(ref _seen[level][prefix], 1, 0) == 0)
+            for (int level = 0; level < depth; level++)
             {
-                Interlocked.Increment(ref _seenCounts[level]);
-            }
-        }
+                prefix = (prefix << 4) | path[level];
 
-        // Log progress at intervals
-        if (Interlocked.Increment(ref _nodeCount) % _reportingInterval == 0)
-        {
-            LogProgress();
+                // Mark prefix as seen (thread-safe)
+                if (Interlocked.CompareExchange(ref _seen[level][prefix], 1, 0) == 0)
+                {
+                    Interlocked.Increment(ref _seenCounts[level]);
+                }
+            }
+
+            // Log progress at intervals (based on state nodes only)
+            if (Interlocked.Increment(ref _nodeCount) % _reportingInterval == 0)
+            {
+                LogProgress();
+            }
         }
     }
 
