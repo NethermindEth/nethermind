@@ -156,4 +156,37 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
         }
     }
+
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
+    {
+        Snapshot snapshot = _db.CreateSnapshot();
+        return new ColumnDbSnapshot(this, snapshot);
+    }
+
+    private class ColumnDbSnapshot(
+        ColumnsDb<T> columnsDb,
+        Snapshot snapshot
+    ) : IColumnDbSnapshot<T>
+    {
+        private readonly Dictionary<T, IReadOnlyKeyValueStore> _columnDbs = columnsDb.ColumnKeys.ToDictionary(k => k, k =>
+            (IReadOnlyKeyValueStore)new RocksDbReader(
+                columnsDb,
+                () =>
+                {
+                    ReadOptions options = new ReadOptions();
+                    options.SetSnapshot(snapshot);
+                    return options;
+                },
+                columnFamily: columnsDb._columnDbs[k]._columnFamily));
+
+        public IReadOnlyKeyValueStore GetColumn(T key)
+        {
+            return _columnDbs[key];
+        }
+
+        public void Dispose()
+        {
+            snapshot.Dispose();
+        }
+    }
 }
