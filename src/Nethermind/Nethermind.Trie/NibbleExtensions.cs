@@ -49,7 +49,7 @@ namespace Nethermind.Trie
                 int len256 = (bytes.Length - processed) / Vector256<byte>.Count;
                 if (len256 > 0)
                 {
-                    ReadOnlySpan<Vector256<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), processed)), len256);
+                    ReadOnlySpan<Vector256<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes)), len256);
                     len256 *= Vector256<byte>.Count;
 
                     ref Vector256<ushort> output = ref Unsafe.As<byte, Vector256<ushort>>(
