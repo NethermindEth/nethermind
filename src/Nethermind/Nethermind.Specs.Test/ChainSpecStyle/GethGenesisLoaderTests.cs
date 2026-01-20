@@ -306,7 +306,7 @@ public class GethGenesisLoaderTests
         }
         """;
 
-        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer());
+        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(gethGenesis));
         ChainSpec chainSpec = loader.Load(stream);
 
@@ -332,7 +332,7 @@ public class GethGenesisLoaderTests
         }
         """;
 
-        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer());
+        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(parityChainspec));
         ChainSpec chainSpec = loader.Load(stream);
 

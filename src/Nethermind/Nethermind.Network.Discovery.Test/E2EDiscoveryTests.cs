@@ -34,7 +34,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
         spec.Bootnodes = [];
         if (bootEnode is not null)
