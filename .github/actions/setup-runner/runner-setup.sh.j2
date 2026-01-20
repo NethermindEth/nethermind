@@ -66,27 +66,19 @@ echo "Registration token obtained successfully"
 
 # Configure the runner
 RUNNER_NAME="{{ runner_name | default('$(hostname)', true) }}"
-LABELS="{{ runner_labels }}"
+LABELS="{{ runner_label }}"
 
 echo "Configuring runner..."
 echo "  Repository: {{ org_name }}/{{ repo_name }}"
 echo "  Runner name: ${RUNNER_NAME}"
 echo "  Labels: ${LABELS}"
 
-{% if runner_labels %}
 ./config.sh --url "https://github.com/{{ org_name }}/{{ repo_name }}" \
   --token "$REGISTRATION_TOKEN" \
   --name "${RUNNER_NAME}" \
   --labels "${LABELS}" \
   --unattended \
   --replace
-{% else %}
-./config.sh --url "https://github.com/{{ org_name }}/{{ repo_name }}" \
-  --token "$REGISTRATION_TOKEN" \
-  --name "${RUNNER_NAME}" \
-  --unattended \
-  --replace
-{% endif %}
 
 if [ $? -ne 0 ]; then
   echo "Error: Runner configuration failed"

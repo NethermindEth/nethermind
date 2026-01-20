@@ -77,7 +77,7 @@ runs:
     - name: Generate workflow inputs with setup script
       env:
         BASE_TAG: ${{ env.BASE_TAG }}
-        GITHUB_USERNAME: ${{ inputs.github-username || github.actor }}
+        GITHUB_USERNAME: ${{ inputs.gh-username }}
         RUNNER_NAME: ${{ inputs.runner-name }}
         RUNNER_TYPE: ${{ inputs.runner-type }}
         RUNNER_LABEL: ${{ env.RUNNER_LABEL }}

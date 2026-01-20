@@ -66,9 +66,9 @@ def generate_workflow_inputs():
     # Get environment variables
     base_tag = get_env_var("BASE_TAG")
     github_username = get_env_var("GITHUB_USERNAME")
-    runner_name = get_env_var("RUNNER_NAME", required=False, default="")
-    runner_type = get_env_var("RUNNER_TYPE", required=False, default="")
-    runner_labels = get_env_var("RUNNER_LABEL", required=False, default="")
+    runner_name = get_env_var("RUNNER_NAME")
+    runner_type = get_env_var("RUNNER_TYPE")
+    runner_label = get_env_var("RUNNER_LABEL")
     tags = get_env_var("TAGS", required=False, default="")
     allowed_ips = get_env_var("ALLOWED_IPS", required=False, default="")
     ssh_keys = get_env_var("SSH_KEYS", required=False, default="")
@@ -85,7 +85,7 @@ def generate_workflow_inputs():
         "org_name": org_name,
         "repo_name": repo_name,
         "runner_name": runner_name,
-        "runner_labels": runner_labels,
+        "runner_label": runner_label,
     }
 
     # Find template file
