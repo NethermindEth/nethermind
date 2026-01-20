@@ -769,8 +769,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // Simplified refund: no refunds, no destroy list, no code insert refunds
             spentGas = RefundSimpleTransfer(tx, spec, gasAvailable, gas.FloorGas, VirtualMachine.TxExecutionContext.GasPrice);
 
-            // Simplified fee payment: no destroy list check needed
-            PayFeesSimpleTransfer(tx, header, spec, tracer, spentGas.SpentGas, in premiumPerGas, in blobBaseFee);
+            // Use virtual PayFees to respect derived class overrides (e.g., Taiko anchor transactions)
+            // DestroyList.Contains check is fast since SuccessfulTransfer has empty destroy list
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, StatusCode.Success);
 
             // Update header gas used (same as InvokeEvm Complete: label)
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
@@ -1020,37 +1021,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
-
-            if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
-            {
-                collectedFees += blobBaseFee;
-            }
-
-            if (spec.FeeCollector is not null && !collectedFees.IsZero)
-            {
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
-            }
-
-            if (tracer.IsTracingFees)
-            {
-                tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
-            }
-        }
-
-        /// <summary>
-        /// Simplified fee payment for simple ETH transfers: no destroy list check needed.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void PayFeesSimpleTransfer(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee)
-        {
-            UInt256 fees = premiumPerGas * (ulong)spentGas;
-
-            // For simple transfers: no destroy list, always add to beneficiary
-            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
-
-            // EIP-1559 + blob fee collection
-            UInt256 eip1559Fees = spec.IsEip1559Enabled && !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
-            UInt256 collectedFees = eip1559Fees;
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
             {
