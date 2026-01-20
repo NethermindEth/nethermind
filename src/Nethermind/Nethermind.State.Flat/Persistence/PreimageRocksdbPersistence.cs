@@ -141,11 +141,6 @@ public class PreimageRocksdbPersistence : IPersistence
         );
     }
 
-    public bool WarmUpWhole(CancellationToken cancellation)
-    {
-        return true;
-    }
-
     public struct FakeHashWriter<TWriteBatch>(
         TWriteBatch flatWriteBatch,
         IKeyValueStore preimageDb

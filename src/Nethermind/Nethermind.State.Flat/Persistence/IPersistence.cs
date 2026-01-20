@@ -14,7 +14,7 @@ public interface IPersistence
     IPersistenceReader CreateReader();
     IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags = WriteFlags.None);
 
-    bool WarmUpWhole(CancellationToken cancellation);
+    bool WarmUpWhole(CancellationToken cancellation) => true;
 
     public interface IPersistenceReader: IDisposable
     {

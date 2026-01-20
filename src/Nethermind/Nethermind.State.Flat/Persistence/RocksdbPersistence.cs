@@ -166,61 +166,6 @@ public class RocksdbPersistence : IPersistence, IPersistenceWithConcurrentTrie
         );
     }
 
-    public bool WarmUpWhole(CancellationToken cancellation)
-    {
-        _logger.Warn("Warming up storage...");
-        var storageDb = (ISortedKeyValueStore) _db.GetColumnDb(FlatDbColumns.Storage);
-        ShardedParallelWarmup(storageDb, cancellation);
-
-        if (cancellation.IsCancellationRequested) return false;
-        _logger.Warn("Warming up account...");
-        var accountDb = (ISortedKeyValueStore) _db.GetColumnDb(FlatDbColumns.Account);
-        ShardedParallelWarmup(accountDb, cancellation);
-
-        _logger.Warn("Warmup complete");
-        return true;
-    }
-
-    private void ShardedParallelWarmup(ISortedKeyValueStore kvStore, CancellationToken cancellation)
-    {
-        long num = 0;
-        Parallel.For(0, 255, idx =>
-        {
-            if (cancellation.IsCancellationRequested) return;
-            byte[] firstKey = [(byte)idx];
-            byte[] secondKey = [];
-            if (idx == 255)
-            {
-                secondKey = [(byte)idx, (byte)idx];
-            }
-            else
-            {
-                secondKey = [(byte)(idx + 1)];
-            }
-
-            long localCount = 0;
-            using (var view = kvStore.GetViewBetween(firstKey, secondKey))
-            {
-                while (view.MoveNext())
-                {
-                    localCount++;
-                    if (localCount % 1000 == 0)
-                    {
-                        // Check every 1000 key only, in case its heavy
-                        if (cancellation.IsCancellationRequested) return;
-                    }
-
-                    long cur = Interlocked.Increment(ref num);
-                    if (cur % 1_000_000 == 0)
-                    {
-                        if (cancellation.IsCancellationRequested) return;
-                        _logger.Warn($"{cur:N0} keys");
-                    }
-                }
-            }
-        });
-    }
-
     public IPersistenceWithConcurrentTrie.IWriteBatch CreateTrieWriteBatch(WriteFlags flags = WriteFlags.None)
     {
         var dbSnap = _db.CreateSnapshot();

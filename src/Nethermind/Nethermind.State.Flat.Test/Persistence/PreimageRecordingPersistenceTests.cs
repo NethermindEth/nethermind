@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,17 +44,6 @@ public class PreimageRecordingPersistenceTests
         var expectedReader = Substitute.For<IPersistence.IPersistenceReader>();
         _innerPersistence.CreateReader().Returns(expectedReader);
         _sut.CreateReader().Should().BeSameAs(expectedReader);
-
-        // WarmUpWhole
-        using var cts = new CancellationTokenSource();
-        _innerPersistence.WarmUpWhole(cts.Token).Returns(true);
-        _sut.WarmUpWhole(cts.Token).Should().BeTrue();
-
-        // SupportConcurrentWrites
-        _innerPersistence.SupportConcurrentWrites.Returns(true);
-        _sut.SupportConcurrentWrites.Should().BeTrue();
-        _innerPersistence.SupportConcurrentWrites.Returns(false);
-        _sut.SupportConcurrentWrites.Should().BeFalse();
 
         // CreateWriteBatch
         var from = StateId.PreGenesis;

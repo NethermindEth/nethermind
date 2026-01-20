@@ -77,10 +77,6 @@ public class Importer(
         {
             _logger.Warn("Using concurrent trie");
             int concurrentIngestCount = Environment.ProcessorCount;
-            if (!persistence.SupportConcurrentWrites)
-            {
-                concurrentIngestCount = 4;
-            }
             concurrentIngestCount = Math.Min(concurrentIngestCount, maxConcurrency);
 
             Channel<Entry> flatChannel = Channel.CreateBounded<Entry>(2_000_000);

@@ -36,10 +36,6 @@ public class PreimageRecordingPersistence : IPersistence
         return new RecordingWriteBatch(innerBatch, preimageWriteBatch);
     }
 
-    public bool WarmUpWhole(CancellationToken cancellation) => _inner.WarmUpWhole(cancellation);
-
-    public bool SupportConcurrentWrites => _inner.SupportConcurrentWrites;
-
     private class RecordingWriteBatch : IPersistence.IWriteBatch
     {
         private readonly IPersistence.IWriteBatch _inner;
