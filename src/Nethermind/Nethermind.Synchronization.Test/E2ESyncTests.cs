@@ -66,7 +66,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         Default,
         Hash,
-        NoPruning
+        NoPruning,
+        Flat
     }
 
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
@@ -74,9 +75,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         yield return new TestFixtureParameters(DbMode.Default, false);
         yield return new TestFixtureParameters(DbMode.Hash, false);
         yield return new TestFixtureParameters(DbMode.NoPruning, false);
+        yield return new TestFixtureParameters(DbMode.Flat, false);
         yield return new TestFixtureParameters(DbMode.Default, true);
         yield return new TestFixtureParameters(DbMode.Hash, true);
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
+        yield return new TestFixtureParameters(DbMode.Flat, true);
     }
 
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
@@ -155,6 +158,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 {
                     IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
                     pruningConfig.Mode = PruningMode.None;
+                    break;
+                }
+            case DbMode.Flat:
+                {
+                    IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+                    flatDbConfig.Enabled = true;
                     break;
                 }
         }

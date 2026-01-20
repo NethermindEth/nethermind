@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
@@ -8,6 +11,8 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
@@ -16,6 +21,7 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -57,6 +63,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
             .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+
+            .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new TestMemColumnsDb<FlatDbColumns>())
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.State.Flat;
@@ -24,15 +26,25 @@ public class ImportFlatDb(
     IPersistence persistence,
     Importer importer,
     IProcessExitSource exitSource,
+    IFlatDbConfig flatDbConfig,
     ILogManager logManager
 ): IStep
 {
     ILogger _logger = logManager.GetClassLogger<ImportFlatDb>();
 
-    public Task Execute(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
+        // Validate that we're not using PreimageFlat layout
+        if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
+        {
+            _logger.Error("Cannot import with FlatLayout.PreimageFlat. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
+            _logger.Error("PreimageFlat mode does not support importing from trie state because the importer uses hash-based raw operations.");
+            exitSource.Exit(1);
+            return;
+        }
+
         BlockHeader? head = blockTree.Head?.Header;
-        if (head is null) return Task.CompletedTask;
+        if (head is null) return;
 
         using (var reader = persistence.CreateReader())
         {
@@ -40,15 +52,23 @@ public class ImportFlatDb(
             if (reader.CurrentState.BlockNumber > 0)
             {
                 _logger.Info("Flat db already exist");
-                return Task.CompletedTask;
+                return;
             }
         }
 
         _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");
-        importer.Copy(new StateId(head));
+
+        try
+        {
+            await importer.Copy(new StateId(head), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Info("Import cancelled by user");
+            exitSource.Exit(1);
+            return;
+        }
 
         exitSource.Exit(0);
-
-        return Task.CompletedTask;
     }
 }

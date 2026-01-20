@@ -29,14 +29,10 @@ public class PreimageRocksdbPersistence : IPersistence
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
 
-    private IDb _preimageDb;
-
     public PreimageRocksdbPersistence(
-        IColumnsDb<FlatDbColumns> db,
-        [KeyFilter(DbNames.Preimage)] IDb preimageDb)
+        IColumnsDb<FlatDbColumns> db)
     {
         _db = db;
-        _preimageDb = preimageDb;
     }
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
@@ -113,8 +109,7 @@ public class PreimageRocksdbPersistence : IPersistence
                 batch.GetColumnBatch(FlatDbColumns.Account),
                 batch.GetColumnBatch(FlatDbColumns.Storage),
                 flags
-            ),
-            _preimageDb
+            )
         );
 
         var trieWriteBatch = new BaseTriePersistence.WriteBatch(
@@ -143,8 +138,7 @@ public class PreimageRocksdbPersistence : IPersistence
     }
 
     public struct FakeHashWriter<TWriteBatch>(
-        TWriteBatch flatWriteBatch,
-        IKeyValueStore preimageDb
+        TWriteBatch flatWriteBatch
     ) : BasePersistence.IFlatWriteBatch
         where TWriteBatch : struct, BasePersistence.IHashedFlatWriteBatch
     {
@@ -187,39 +181,12 @@ public class PreimageRocksdbPersistence : IPersistence
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value)
         {
-            byte[]? addressBytes = preimageDb.Get(addrHash.Bytes);
-            if (addressBytes == null || addressBytes.Length != 20)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to translate back hash {addrHash} to address. Got {addressBytes?.ToHexString()}");
-            }
-
-            Address addr = new Address(addressBytes);
-
-            byte[]? slotBytes = preimageDb.Get(slotHash.Bytes);
-            if (slotBytes == null || slotBytes.Length != 32)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to translate back slot {slotHash} to slot. Got {slotBytes?.ToHexString()}");
-            }
-
-            UInt256 slot = new UInt256(slotBytes, isBigEndian: true);
-            SetStorage(addr, slot, value);
+            throw new InvalidOperationException("Raw operations not available in preimage mode");
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
-            byte[]? addressBytes = preimageDb.Get(addrHash.Bytes);
-            if (addressBytes == null || addressBytes.Length != 20)
-            {
-                throw new InvalidOperationException( $"Unable to translate back hash {addrHash} to address. Got {addressBytes?.ToHexString()}");
-            }
-
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
-
-            Address addr = new Address(addressBytes);
-            SetAccount(addr, account);
+            throw new InvalidOperationException("Raw operations not available in preimage mode");
         }
     }
 

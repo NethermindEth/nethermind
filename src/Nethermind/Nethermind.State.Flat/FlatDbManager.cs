@@ -216,10 +216,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager.AddToPersistence(latestSnapshot);
 
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
+        if (currentPersistedStateId == StateId.PreGenesis) return;
+
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
-
         ClearReadOnlyBundleCache();
-
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
 
