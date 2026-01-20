@@ -595,6 +595,23 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    public void Reset()
+    {
+        GuardDispose();
+
+        // Dispose all snapshots in the list
+        _snapshots.Dispose();
+        _snapshots = new SnapshotPooledList(1);
+
+        // Reset the current pooled content (clears _changedAccounts, _changedSlots, etc.)
+        _currentPooledContent.Reset();
+
+        // Reset transient resource (clears trie node cache and bloom filter)
+        _transientResource.Reset();
+
+        ExpandCurrentPooledContent();
+    }
+
     private void GuardDispose()
     {
         if (_isDisposed) throw new ObjectDisposedException($"{nameof(SnapshotBundle)} disposed");

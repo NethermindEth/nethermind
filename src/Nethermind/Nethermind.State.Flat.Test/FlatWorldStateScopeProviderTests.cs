@@ -652,4 +652,104 @@ public class FlatWorldStateScopeProviderTests
 
     #endregion
 
+    #region ResetState Tests
+
+    [Test]
+    public void TestResetStateClearsAllChanges()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slotIndex = 1;
+        Account testAccount = TestItem.GenerateRandomAccount();
+        byte[] slotValue = { 0xCA, 0xFE };
+
+        // Write account and slot
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(testAddress, testAccount);
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Dispose();
+        }
+
+        // Verify they're readable
+        Assert.That(scope.Get(testAddress)?.Balance, Is.EqualTo(testAccount.Balance));
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(slotValue));
+
+        // Commit to create a snapshot layer
+        scope.Commit(1);
+
+        // Reset the state
+        scope.ResetState();
+
+        // Verify account and slot are cleared (including snapshot layers)
+        Assert.That(scope.Get(testAddress), Is.Null);
+        storageTree = scope.CreateStorageTree(testAddress);
+        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(StorageTree.ZeroBytes).Or.Null);
+    }
+
+    [Test]
+    public void TestResetStateAllowsNewOperations()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address1 = TestItem.AddressA;
+        Address address2 = TestItem.AddressB;
+        Account account1 = TestItem.GenerateRandomAccount();
+        Account account2 = TestItem.GenerateRandomAccount();
+
+        // First write
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address1, account1);
+        }
+
+        // Commit first
+        scope.Commit(1);
+
+        // Reset
+        scope.ResetState();
+
+        // Second write (should work normally)
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address2, account2);
+        }
+
+        // Verify only second write is visible
+        Assert.That(scope.Get(address1), Is.Null);
+        Assert.That(scope.Get(address2)?.Balance, Is.EqualTo(account2.Balance));
+    }
+
+    [Test]
+    public void TestResetStateClearsUncommittedChanges()
+    {
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        Account testAccount = TestItem.GenerateRandomAccount();
+
+        // Write without committing
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(testAddress, testAccount);
+        }
+
+        // Verify it's visible before reset
+        Assert.That(scope.Get(testAddress)?.Balance, Is.EqualTo(testAccount.Balance));
+
+        // Reset without commit
+        scope.ResetState();
+
+        // Verify uncommitted change is cleared
+        Assert.That(scope.Get(testAddress), Is.Null);
+    }
+
+    #endregion
+
 }

@@ -108,6 +108,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnExitScope();
     }
 
+    public void ResetState()
+    {
+        // Clear storage tree cache
+        lock (_storages)
+        {
+            _storages.Clear();
+        }
+
+        // Reset the snapshot bundle
+        _snapshotBundle.Reset();
+
+        // Reset state trees to original root
+        _stateTree.RootHash = _currentStateId.StateRoot.ToCommitment();
+        _warmupStateTree.RootHash = _currentStateId.StateRoot.ToCommitment();
+
+        // Invalidate in-flight trie warmer tasks
+        Interlocked.Increment(ref _hintSequenceId);
+    }
+
     public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
 

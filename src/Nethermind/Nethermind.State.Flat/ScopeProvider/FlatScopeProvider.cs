@@ -22,6 +22,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     private readonly ITrieWarmer _trieWarmer;
     private readonly ResourcePool _resourcePool;
     private readonly ResourcePool.Usage _usage;
+    private FlatWorldStateScope? _activeScope;
 
     public FlatScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
@@ -60,7 +61,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             warmer = new NoopTrieWarmer();
         }
 
-        return new FlatWorldStateScope(
+        FlatWorldStateScope scope = new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -68,5 +69,13 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             _configuration,
             warmer,
             _logManager);
+
+        _activeScope = scope;
+        return scope;
+    }
+
+    public void ResetActiveScope()
+    {
+        _activeScope?.ResetState();
     }
 }

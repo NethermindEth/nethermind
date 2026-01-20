@@ -70,7 +70,7 @@ public class FlatWorldStateManager(
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             logManager,
             isReadOnly: true);
-        return new FakeOverridableWorldScope(scopeProvider, flatStateReader);
+        return new FlatOverridableWorldScope(scopeProvider, flatStateReader);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
@@ -98,18 +98,11 @@ public class FlatWorldStateManager(
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 
-    /// <summary>
-    /// TODO: Add actual support for ResetOverrides. Meaning, in SnapshotBundle, clear the changed entries. Dont forget
-    /// to return to resourccec pool.
-    /// </summary>
-    /// <param name="worldState"></param>
-    /// <param name="stateReader"></param>
-    public class FakeOverridableWorldScope(IWorldStateScopeProvider worldState, IStateReader stateReader) : IOverridableWorldScope
+    private class FlatOverridableWorldScope(FlatScopeProvider worldState, IStateReader stateReader) : IOverridableWorldScope
     {
         public IWorldStateScopeProvider WorldState => worldState;
         public IStateReader GlobalStateReader => stateReader;
-        public void ResetOverrides()
-        {
-        }
+
+        public void ResetOverrides() => worldState.ResetActiveScope();
     }
 }
