@@ -113,5 +113,6 @@ namespace Nethermind.TxPool
             remove { }
         }
         public bool AcceptTxWhenNotSynced { get; set; }
+        public void ResetTxPoolState() { }
     }
 }

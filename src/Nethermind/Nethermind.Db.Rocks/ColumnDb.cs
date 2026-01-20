@@ -181,7 +181,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public void Clear() { throw new NotSupportedException(); }
 
     // Maybe it should be column specific metric?
-    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _mainDb.GatherMetric(includeSharedCache);
+    public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
     public byte[]? FirstKey
     {
