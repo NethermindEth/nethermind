@@ -1159,8 +1159,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
-        // - OffFlag is used when cancelation is not needed.
-        // - OnFlag is used when cancelation is enabled.
+        // - OffFlag is used when cancellation is not needed.
+        // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         return _txTracer.IsCancelable switch
         {
@@ -1250,6 +1250,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
+                // Call gas policy hook before instruction execution.
+                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
+
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
                     StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
@@ -1278,6 +1281,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     OpCodeCount += opCodeCount;
                     goto OutOfGas;
                 }
+
+                // Call gas policy hook after instruction execution.
+                TGasPolicy.OnAfterInstructionTrace(in gas);
+
                 // If an exception occurred, exit the loop.
                 if (exceptionType != EvmExceptionType.None)
                     break;

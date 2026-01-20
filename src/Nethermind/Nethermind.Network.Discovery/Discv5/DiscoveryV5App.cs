@@ -260,62 +260,70 @@ public sealed class DiscoveryV5App : IDiscoveryApp
     {
         Channel<Node> discoveredNodesChannel = Channel.CreateBounded<Node>(1);
 
-        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, ArrayPoolSpan<byte> nodeId)
+        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, ArrayPoolSpan<byte> nodeId, bool disposeNodeId = true)
         {
-            using ArrayPoolSpan<byte> _ = nodeId;
-
-            static int[] GetDistances(byte[] srcNodeId, in ArrayPoolSpan<byte> destNodeId)
+            try
             {
-                const int WiderDistanceRange = 3;
-
-                int[] distances = new int[WiderDistanceRange];
-                distances[0] = TableUtility.Log2Distance(srcNodeId, destNodeId);
-
-                for (int n = 1, i = 1; n < WiderDistanceRange; i++)
+                static int[] GetDistances(byte[] srcNodeId, in ArrayPoolSpan<byte> destNodeId)
                 {
-                    if (distances[0] - i > 0)
+                    const int WiderDistanceRange = 3;
+
+                    int[] distances = new int[WiderDistanceRange];
+                    distances[0] = TableUtility.Log2Distance(srcNodeId, destNodeId);
+
+                    for (int n = 1, i = 1; n < WiderDistanceRange; i++)
                     {
-                        distances[n++] = distances[0] - i;
+                        if (distances[0] - i > 0)
+                        {
+                            distances[n++] = distances[0] - i;
+                        }
+                        if (distances[0] + i <= 256)
+                        {
+                            distances[n++] = distances[0] + i;
+                        }
                     }
-                    if (distances[0] + i <= 256)
-                    {
-                        distances[n++] = distances[0] + i;
-                    }
+
+                    return distances;
                 }
 
-                return distances;
+                Queue<IEnr> nodesToCheck = new(startingNode);
+                HashSet<IEnr> checkedNodes = [];
+
+                while (!token.IsCancellationRequested)
+                {
+                    if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+                    {
+                        return;
+                    }
+
+                    if (TryGetNodeFromEnr(newEntry, out Node? node2))
+                    {
+                        await discoveredNodesChannel.Writer.WriteAsync(node2!, token);
+
+                        if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+
+                        _discoveryReport?.NodeFound();
+                    }
+
+                    if (!checkedNodes.Add(newEntry))
+                    {
+                        continue;
+                    }
+
+                    foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, in nodeId)) ?? [])
+                    {
+                        if (!checkedNodes.Contains(newEnr))
+                        {
+                            nodesToCheck.Enqueue(newEnr);
+                        }
+                    }
+                }
             }
-
-            Queue<IEnr> nodesToCheck = new(startingNode);
-            HashSet<IEnr> checkedNodes = [];
-
-            while (!token.IsCancellationRequested)
+            finally
             {
-                if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+                if (disposeNodeId)
                 {
-                    return;
-                }
-
-                if (TryGetNodeFromEnr(newEntry, out Node? node2))
-                {
-                    await discoveredNodesChannel.Writer.WriteAsync(node2!, token);
-
-                    if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
-
-                    _discoveryReport?.NodeFound();
-                }
-
-                if (!checkedNodes.Add(newEntry))
-                {
-                    continue;
-                }
-
-                foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, in nodeId)) ?? [])
-                {
-                    if (!checkedNodes.Contains(newEnr))
-                    {
-                        nodesToCheck.Enqueue(newEnr);
-                    }
+                    nodeId.Dispose();
                 }
             }
         }
@@ -336,7 +344,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                 {
                     using ArrayPoolList<Task> discoverTasks = new(RandomNodesToLookupCount);
 
-                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), selfNodeId));
+                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), selfNodeId, false));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
@@ -346,6 +354,11 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                     }
 
                     await Task.WhenAll(discoverTasks);
+                    await Task.Delay(TimeSpan.FromSeconds(2), token);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Discovery has been stopped.");
                 }
                 catch (Exception ex)
                 {

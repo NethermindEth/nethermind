@@ -51,8 +51,8 @@ internal class HeaderVerificationTests
         var voteForSign = new Vote(proposedBlockInfo, 1);
 
         var validSigners = xdcTestBlockchain.MasterNodeCandidates
-            .Where(pvkey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
-            .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
+            .Where(pvKey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))
+            .Select(pvKey => new Signer(0, pvKey, xdcTestBlockchain.LogManager))
             .ToList();
 
         List<Signature> signatures = [];
@@ -73,7 +73,7 @@ internal class HeaderVerificationTests
     }
 
     [Test]
-    public async Task Block_With_Illigitimate_Signer_Fails()
+    public async Task Block_With_Illegitimate_Signer_Fails()
     {
         var previousSigner = xdcSigner.Key;
 
@@ -255,8 +255,8 @@ internal class HeaderVerificationTests
         var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
         var voteForSign = new Vote(proposedBlockInfo, 1);
         var validSigners = xdcTestBlockchain.MasterNodeCandidates
-            .Where(pvkey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
-            .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
+            .Where(pvKey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))
+            .Select(pvKey => new Signer(0, pvKey, xdcTestBlockchain.LogManager))
             .ToList();
         List<Signature> signatures = [];
 

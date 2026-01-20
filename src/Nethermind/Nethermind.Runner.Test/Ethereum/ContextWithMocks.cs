@@ -86,7 +86,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     return [];
                 }
 
-                // Dynamically resolve any interface with nsubstitue
+                // Dynamically resolve any interface with nsubstitute
                 ComponentRegistration registration = new ComponentRegistration(
                     Guid.NewGuid(),
                     new DelegateActivator(swt.ServiceType, (c, p) =>

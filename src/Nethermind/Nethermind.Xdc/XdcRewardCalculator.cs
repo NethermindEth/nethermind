@@ -138,8 +138,8 @@ namespace Nethermind.Xdc
             for (long i = start; i < endBlockNumber; i += MergeSignRange)
             {
                 if (!blockNumberToHash.TryGetValue(i, out var blockHash)) continue;
-                if (!hashToSigningAddress.TryGetValue(blockHash, out var addrs)) continue;
-                foreach (Address addr in addrs)
+                if (!hashToSigningAddress.TryGetValue(blockHash, out var addresses)) continue;
+                foreach (Address addr in addresses)
                 {
                     if (!masternodes.Contains(addr)) continue;
                     if (!signers.ContainsKey(addr)) signers[addr] = 0;
