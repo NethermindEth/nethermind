@@ -45,4 +45,24 @@ public class NoopPersistenceReader: IPersistence.IPersistenceReader
     {
         return null;
     }
+
+    public IPersistence.IFlatIterator CreateAccountIterator()
+    {
+        return new EmptyIterator();
+    }
+
+    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+    {
+        return new EmptyIterator();
+    }
+
+    public bool IsPreimageMode => false;
+
+    private struct EmptyIterator : IPersistence.IFlatIterator
+    {
+        public bool MoveNext() => false;
+        public ValueHash256 CurrentKey => default;
+        public ReadOnlySpan<byte> CurrentValue => default;
+        public void Dispose() { }
+    }
 }

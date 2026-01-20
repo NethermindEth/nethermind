@@ -73,13 +73,14 @@ public class PreimageRocksdbPersistence : IPersistence
 
         var currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
 
-        IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
-        IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
+        ISortedKeyValueStore state = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account);
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
 
         var flatReader = new FakeHashFlatReader<BaseFlatPersistence.Reader>(
             new BaseFlatPersistence.Reader(
                 state,
-                storage
+                storage,
+                isPreimageMode: true
             )
         );
 
@@ -266,5 +267,17 @@ public class PreimageRocksdbPersistence : IPersistence
         {
             return flatReader.TryGetStorage(address, slotHash, ref outValue);
         }
+
+        public IPersistence.IFlatIterator CreateAccountIterator()
+        {
+            return flatReader.CreateAccountIterator();
+        }
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+        {
+            return flatReader.CreateStorageIterator(accountKey);
+        }
+
+        public bool IsPreimageMode => flatReader.IsPreimageMode;
     }
 }

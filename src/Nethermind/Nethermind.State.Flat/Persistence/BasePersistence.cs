@@ -28,6 +28,9 @@ public static class BasePersistence
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
+        public IPersistence.IFlatIterator CreateAccountIterator();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
+        public bool IsPreimageMode { get; }
     }
 
     public interface IHashedFlatWriteBatch
@@ -47,6 +50,9 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         public byte[]? GetAccountRaw(Hash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
+        public IPersistence.IFlatIterator CreateAccountIterator();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
+        public bool IsPreimageMode { get; }
     }
 
     public interface IFlatWriteBatch
@@ -163,6 +169,18 @@ public static class BasePersistence
         {
             return flatReader.TryGetStorage(address, slotHash, ref outValue);
         }
+
+        public IPersistence.IFlatIterator CreateAccountIterator()
+        {
+            return flatReader.CreateAccountIterator();
+        }
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+        {
+            return flatReader.CreateStorageIterator(accountKey);
+        }
+
+        public bool IsPreimageMode => flatReader.IsPreimageMode;
     }
 
     public class Reader<TFlatReader, TTrieReader> : IPersistence.IPersistenceReader
@@ -220,6 +238,18 @@ public static class BasePersistence
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref slotValue);
             return slotValue.ToEvmBytes();
         }
+
+        public IPersistence.IFlatIterator CreateAccountIterator()
+        {
+            return _flatReader.CreateAccountIterator();
+        }
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+        {
+            return _flatReader.CreateStorageIterator(accountKey);
+        }
+
+        public bool IsPreimageMode => _flatReader.IsPreimageMode;
     }
 
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(

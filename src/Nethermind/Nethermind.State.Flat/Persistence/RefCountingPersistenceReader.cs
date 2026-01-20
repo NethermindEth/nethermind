@@ -64,6 +64,18 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         return _innerReader.GetStorageRaw(addrHash, slotHash);
     }
 
+    public IPersistence.IFlatIterator CreateAccountIterator()
+    {
+        return _innerReader.CreateAccountIterator();
+    }
+
+    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+    {
+        return _innerReader.CreateStorageIterator(accountKey);
+    }
+
+    public bool IsPreimageMode => _innerReader.IsPreimageMode;
+
     protected override void CleanUp()
     {
         _innerReader.Dispose();

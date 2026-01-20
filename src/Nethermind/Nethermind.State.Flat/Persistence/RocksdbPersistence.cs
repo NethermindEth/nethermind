@@ -52,8 +52,9 @@ public class RocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IP
             return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
                 new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
                     new BaseFlatPersistence.Reader(
-                        snapshot.GetColumn(FlatDbColumns.Account),
-                        snapshot.GetColumn(FlatDbColumns.Storage)
+                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account),
+                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage),
+                        isPreimageMode: false
                     )
                 ),
                 trieReader,

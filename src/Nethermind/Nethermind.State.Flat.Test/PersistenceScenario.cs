@@ -703,4 +703,169 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(reader.TryLoadStorageRlp(account2Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp2));
         }
     }
+
+    [Test]
+    public void TestAccountIterator_EnumeratesAllAccounts()
+    {
+        // Write multiple accounts
+        Address addr1 = TestItem.AddressA;
+        Address addr2 = TestItem.AddressB;
+        Address addr3 = TestItem.AddressC;
+
+        Account acc1 = TestItem.GenerateIndexedAccount(1);
+        Account acc2 = TestItem.GenerateIndexedAccount(2);
+        Account acc3 = TestItem.GenerateIndexedAccount(3);
+
+        using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            writer.SetAccount(addr1, acc1);
+            writer.SetAccount(addr2, acc2);
+            writer.SetAccount(addr3, acc3);
+        }
+
+        // Use iterator to enumerate accounts
+        using var reader = _persistence.CreateReader();
+        using var iterator = reader.CreateAccountIterator();
+
+        int count = 0;
+        while (iterator.MoveNext())
+        {
+            count++;
+        }
+
+        // All layouts should find 3 accounts
+        Assert.That(count, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void TestAccountIterator_EmptyState_ReturnsNoAccounts()
+    {
+        using var reader = _persistence.CreateReader();
+        using var iterator = reader.CreateAccountIterator();
+
+        int count = 0;
+        while (iterator.MoveNext())
+        {
+            count++;
+        }
+
+        Assert.That(count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void TestStorageIterator_EnumeratesAccountStorage()
+    {
+        // PreimageFlat uses raw address, others use hashed address paths
+        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+            Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
+
+        // Write account with storage
+        Address addr = TestItem.AddressA;
+        Account acc = TestItem.GenerateIndexedAccount(0);
+
+        using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            writer.SetAccount(addr, acc);
+            writer.SetStorage(addr, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
+            writer.SetStorage(addr, 42, SlotValue.FromSpanWithoutLeadingZero([0x42]));
+            writer.SetStorage(addr, 100, SlotValue.FromSpanWithoutLeadingZero([0x64]));
+        }
+
+        // Use iterator to enumerate storage
+        using var reader = _persistence.CreateReader();
+
+        // Storage keys are written using addr.ToAccountPath (Keccak hash of address)
+        ValueHash256 accountKey = addr.ToAccountPath;
+
+        using var iterator = reader.CreateStorageIterator(accountKey);
+
+        int count = 0;
+        while (iterator.MoveNext())
+        {
+            count++;
+        }
+
+        // Should find 3 storage slots
+        Assert.That(count, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void TestStorageIterator_NoStorage_ReturnsEmpty()
+    {
+        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+            Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
+
+        // Write account without storage
+        Address addr = TestItem.AddressA;
+        Account acc = TestItem.GenerateIndexedAccount(0);
+
+        using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            writer.SetAccount(addr, acc);
+        }
+
+        using var reader = _persistence.CreateReader();
+
+        ValueHash256 accountKey = addr.ToAccountPath;
+
+        using var iterator = reader.CreateStorageIterator(accountKey);
+
+        int count = 0;
+        while (iterator.MoveNext())
+        {
+            count++;
+        }
+
+        Assert.That(count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void TestStorageIterator_IsolatesAccountStorage()
+    {
+        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+            Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
+
+        // Write storage for two accounts
+        Address addr1 = TestItem.AddressA;
+        Address addr2 = TestItem.AddressB;
+
+        using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            writer.SetAccount(addr1, TestItem.GenerateIndexedAccount(0));
+            writer.SetStorage(addr1, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
+            writer.SetStorage(addr1, 2, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+
+            writer.SetAccount(addr2, TestItem.GenerateIndexedAccount(1));
+            writer.SetStorage(addr2, 10, SlotValue.FromSpanWithoutLeadingZero([0xaa]));
+            writer.SetStorage(addr2, 20, SlotValue.FromSpanWithoutLeadingZero([0xbb]));
+            writer.SetStorage(addr2, 30, SlotValue.FromSpanWithoutLeadingZero([0xcc]));
+        }
+
+        using var reader = _persistence.CreateReader();
+
+        // Count storage for addr1 using proper address hash
+        ValueHash256 accountKey1 = addr1.ToAccountPath;
+        using var iterator1 = reader.CreateStorageIterator(accountKey1);
+        int count1 = 0;
+        while (iterator1.MoveNext()) count1++;
+
+        // Count storage for addr2 using proper address hash
+        ValueHash256 accountKey2 = addr2.ToAccountPath;
+        using var iterator2 = reader.CreateStorageIterator(accountKey2);
+        int count2 = 0;
+        while (iterator2.MoveNext()) count2++;
+
+        Assert.That(count1, Is.EqualTo(2));
+        Assert.That(count2, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void TestIsPreimageMode_ReturnsCorrectValue()
+    {
+        using var reader = _persistence.CreateReader();
+
+        // PreimageFlat layout should return true, others false
+        bool expected = configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat;
+        Assert.That(reader.IsPreimageMode, Is.EqualTo(expected));
+    }
 }

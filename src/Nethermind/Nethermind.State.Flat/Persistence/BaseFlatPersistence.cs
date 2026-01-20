@@ -62,10 +62,12 @@ public static class BaseFlatPersistence
     }
 
     public struct Reader(
-        IReadOnlyKeyValueStore state,
-        IReadOnlyKeyValueStore storage
+        ISortedKeyValueStore state,
+        ISortedKeyValueStore storage,
+        bool isPreimageMode = false
     ) : BasePersistence.IHashedFlatReader
     {
+        public bool IsPreimageMode => isPreimageMode;
 
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
@@ -109,6 +111,106 @@ public static class BaseFlatPersistence
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer)
         {
             return storage.Get(key, outBuffer);
+        }
+
+        public IPersistence.IFlatIterator CreateAccountIterator()
+        {
+            return new AccountIterator(state.GetViewBetween([], [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]));
+        }
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+        {
+            // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
+            // We need to iterate all keys with the same 4-byte prefix and 16-byte suffix
+            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            firstKey.Fill(0x00);
+            lastKey.Fill(0xff);
+            accountKey.Bytes[..StoragePrefixPortion].CopyTo(firstKey);
+            accountKey.Bytes[..StoragePrefixPortion].CopyTo(lastKey);
+
+            return new StorageIterator(
+                storage.GetViewBetween(firstKey, lastKey),
+                accountKey.Bytes[StoragePrefixPortion..StorageHashPrefixLength].ToArray());
+        }
+    }
+
+    public struct AccountIterator : IPersistence.IFlatIterator
+    {
+        private readonly ISortedView _view;
+        private ValueHash256 _currentKey;
+        private byte[]? _currentValue;
+
+        public AccountIterator(ISortedView view)
+        {
+            _view = view;
+            _currentKey = default;
+            _currentValue = null;
+        }
+
+        public bool MoveNext()
+        {
+            if (!_view.MoveNext()) return false;
+
+            // Account keys are 20 bytes (truncated hash)
+            if (_view.CurrentKey.Length != StateKeyPrefixLength) return MoveNext();
+
+            // Build 32-byte ValueHash256 from 20-byte key (zero-padded)
+            _currentKey = ValueKeccak.Zero;
+            _view.CurrentKey.CopyTo(_currentKey.BytesAsSpan);
+            _currentValue = _view.CurrentValue.ToArray();
+            return true;
+        }
+
+        public ValueHash256 CurrentKey => _currentKey;
+        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        public void Dispose()
+        {
+            _view.Dispose();
+        }
+    }
+
+    public struct StorageIterator : IPersistence.IFlatIterator
+    {
+        private readonly ISortedView _view;
+        private readonly byte[] _addressSuffix; // 16-byte suffix to match
+        private ValueHash256 _currentKey;
+        private byte[]? _currentValue;
+
+        public StorageIterator(ISortedView view, byte[] addressSuffix)
+        {
+            _view = view;
+            _addressSuffix = addressSuffix;
+            _currentKey = default;
+            _currentValue = null;
+        }
+
+        public bool MoveNext()
+        {
+            while (_view.MoveNext())
+            {
+                // Storage keys are 52 bytes: <4-byte-addr><32-byte-slot><16-byte-addr>
+                if (_view.CurrentKey.Length != StorageKeyLength) continue;
+
+                // Verify the 16-byte address suffix matches
+                if (!Bytes.AreEqual(_view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], _addressSuffix))
+                    continue;
+
+                // Extract the 32-byte slot hash from the middle of the key
+                _currentKey = new ValueHash256(_view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
+                _currentValue = _view.CurrentValue.ToArray();
+                return true;
+            }
+            return false;
+        }
+
+        public ValueHash256 CurrentKey => _currentKey;
+        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        public void Dispose()
+        {
+            _view.Dispose();
         }
     }
 

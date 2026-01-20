@@ -33,8 +33,9 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence,
             return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
                 new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
                     new BaseFlatPersistence.Reader(
-                        snapshot.GetColumn(FlatDbColumns.StateNodes),
-                        snapshot.GetColumn(FlatDbColumns.StorageNodes)
+                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.StateNodes),
+                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.StorageNodes),
+                        isPreimageMode: false
                     )
                 ),
                 trieReader,

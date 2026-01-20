@@ -14,6 +14,16 @@ public interface IPersistence
     IPersistenceReader CreateReader();
     IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags = WriteFlags.None);
 
+    /// <summary>
+    /// Iterator for iterating over flat storage key-value pairs.
+    /// </summary>
+    public interface IFlatIterator : IDisposable
+    {
+        bool MoveNext();
+        ValueHash256 CurrentKey { get; }
+        ReadOnlySpan<byte> CurrentValue { get; }
+    }
+
     public interface IPersistenceReader: IDisposable
     {
         Account? GetAccount(Address address);
@@ -24,6 +34,21 @@ public interface IPersistence
 
         byte[]? GetAccountRaw(Hash256 addrHash);
         byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
+
+        /// <summary>
+        /// Creates an iterator over all accounts in flat storage.
+        /// </summary>
+        IFlatIterator CreateAccountIterator();
+
+        /// <summary>
+        /// Creates an iterator over all storage slots for a given account.
+        /// </summary>
+        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
+
+        /// <summary>
+        /// Indicates whether the persistence uses preimage mode (raw addresses/slots instead of hashes).
+        /// </summary>
+        bool IsPreimageMode { get; }
     }
 
     public interface IWriteBatch: IDisposable
