@@ -86,7 +86,7 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayloadV3, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayloadV4, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -99,7 +99,7 @@ namespace Ethereum.Test.Base
                 string[]? blobVersionedHashes = engineNewPayload.Params.Length > 1 ? engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
                 string? parentBeaconBlockRoot = engineNewPayload.Params.Length > 2 ? engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions) : null;
                 string[]? validationError = engineNewPayload.Params.Length > 3 ? engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                yield return (new ExecutionPayloadV3()
+                yield return (new ExecutionPayloadV4()
                 {
                     BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
                     BlockHash = new(executionPayload.BlockHash),

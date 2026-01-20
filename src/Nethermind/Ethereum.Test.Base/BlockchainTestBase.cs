@@ -313,7 +313,7 @@ public abstract class BlockchainTestBase
 
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
     {
-        (ExecutionPayloadV3, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        (ExecutionPayloadV4, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
 
         // blockchain test engine
         foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, int newPayloadVersion, int fcuVersion) in payloads)
