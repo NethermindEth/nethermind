@@ -16,12 +16,12 @@ namespace Nethermind.Trie;
 /// </summary>
 public class VisitorProgressTracker
 {
-    private const int MaxLevel = 3; // Levels 0-3 (1 to 4 nibbles)
+    private const int Level3Depth = 4; // 4 nibbles
+    private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
 
-    // Arrays for tracking seen prefixes: 16, 256, 4096, 65536 entries
-    private readonly int[][] _seen;
-    private readonly int[] _seenCounts = new int[MaxLevel + 1];
-    private static readonly int[] MaxAtLevel = { 16, 256, 4096, 65536 };
+    // Track which level-3 prefixes we've seen (65536 entries)
+    private readonly int[] _seen;
+    private int _seenCount;
 
     private long _nodeCount;
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
@@ -45,11 +45,7 @@ public class VisitorProgressTracker
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
 
-        _seen = new int[MaxLevel + 1][];
-        for (int level = 0; level <= MaxLevel; level++)
-        {
-            _seen[level] = new int[MaxAtLevel[level]];
-        }
+        _seen = new int[MaxNodes];
     }
 
     private string FormatProgress(ProgressLogger logger)
@@ -77,35 +73,35 @@ public class VisitorProgressTracker
         // Only track state nodes for progress estimation at level 3
         if (!isStorage)
         {
-            int depth = Math.Min(path.Length, MaxLevel + 1);
+            int depth = Math.Min(path.Length, Level3Depth);
 
-            if (depth == MaxLevel + 1)
+            if (depth == Level3Depth)
             {
-                // Node at level 3: track normally
+                // Node at level 3 (4 nibbles): track the prefix
                 int prefix = 0;
-                for (int i = 0; i < MaxLevel + 1; i++)
+                for (int i = 0; i < Level3Depth; i++)
                 {
                     prefix = (prefix << 4) | path[i];
                 }
 
-                if (Interlocked.CompareExchange(ref _seen[MaxLevel][prefix], 1, 0) == 0)
+                if (Interlocked.CompareExchange(ref _seen[prefix], 1, 0) == 0)
                 {
-                    Interlocked.Increment(ref _seenCounts[MaxLevel]);
+                    Interlocked.Increment(ref _seenCount);
                 }
             }
             else if (isLeaf && depth > 0)
             {
                 // Leaf at lower depth: estimate how many level-3 nodes it covers
-                // Each level has 16 children, so a leaf at depth d covers 16^(3-d+1) level-3 nodes
-                int coverageDepth = MaxLevel + 1 - depth;
+                // Each level has 16 children, so a leaf at depth d covers 16^(4-d) level-3 nodes
+                int coverageDepth = Level3Depth - depth;
                 int estimatedNodes = 1;
                 for (int i = 0; i < coverageDepth; i++)
                 {
                     estimatedNodes *= 16;
                 }
 
-                // Add estimated coverage to level 3
-                Interlocked.Add(ref _seenCounts[MaxLevel], estimatedNodes);
+                // Add estimated coverage
+                Interlocked.Add(ref _seenCount, estimatedNodes);
             }
 
             // Log progress at intervals (based on state nodes only)
@@ -121,8 +117,8 @@ public class VisitorProgressTracker
         // Skip logging for first 5 seconds OR until we've seen at least 1% of nodes
         // This prevents early estimates from getting stuck in _maxReportedProgress
         double elapsed = (DateTime.UtcNow - _startTime).TotalSeconds;
-        int seen = _seenCounts[MaxLevel];
-        double progress = Math.Min((double)seen / MaxAtLevel[MaxLevel], 1.0);
+        int seen = _seenCount;
+        double progress = Math.Min((double)seen / MaxNodes, 1.0);
 
         if (elapsed < 5.0 && progress < 0.01)
         {
@@ -161,9 +157,8 @@ public class VisitorProgressTracker
     /// </summary>
     public double GetProgress()
     {
-        // Always use level 3 for progress
-        int seen = _seenCounts[MaxLevel];
-        return Math.Min((double)seen / MaxAtLevel[MaxLevel], 1.0);
+        int seen = _seenCount;
+        return Math.Min((double)seen / MaxNodes, 1.0);
     }
 
     /// <summary>
