@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -40,7 +41,13 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
+        private readonly ILogger _slowBlockLogger;
         private readonly Stopwatch _runStopwatch = new();
+
+        /// <summary>
+        /// Threshold in milliseconds for slow block logging (default: 1000ms).
+        /// </summary>
+        private const long SlowBlockThresholdMs = 1000;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -69,12 +76,13 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
             _logger = logger;
+            _slowBlockLogger = slowBlockLogger ?? logger;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -174,8 +182,16 @@ namespace Nethermind.Consensus.Processing
             // We want the rate here
             double mgas = block.GasUsed / 1_000_000.0;
             double timeSec = data.ProcessingMicroseconds / 1_000_000.0;
-            Metrics.BlockMGasPerSec.Observe(mgas / timeSec);
+            double mgasPerSec = timeSec > 0 ? mgas / timeSec : 0;
+            Metrics.BlockMGasPerSec.Observe(mgasPerSec);
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+
+            // Log slow blocks in JSON format for cross-client performance analysis
+            long processingMs = data.ProcessingMicroseconds / 1000;
+            if (processingMs > SlowBlockThresholdMs)
+            {
+                LogSlowBlock(block, data, processingMs, mgasPerSec);
+            }
 
             Metrics.Mgas += block.GasUsed / 1_000_000.0;
             Transaction[] txs = block.Transactions;
@@ -410,6 +426,68 @@ namespace Nethermind.Consensus.Processing
                 UInt256 beforeBalance = _stateReader.GetBalance(startBlock, beneficiary);
                 UInt256 afterBalance = _stateReader.GetBalance(endBlock, beneficiary);
                 return beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+            }
+        }
+
+        /// <summary>
+        /// Logs slow block execution statistics in JSON format for cross-client performance analysis.
+        /// Follows the standardized execution metrics specification.
+        /// </summary>
+        private void LogSlowBlock(Block block, BlockData data, long processingMs, double mgasPerSec)
+        {
+            try
+            {
+                long sloadOps = data.CurrentSLoadOps - data.StartSLoadOps;
+                long sstoreOps = data.CurrentSStoreOps - data.StartSStoreOps;
+                long callOps = data.CurrentCallOps - data.StartCallOps;
+                long createOps = data.CurrentCreatesOps - data.StartCreateOps;
+                long cachedContracts = data.CurrentCachedContractsUsed - data.StartCachedContractsUsed;
+                long analyzedContracts = data.CurrentContractsAnalyzed - data.StartContractsAnalyzed;
+
+                var slowBlockLog = new
+                {
+                    level = "warn",
+                    msg = "Slow block",
+                    block = new
+                    {
+                        number = block.Number,
+                        hash = block.Hash?.ToString() ?? "0x",
+                        gas_used = block.GasUsed,
+                        tx_count = block.Transactions.Length
+                    },
+                    timing = new
+                    {
+                        execution_ms = processingMs,
+                        total_ms = processingMs
+                    },
+                    throughput = new
+                    {
+                        mgas_per_sec = Math.Round(mgasPerSec, 2)
+                    },
+                    evm = new
+                    {
+                        sload = sloadOps,
+                        sstore = sstoreOps,
+                        calls = callOps,
+                        creates = createOps
+                    },
+                    cache = new
+                    {
+                        code_cache_hits = cachedContracts,
+                        contracts_analyzed = analyzedContracts
+                    }
+                };
+
+                string json = JsonSerializer.Serialize(slowBlockLog, new JsonSerializerOptions
+                {
+                    WriteIndented = false
+                });
+
+                if (_slowBlockLogger.IsWarn) _slowBlockLogger.Warn(json);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Error logging slow block: {ex.Message}");
             }
         }
 
