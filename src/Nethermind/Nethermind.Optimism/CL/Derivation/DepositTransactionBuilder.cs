@@ -141,7 +141,12 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (version == DepositEvent.Version0)
         {
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
-            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
+            if (log.LogIndex is null || log.LogIndex < 0)
+            {
+                throw new ArgumentException($"{nameof(LogEntryForRpc.LogIndex)} must be a non-negative value to compute {nameof(Transaction.SourceHash)}.");
+            }
+
+            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)log.LogIndex);
 
             return new()
             {
