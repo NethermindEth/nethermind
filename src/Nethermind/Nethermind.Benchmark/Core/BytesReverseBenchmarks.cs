@@ -92,7 +92,7 @@ namespace Nethermind.Benchmarks.Core
         {
             if (!Avx2.IsSupported)
             {
-                return;
+                throw new NotSupportedException("AVX2 instruction set is not supported on this CPU");
             }
 
             byte[] bytes = _a;

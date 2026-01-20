@@ -31,8 +31,15 @@ public static unsafe partial class Bytes
 
     public static void Avx2Reverse256InPlace(Span<byte> bytes)
     {
-        Debug.Assert(Avx2.IsSupported, "AVX2 must be supported to call Avx2Reverse256InPlace");
-        Debug.Assert(bytes.Length == 32, "Input must be exactly 32 bytes");
+        if (!Avx2.IsSupported)
+        {
+            throw new NotSupportedException("AVX2 instruction set is not supported on this CPU");
+        }
+
+        if (bytes.Length != 32)
+        {
+            throw new ArgumentException("Input must be exactly 32 bytes", nameof(bytes));
+        }
 
         fixed (byte* inputPointer = bytes)
         {
