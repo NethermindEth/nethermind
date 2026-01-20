@@ -26,6 +26,8 @@ public class VisitorProgressTracker
     private long _nodeCount;
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
     private long _maxReportedProgress; // Track max to avoid going backwards
+    private int _activeLevel; // Current deepest level with >5% coverage
+    private readonly DateTime _startTime;
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
     private readonly int _reportingInterval;
@@ -42,6 +44,8 @@ public class VisitorProgressTracker
         _logger.Reset(0, 10000); // Use 10000 for 0.01% precision
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
+        _startTime = DateTime.UtcNow;
+        _activeLevel = 0; // Start at level 0
 
         _seen = new int[MaxLevel + 1][];
         for (int level = 0; level <= MaxLevel; level++)
@@ -75,16 +79,35 @@ public class VisitorProgressTracker
         if (!isStorage)
         {
             int depth = Math.Min(path.Length, MaxLevel + 1);
-            int prefix = 0;
+            int currentActiveLevel = _activeLevel;
 
-            for (int level = 0; level < depth; level++)
+            // Only track at the active level or deeper
+            if (depth > currentActiveLevel)
             {
-                prefix = (prefix << 4) | path[level];
+                int prefix = 0;
 
-                // Mark prefix as seen (thread-safe)
-                if (Interlocked.CompareExchange(ref _seen[level][prefix], 1, 0) == 0)
+                // Build prefix up to active level
+                for (int level = 0; level < currentActiveLevel; level++)
                 {
-                    Interlocked.Increment(ref _seenCounts[level]);
+                    prefix = (prefix << 4) | path[level];
+                }
+
+                // Track from active level onwards
+                for (int level = currentActiveLevel; level < depth; level++)
+                {
+                    prefix = (prefix << 4) | path[level];
+
+                    // Mark prefix as seen (thread-safe)
+                    if (Interlocked.CompareExchange(ref _seen[level][prefix], 1, 0) == 0)
+                    {
+                        int newCount = Interlocked.Increment(ref _seenCounts[level]);
+
+                        // Check if we should move to a deeper level
+                        if (level > currentActiveLevel && newCount > MaxAtLevel[level] / 20)
+                        {
+                            Interlocked.CompareExchange(ref _activeLevel, level, currentActiveLevel);
+                        }
+                    }
                 }
             }
 
@@ -98,24 +121,17 @@ public class VisitorProgressTracker
 
     private void LogProgress()
     {
-        // Use deepest level with >5% coverage for best granularity
-        long progressValue = 0;
-        for (int level = MaxLevel; level >= 0; level--)
+        // Skip logging for first second to avoid early high values getting stuck in _maxReportedProgress
+        if ((DateTime.UtcNow - _startTime).TotalSeconds < 1.0)
         {
-            int seen = _seenCounts[level];
-            if (seen > MaxAtLevel[level] / 20)
-            {
-                double progress = Math.Min((double)seen / MaxAtLevel[level], 1.0);
-                progressValue = (long)(progress * 10000);
-                break;
-            }
+            return;
         }
 
-        // Fallback to level 0 if no level had >5% coverage
-        if (progressValue == 0)
-        {
-            progressValue = (long)((double)_seenCounts[0] / 16 * 10000);
-        }
+        // Use the active level for progress estimation
+        int level = _activeLevel;
+        int seen = _seenCounts[level];
+        double progress = Math.Min((double)seen / MaxAtLevel[level], 1.0);
+        long progressValue = (long)(progress * 10000);
 
         // Never report progress lower than previously reported (due to level switching)
         long currentMax = _maxReportedProgress;
@@ -147,15 +163,9 @@ public class VisitorProgressTracker
     /// </summary>
     public double GetProgress()
     {
-        for (int level = MaxLevel; level >= 0; level--)
-        {
-            int seen = _seenCounts[level];
-            if (seen > MaxAtLevel[level] / 20)
-            {
-                return Math.Min((double)seen / MaxAtLevel[level], 1.0);
-            }
-        }
-        return (double)_seenCounts[0] / 16;
+        int level = _activeLevel;
+        int seen = _seenCounts[level];
+        return Math.Min((double)seen / MaxAtLevel[level], 1.0);
     }
 
     /// <summary>
