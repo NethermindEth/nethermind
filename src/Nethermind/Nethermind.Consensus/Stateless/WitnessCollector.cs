@@ -8,9 +8,9 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public interface IWitnessCollector
+public interface IExistingBlockWitnessCollector
 {
-    Witness GetWitness(BlockHeader parentHeader, Block block);
+    Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block);
 }
 
 public class WitnessCollector(
@@ -18,9 +18,9 @@ public class WitnessCollector(
     WitnessGeneratingWorldState worldState,
     WitnessCapturingTrieStore trieStore,
     IBlockProcessor blockProcessor,
-    ISpecProvider specProvider) : IWitnessCollector
+    ISpecProvider specProvider) : IExistingBlockWitnessCollector
 {
-    public Witness GetWitness(BlockHeader parentHeader, Block block)
+    public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
         using (worldState.BeginScope(parentHeader))
         {

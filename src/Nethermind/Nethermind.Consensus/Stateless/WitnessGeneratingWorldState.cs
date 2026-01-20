@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -17,11 +18,22 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader) : IWorldState
+public interface IWitnessBytecodeRecorder
+{
+    void RecordBytecode(byte[] code);
+}
+
+public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader) : IWorldState, IWitnessBytecodeRecorder
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
+
+    public void RecordBytecode(byte[] code)
+    {
+        Hash256 codeHash = Keccak.Compute(code);
+        _bytecodes.TryAdd(codeHash, code);
+    }
 
     public (byte[][] stateNodes, byte[][] Codes, byte[][] Keys) GetWitness(BlockHeader parentHeader, byte[][] capturedNodes)
     {
@@ -33,7 +45,7 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         // WitnessCapturingTrie only would not capture these nodes and they would not be included in the witness.
         // For example, these nodes are captured in geth. But this solution might capture additional nodes not
         // necessarily needed for the witness. There might be a better solution.
-        HashSet<byte[]> stateNodes = new();
+        HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
         stateNodes.UnionWith(capturedNodes);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
@@ -90,14 +102,14 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
     {
         _storageSlots.TryAdd(address, []);
         byte[] code = inner.GetCode(address);
-        _bytecodes.TryAdd(Keccak.Compute(code), code);
+        RecordBytecode(code);
         return code;
     }
 
     public byte[]? GetCode(in ValueHash256 codeHash)
     {
         byte[] code = inner.GetCode(in codeHash);
-        _bytecodes.TryAdd(codeHash, code);
+        RecordBytecode(code);
         return code;
     }
 
