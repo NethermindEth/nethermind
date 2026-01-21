@@ -35,7 +35,7 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         else
             EncodeAddressSequence(stream, item.NextEpochPenalties);
     }
-    
+
     protected override int GetContentLength(SubnetSnapshot item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)

@@ -39,7 +39,7 @@ public class SubnetSnapshotDecoderTests
             decoded.Should().BeEquivalentTo(original);
         }
     }
-    
+
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip_stream(SubnetSnapshot original)
     {
