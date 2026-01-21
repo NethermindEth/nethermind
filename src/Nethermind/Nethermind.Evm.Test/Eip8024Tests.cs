@@ -54,43 +54,6 @@ public class Eip8024Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void TryDecodePair_ValidImmediate_DecodesCorrectly()
-    {
-        // Per EIP-8024: k = x if x <= 79 else x - 48; q,r = divmod(k, 16)
-        // If q < r: return (q+1, r+1); else: return (r+1, 29-q)
-
-        // 0x12 (18) -> k=18, q=1, r=2, q<r -> (2, 3) - from EIP test vector
-        EvmInstructions.TryDecodePair(0x12, out int n12, out int m12).Should().BeTrue();
-        n12.Should().Be(2);
-        m12.Should().Be(3);
-
-        // 0xd0 (208) -> k=160, q=10, r=0, q>=r -> (1, 19) - from EIP test vector
-        EvmInstructions.TryDecodePair(0xd0, out int nd0, out int md0).Should().BeTrue();
-        nd0.Should().Be(1);
-        md0.Should().Be(19);
-
-        // 0x00 -> k=0, q=0, r=0, q>=r -> (1, 29)
-        EvmInstructions.TryDecodePair(0x00, out int n0, out int m0).Should().BeTrue();
-        n0.Should().Be(1);
-        m0.Should().Be(29);
-
-        // 0x4f (79) -> k=79, q=4, r=15, q<r -> (5, 16)
-        EvmInstructions.TryDecodePair(0x4f, out int n4f, out int m4f).Should().BeTrue();
-        n4f.Should().Be(5);
-        m4f.Should().Be(16);
-    }
-
-    [Test]
-    public void TryDecodePair_DisallowedRange_ReturnsFalse()
-    {
-        // Disallowed range: 0x50-0x7f
-        for (byte imm = 0x50; imm <= 0x7f; imm++)
-        {
-            EvmInstructions.TryDecodePair(imm, out _, out _).Should().BeFalse($"Immediate 0x{imm:X2} should be disallowed");
-        }
-    }
-
-    [Test]
     public void DupN_ValidImmediate_DuplicatesStackElement()
     {
         // Push values 1-20 onto the stack, then DUPN with immediate 0x00 (depth=17)
@@ -232,6 +195,71 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Failure);
+    }
+
+    [Test]
+    public void Exchange_DisallowedRange_AllFail()
+    {
+        // Full disallowed range 0x50-0x7f
+        for (byte imm = 0x50; imm <= 0x7f; imm++)
+        {
+            Prepare prepare = Prepare.EvmCode;
+            for (int i = 0; i < 32; i++) prepare.PushData(i);
+            byte[] code = prepare.Op(Instruction.EXCHANGE).Data(imm).Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+            result.StatusCode.Should().Be(StatusCode.Failure, $"Immediate 0x{imm:X2} should fail");
+        }
+    }
+
+    [Test]
+    public void Exchange_HighRangeImmediate_Succeeds()
+    {
+        // Test 0xd0: k=160, q=10, r=0, q>=r -> n=r+2=2, m=(29-q)+2=21
+        // Exchange(2, 21) needs 21 items on stack
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 1; i <= 21; i++) prepare.PushData(i);
+        byte[] code = prepare
+            .Op(Instruction.EXCHANGE).Data(0xd0)
+            .MSTORE(0).Return(32, 0)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Success);
+        // Stack top is 21, which is stored
+        new UInt256(result.ReturnValue, true).Should().Be(21);
+    }
+
+    [Test]
+    public void Exchange_EdgeCase_0x4f_Succeeds()
+    {
+        // 0x4f: k=79, q=4, r=15, q<r -> (5, 16) -> Exchange(6, 17)
+        // Need 17 items on stack
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 1; i <= 17; i++) prepare.PushData(i);
+        byte[] code = prepare
+            .Op(Instruction.EXCHANGE).Data(0x4f)
+            .MSTORE(0).Return(32, 0)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Success);
+    }
+
+    [Test]
+    public void Exchange_EdgeCase_0x80_Succeeds()
+    {
+        // 0x80: k=80 (128-48), q=5, r=0, q>=r -> n=r+2=2, m=(29-5)+2=26
+        // Exchange(2, 26) needs 26 items on stack
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 1; i <= 26; i++) prepare.PushData(i);
+        byte[] code = prepare
+            .Op(Instruction.EXCHANGE).Data(0x80)
+            .MSTORE(0).Return(32, 0)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+        result.StatusCode.Should().Be(StatusCode.Success);
     }
 
     [Test]
@@ -408,35 +436,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void EipTestVector_DecodePair_0x12_Returns_2_3()
-    {
-        // e812 decodes to [EXCHANGE 2 3]
-        EvmInstructions.TryDecodePair(0x12, out int n, out int m).Should().BeTrue();
-        n.Should().Be(2);
-        m.Should().Be(3);
-    }
-
-    [Test]
-    public void EipTestVector_DecodePair_0xd0_Returns_1_19()
-    {
-        // e8d0 decodes to [EXCHANGE 1 19]
-        EvmInstructions.TryDecodePair(0xd0, out int n, out int m).Should().BeTrue();
-        n.Should().Be(1);
-        m.Should().Be(19);
-    }
-
-    [Test]
     public void EipTestVector_InvalidSwapn_0x5b_Fails()
     {
         // e75b decodes to [INVALID_SWAPN, JUMPDEST] - 0x5b is in disallowed range
         EvmInstructions.TryDecodeSingle(0x5b, out _).Should().BeFalse();
-    }
-
-    [Test]
-    public void EipTestVector_InvalidExchange_0x50_Fails()
-    {
-        // e850 decodes to [INVALID_EXCHANGE, POP] - 0x50 is in disallowed range
-        EvmInstructions.TryDecodePair(0x50, out _, out _).Should().BeFalse();
     }
 
     #endregion

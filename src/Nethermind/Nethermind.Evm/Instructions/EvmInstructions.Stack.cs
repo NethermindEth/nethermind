@@ -644,8 +644,7 @@ internal static partial class EvmInstructions
         if (!TryDecodePair(imm, out int n, out int m))
             goto BadInstruction;
 
-        // n and m are 1-based offsets below the top of the stack.
-        if (!stack.Exchange<TTracingInst>(n + 1, m + 1))
+        if (!stack.Exchange<TTracingInst>(n, m))
             goto StackUnderflow;
 
         programCounter += 1;
@@ -676,15 +675,10 @@ internal static partial class EvmInstructions
     /// Decodes a single-byte immediate for EIP-8024 EXCHANGE instruction.
     /// Disallowed range: 0x50-0x7f (80-127) to avoid PUSH opcode patterns.
     /// Valid ranges: 0x00-0x4f (0-79) and 0x80-0xff (128-255).
-    /// Returns n and m as 1-based offsets below the top of the stack; the exchange swaps
-    /// positions (n + 1) and (m + 1).
+    /// Returns stack indices ready for direct use with stack.Exchange.
     /// </summary>
-    /// <param name="imm">The immediate byte from the code.</param>
-    /// <param name="n">The first stack offset below the top (1-based).</param>
-    /// <param name="m">The second stack offset below the top (1-based).</param>
-    /// <returns>True if the immediate is valid; false if in disallowed range.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryDecodePair(byte imm, out int n, out int m)
+    private static bool TryDecodePair(byte imm, out int n, out int m)
     {
         // k = imm            if imm <= 79
         //     imm - 48       if imm >= 128
@@ -696,14 +690,10 @@ internal static partial class EvmInstructions
         // mask = -1 if q < r, 0 otherwise
         int mask = (q - r) >> 31;
 
-        // if (q < r)
-        //   n = q + 1
-        //   m = r + 1
-        // else
-        //   n = r + 1
-        //   m = 29 - q
-        n = ((q & mask) | (r & ~mask)) + 1;
-        m = ((r & mask) | ((28 - q) & ~mask)) + 1;
+        // EIP-8024: if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
+        // Add +1 for 1-indexed stack positions used by Exchange
+        n = ((q & mask) | (r & ~mask)) + 2;
+        m = ((r & mask) | ((29 - q) & ~mask)) + 2;
 
         // Valid if imm < 0x50 || imm > 0x7F
         return (uint)(imm - 0x50) > 0x2F;
