@@ -150,6 +150,45 @@ public class Metrics
     internal static long ThreadLocalStorageWrites => _storageWrites.ThreadLocalValue;
     internal static void IncrementStorageWrites() => _storageWrites.Increment();
 
+    // Code write metrics for cross-client execution metrics standardization
+    [CounterMetric]
+    [Description("Number of code writes during execution.")]
+    public static long CodeWrites => _codeWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeWrites = new();
+    [Description("Number of code writes on thread.")]
+    internal static long ThreadLocalCodeWrites => _codeWrites.ThreadLocalValue;
+    internal static void IncrementCodeWrites() => _codeWrites.Increment();
+
+    [CounterMetric]
+    [Description("Total bytes of code written during execution.")]
+    public static long CodeBytesWritten => _codeBytesWritten.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeBytesWritten = new();
+    [Description("Total bytes of code written on thread.")]
+    internal static long ThreadLocalCodeBytesWritten => _codeBytesWritten.ThreadLocalValue;
+    internal static void IncrementCodeBytesWritten(int bytes) => _codeBytesWritten.Increment(bytes);
+
+    // Timing metrics for cross-client execution metrics standardization (in ticks for precision)
+    [Description("Time spent reading state during execution (ticks).")]
+    public static long StateReadTime => _stateReadTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _stateReadTime = new();
+    [Description("Time spent reading state on thread (ticks).")]
+    internal static long ThreadLocalStateReadTime => _stateReadTime.ThreadLocalValue;
+    internal static void AddStateReadTime(long ticks) => _stateReadTime.Increment(ticks);
+
+    [Description("Time spent on state hashing/merkleization (ticks).")]
+    public static long StateHashTime => _stateHashTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _stateHashTime = new();
+    [Description("Time spent on state hashing on thread (ticks).")]
+    internal static long ThreadLocalStateHashTime => _stateHashTime.ThreadLocalValue;
+    internal static void AddStateHashTime(long ticks) => _stateHashTime.Increment(ticks);
+
+    [Description("Time spent committing state to storage (ticks).")]
+    public static long CommitTime => _commitTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _commitTime = new();
+    [Description("Time spent committing state on thread (ticks).")]
+    internal static long ThreadLocalCommitTime => _commitTime.ThreadLocalValue;
+    internal static void AddCommitTime(long ticks) => _commitTime.Increment(ticks);
+
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]
     public static long NumberOfBackgroundTasksScheduled { get; set; }

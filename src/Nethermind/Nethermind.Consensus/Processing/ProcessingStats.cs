@@ -68,6 +68,12 @@ namespace Nethermind.Consensus.Processing
         private long _startCodeBytesRead;
         private long _startAccountWrites;
         private long _startStorageWrites;
+        private long _startCodeWrites;
+        private long _startCodeBytesWritten;
+        // Timing metrics for cross-client slow block logging
+        private long _startStateReadTime;
+        private long _startStateHashTime;
+        private long _startCommitTime;
         // Cache statistics for cross-client slow block logging
         private long _startAccountCacheHits;
         private long _startAccountCacheMisses;
@@ -122,6 +128,12 @@ namespace Nethermind.Consensus.Processing
             _startCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
             _startAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
             _startStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            _startCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
+            _startCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
+            // Timing metrics for cross-client slow block logging
+            _startStateReadTime = Evm.Metrics.ThreadLocalStateReadTime;
+            _startStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
+            _startCommitTime = Evm.Metrics.ThreadLocalCommitTime;
             // Cache statistics for cross-client slow block logging
             _startAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
             _startAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
@@ -172,6 +184,17 @@ namespace Nethermind.Consensus.Processing
             blockData.StartCodeBytesRead = _startCodeBytesRead;
             blockData.StartAccountWrites = _startAccountWrites;
             blockData.StartStorageWrites = _startStorageWrites;
+            blockData.CurrentCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
+            blockData.CurrentCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
+            blockData.StartCodeWrites = _startCodeWrites;
+            blockData.StartCodeBytesWritten = _startCodeBytesWritten;
+            // Capture timing metrics for cross-client slow block logging
+            blockData.CurrentStateReadTime = Evm.Metrics.ThreadLocalStateReadTime;
+            blockData.CurrentStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
+            blockData.CurrentCommitTime = Evm.Metrics.ThreadLocalCommitTime;
+            blockData.StartStateReadTime = _startStateReadTime;
+            blockData.StartStateHashTime = _startStateHashTime;
+            blockData.StartCommitTime = _startCommitTime;
             // Capture cache statistics from existing Db.Metrics counters
             blockData.CurrentAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
             blockData.CurrentAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
@@ -504,6 +527,17 @@ namespace Nethermind.Consensus.Processing
                 long codeBytesRead = data.CurrentCodeBytesRead - data.StartCodeBytesRead;
                 long accountWrites = data.CurrentAccountWrites - data.StartAccountWrites;
                 long storageWrites = data.CurrentStorageWrites - data.StartStorageWrites;
+                long codeWrites = data.CurrentCodeWrites - data.StartCodeWrites;
+                long codeBytesWritten = data.CurrentCodeBytesWritten - data.StartCodeBytesWritten;
+
+                // Timing metrics for cross-client standardization (convert ticks to ms with sub-ms precision)
+                // 1 tick = 100 nanoseconds, so 10000 ticks = 1 ms
+                double stateReadMs = (data.CurrentStateReadTime - data.StartStateReadTime) / (double)TimeSpan.TicksPerMillisecond;
+                double stateHashMs = (data.CurrentStateHashTime - data.StartStateHashTime) / (double)TimeSpan.TicksPerMillisecond;
+                double commitMs = (data.CurrentCommitTime - data.StartCommitTime) / (double)TimeSpan.TicksPerMillisecond;
+                // Convert from microseconds to milliseconds with sub-ms precision
+                double totalMs = data.ProcessingMicroseconds / 1000.0;
+                double executionMs = data.ProcessingMicroseconds / 1000.0;
 
                 // Calculate cache deltas for this block
                 long accountCacheHits = data.CurrentAccountCacheHits - data.StartAccountCacheHits;
@@ -531,8 +565,11 @@ namespace Nethermind.Consensus.Processing
                     },
                     timing = new
                     {
-                        execution_ms = processingMs,
-                        total_ms = processingMs
+                        execution_ms = Math.Round(executionMs, 3),
+                        state_read_ms = Math.Round(stateReadMs, 3),
+                        state_hash_ms = Math.Round(stateHashMs, 3),
+                        commit_ms = Math.Round(commitMs, 3),
+                        total_ms = Math.Round(totalMs, 3)
                     },
                     throughput = new
                     {
@@ -548,7 +585,9 @@ namespace Nethermind.Consensus.Processing
                     state_writes = new
                     {
                         accounts = accountWrites,
-                        storage_slots = storageWrites
+                        storage_slots = storageWrites,
+                        code = codeWrites,
+                        code_bytes = codeBytesWritten
                     },
                     cache = new
                     {
@@ -655,6 +694,17 @@ namespace Nethermind.Consensus.Processing
             public long StartCodeBytesRead;
             public long StartAccountWrites;
             public long StartStorageWrites;
+            public long CurrentCodeWrites;
+            public long CurrentCodeBytesWritten;
+            public long StartCodeWrites;
+            public long StartCodeBytesWritten;
+            // Timing metrics for cross-client slow block logging (in ticks)
+            public long CurrentStateReadTime;
+            public long CurrentStateHashTime;
+            public long CurrentCommitTime;
+            public long StartStateReadTime;
+            public long StartStateHashTime;
+            public long StartCommitTime;
             // Cache statistics for cross-client slow block logging
             public long CurrentAccountCacheHits;
             public long CurrentAccountCacheMisses;
