@@ -18,41 +18,59 @@ namespace Nethermind.State.Flat;
 /// Verifies flat storage against trie by iterating flat storage entries and comparing with trie values.
 /// This complements FlatVerifyTrieVisitor which does the reverse direction (trie -> flat).
 /// </summary>
-public class FlatToTrieVerifier(
-    IPersistence.IPersistenceReader reader,
-    IScopedTrieStore trieStore,
-    Hash256 stateRoot,
-    ILogManager logManager,
-    CancellationToken cancellationToken)
+public class FlatToTrieVerifier
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<FlatToTrieVerifier>();
-    private long _lastLoggedCount;
+    private readonly IPersistence.IPersistenceReader _reader;
+    private readonly IScopedTrieStore _trieStore;
+    private readonly Hash256 _stateRoot;
+    private readonly ILogManager _logManager;
+    private readonly CancellationToken _cancellationToken;
+    private readonly ILogger _logger;
+    private readonly VisitorProgressTracker _progressTracker;
+
+    public FlatToTrieVerifier(
+        IPersistence.IPersistenceReader reader,
+        IScopedTrieStore trieStore,
+        Hash256 stateRoot,
+        ILogManager logManager,
+        CancellationToken cancellationToken)
+    {
+        _reader = reader;
+        _trieStore = trieStore;
+        _stateRoot = stateRoot;
+        _logManager = logManager;
+        _cancellationToken = cancellationToken;
+        _logger = logManager.GetClassLogger<FlatToTrieVerifier>();
+        _progressTracker = new VisitorProgressTracker("Flat->Trie Verify", logManager);
+    }
 
     public VerificationStats Stats { get; } = new();
 
     public void Verify()
     {
-        StateTree stateTree = new StateTree(trieStore, logManager);
-        stateTree.RootHash = stateRoot;
+        StateTree stateTree = new StateTree(_trieStore, _logManager);
+        stateTree.RootHash = _stateRoot;
 
-        using IPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator();
+        using IPersistence.IFlatIterator accountIterator = _reader.CreateAccountIterator();
 
         while (accountIterator.MoveNext())
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
 
             ValueHash256 accountKey = accountIterator.CurrentKey;
             ReadOnlySpan<byte> flatAccountRlp = accountIterator.CurrentValue;
 
             Interlocked.Increment(ref Stats._accountCount);
 
-            LogProgress();
+            // Track progress using the account key's first 4 nibbles as a synthetic path
+            TreePath accountPath = TreePath.FromNibble(accountKey.Bytes[..2]);
+            _progressTracker.OnNodeVisited(accountPath, isStorage: false, isLeaf: true);
 
             // If preimage mode, we need to hash the key to get the full trie path
             // In non-preimage mode, we only have the truncated 20-byte hash
             ValueHash256 triePath;
             byte[]? trieAccountRlp;
-            if (reader.IsPreimageMode)
+            if (_reader.IsPreimageMode)
             {
                 // Preimage mode: hash the raw address to get full 32-byte path
                 triePath = ValueKeccak.Compute(accountKey.Bytes[..20]);
@@ -81,6 +99,8 @@ public class FlatToTrieVerifier(
             // Verify storage for this account
             VerifyAccountStorage(accountKey, triePath);
         }
+
+        _progressTracker.Finish();
     }
 
     /// <summary>
@@ -230,22 +250,22 @@ public class FlatToTrieVerifier(
 
     private void VerifyAccountStorage(in ValueHash256 accountKey, in ValueHash256 triePath)
     {
-        using IPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(accountKey);
+        using IPersistence.IFlatIterator storageIterator = _reader.CreateStorageIterator(accountKey);
 
         // Get storage root from trie for this account
-        byte[]? accountRlp = reader.GetAccountRaw(new Hash256(triePath));
+        byte[]? accountRlp = _reader.GetAccountRaw(new Hash256(triePath));
         if (accountRlp is null) return;
 
         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(accountRlp);
         Account? account = AccountDecoder.Slim.Decode(ref ctx);
         if (account is null || account.StorageRoot == Keccak.EmptyTreeHash) return;
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(new Hash256(triePath));
-        StorageTree storageTree = new StorageTree(storageTrieStore, account.StorageRoot, logManager);
+        IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(new Hash256(triePath));
+        StorageTree storageTree = new StorageTree(storageTrieStore, account.StorageRoot, _logManager);
 
         while (storageIterator.MoveNext())
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
 
             ValueHash256 slotKey = storageIterator.CurrentKey;
             ReadOnlySpan<byte> flatValue = storageIterator.CurrentValue;
@@ -254,7 +274,7 @@ public class FlatToTrieVerifier(
 
             // In preimage mode, hash the slot key to get the trie path
             // In non-preimage mode, the slotKey is already the hashed path
-            ValueHash256 trieSlotPath = reader.IsPreimageMode
+            ValueHash256 trieSlotPath = _reader.IsPreimageMode
                 ? ValueKeccak.Compute(slotKey.Bytes)
                 : slotKey;
 
@@ -302,17 +322,6 @@ public class FlatToTrieVerifier(
     private static bool IsZeroValue(ReadOnlySpan<byte> value)
     {
         return value.IsEmpty || value.WithoutLeadingZeros().IsEmpty;
-    }
-
-    private void LogProgress()
-    {
-        long current = Stats.AccountCount;
-        long last = _lastLoggedCount;
-        if (current - last > 100_000 && Interlocked.CompareExchange(ref _lastLoggedCount, current, last) == last)
-        {
-            _logger.Warn($"FlatToTrie verification: Checked {Stats.AccountCount} accounts, {Stats.SlotCount} slots. " +
-                        $"Missing: {Stats.MissingInTrie}, Mismatched accounts: {Stats.MismatchedAccount}, Mismatched slots: {Stats.MismatchedSlot}");
-        }
     }
 
     public class VerificationStats

@@ -81,6 +81,7 @@ public class FlatWorldStateManager(
         Task trieToFlatTask = Task.Run(() =>
         {
             flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock);
+            trieVisitor.Finish();
         });
 
         // Task 2: Flat -> Trie verification (new)

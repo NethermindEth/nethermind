@@ -27,12 +27,12 @@ public class Importer(
     ILogManager logManager
 )
 {
-    ILogger _logger = logManager.GetClassLogger<Importer>();
-    internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-    long totalNodes = 0;
-    int batchSize = 128_000;
-    int flushInterval = 50_000_000;
-    int logInterval = 1_000_000;
+    private readonly ILogger _logger = logManager.GetClassLogger<Importer>();
+    private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
+    private long _totalNodes = 0;
+    private readonly int _batchSize = 128_000;
+    private readonly int _flushInterval = 50_000_000;
+    private int _checkCancelInterval = 1_000_000;
 
     private record struct Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -52,18 +52,21 @@ public class Importer(
         _logger.Warn("Starting import");
 
         int maxConcurrency = 8;
+        VisitorProgressTracker progressTracker = new VisitorProgressTracker("Flat Import", logManager);
 
         Task visitTask = Task.Run(() =>
         {
+            Visitor visitor = new Visitor(channel.Writer, progressTracker, cancellationToken);
             try
             {
-                tree.Accept(new Visitor(channel.Writer, cancellationToken), to.StateRoot.ToHash256(), new VisitingOptions()
+                tree.Accept(visitor, to.StateRoot.ToHash256(), new VisitingOptions()
                 {
                     MaxDegreeOfParallelism = 4,
                 });
             }
             finally
             {
+                visitor.Finish();
                 channel.Writer.Complete();
             }
         }, cancellationToken);
@@ -82,12 +85,11 @@ public class Importer(
             {
                 try
                 {
-                    await IngestLogicTrie(from, channel.Reader, flatChannel.Writer, cancellationToken);
+                    await IngestLogicTrie(from, concurrentTriePersistence, channel.Reader, flatChannel.Writer,
+                        cancellationToken);
                 }
-                catch (Exception e)
+                catch (OperationCanceledException)
                 {
-                    Console.Error.WriteLine(e);
-                    throw;
                 }
             }, cancellationToken)).ToArray());
 
@@ -97,10 +99,8 @@ public class Importer(
                 {
                     await IngestLogicFlat(from, flatChannel.Reader, cancellationToken);
                 }
-                catch (Exception e)
+                catch (OperationCanceledException)
                 {
-                    Console.Error.WriteLine(e);
-                    throw;
                 }
             }, cancellationToken));
 
@@ -131,7 +131,7 @@ public class Importer(
         var writeBatch = persistence.CreateWriteBatch(from, to);
         writeBatch.Dispose();
 
-        _logger.Info($"Flat db copy completed. Wrote {totalNodes} nodes.");
+        _logger.Info($"Flat db copy completed. Wrote {_totalNodes} nodes.");
     }
 
     private async Task IngestLogic(StateId from, ChannelReader<Entry> channelReader, CancellationToken cancellationToken = default)
@@ -185,14 +185,13 @@ public class Importer(
                 }
             }
 
-            long theTotalNode = Interlocked.Increment(ref totalNodes);
-            if (theTotalNode % logInterval == 0)
+            long theTotalNode = Interlocked.Increment(ref _totalNodes);
+            if (theTotalNode % _checkCancelInterval == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                _logger.Info($"Wrote {theTotalNode:N} nodes.");
             }
 
-            if (theTotalNode % flushInterval == 0)
+            if (theTotalNode % _flushInterval == 0)
             {
                 _logger.Info("Flushing next");
                 sw = Stopwatch.GetTimestamp();
@@ -204,7 +203,7 @@ public class Importer(
 
 
             currentItemSize++;
-            if (currentItemSize > this.batchSize)
+            if (currentItemSize > this._batchSize)
             {
                 sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
@@ -224,7 +223,7 @@ public class Importer(
         writeBatch.Dispose();
     }
 
-    private async Task IngestLogicTrie(StateId from, ChannelReader<Entry> channelReader, ChannelWriter<Entry> flatWriter, CancellationToken cancellationToken = default)
+    private async Task IngestLogicTrie(StateId from, IPersistenceWithConcurrentTrie concurrentTriePersistence, ChannelReader<Entry> channelReader, ChannelWriter<Entry> flatWriter, CancellationToken cancellationToken = default)
     {
         _logger.Info($"Ingest thread started trie");
 
@@ -252,36 +251,30 @@ public class Importer(
                 await flatWriter.WriteAsync(entry, cancellationToken);
             }
 
-            long theTotalNode = Interlocked.Increment(ref totalNodes);
-            if (theTotalNode % logInterval == 0)
+            long theTotalNode = Interlocked.Increment(ref _totalNodes);
+            if (theTotalNode % _checkCancelInterval == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                _logger.Info($"Wrote {theTotalNode:N} nodes.");
             }
 
-            if (theTotalNode % flushInterval == 0)
+            if (theTotalNode % _flushInterval == 0)
             {
                 _logger.Info("Flushing next");
-                sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
-                writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
+                writeBatch = concurrentTriePersistence.CreateTrieWriteBatch(WriteFlags.DisableWAL);
                 currentItemSize = 0;
                 isFlush = true;
             }
 
             currentItemSize++;
-            if (currentItemSize > this.batchSize)
+            if (currentItemSize > this._batchSize)
             {
-                sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
                 if (isFlush)
                 {
-                    Console.Error.WriteLine($"Hard flush too {Stopwatch.GetElapsedTime(sw)}");
                     isFlush = false;
                 }
-                else
-                {
-                }
+
                 writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
                 currentItemSize = 0;
             }
@@ -297,7 +290,7 @@ public class Importer(
         long totalFlat = 0;
         int currentItemSize = 0;
         bool isFlush = false;
-        var writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
         await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
         {
             // Write it
@@ -333,7 +326,7 @@ public class Importer(
             }
 
             long theTotalNode = Interlocked.Increment(ref totalFlat);
-            if (theTotalNode % flushInterval == 0)
+            if (theTotalNode % _flushInterval == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 _logger.Info("Flushing next");
@@ -345,13 +338,12 @@ public class Importer(
             }
 
             currentItemSize++;
-            if (currentItemSize > this.batchSize)
+            if (currentItemSize > this._batchSize)
             {
                 sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
                 if (isFlush)
                 {
-                    Console.Error.WriteLine($"Hard flush flat too {Stopwatch.GetElapsedTime(sw)}");
                     isFlush = false;
                 }
                 writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
@@ -362,16 +354,14 @@ public class Importer(
         writeBatch.Dispose();
     }
 
-    private class Visitor(ChannelWriter<Entry> channelWriter, CancellationToken cancellationToken = default) : ITreeVisitor<TreePathContextWithStorage>
+    private class Visitor(ChannelWriter<Entry> channelWriter, VisitorProgressTracker progressTracker, CancellationToken cancellationToken = default) : ITreeVisitor<TreePathContextWithStorage>
     {
-        private readonly CancellationToken _cancellationToken = cancellationToken;
-
         public bool IsFullDbScan => true;
         public bool ExpectAccounts => true;
 
         public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode)
         {
-            return !_cancellationToken.IsCancellationRequested;
+            return !cancellationToken.IsCancellationRequested;
         }
 
         public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash)
@@ -383,33 +373,40 @@ public class Importer(
             throw new Exception("Missing node is not expected");
         }
 
-        private void Write(in TreePathContextWithStorage nodeContext, TrieNode node)
+        private void Write(in TreePathContextWithStorage nodeContext, TrieNode node, bool isLeaf)
         {
             SpinWait sw = new SpinWait();
             while (!channelWriter.TryWrite(new Entry(nodeContext.Storage, nodeContext.Path, node)))
             {
-                _cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
                 sw.SpinOnce();
             }
+
+            progressTracker.OnNodeVisited(nodeContext.Path, isStorage: nodeContext.Storage is not null, isLeaf);
         }
 
         public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node)
         {
-            Write(nodeContext, node);
+            Write(nodeContext, node, isLeaf: false);
         }
 
         public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node)
         {
-            Write(nodeContext, node);
+            Write(nodeContext, node, isLeaf: false);
         }
 
         public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node)
         {
-            Write(nodeContext, node);
+            Write(nodeContext, node, isLeaf: true);
         }
 
         public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
         {
+        }
+
+        public void Finish()
+        {
+            progressTracker.Finish();
         }
     }
 }
