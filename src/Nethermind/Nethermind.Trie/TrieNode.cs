@@ -532,12 +532,21 @@ namespace Nethermind.Trie
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
+                long sw = Stopwatch.GetTimestamp();
                 Hash256? res = Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
+                TrieNodeComputeTime.WithLabels(NodeType.ToString()).Observe(Stopwatch.GetTimestamp() - sw);
                 return res;
             }
 
             return null;
         }
+
+        private Histogram TrieNodeComputeTime = DevMetric.Factory.CreateHistogram("trienode_compute_time", "",
+            new HistogramConfiguration()
+            {
+                LabelNames = ["type"],
+                Buckets = [1]
+            });
 
         internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {

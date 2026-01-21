@@ -43,6 +43,14 @@ public static class Metrics
     [Description("Active snapshot bundles")]
     public static long ActiveSnapshotBundle { get; set; }
 
+    [GaugeMetric]
+    [Description("Number of snapshots")]
+    public static long SnapshotCount { get; set; }
+
+    [GaugeMetric]
+    [Description("Number of compacted snapshots")]
+    public static long CompactedSnapshotCount { get; set; }
+
     // === Gauges with single label ===
     [DetailedMetric]
     [Description("Compacted snapshot memory by category")]

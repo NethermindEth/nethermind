@@ -122,6 +122,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (_compactedSnapshots.TryAdd(snapshot.To, snapshot))
         {
+            Metrics.CompactedSnapshotCount++;
+
             foreach (var keyValuePair in snapshot.EstimateMemory())
             {
                 Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
@@ -139,6 +141,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (_snapshots.TryAdd(snapshot.To, snapshot))
         {
+            Metrics.SnapshotCount++;
+
             var memory = snapshot.EstimateMemory(); // Note: This is slow, do it outside.
             foreach (var keyValuePair in memory)
             {
@@ -175,6 +179,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (_compactedSnapshots.TryRemove(stateId, out var existingState))
         {
+            Metrics.CompactedSnapshotCount--;
+
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
@@ -194,6 +200,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (_snapshots.TryRemove(stateId, out var existingState))
         {
+            Metrics.SnapshotCount--;
+
             using (var _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             {
                 sortedSnapshots.Remove(stateId);
