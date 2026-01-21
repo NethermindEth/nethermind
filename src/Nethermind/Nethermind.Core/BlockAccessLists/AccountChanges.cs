@@ -94,7 +94,7 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out SlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
-    
+
     public void ClearEmptySlotChangesAndAddRead(UInt256 key)
     {
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
