@@ -504,7 +504,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // Stack before: [0, 1, 2] (2 on top)
         // decode_pair(0x01): k=1, q=0, r=1, q<r -> (1, 2)
         // Exchange positions (n+1) and (m+1) = positions 2 and 3 from top.
-        // After: [0, 2, 1] (2 on top), matching the EIP vector.
+        // After: [1, 0, 2] (2 on top), matching the EIP vector.
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(1)
