@@ -77,6 +77,10 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(in codeHash);
             }
 
+            // Track code read and bytes for execution metrics
+            Metrics.IncrementCodeReads();
+            Metrics.IncrementCodeBytesRead(code.Length);
+
             cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }

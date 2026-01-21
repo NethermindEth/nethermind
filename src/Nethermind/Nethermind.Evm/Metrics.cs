@@ -8,6 +8,7 @@ using Nethermind.Core.Attributes;
 using System.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.State")]
 
 namespace Nethermind.Evm;
 
@@ -99,6 +100,55 @@ public class Metrics
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
+
+    // State access metrics for cross-client execution metrics standardization
+    [CounterMetric]
+    [Description("Number of account reads during execution.")]
+    public static long AccountReads => _accountReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountReads = new();
+    [Description("Number of account reads on thread.")]
+    internal static long ThreadLocalAccountReads => _accountReads.ThreadLocalValue;
+    internal static void IncrementAccountReads() => _accountReads.Increment();
+
+    [CounterMetric]
+    [Description("Number of storage slot reads during execution.")]
+    public static long StorageReads => _storageReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageReads = new();
+    [Description("Number of storage slot reads on thread.")]
+    internal static long ThreadLocalStorageReads => _storageReads.ThreadLocalValue;
+    internal static void IncrementStorageReads() => _storageReads.Increment();
+
+    [CounterMetric]
+    [Description("Number of code reads during execution.")]
+    public static long CodeReads => _codeReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeReads = new();
+    [Description("Number of code reads on thread.")]
+    internal static long ThreadLocalCodeReads => _codeReads.ThreadLocalValue;
+    internal static void IncrementCodeReads() => _codeReads.Increment();
+
+    [CounterMetric]
+    [Description("Total bytes of code read during execution.")]
+    public static long CodeBytesRead => _codeBytesRead.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeBytesRead = new();
+    [Description("Total bytes of code read on thread.")]
+    internal static long ThreadLocalCodeBytesRead => _codeBytesRead.ThreadLocalValue;
+    internal static void IncrementCodeBytesRead(int bytes) => _codeBytesRead.Increment(bytes);
+
+    [CounterMetric]
+    [Description("Number of account writes during execution.")]
+    public static long AccountWrites => _accountWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountWrites = new();
+    [Description("Number of account writes on thread.")]
+    internal static long ThreadLocalAccountWrites => _accountWrites.ThreadLocalValue;
+    internal static void IncrementAccountWrites() => _accountWrites.Increment();
+
+    [CounterMetric]
+    [Description("Number of storage slot writes during execution.")]
+    public static long StorageWrites => _storageWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageWrites = new();
+    [Description("Number of storage slot writes on thread.")]
+    internal static long ThreadLocalStorageWrites => _storageWrites.ThreadLocalValue;
+    internal static void IncrementStorageWrites() => _storageWrites.Increment();
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]

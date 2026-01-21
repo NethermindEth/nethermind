@@ -23,6 +23,7 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Metrics = Nethermind.Db.Metrics;
+using EvmMetrics = Nethermind.Evm.Metrics;
 using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
@@ -739,6 +740,8 @@ namespace Nethermind.State
             if (_nullAccountReads.Contains(address)) return null;
 
             Account? account = GetState(address);
+            // Track account read for execution metrics
+            EvmMetrics.IncrementAccountReads();
             if (account is not null)
             {
                 PushJustCache(address, account);

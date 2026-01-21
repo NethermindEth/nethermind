@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -47,7 +48,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Threshold in milliseconds for slow block logging (default: 1000ms).
         /// </summary>
-        private const long SlowBlockThresholdMs = 1000;
+        private const long SlowBlockThresholdMs = 0;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -61,6 +62,19 @@ namespace Nethermind.Consensus.Processing
         private long _startCreateOps;
         private long _startContractsAnalyzed;
         private long _startCachedContractsUsed;
+        private long _startAccountReads;
+        private long _startStorageReads;
+        private long _startCodeReads;
+        private long _startCodeBytesRead;
+        private long _startAccountWrites;
+        private long _startStorageWrites;
+        // Cache statistics for cross-client slow block logging
+        private long _startAccountCacheHits;
+        private long _startAccountCacheMisses;
+        private long _startStorageCacheHits;
+        private long _startStorageCacheMisses;
+        private long _startCodeCacheHits;
+        private long _startCodeCacheMisses;
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
@@ -102,6 +116,19 @@ namespace Nethermind.Consensus.Processing
             _startCreateOps = Evm.Metrics.ThreadLocalCreates;
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
             _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startAccountReads = Evm.Metrics.ThreadLocalAccountReads;
+            _startStorageReads = Evm.Metrics.ThreadLocalStorageReads;
+            _startCodeReads = Evm.Metrics.ThreadLocalCodeReads;
+            _startCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
+            _startAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            _startStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            // Cache statistics for cross-client slow block logging
+            _startAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
+            _startAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
+            _startStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
+            _startStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
+            _startCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
+            _startCodeCacheMisses = Evm.Metrics.ThreadLocalContractsAnalysed;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -132,6 +159,32 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            // Capture state access metrics for cross-client slow block logging
+            blockData.CurrentAccountReads = Evm.Metrics.ThreadLocalAccountReads;
+            blockData.CurrentStorageReads = Evm.Metrics.ThreadLocalStorageReads;
+            blockData.CurrentCodeReads = Evm.Metrics.ThreadLocalCodeReads;
+            blockData.CurrentCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
+            blockData.CurrentAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            blockData.CurrentStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            blockData.StartAccountReads = _startAccountReads;
+            blockData.StartStorageReads = _startStorageReads;
+            blockData.StartCodeReads = _startCodeReads;
+            blockData.StartCodeBytesRead = _startCodeBytesRead;
+            blockData.StartAccountWrites = _startAccountWrites;
+            blockData.StartStorageWrites = _startStorageWrites;
+            // Capture cache statistics from existing Db.Metrics counters
+            blockData.CurrentAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
+            blockData.CurrentAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
+            blockData.CurrentStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
+            blockData.CurrentStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
+            blockData.CurrentCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
+            blockData.CurrentCodeCacheMisses = Evm.Metrics.ThreadLocalContractsAnalysed;
+            blockData.StartAccountCacheHits = _startAccountCacheHits;
+            blockData.StartAccountCacheMisses = _startAccountCacheMisses;
+            blockData.StartStorageCacheHits = _startStorageCacheHits;
+            blockData.StartStorageCacheMisses = _startStorageCacheMisses;
+            blockData.StartCodeCacheHits = _startCodeCacheHits;
+            blockData.StartCodeCacheMisses = _startCodeCacheMisses;
 
             CaptureReportData(blockData);
         }
@@ -444,6 +497,27 @@ namespace Nethermind.Consensus.Processing
                 long cachedContracts = data.CurrentCachedContractsUsed - data.StartCachedContractsUsed;
                 long analyzedContracts = data.CurrentContractsAnalyzed - data.StartContractsAnalyzed;
 
+                // State access metrics for cross-client standardization
+                long accountReads = data.CurrentAccountReads - data.StartAccountReads;
+                long storageReads = data.CurrentStorageReads - data.StartStorageReads;
+                long codeReads = data.CurrentCodeReads - data.StartCodeReads;
+                long codeBytesRead = data.CurrentCodeBytesRead - data.StartCodeBytesRead;
+                long accountWrites = data.CurrentAccountWrites - data.StartAccountWrites;
+                long storageWrites = data.CurrentStorageWrites - data.StartStorageWrites;
+
+                // Calculate cache deltas for this block
+                long accountCacheHits = data.CurrentAccountCacheHits - data.StartAccountCacheHits;
+                long accountCacheMisses = data.CurrentAccountCacheMisses - data.StartAccountCacheMisses;
+                long storageCacheHits = data.CurrentStorageCacheHits - data.StartStorageCacheHits;
+                long storageCacheMisses = data.CurrentStorageCacheMisses - data.StartStorageCacheMisses;
+                long codeCacheHits = data.CurrentCodeCacheHits - data.StartCodeCacheHits;
+                long codeCacheMisses = data.CurrentCodeCacheMisses - data.StartCodeCacheMisses;
+
+                // Calculate hit rates
+                double accountHitRate = CalculateHitRate(accountCacheHits, accountCacheMisses);
+                double storageHitRate = CalculateHitRate(storageCacheHits, storageCacheMisses);
+                double codeHitRate = CalculateHitRate(codeCacheHits, codeCacheMisses);
+
                 var slowBlockLog = new
                 {
                     level = "warn",
@@ -464,17 +538,30 @@ namespace Nethermind.Consensus.Processing
                     {
                         mgas_per_sec = Math.Round(mgasPerSec, 2)
                     },
+                    state_reads = new
+                    {
+                        accounts = accountReads,
+                        storage_slots = storageReads,
+                        code = codeReads,
+                        code_bytes = codeBytesRead
+                    },
+                    state_writes = new
+                    {
+                        accounts = accountWrites,
+                        storage_slots = storageWrites
+                    },
+                    cache = new
+                    {
+                        account = new { hits = accountCacheHits, misses = accountCacheMisses, hit_rate = accountHitRate },
+                        storage = new { hits = storageCacheHits, misses = storageCacheMisses, hit_rate = storageHitRate },
+                        code = new { hits = codeCacheHits, misses = codeCacheMisses, hit_rate = codeHitRate }
+                    },
                     evm = new
                     {
                         sload = sloadOps,
                         sstore = sstoreOps,
                         calls = callOps,
                         creates = createOps
-                    },
-                    cache = new
-                    {
-                        code_cache_hits = cachedContracts,
-                        contracts_analyzed = analyzedContracts
                     }
                 };
 
@@ -489,6 +576,15 @@ namespace Nethermind.Consensus.Processing
             {
                 if (_logger.IsDebug) _logger.Debug($"Error logging slow block: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Calculates the cache hit rate as a percentage.
+        /// </summary>
+        private static double CalculateHitRate(long hits, long misses)
+        {
+            long total = hits + misses;
+            return total > 0 ? Math.Round((double)hits / total * 100.0, 2) : 0.0;
         }
 
         public void Start()
@@ -546,6 +642,32 @@ namespace Nethermind.Consensus.Processing
             public long StartCallOps;
             public long StartSStoreOps;
             public long StartSLoadOps;
+            // State access metrics for cross-client slow block logging
+            public long CurrentAccountReads;
+            public long CurrentStorageReads;
+            public long CurrentCodeReads;
+            public long CurrentCodeBytesRead;
+            public long CurrentAccountWrites;
+            public long CurrentStorageWrites;
+            public long StartAccountReads;
+            public long StartStorageReads;
+            public long StartCodeReads;
+            public long StartCodeBytesRead;
+            public long StartAccountWrites;
+            public long StartStorageWrites;
+            // Cache statistics for cross-client slow block logging
+            public long CurrentAccountCacheHits;
+            public long CurrentAccountCacheMisses;
+            public long CurrentStorageCacheHits;
+            public long CurrentStorageCacheMisses;
+            public long CurrentCodeCacheHits;
+            public long CurrentCodeCacheMisses;
+            public long StartAccountCacheHits;
+            public long StartAccountCacheMisses;
+            public long StartStorageCacheHits;
+            public long StartStorageCacheMisses;
+            public long StartCodeCacheHits;
+            public long StartCodeCacheMisses;
         }
     }
 }
