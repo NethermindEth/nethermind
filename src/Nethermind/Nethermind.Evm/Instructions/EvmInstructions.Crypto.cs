@@ -45,7 +45,7 @@ public static partial class EvmInstructions
         stack.Push32Bytes<TTracingInst>(in keccak);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

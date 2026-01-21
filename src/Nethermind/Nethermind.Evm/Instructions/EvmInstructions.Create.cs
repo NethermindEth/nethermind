@@ -200,7 +200,7 @@ public static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
+        CodeInfoFactory.CreateInitCodeInfo(initCode, spec, out ICodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -250,7 +250,7 @@ public static partial class EvmInstructions
             snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

@@ -604,7 +604,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void code_emited_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test)
+    public void code_emitted_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test)
     {
         test.FluentCodes.Should().BeEquivalentTo(test.ResultCodes, test.Description);
     }

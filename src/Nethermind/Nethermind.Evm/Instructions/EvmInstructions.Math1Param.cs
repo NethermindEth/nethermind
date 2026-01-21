@@ -71,7 +71,7 @@ public static partial class EvmInstructions
         WriteUnaligned(ref bytesRef, result);
 
         return EvmExceptionType.None;
-        // Label for error handling when the stack does not have the required element.
+    // Label for error handling when the stack does not have the required element.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -144,7 +144,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -189,7 +189,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

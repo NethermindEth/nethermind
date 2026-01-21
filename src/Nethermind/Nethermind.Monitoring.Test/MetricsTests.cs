@@ -43,7 +43,7 @@ public class MetricsTests
         [SummaryMetric]
         public static IMetricObserver SomeObservation { get; set; } = NoopMetricObserver.Instance;
 
-        [System.ComponentModel.Description("Histograrm metric")]
+        [System.ComponentModel.Description("Histogram metric")]
         [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 10)]
         public static IMetricObserver HistogramObservation { get; set; } = NoopMetricObserver.Instance;
 

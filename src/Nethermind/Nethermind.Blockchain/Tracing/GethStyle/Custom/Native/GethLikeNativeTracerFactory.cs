@@ -31,7 +31,7 @@ public static class GethLikeNativeTracerFactory
         RegisterTracer(NativeCallTracer.CallTracer, static (options, _, transaction, _) => new NativeCallTracer(transaction, options));
     }
 
-    private static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
+    public static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
     {
         _tracers.Add(tracerName, tracerDelegate);
     }

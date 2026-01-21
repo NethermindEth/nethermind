@@ -203,12 +203,12 @@ public class EthereumRunnerTests
 
         INethermindApi api = runner.Api;
 
-        // They normally need the api to be populated by steps, so we mock ouf nethermind api here.
+        // They normally need the api to be populated by steps, so we mock out nethermind api here.
         Build.MockOutNethermindApi((NethermindApi)api);
 
         api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
-        _ = api.Config<IHealthChecksConfig>(); // Randomly fail type disccovery if not resolved early.
+        _ = api.Config<IHealthChecksConfig>(); // Randomly fail type discovery if not resolved early.
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();

@@ -138,7 +138,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -177,7 +177,7 @@ public static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(bytes);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -210,7 +210,7 @@ public static partial class EvmInstructions
         programCounter += EofValidator.TWO_BYTE_LENGTH;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -235,7 +235,7 @@ public static partial class EvmInstructions
         stack.PushUInt32<TTracingInst>((uint)codeInfo.DataSection.Length);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -286,7 +286,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
@@ -315,7 +315,7 @@ public static partial class EvmInstructions
         programCounter += EofValidator.TWO_BYTE_LENGTH + offset;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -350,7 +350,7 @@ public static partial class EvmInstructions
         programCounter += EofValidator.TWO_BYTE_LENGTH;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -391,7 +391,7 @@ public static partial class EvmInstructions
         programCounter += immediateCount;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -444,7 +444,7 @@ public static partial class EvmInstructions
         programCounter = codeInfo.CodeSectionOffset(index).Start;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     InvalidSubroutineEntry:
         return EvmExceptionType.InvalidSubroutineEntry;
     StackOverflow:
@@ -475,7 +475,7 @@ public static partial class EvmInstructions
         programCounter = stackFrame.Offset;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -512,7 +512,7 @@ public static partial class EvmInstructions
         programCounter = codeInfo.CodeSectionOffset(index).Start;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackOverflow:
         return EvmExceptionType.StackOverflow;
     OutOfGas:
@@ -545,7 +545,7 @@ public static partial class EvmInstructions
         programCounter += 1;
 
         return result;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -575,7 +575,7 @@ public static partial class EvmInstructions
         programCounter += 1;
 
         return result;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -609,7 +609,7 @@ public static partial class EvmInstructions
         programCounter += 1;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -666,7 +666,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // 5. Load the init code (EOF subContainer) from the container using the given index.
-        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initContainerIndex)!.Value];
+        ReadOnlyMemory<byte> initContainer = container.ContainerSection[(Range)container.ContainerSectionOffset(initContainerIndex)!.Value];
         // EIP-3860: Check that the init code size does not exceed the maximum allowed.
         if (spec.IsEip3860Enabled)
         {
@@ -709,7 +709,7 @@ public static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // 11. Calculate the new contract address.
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer);
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer.Span);
         if (spec.UseHotAndColdStorage)
         {
             // Warm up the target address for subsequent storage accesses.
@@ -742,7 +742,7 @@ public static partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Create new code info for the init code.
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer, spec, ValidationStrategy.ExtractHeader);
 
         // 8. Prepare the callData from the caller’s memory slice.
         if (!vm.VmState.Memory.TryLoad(dataOffset, dataSize, out ReadOnlyMemory<byte> callData))
@@ -771,7 +771,7 @@ public static partial class EvmInstructions
             snapshot: in snapshot);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
     OutOfGas:
@@ -825,7 +825,7 @@ public static partial class EvmInstructions
         vm.ReturnData = deployCodeInfo;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -856,7 +856,7 @@ public static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(slice);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     BadInstruction:
@@ -1034,7 +1034,7 @@ public static partial class EvmInstructions
             snapshot: in snapshot);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:

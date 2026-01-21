@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -12,13 +13,9 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
-        // Compiling of default interface methods/properties is very slow, therefore
-        // these methods/properties are implemented in the target classes.
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        //EIP-3860: Limit and meter initcode
-        long MaxInitCodeSize { get; }
         long MinGasLimit { get; }
         long MinHistoryRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
@@ -204,9 +201,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Should EIP158 be ignored for this account.
         /// </summary>
-        /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
-        /// <param name="address"></param>
-        /// <returns></returns>
+        /// <remarks>This is needed for SystemUser account compatibility with Parity.</remarks>
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
@@ -278,23 +273,23 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        bool DepositsEnabled { get; }
-        Address DepositContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
+        Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        bool WithdrawalRequestsEnabled { get; }
-        Address Eip7002ContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
+        Address? Eip7002ContractAddress { get; }
 
 
         /// <summary>
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        bool ConsolidationRequestsEnabled { get; }
-        Address Eip7251ContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
+        Address? Eip7251ContractAddress { get; }
 
 
         /// <summary>
@@ -306,13 +301,14 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        Address Eip2935ContractAddress { get; }
+        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
+        Address? Eip2935ContractAddress { get; }
 
         /// <summary>
         /// EIP-2935 ring buffer size for historical block hash storage.
         /// Defaults to 8,191 blocks for Ethereum mainnet.
         /// </summary>
-        long Eip2935RingBufferSize { get; }
+        public long Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
@@ -387,7 +383,7 @@ namespace Nethermind.Core.Specs
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateChainId { get; }
+        public bool ValidateChainId { get; }
 
         /// <summary>
         /// EIP-7780: Add blob schedule to EL config files
@@ -400,84 +396,6 @@ namespace Nethermind.Core.Specs
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
-
-        // STATE related
-        public bool ClearEmptyAccountWhenTouched { get; }
-
-        // VM
-        public bool LimitCodeSize { get; }
-
-        public bool UseHotAndColdStorage { get; }
-
-        public bool UseTxAccessLists { get; }
-
-        public bool AddCoinbaseToTxAccessList { get; }
-
-        public bool ModExpEnabled { get; }
-
-        public bool BN254Enabled { get; }
-
-        public bool BlakeEnabled { get; }
-
-        public bool Bls381Enabled { get; }
-
-        public bool ChargeForTopLevelCreate { get; }
-
-        public bool FailOnOutOfGasCodeDeposit { get; }
-
-        public bool UseShanghaiDDosProtection { get; }
-
-        public bool UseExpDDosProtection { get; }
-
-        public bool UseLargeStateDDosProtection { get; }
-
-        public bool ReturnDataOpcodesEnabled { get; }
-
-        public bool ChainIdOpcodeEnabled { get; }
-
-        public bool Create2OpcodeEnabled { get; }
-
-        public bool DelegateCallEnabled { get; }
-
-        public bool StaticCallEnabled { get; }
-
-        public bool ShiftOpcodesEnabled { get; }
-
-        public bool RevertOpcodeEnabled { get; }
-
-        public bool ExtCodeHashOpcodeEnabled { get; }
-
-        public bool SelfBalanceOpcodeEnabled { get; }
-
-        public bool UseConstantinopleNetGasMetering { get; }
-
-        public bool UseIstanbulNetGasMetering { get; }
-
-        public bool UseNetGasMetering { get; }
-
-        public bool UseNetGasMeteringWithAStipendFix { get; }
-
-        public bool Use63Over64Rule { get; }
-
-        public bool BaseFeeEnabled { get; }
-
-        // EVM Related
-        public bool IncludePush0Instruction { get; }
-
-        public bool TransientStorageEnabled { get; }
-
-        public bool WithdrawalsEnabled { get; }
-        public bool SelfdestructOnlyOnSameTransaction { get; }
-
-        public bool IsBeaconBlockRootAvailable { get; }
-        public bool IsBlockHashInStateAvailable { get; }
-        public bool MCopyIncluded { get; }
-
-        public bool BlobBaseFeeEnabled { get; }
-
-        bool IsAuthorizationListEnabled { get; }
-
-        public bool RequestsEnabled { get; }
 
         public bool IsEip7594Enabled { get; }
 
@@ -509,26 +427,15 @@ namespace Nethermind.Core.Specs
         public Array? EvmInstructionsTraced { get; set; }
 
         /// <summary>
-        /// Determines whether the specified address is a precompiled contract for this release specification.
-        /// </summary>
-        /// <param name="address">The address to check for precompile status.</param>
-        /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
-        bool IsPrecompile(Address address);
-
-        /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.
         /// </summary>
         FrozenSet<AddressAsKey> Precompiles { get; }
 
-        public ProofVersion BlobProofVersion { get; }
-
         /// <summary>
         /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>
         public bool IsEip7939Enabled { get; }
-
-        public bool CLZEnabled { get; }
 
         /// <summary>
         /// EIP-7907: Meter Contract Code Size And Increase Limit
