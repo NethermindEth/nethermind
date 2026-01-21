@@ -224,6 +224,7 @@ namespace Nethermind.Specs.Test
         public long ElasticityMultiplier => spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
         public bool IsEofEnabled => spec.IsEofEnabled;
+        public bool IsEip8024Enabled => spec.IsEip8024Enabled;
         public bool IsEip6110Enabled => spec.IsEip6110Enabled;
         public Address DepositContractAddress => spec.DepositContractAddress;
         public bool IsEip7594Enabled => spec.IsEip7594Enabled;

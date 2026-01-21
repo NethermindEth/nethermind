@@ -136,6 +136,7 @@ namespace Nethermind.Specs
         }
 
         public bool IsEofEnabled { get; set; }
+        public bool IsEip8024Enabled { get; set; }
 
         public bool IsEip6110Enabled { get; set; }
 

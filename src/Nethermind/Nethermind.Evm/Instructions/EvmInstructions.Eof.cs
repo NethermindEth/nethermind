@@ -510,14 +510,20 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Duplicates a stack item based on an immediate operand.
     /// The immediate value (n) specifies that the (n+1)th element from the top is duplicated.
+    /// For EOF code, uses EOF semantics; for legacy code with EIP-8024, uses EIP-8024 semantics.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofDupN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
+        {
+            // Legacy code: use EIP-8024 semantics if enabled
+            if (vm.Spec.IsEip8024Enabled)
+                return InstructionDupN<TTracingInst>(vm, ref stack, ref gasAvailable, ref programCounter);
             goto BadInstruction;
+        }
 
         if (!EvmCalculations.UpdateGas(GasCostOf.Dupn, ref gasAvailable))
             goto OutOfGas;
@@ -540,14 +546,20 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Swaps two stack items. The immediate operand specifies the swap distance.
     /// Swaps the top-of-stack with the (n+1)th element.
+    /// For EOF code, uses EOF semantics; for legacy code with EIP-8024, uses EIP-8024 semantics.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofSwapN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
+        {
+            // Legacy code: use EIP-8024 semantics if enabled
+            if (vm.Spec.IsEip8024Enabled)
+                return InstructionSwapN<TTracingInst>(vm, ref stack, ref gasAvailable, ref programCounter);
             goto BadInstruction;
+        }
 
         if (!EvmCalculations.UpdateGas(GasCostOf.Swapn, ref gasAvailable))
             goto OutOfGas;
@@ -569,14 +581,20 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Exchanges two stack items using a combined immediate operand.
     /// The high nibble and low nibble of the operand specify the two swap distances.
+    /// For EOF code, uses EOF semantics; for legacy code with EIP-8024, uses EIP-8024 semantics.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofExchange<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
+        {
+            // Legacy code: use EIP-8024 semantics if enabled
+            if (vm.Spec.IsEip8024Enabled)
+                return InstructionExchange<TTracingInst>(vm, ref stack, ref gasAvailable, ref programCounter);
             goto BadInstruction;
+        }
 
         if (!EvmCalculations.UpdateGas(GasCostOf.Swapn, ref gasAvailable))
             goto OutOfGas;
