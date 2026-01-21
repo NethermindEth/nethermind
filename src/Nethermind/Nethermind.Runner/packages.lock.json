@@ -830,7 +830,6 @@
       "nethermind.evm": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Abi": "[1.36.0-unstable, )",
           "Nethermind.Core": "[1.36.0-unstable, )",
           "Nethermind.Crypto": "[1.36.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )",
