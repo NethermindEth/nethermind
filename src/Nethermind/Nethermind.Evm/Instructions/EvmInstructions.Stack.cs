@@ -667,16 +667,9 @@ internal static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryDecodeSingle(byte imm, out int depth)
     {
-        // Disallowed range: 0x5b-0x7f (91-127)
-        if (imm >= 0x5b && imm <= 0x7f)
-        {
-            depth = 0;
-            return false;
-        }
-        // For imm <= 90: depth = imm + 17 (range 17-107)
-        // For imm >= 128: depth = imm - 20 (range 108-235)
-        depth = imm <= 90 ? imm + 17 : imm - 20;
-        return true;
+        int mask = (90 - imm) >> 31;
+        depth = imm + 17 + (mask & -37);
+        return (uint)(imm - 0x5B) > 0x24;
     }
 
     /// <summary>
@@ -693,29 +686,27 @@ internal static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryDecodePair(byte imm, out int n, out int m)
     {
-        // Disallowed range: 0x50-0x7f (80-127)
-        if (imm >= 0x50 && imm <= 0x7f)
-        {
-            n = m = 0;
-            return false;
-        }
+        // k = imm            if imm <= 79
+        //     imm - 48       if imm >= 128
+        int k = imm - (((imm - 80) >> 31) & 48);
 
-        // k = x if x <= 79 else x - 48
-        int k = imm <= 79 ? imm : imm - 48;
-        int q = k >> 4;  // k / 16
-        int r = k & 0x0f; // k % 16
+        int q = k >> 4;       // /16
+        int r = k & 0x0F;     // %16
 
-        if (q < r)
-        {
-            n = q + 1;
-            m = r + 1;
-        }
-        else
-        {
-            n = r + 1;
-            m = 29 - q;
-        }
-        return true;
+        // mask = -1 if q < r, 0 otherwise
+        int mask = (q - r) >> 31;
+
+        // if (q < r)
+        //   n = q + 1
+        //   m = r + 1
+        // else
+        //   n = r + 1
+        //   m = 29 - q
+        n = ((q & mask) | (r & ~mask)) + 1;
+        m = ((r & mask) | ((28 - q) & ~mask)) + 1;
+
+        // Valid if imm < 0x50 || imm > 0x7F
+        return (uint)(imm - 0x50) > 0x2F;
     }
 
     /// <summary>
