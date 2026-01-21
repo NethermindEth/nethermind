@@ -21,16 +21,20 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    bool recordMetrics)
+    bool recordDetailedMetrics)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
     private bool _isDisposed;
 
+    private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
+    private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
     private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
     private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
+    private static readonly StringLabel _readStateNodeSnapshotLabel = new("state_node_snapshot");
+    private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
@@ -40,23 +44,25 @@ public sealed class ReadOnlySnapshotBundle(
 
         AddressAsKey key = address;
 
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].TryGetAccount(key, out acc))
             {
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
                 return true;
             }
         }
 
-        long sw = recordMetrics ? Stopwatch.GetTimestamp() : 0;
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         acc = persistenceReader.GetAccount(address);
         if (acc == null)
         {
-            if (recordMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
         }
         else
         {
-            if (recordMetrics)  Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
+            if (recordDetailedMetrics)  Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
         }
 
         return true;
@@ -79,6 +85,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
@@ -91,6 +98,7 @@ public sealed class ReadOnlySnapshotBundle(
                 {
                     value = slotValue.Value.ToEvmBytes();
                 }
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
                 return true;
             }
 
@@ -103,17 +111,20 @@ public sealed class ReadOnlySnapshotBundle(
 
         SlotValue outSlotValue = new SlotValue();
 
-        long sw = Stopwatch.GetTimestamp();
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         bool _ = persistenceReader.TryGetSlot(address, index, ref outSlotValue);
         value = outSlotValue.ToEvmBytes();
 
-        if (value is null || value.IsZero())
+        if (recordDetailedMetrics)
         {
-            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
-        }
-        else
-        {
-            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
+            if (value is null || value.IsZero())
+            {
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
+            }
+            else
+            {
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
+            }
         }
 
         return true;
@@ -123,11 +134,13 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].TryGetStateNode(path, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
                 return true;
             }
         }
@@ -138,11 +151,13 @@ public sealed class ReadOnlySnapshotBundle(
 
     public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, [NotNullWhen(true)] out TrieNode? node)
     {
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0 && i >= selfDestructStateIdx; i--)
         {
             if (snapshots[i].TryGetStorageNode(address, path, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;
             }
         }
@@ -151,6 +166,7 @@ public sealed class ReadOnlySnapshotBundle(
         {
             // If there is a self destruct, there is no need to check further, return true
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
             node = null;
             return false;
         }
@@ -164,9 +180,9 @@ public sealed class ReadOnlySnapshotBundle(
         GuardDispose();
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
-        long sw = Stopwatch.GetTimestamp();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         var value = persistenceReader.TryLoadStateRlp(path, flags);
-        Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
         return value;
     }
@@ -176,9 +192,9 @@ public sealed class ReadOnlySnapshotBundle(
         GuardDispose();
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
-        long sw = Stopwatch.GetTimestamp();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         var value = persistenceReader.TryLoadStorageRlp(address, path, flags);
-        Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
     }

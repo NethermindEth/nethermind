@@ -63,17 +63,17 @@ public static class Metrics
     [DetailedMetric]
     [Description("Active pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<TwoStringLabel, long> ActivePooledResource { get; } = new();
+    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> ActivePooledResource { get; } = new();
 
     [DetailedMetric]
     [Description("Cached pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<TwoStringLabel, long> CachedPooledResource { get; } = new();
+    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> CachedPooledResource { get; } = new();
 
     [DetailedMetric]
     [Description("Created pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<TwoStringLabel, long> CreatedPooledResource { get; } = new();
+    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> CreatedPooledResource { get; } = new();
 
     [DetailedMetric]
     [Description("Readonly snapshot bundle times")]

@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Metric;
 using Nethermind.Db;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -92,8 +93,8 @@ public class ResourcePool(IFlatDbConfig flatConfig)
         private ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new TransientResource.Size(1024, 1024);
-        private readonly TwoStringLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
-        private readonly TwoStringLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
+        private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
+        private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
         {
@@ -141,5 +142,10 @@ public class ResourcePool(IFlatDbConfig flatConfig)
 
             Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
         }
+    }
+
+    public record PooledResourceLabel(string Category, string ResourceType) : IMetricLabels
+    {
+        public string[] Labels => [Category, ResourceType];
     }
 }

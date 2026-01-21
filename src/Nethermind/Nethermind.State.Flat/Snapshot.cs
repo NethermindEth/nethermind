@@ -150,7 +150,3 @@ public sealed class SnapshotContent() : IDisposable, IResettable
     }
 }
 
-public record TwoStringLabel(string Label1, string Label2) : IMetricLabels
-{
-    public string[] Labels => [Label1, Label2];
-}
