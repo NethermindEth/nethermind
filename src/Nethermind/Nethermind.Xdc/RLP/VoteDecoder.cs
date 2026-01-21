@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
@@ -70,7 +71,11 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         _xdcBlockInfoDecoder.Encode(stream, item.ProposedBlockInfo, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-            stream.Encode(item.Signature.BytesWithRecovery);
+        {
+            Span<byte> sigBuffer = stackalloc byte[Signature.Size];
+            item.Signature.WriteBytesWithRecoveryTo(sigBuffer);
+            stream.Encode(sigBuffer);
+        }
         stream.Encode(item.GapNumber);
     }
 
