@@ -22,7 +22,6 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new(new SortedSet<StateId>());
 
-    private static Gauge _knownStatesMemory = DevMetric.Factory.CreateGauge("flatdiff_knownstates_memory", "memory", "category");
     private static Gauge _compactedMemory = DevMetric.Factory.CreateGauge("flatdiff_compacted_memory", "memory", "category");
 
     public int SnapshotCount => _snapshots.Count;
@@ -146,9 +145,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             var memory = snapshot.EstimateMemory(); // Note: This is slow, do it outside.
             foreach (var keyValuePair in memory)
             {
-                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
+                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
             }
-            _knownStatesMemory.WithLabels("count").Inc(1);
+            Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
 
             return true;
         }
@@ -206,9 +205,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
-                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Dec(keyValuePair.Value);
+                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
             }
-            _knownStatesMemory.WithLabels("count").Dec();
+            Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
 
             existingState.Dispose(); // After memory
         }
