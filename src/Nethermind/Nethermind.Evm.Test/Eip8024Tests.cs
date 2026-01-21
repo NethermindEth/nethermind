@@ -214,9 +214,9 @@ public class Eip8024Tests : VirtualMachineTestsBase
         result.StatusCode.Should().Be(StatusCode.Success);
 
         // Stack before EXCHANGE: [1, 2, 3, 4, 5] (5 on top)
-        // Position 2 from top = index 3 = value 4
-        // Position 3 from top = index 2 = value 3
-        // After EXCHANGE: stack = [1, 2, 4, 3, 5] (5 still on top)
+        // decode_pair(0x12) returns n=2, m=3
+        // EXCHANGE swaps positions 3 and 4 from top (values 3 and 2)
+        // After EXCHANGE: stack = [1, 3, 2, 4, 5] (5 still on top)
         // MSTORE stores 5 at offset 0
         new UInt256(result.ReturnValue, true).Should().Be(5);
     }
