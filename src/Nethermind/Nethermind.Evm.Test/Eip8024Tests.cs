@@ -22,38 +22,6 @@ public class Eip8024Tests : VirtualMachineTestsBase
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new Osaka() { IsEip8024Enabled = true });
 
     [Test]
-    public void TryDecodeSingle_ValidImmediate_DecodesCorrectly()
-    {
-        // Per EIP-8024: for x <= 90, return x + 17; for x >= 128, return x - 20
-
-        // 0x00 -> 0 + 17 = 17
-        EvmInstructions.TryDecodeSingle(0x00, out int depth0).Should().BeTrue();
-        depth0.Should().Be(17);
-
-        // 0x5a (90) -> 90 + 17 = 107
-        EvmInstructions.TryDecodeSingle(0x5a, out int depth5a).Should().BeTrue();
-        depth5a.Should().Be(107);
-
-        // 0x80 (128) -> 128 - 20 = 108
-        EvmInstructions.TryDecodeSingle(0x80, out int depth80).Should().BeTrue();
-        depth80.Should().Be(108);
-
-        // 0xea (234) -> 234 - 20 = 214
-        EvmInstructions.TryDecodeSingle(0xea, out int depthEa).Should().BeTrue();
-        depthEa.Should().Be(214);
-    }
-
-    [Test]
-    public void TryDecodeSingle_DisallowedRange_ReturnsFalse()
-    {
-        // Disallowed range: 0x5b-0x7f
-        for (byte imm = 0x5b; imm <= 0x7f; imm++)
-        {
-            EvmInstructions.TryDecodeSingle(imm, out _).Should().BeFalse($"Immediate 0x{imm:X2} should be disallowed");
-        }
-    }
-
-    [Test]
     public void DupN_ValidImmediate_DuplicatesStackElement()
     {
         // Push values 1-20 onto the stack, then DUPN with immediate 0x00 (depth=17)
@@ -417,35 +385,6 @@ public class Eip8024Tests : VirtualMachineTestsBase
         AssertGas(result, expectedGas);
     }
 
-    #region EIP Test Vectors - Decoding
-
-    [Test]
-    public void EipTestVector_DecodeSingle_0x00_Returns17()
-    {
-        // e600 decodes to [DUPN 17]
-        EvmInstructions.TryDecodeSingle(0x00, out int depth).Should().BeTrue();
-        depth.Should().Be(17);
-    }
-
-    [Test]
-    public void EipTestVector_DecodeSingle_0x80_Returns108()
-    {
-        // e780 decodes to [SWAPN 108]
-        EvmInstructions.TryDecodeSingle(0x80, out int depth).Should().BeTrue();
-        depth.Should().Be(108);
-    }
-
-    [Test]
-    public void EipTestVector_InvalidSwapn_0x5b_Fails()
-    {
-        // e75b decodes to [INVALID_SWAPN, JUMPDEST] - 0x5b is in disallowed range
-        EvmInstructions.TryDecodeSingle(0x5b, out _).Should().BeFalse();
-    }
-
-    #endregion
-
-    #region EIP Test Vectors - Execution
-
     [Test]
     public void EipTestVector_DupN_18Items_TopIs1()
     {
@@ -581,8 +520,6 @@ public class Eip8024Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Failure);
     }
-
-    #endregion
 
     /// <summary>
     /// Test class with EIP-8024 disabled to verify opcodes fail when not enabled.

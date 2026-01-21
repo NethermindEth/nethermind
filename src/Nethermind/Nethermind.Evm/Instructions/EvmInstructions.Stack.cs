@@ -582,18 +582,10 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
             goto BadInstruction;
 
-        byte imm = code[programCounter];
-        if (!TryDecodeSingle(imm, out int depth))
-            goto BadInstruction;
-
-        // depth is 1-indexed (17 = DUP17 = duplicate 17th item from top)
-        EvmExceptionType result = stack.Dup<TTracingInst>(depth);
-        programCounter += 1;
-        return result;
+        return stack.Dup<TTracingInst>(depth);
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -609,18 +601,10 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
             goto BadInstruction;
 
-        byte imm = code[programCounter];
-        if (!TryDecodeSingle(imm, out int depth))
-            goto BadInstruction;
-
-        // depth is 1-indexed (17 = SWAP17 = swap top with 17th item)
-        EvmExceptionType result = stack.Swap<TTracingInst>(depth);
-        programCounter += 1;
-        return result;
+        return stack.Swap<TTracingInst>(depth);
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -636,18 +620,12 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-            goto BadInstruction;
-
-        byte imm = code[programCounter];
-        if (!TryDecodePair(imm, out int n, out int m))
+        if (!TryDecodePair(vm, ref programCounter, out int n, out int m))
             goto BadInstruction;
 
         if (!stack.Exchange<TTracingInst>(n, m))
             goto StackUnderflow;
 
-        programCounter += 1;
         return EvmExceptionType.None;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
@@ -656,36 +634,55 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Decodes a single-byte immediate for EIP-8024 DUPN/SWAPN instructions.
+    /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
     /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
-    /// Valid ranges: 0x00-0x5a (0-90) and 0x80-0xff (128-255).
     /// </summary>
-    /// <param name="imm">The immediate byte from the code.</param>
-    /// <param name="depth">The decoded stack depth (17-235).</param>
-    /// <returns>True if the immediate is valid; false if in disallowed range.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryDecodeSingle(byte imm, out int depth)
+    private static bool TryDecodeSingle<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int depth)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+        {
+            depth = 0;
+            return false;
+        }
+
+        byte imm = code[programCounter];
         int mask = (90 - imm) >> 31;
         depth = imm + 17 + (mask & -37);
-        return (uint)(imm - 0x5B) > 0x24;
+
+        if ((uint)(imm - 0x5B) <= 0x24)
+            return false;
+
+        programCounter++;
+        return true;
     }
 
     /// <summary>
-    /// Decodes a single-byte immediate for EIP-8024 EXCHANGE instruction.
+    /// Reads and decodes an immediate for EIP-8024 EXCHANGE instruction.
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
     /// Disallowed range: 0x50-0x7f (80-127) to avoid PUSH opcode patterns.
-    /// Valid ranges: 0x00-0x4f (0-79) and 0x80-0xff (128-255).
     /// Returns stack indices ready for direct use with stack.Exchange.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryDecodePair(byte imm, out int n, out int m)
+    private static bool TryDecodePair<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int n, out int m)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // k = imm            if imm <= 79
-        //     imm - 48       if imm >= 128
-        int k = imm - (~((imm - 0x80) >> 31) & 48);
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+        {
+            n = m = 0;
+            return false;
+        }
 
-        int q = k >> 4;       // /16
-        int r = k & 0x0F;     // %16
+        byte imm = code[programCounter];
+
+        // k = imm if imm <= 79, imm - 48 if imm >= 128
+        int k = imm - (~((imm - 0x80) >> 31) & 48);
+        int q = k >> 4;
+        int r = k & 0x0F;
 
         // mask = -1 if q < r, 0 otherwise
         int mask = (q - r) >> 31;
@@ -695,8 +692,11 @@ internal static partial class EvmInstructions
         n = ((q & mask) | (r & ~mask)) + 2;
         m = ((r & mask) | ((29 - q) & ~mask)) + 2;
 
-        // Valid if imm < 0x50 || imm > 0x7F
-        return (uint)(imm - 0x50) > 0x2F;
+        if ((uint)(imm - 0x50) <= 0x2F)
+            return false;
+
+        programCounter++;
+        return true;
     }
 
     /// <summary>
