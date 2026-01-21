@@ -479,7 +479,7 @@ public class SnapshotCompactorTests
         _snapshotRepository.TryAddSnapshot(targetSnapshot);
         _snapshotRepository.AddStateId(targetTo);
 
-        _compactor.DoCompactSnapshot(targetSnapshot);
+        _compactor.DoCompactSnapshot(targetSnapshot.To);
 
         Assert.That(_snapshotRepository.CompactedSnapshotCount, Is.EqualTo(1));
     }
