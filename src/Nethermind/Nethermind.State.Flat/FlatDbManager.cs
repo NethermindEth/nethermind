@@ -58,13 +58,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
         Buckets = [1]
     });
-    private static Histogram _knownStatesSize = DevMetric.Factory.CreateHistogram("flatdiff_known_state_size", "timer",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["part"],
-            // Buckets = Histogram.LinearBuckets(0, 1, 100)
-            Buckets = [1]
-        });
 
     private static Gauge _snapshotCount = DevMetric.Factory.CreateGauge("flatdiff_snapshot_count", "memory", "category");
 
@@ -312,7 +305,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 persistenceReader.Dispose();
                 throw;
             }
-            _knownStatesSize.Observe(snapshots.Count);
+
+            Metrics.SnapshotBundleSize = snapshots.Count;
 
             if (snapshots.Count == 0)
             {

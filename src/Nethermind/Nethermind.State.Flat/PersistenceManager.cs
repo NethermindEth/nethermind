@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -13,7 +14,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 
@@ -22,12 +22,6 @@ namespace Nethermind.State.Flat;
 public class PersistenceManager : IAsyncDisposable
 {
     private readonly ILogger _logger;
-    private static readonly Histogram _flatdiffimes = FlatDbManager._flatdiffimes;
-    private readonly Histogram _writesSize = DevMetric.Factory.CreateHistogram("persistence_manager_writes", "writes", new HistogramConfiguration()
-    {
-        LabelNames = ["payload"],
-        Buckets = Histogram.PowersOfTenDividedBuckets(2, 8, 10)
-    });
     private readonly int _minimumPruningBoundary;
     private readonly int _forcedPruningBoundary;
     private readonly int _compactSize;
@@ -278,10 +272,7 @@ public class PersistenceManager : IAsyncDisposable
         // Attempt to add snapshots into bigcache
         while (true)
         {
-            long sw = Stopwatch.GetTimestamp();
-
             Snapshot? snapshotToSave = DetermineSnapshotToPersist(latestSnapshot);
-            _flatdiffimes.WithLabels("add_to_persistence", "state_picked").Observe(Stopwatch.GetTimestamp() - sw);
 
             if (snapshotToSave is null) return;
             using var _ = snapshotToSave; // dispose
@@ -289,8 +280,6 @@ public class PersistenceManager : IAsyncDisposable
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
             _currentPersistedStateId = snapshotToSave.To;
-
-            _flatdiffimes.WithLabels("add_to_persistence", "persist").Observe(Stopwatch.GetTimestamp() - sw);
         }
     }
 
@@ -306,8 +295,6 @@ public class PersistenceManager : IAsyncDisposable
         long sw = Stopwatch.GetTimestamp();
         using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            _flatdiffimes.WithLabels("persistence", "start_batch").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
             int counter = 0;
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
@@ -316,19 +303,15 @@ public class PersistenceManager : IAsyncDisposable
                     continue;
                 }
 
-                int num = batch.SelfDestruct(toSelfDestructStorage.Key.Value);
+                batch.SelfDestruct(toSelfDestructStorage.Key.Value);
                 counter++;
             }
-            _flatdiffimes.WithLabels("persistence", "self_destruct").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Accounts)
             {
                 (AddressAsKey addr, Account? account) = kv;
                 batch.SetAccount(addr, account);
             }
-            _flatdiffimes.WithLabels("persistence", "accounts").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Storages)
             {
@@ -336,14 +319,10 @@ public class PersistenceManager : IAsyncDisposable
 
                 batch.SetStorage(addr, slot, value);
             }
-            _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             _trieNodesSortBuffer.Clear();
             _trieNodesSortBuffer.AddRange(snapshot.StateNodeKeys.Select<TreePath, (Hash256AsKey, TreePath)>((path) => (new Hash256AsKey(Hash256.Zero), path)));
             _trieNodesSortBuffer.Sort();
-            _flatdiffimes.WithLabels("persistence", "trienode_sort_state").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             long stateNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
@@ -368,14 +347,10 @@ public class PersistenceManager : IAsyncDisposable
 
                 node.IsPersisted = true;
             }
-            _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
 
-            sw = Stopwatch.GetTimestamp();
             _trieNodesSortBuffer.Clear();
             _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
             _trieNodesSortBuffer.Sort();
-            _flatdiffimes.WithLabels("persistence", "trienode_sort").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             long storageNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
@@ -400,14 +375,12 @@ public class PersistenceManager : IAsyncDisposable
 
                 node.IsPersisted = true;
             }
-            _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
 
-            sw = Stopwatch.GetTimestamp();
-
-            _writesSize.WithLabels("state_nodes").Observe(stateNodesSize);
-            _writesSize.WithLabels("storage_nodes").Observe(storageNodesSize);
+            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
+            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
         }
-        _flatdiffimes.WithLabels("persistence", "dispose").Observe(Stopwatch.GetTimestamp() - sw);
+
+        Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
     public async ValueTask DisposeAsync()
