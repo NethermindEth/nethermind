@@ -688,7 +688,7 @@ internal static partial class EvmInstructions
     {
         // k = imm            if imm <= 79
         //     imm - 48       if imm >= 128
-        int k = imm - (((imm - 80) >> 31) & 48);
+        int k = imm - (~((imm - 0x80) >> 31) & 48);
 
         int q = k >> 4;       // /16
         int r = k & 0x0F;     // %16
