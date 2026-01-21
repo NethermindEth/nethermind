@@ -249,7 +249,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             }
             else
             {
-                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
+                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
                 _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
             }
         }

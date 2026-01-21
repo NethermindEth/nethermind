@@ -13,11 +13,18 @@ namespace Nethermind.Db
         IEnumerable<TKey> ColumnKeys { get; }
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         IColumnsWriteBatch<TKey> StartWriteBatch();
+        IColumnDbSnapshot<TKey> CreateSnapshot();
     }
 
     public interface IColumnsWriteBatch<in TKey> : IDisposable
     {
         IWriteBatch GetColumnBatch(TKey key);
         void Clear();
+    }
+
+
+    public interface IColumnDbSnapshot<in TKey> : IDisposable
+    {
+        IReadOnlyKeyValueStore GetColumn(TKey key);
     }
 }
