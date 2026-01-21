@@ -331,6 +331,7 @@ public class BlockAccessListTests()
             .WithBeneficiary(TestItem.AddressC)
             .WithParentBeaconBlockRoot(Hash256.Zero)
             .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+            .WithBlockAccessListHash(new("0xa19f3798cdc08ff0bdee830bb5daf6954ecbd8723c810285fef3240d06d2bf18"))
             .WithTimestamp(timestamp)
             .WithParentHash(parentHash)
             // .WithTotalDifficulty(1000000000L)
@@ -358,8 +359,8 @@ public class BlockAccessListTests()
         // Block processedBlock = res[0];
         // Block processedBlock = Build.A.Block.TestObject;
 
-        // BlockAccessList blockAccessList = Rlp.Decode<BlockAccessList>(processedBlock.BlockAccessList);
-        BlockAccessList blockAccessList = processedBlock.BlockAccessList!.Value;
+        // GeneratedBlockAccessList is set by the block processor during execution
+        BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList!.Value;
         Assert.That(blockAccessList.AccountChanges.Count, Is.EqualTo(10));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
@@ -382,7 +383,8 @@ public class BlockAccessListTests()
         UInt256 slot3 = 3;
         UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
         UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
-        StorageChange parentHashStorageChange = new(0, new(parentHash.BytesToArray()));
+        // UInt256 from bytes needs isBigEndian: true to match EVM storage encoding
+        StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
         StorageChange calldataStorageChange = new(0, 0);
         StorageChange timestampStorageChange = new(0, 0xF4240);
         StorageChange zeroStorageChangeEnd = new(3, 0);
@@ -456,11 +458,15 @@ public class BlockAccessListTests()
                 []
             )));
 
-            // second storage read is not a change, so not recorded
+            // eip4788 stores timestamp at slot1 and beacon root (0) at slot2
+            // beacon root 0→0 is not a change, so only slot1 has a storage change
+            // slot1 is not a separate read since it's already a change, only slot2 is read
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
                 Eip4788Constants.BeaconRootsAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
-                [new(eip4788Slot1), new(eip4788Slot2)],
+                new SortedDictionary<UInt256, SlotChanges>() {
+                    { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }
+                },
+                [new(eip4788Slot2)],
                 [],
                 [],
                 []
