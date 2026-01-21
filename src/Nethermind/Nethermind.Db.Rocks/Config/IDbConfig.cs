@@ -38,6 +38,9 @@ public interface IDbConfig : IConfig
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
 
+    string BlockAccessListsDbRocksDbOptions { get; set; }
+    string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
+
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
 

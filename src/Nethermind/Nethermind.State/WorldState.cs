@@ -219,11 +219,6 @@ namespace Nethermind.State
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
             => SubtractFromBalance(address, balanceChange, spec, out _);
-        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        {
-            DebugGuardInScope();
-            _stateProvider.UpdateStorageRoot(address, storageRoot);
-        }
         public void IncrementNonce(Address address, UInt256 delta)
             => IncrementNonce(address, delta, out _);
         public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
