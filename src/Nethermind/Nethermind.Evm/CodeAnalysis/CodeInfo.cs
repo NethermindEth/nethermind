@@ -31,7 +31,13 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPool
     {
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
         {
+#if ZKVM
+            // ZKVM runtime does not support background threads / ThreadPool work items.
+            // Run analysis synchronously to preserve correctness (jump destinations) without blocking on worker startup.
+            _analyzer.Execute();
+#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+#endif
         }
     }
 }

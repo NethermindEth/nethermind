@@ -110,7 +110,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
+#if ZKVM
+            // NativeAOT/ZKVM: avoid generic logger lookup which can trigger GVM lookup/type loader paths.
+            // `ILogManager.GetClassLogger` takes an optional filePath string; use non-generic overload.
+            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger());
+#else
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
+#endif
         }
 
         public void Commit(long blockNumber)

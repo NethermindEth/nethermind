@@ -52,7 +52,12 @@ namespace Nethermind.State
             _stateProvider = new StateProvider(logManager);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
+#if ZKVM
+            // Avoid generic logger instantiation under NativeAOT/ZKVM (can trigger GVM lookup / type loader paths).
+            _logger = logManager.GetClassLogger();
+#else
             _logger = logManager.GetClassLogger<WorldState>();
+#endif
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -15,8 +15,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
     public static readonly ParallelOptions DefaultOptions = new()
     {
-        // default to the number of processors
-        MaxDegreeOfParallelism = Environment.ProcessorCount
+        // default to the number of processors (must be >= 1; some runtimes may report 0)
+        MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount)
     };
 
     private readonly Data _data;
