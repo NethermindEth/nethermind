@@ -11,49 +11,45 @@ public interface ITrieWarmer
     public void PushSlotJob(
         IStorageWarmer storageTree,
         in UInt256? index,
-        int sequenceId,
-        bool isWrite);
+        int sequenceId);
 
     public void PushAddressJob(
         IAddressWarmer scope,
         Address? path,
-        int sequenceId,
-        bool isWrite);
+        int sequenceId);
 
     public void PushJobMulti(
         IAddressWarmer scope,
         Address? path,
         IStorageWarmer? storageTree,
         in UInt256? index,
-        int sequenceId,
-        bool isWrite);
+        int sequenceId);
 
     void OnEnterScope();
     void OnExitScope();
 
     public interface IAddressWarmer
     {
-        bool WarmUpStateTrie(Address address, int sequenceId, bool isWrite);
+        bool WarmUpStateTrie(Address address, int sequenceId);
     }
 
     public interface IStorageWarmer
     {
-        bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool isWrite);
+        bool WarmUpStorageTrie(UInt256 index, int sequenceId);
     }
 }
 
 public class NoopTrieWarmer : ITrieWarmer
 {
-    public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId, bool isWrite)
+    public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId)
     {
     }
 
-    public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId, bool isWrite)
+    public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
     {
     }
 
-    public void PushJobMulti(ITrieWarmer.IAddressWarmer scope, Address? path, ITrieWarmer.IStorageWarmer? storageTree, in UInt256? index, int sequenceId,
-        bool isWrite)
+    public void PushJobMulti(ITrieWarmer.IAddressWarmer scope, Address? path, ITrieWarmer.IStorageWarmer? storageTree, in UInt256? index, int sequenceId)
     {
     }
 

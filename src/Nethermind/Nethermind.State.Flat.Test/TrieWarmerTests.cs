@@ -46,11 +46,11 @@ public class TrieWarmerTests
         var addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
         var address = new Address("0x1234567890123456789012345678901234567890");
 
-        warmer.PushAddressJob(addressWarmer, address, sequenceId: 1, isWrite: false);
+        warmer.PushAddressJob(addressWarmer, address, sequenceId: 1);
 
         await Task.Delay(200);
 
-        addressWarmer.Received().WarmUpStateTrie(address, 1, false);
+        addressWarmer.Received().WarmUpStateTrie(address, 1);
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -64,11 +64,11 @@ public class TrieWarmerTests
         var storageWarmer = Substitute.For<ITrieWarmer.IStorageWarmer>();
         UInt256 index = 42;
 
-        warmer.PushSlotJob(storageWarmer, index, sequenceId: 5, isWrite: true);
+        warmer.PushSlotJob(storageWarmer, index, sequenceId: 5);
 
         await Task.Delay(200);
 
-        storageWarmer.Received().WarmUpStorageTrie(index, 5, true);
+        storageWarmer.Received().WarmUpStorageTrie(index, 5);
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -84,12 +84,12 @@ public class TrieWarmerTests
         var address = new Address("0x1234567890123456789012345678901234567890");
         UInt256 index = 100;
 
-        warmer.PushJobMulti(addressWarmer, address, storageWarmer, index, sequenceId: 3, isWrite: false);
+        warmer.PushJobMulti(addressWarmer, address, storageWarmer, index, sequenceId: 3);
 
         await Task.Delay(200);
 
-        storageWarmer.Received().WarmUpStorageTrie(index, 3, false);
-        addressWarmer.DidNotReceive().WarmUpStateTrie(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<bool>());
+        storageWarmer.Received().WarmUpStorageTrie(index, 3);
+        addressWarmer.DidNotReceive().WarmUpStateTrie(Arg.Any<Address>(), Arg.Any<int>());
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -104,11 +104,11 @@ public class TrieWarmerTests
         var address = new Address("0xabcdef0123456789abcdef0123456789abcdef01");
         UInt256 index = 200;
 
-        warmer.PushJobMulti(addressWarmer, address, storageTree: null, index, sequenceId: 7, isWrite: true);
+        warmer.PushJobMulti(addressWarmer, address, storageTree: null, index, sequenceId: 7);
 
         await Task.Delay(200);
 
-        addressWarmer.Received().WarmUpStateTrie(address, 7, true);
+        addressWarmer.Received().WarmUpStateTrie(address, 7);
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -122,33 +122,11 @@ public class TrieWarmerTests
         var addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
         var address = new Address("0x1111111111111111111111111111111111111111");
 
-        warmer.PushAddressJob(addressWarmer, address, sequenceId: 999, isWrite: false);
+        warmer.PushAddressJob(addressWarmer, address, sequenceId: 999);
 
         await Task.Delay(200);
 
-        addressWarmer.Received().WarmUpStateTrie(address, 999, Arg.Any<bool>());
-
-        _cts.Cancel();
-        await warmer.DisposeAsync();
-    }
-
-    [Test]
-    public async Task PushAddressJob_PassesCorrectIsWriteFlag()
-    {
-        var warmer = new TrieWarmer(_processExitSource, _logManager, _config);
-
-        var addressWarmerRead = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        var addressWarmerWrite = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        var address1 = new Address("0x2222222222222222222222222222222222222222");
-        var address2 = new Address("0x3333333333333333333333333333333333333333");
-
-        warmer.PushAddressJob(addressWarmerRead, address1, sequenceId: 1, isWrite: false);
-        warmer.PushAddressJob(addressWarmerWrite, address2, sequenceId: 2, isWrite: true);
-
-        await Task.Delay(200);
-
-        addressWarmerRead.Received().WarmUpStateTrie(address1, Arg.Any<int>(), false);
-        addressWarmerWrite.Received().WarmUpStateTrie(address2, Arg.Any<int>(), true);
+        addressWarmer.Received().WarmUpStateTrie(address, 999);
 
         _cts.Cancel();
         await warmer.DisposeAsync();

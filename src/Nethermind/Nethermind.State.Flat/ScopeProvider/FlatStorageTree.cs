@@ -112,12 +112,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         if (_scope._disableLocalSlotTriewarmerQueue) return;
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            _trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId, false);
+            _trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId);
         }
     }
 
     // Called by trie warmer.
-    public bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool isWrite)
+    public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
     {
         if (_scope.HintSequenceId != sequenceId)
         {
@@ -133,7 +133,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ValueHash256 key = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(index, ref key);
 
-        _warmupStorageTree.WarmUpPath(key.BytesAsSpan, isWrite);
+        _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
         return true;
     }
 

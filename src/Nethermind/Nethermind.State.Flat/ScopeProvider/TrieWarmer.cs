@@ -33,15 +33,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         object scopeOrStorageTree,
         Address? path,
         UInt256 index,
-        int sequenceId,
-        bool isWrite);
+        int sequenceId);
 
     // A slot hint from the main processing thread is called a lot so it has its own dedicated queue.
     private record struct SlotJob(
         ITrieWarmer.IStorageWarmer storageTree,
         UInt256 index,
-        int sequenceId,
-        bool isWrite);
+        int sequenceId);
 
     private Task? _warmerJob = null;
 
@@ -267,8 +265,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 slotJob.storageTree,
                 null,
                 slotJob.index,
-                slotJob.sequenceId,
-                slotJob.isWrite);
+                slotJob.sequenceId);
             return true;
         }
 
@@ -280,21 +277,20 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         (object scopeOrStorageTree,
             Address? address,
             UInt256 index,
-            int sequenceId,
-            bool isWrite) = job;
+            int sequenceId) = job;
 
         try
         {
             if (scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                if (scope.WarmUpStateTrie(address!, sequenceId, isWrite))
+                if (scope.WarmUpStateTrie(address!, sequenceId))
                 {
                 }
             }
             else
             {
                 ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)scopeOrStorageTree;
-                if (storageTree.WarmUpStorageTrie(index, sequenceId, isWrite))
+                if (storageTree.WarmUpStorageTrie(index, sequenceId))
                 {
                 }
             }
@@ -314,36 +310,36 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId, bool isWrite)
+    public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
     {
         // Address is not single threaded. In which case, might as well use the same buffer.
-        if (_jobBufferMulti.TryEnqueue(new Job(scope, path, default, sequenceId, isWrite)))
+        if (_jobBufferMulti.TryEnqueue(new Job(scope, path, default, sequenceId)))
         {
             MaybeWakeupFast();
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId, bool isWrite)
+    public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId)
     {
-        if (_slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId, isWrite)))
+        if (_slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId)))
         {
             MaybeWakeupFast();
         }
     }
 
     public void PushJobMulti(ITrieWarmer.IAddressWarmer scope, Address? path, ITrieWarmer.IStorageWarmer? storageTree, in UInt256? index,
-        int sequenceId, bool isWrite)
+        int sequenceId)
     {
         bool queued;
 
         if (storageTree is null)
         {
-            queued = _jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId, isWrite));
+            queued = _jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId));
         }
         else
         {
-            queued = _jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, isWrite));
+            queued = _jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId));
         }
 
         if (!queued) return;

@@ -421,7 +421,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
         {
             byte[]? array = null;
             try
@@ -437,7 +437,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode);
+                DoWarmUpPath(nibbles, ref emptyPath, root);
             }
             catch (TrieException e)
             {
@@ -1094,7 +1094,7 @@ namespace Nethermind.Trie
         }
 
         // Dedicated warm up code
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
         {
             int originalPathLength = path.Length;
 
@@ -1136,40 +1136,6 @@ namespace Nethermind.Trie
                     }
 
                     int nextNib = remainingKey[0];
-
-                    if (warmUpPotentialNewNode)
-                    {
-                        // When a node (this path) is deleted and its parent is a branch with only one other child, it
-                        // will get replaced to an extension, in which case, the other only child need to be loaded.
-                        // Node: this will fail to consider if multiple child was deleted though...
-                        int nodeIdxToWarmup = -1;
-                        for (int i = 0; i < TrieNode.BranchesCount; i++)
-                        {
-                            if (i == nextNib) continue;
-
-                            if (!node.IsChildNull(i))
-                            {
-                                if (nodeIdxToWarmup != -1)
-                                {
-                                    // So more than one non null node that is not part of this path.
-                                    nodeIdxToWarmup = -1;
-                                    break;
-                                }
-                                else
-                                {
-                                    nodeIdxToWarmup = i;
-                                }
-                            }
-                        }
-
-                        if (nodeIdxToWarmup != -1)
-                        {
-                            path.AppendMut(nodeIdxToWarmup);
-                            TrieNode? theOtherOnlyChild = node.GetChildWithChildPath(TrieStore, ref path, nodeIdxToWarmup, keepChildRef: true);
-                            theOtherOnlyChild?.ResolveNode(TrieStore, path);
-                            path.TruncateOne();
-                        }
-                    }
 
                     path.AppendMut(nextNib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);

@@ -140,14 +140,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _snapshotBundle.SetAccount(address, account);
         if (!_disableLocalAddressTriewarmerQueue)
         {
-            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId, false);
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushAddressJob(this, address, _hintSequenceId);
         }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
-    public bool WarmUpStateTrie(Address address, int sequenceId, bool isWrite)
+    public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         if (_hintSequenceId != sequenceId)
         {
@@ -162,7 +162,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
             // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes, isWrite);
+            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
         }
         catch (AbstractMinimalTrieStore.UnsupportedOperationException)
         {
