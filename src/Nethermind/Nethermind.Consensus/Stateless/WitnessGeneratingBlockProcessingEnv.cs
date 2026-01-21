@@ -47,8 +47,8 @@ public class WitnessGeneratingBlockProcessingEnv(
 
     public IExistingBlockWitnessCollector CreateExistingBlockWitnessCollector()
     {
-        WitnessGeneratingWorldState state = new(baseWorldState, stateReader);
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
+        WitnessGeneratingWorldState state = new(baseWorldState, stateReader, witnessCapturingTrieStore, witnessGenHeaderFinder);
         TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -71,6 +71,6 @@ public class WitnessGeneratingBlockProcessingEnv(
             new WithdrawalProcessor(state, logManager),
             new ExecutionRequestsProcessor(txProcessor));
 
-        return new WitnessCollector(witnessGenHeaderFinder, state, witnessCapturingTrieStore, blockProcessor, specProvider);
+        return new WitnessCollector(state, blockProcessor, specProvider);
     }
 }

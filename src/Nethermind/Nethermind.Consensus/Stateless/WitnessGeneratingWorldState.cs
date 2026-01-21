@@ -23,7 +23,7 @@ public interface IWitnessBytecodeRecorder
     void RecordBytecode(byte[] code);
 }
 
-public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader) : IWorldState, IWitnessBytecodeRecorder
+public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState, IWitnessBytecodeRecorder
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
@@ -35,7 +35,7 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         _bytecodes.TryAdd(codeHash, code);
     }
 
-    public (byte[][] stateNodes, byte[][] Codes, byte[][] Keys) GetWitness(BlockHeader parentHeader, byte[][] capturedNodes)
+    public Witness GetWitness(BlockHeader parentHeader)
     {
 
         // Build state nodes
@@ -46,7 +46,7 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         // For example, these nodes are captured in geth. But this solution might capture additional nodes not
         // necessarily needed for the witness. There might be a better solution.
         HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
-        stateNodes.UnionWith(capturedNodes);
+        stateNodes.UnionWith(trieStore.TouchedNodesRlp);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
             AccountProofCollector accountProofCollector = new(account, slots.ToArray());
@@ -76,7 +76,13 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
                 keys[i++] = slot.ToBigEndian();
         }
 
-        return (stateNodes.ToArray(), _bytecodes.Values.ToArray(), keys);
+        return new Witness()
+        {
+            Codes = _bytecodes.Values.ToArray(),
+            State = stateNodes.ToArray(),
+            Keys = keys,
+            Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash)
+        };
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);

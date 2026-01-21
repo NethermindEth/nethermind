@@ -14,9 +14,7 @@ public interface IExistingBlockWitnessCollector
 }
 
 public class WitnessCollector(
-    WitnessGeneratingHeaderFinder headerFinder,
     WitnessGeneratingWorldState worldState,
-    WitnessCapturingTrieStore trieStore,
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider) : IExistingBlockWitnessCollector
 {
@@ -27,15 +25,7 @@ public class WitnessCollector(
             (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
                 NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
 
-            (byte[][] stateNodes, byte[][] codes, byte[][] keys) = worldState.GetWitness(parentHeader, trieStore.TouchedNodesRlp);
-
-            return new Witness()
-            {
-                Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash),
-                Codes = codes,
-                State = stateNodes,
-                Keys = keys
-            };
+            return worldState.GetWitness(parentHeader);
         }
     }
 }
