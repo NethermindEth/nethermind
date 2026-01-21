@@ -91,7 +91,6 @@ Issues that can be intentionally added to simulate broken transactions:
   11   = max fee per blob gas = max value / blobgasperblob + 1
   14   = 100 blobs
   15   = 1000 blobs
-  wait = wait for each transaction to be included in a block before posting the next
 
 Syntax:
 
@@ -100,6 +99,8 @@ Syntax:
            ^    blobs in every tx (optional, default to 1)
              ^  how it's broken (optional, tx is correct by default) or write true
 ```
+
+Use `--wait` to wait for each transaction to be included in a block before posting the next
 
 ## Debug
 
