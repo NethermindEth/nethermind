@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -35,7 +34,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         Address? path,
         UInt256 index,
         int sequenceId,
-        long startTime,
         bool isWrite);
 
     // A slot hint from the main processing thread is called a lot so it has its own dedicated queue.
@@ -43,14 +41,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         ITrieWarmer.IStorageWarmer storageTree,
         UInt256 index,
         int sequenceId,
-        long startTime,
         bool isWrite);
-
-    // Pre-cached labels to avoid string allocation per job
-    private static readonly TwoStringLabel _mainStateLabel = new("True", "state");
-    private static readonly TwoStringLabel _mainStorageLabel = new("True", "storage");
-    private static readonly TwoStringLabel _secondaryStateLabel = new("False", "state");
-    private static readonly TwoStringLabel _secondaryStorageLabel = new("False", "storage");
 
     private Task? _warmerJob = null;
 
@@ -277,7 +268,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 null,
                 slotJob.index,
                 slotJob.sequenceId,
-                slotJob.startTime,
                 slotJob.isWrite);
             return true;
         }
@@ -291,22 +281,18 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             Address? address,
             UInt256 index,
             int sequenceId,
-            long startTime,
             bool isWrite) = job;
 
-        long sw = Stopwatch.GetTimestamp();
         try
         {
             if (scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                Metrics.TrieWarmerServiceTime.Observe(sw - startTime, isMain ? _mainStateLabel : _secondaryStateLabel);
                 if (scope.WarmUpStateTrie(address!, sequenceId, isWrite))
                 {
                 }
             }
             else
             {
-                Metrics.TrieWarmerServiceTime.Observe(sw - startTime, isMain ? _mainStorageLabel : _secondaryStorageLabel);
                 ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)scopeOrStorageTree;
                 if (storageTree.WarmUpStorageTrie(index, sequenceId, isWrite))
                 {
@@ -331,7 +317,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId, bool isWrite)
     {
         // Address is not single threaded. In which case, might as well use the same buffer.
-        if (_jobBufferMulti.TryEnqueue(new Job(scope, path, default, sequenceId, Stopwatch.GetTimestamp(), isWrite)))
+        if (_jobBufferMulti.TryEnqueue(new Job(scope, path, default, sequenceId, isWrite)))
         {
             MaybeWakeupFast();
         }
@@ -340,7 +326,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId, bool isWrite)
     {
-        if (_slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp(), isWrite)))
+        if (_slotJobBuffer.TryEnqueue(new SlotJob(storageTree, index.GetValueOrDefault(), sequenceId, isWrite)))
         {
             MaybeWakeupFast();
         }
@@ -353,13 +339,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         if (storageTree is null)
         {
-            queued = _jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId,
-                Stopwatch.GetTimestamp(), isWrite));
+            queued = _jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId, isWrite));
         }
         else
         {
-            queued = _jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId,
-                Stopwatch.GetTimestamp(), isWrite));
+            queued = _jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, isWrite));
         }
 
         if (!queued) return;

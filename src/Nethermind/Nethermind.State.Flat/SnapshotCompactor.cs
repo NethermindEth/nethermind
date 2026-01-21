@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -24,6 +25,7 @@ public class SnapshotCompactor(
 
     public void DoCompactSnapshot(Snapshot snapshot)
     {
+        long sw = Stopwatch.GetTimestamp();
         using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
         if (snapshots.Count == 0) return;
 
@@ -32,6 +34,16 @@ public class SnapshotCompactor(
         {
             compactedSnapshot.Dispose();
             return;
+        }
+
+        StateId stateId = snapshot.To;
+        if (stateId.BlockNumber % _compactSize == 0)
+        {
+            Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else if (stateId.BlockNumber % _midCompactSize == 0)
+        {
+            Metrics.MidCompactTime.Observe(Stopwatch.GetTimestamp() - sw);
         }
     }
 

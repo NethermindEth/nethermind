@@ -122,7 +122,12 @@ public static class Metrics
     public static IMetricObserver ReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
-    [Description("Trie warmer service time")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["is_main", "category"])]
-    public static IMetricObserver TrieWarmerServiceTime { get; set; } = new NoopMetricObserver();
+    [Description("Time spend compacting snapshots")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 0, Count = 1, LabelNames = [])]
+    public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time spend compaction snapshots for mid compaction")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 0, Count = 1, LabelNames = [])]
+    public static IMetricObserver MidCompactTime { get; set; } = new NoopMetricObserver();
 }

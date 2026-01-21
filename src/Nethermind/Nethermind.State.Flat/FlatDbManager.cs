@@ -109,12 +109,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        long sw = Stopwatch.GetTimestamp();
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
-        Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "add_state_id"));
 
-        sw = Stopwatch.GetTimestamp();
         if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
         {
             using var _ = snapshot; // dispose
@@ -126,30 +123,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 ClearReadOnlyBundleCache();
             }
-
-            if (stateId.BlockNumber % _compactSize == 0)
-            {
-                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "do_compact_full"));
-            }
-            else
-            {
-                if (stateId.BlockNumber % _midCompactSize == 0)
-                {
-                    Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "do_mid_compact"));
-                }
-                else
-                {
-                    Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "do_compact"));
-                }
-            }
         }
 
-        sw = Stopwatch.GetTimestamp();
         if (stateId.BlockNumber % _compactSize == 0)
         {
             // Trigger persistence job.
             await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
-            Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "persist_queue_signal"));
         }
     }
 
