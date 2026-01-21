@@ -95,8 +95,8 @@ namespace Nethermind.Db.Test.LogIndex
             Directory.CreateDirectory(_dbPath);
 
             var config = new DbConfig();
-            var configFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
-            _dbFactory = new RocksDbFactory(configFactory, config, new TestLogManager(), _dbPath);
+            var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+            _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new TestLogManager(), _dbPath);
         }
 
         [TearDown]
