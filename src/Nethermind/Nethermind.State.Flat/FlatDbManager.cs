@@ -18,10 +18,11 @@ namespace Nethermind.State.Flat;
 
 public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
+    private const int MaxGatherAttempts = 16;
+
     private readonly ILogger _logger;
     private readonly PersistenceManager _persistenceManager;
     private readonly SnapshotCompactor _snapshotCompactor;
-    private readonly IProcessExitSource _processExitSource;
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly TrieNodeCache _trieNodeCache;
     private readonly ResourcePool _resourcePool;
@@ -84,7 +85,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
-        _processExitSource = processExitSource;
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
 
@@ -193,19 +193,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             await foreach (var stateId in _persistenceJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                try
+                await NotifyWhenSlow($"Persisting {stateId}", () =>
                 {
-                    await NotifyWhenSlow($"Persisting {stateId}", () =>
-                    {
-                        PersistIfNeeded(stateId);
-                        return Task.CompletedTask;
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error("Persistence job failed", ex);
-                    throw;
-                }
+                    PersistIfNeeded(stateId);
+                    return Task.CompletedTask;
+                });
             }
         }
         catch (OperationCanceledException)
@@ -245,10 +237,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private void PopulateTrieNodeCache(TransientResource transientResource)
     {
-        long sw = Stopwatch.GetTimestamp();
         _trieNodeCache.Add(transientResource);
-        _flatdiffimes.WithLabels("compaction", "add_to_trienode_cache").Observe(Stopwatch.GetTimestamp() - sw);
-
         _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
     }
 
@@ -278,11 +267,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 await Task.Delay(slowTime);
                 if (jobTask.IsCompleted) break;
-                _logger.Info($"{name} took {sw.Elapsed}");
+                _logger.Warn($"Slot task \"{name}\". Took {sw.Elapsed}");
             }
         });
 
-        await Task.WhenAny(jobTask, waiterTask);
+        await Task.WhenAll(jobTask, waiterTask);
     }
 
     public SnapshotBundle GatherReaderAtBaseBlock(StateId baseBlock, ResourcePool.Usage usage)
@@ -298,7 +287,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock)
     {
         // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
-        long sw = Stopwatch.GetTimestamp();
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)
@@ -307,80 +295,74 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader());
         }
 
+        // Fastpath: Share recently created ReadOnlySnapshotBundle
         if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease())
         {
             return bundle;
         }
 
-        StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
-
-        StateId current = baseBlock;
-        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(baseBlock, persistedState.BlockNumber, Math.Max(1, (int)(_snapshotRepository.SnapshotCount / _compactSize)));
-        _flatdiffimes.WithLabels("gather_readonly_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
-        sw = Stopwatch.GetTimestamp();
-        _knownStatesSize.Observe(snapshots.Count);
-
-        // Note: By the time the previous loop finished checking all state, the persistencc may have added new state and removed some
-        // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead of before the loop.
-        IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
-        if (current != baseBlock && persistenceReader.CurrentState.BlockNumber != -1 && current.BlockNumber > persistenceReader.CurrentState.BlockNumber)
+        int attempt = 0;
+        while (attempt < MaxGatherAttempts)
         {
-            persistenceReader.Dispose();
-            throw new Exception($"Non consecutive snapshots. Current {current} vs {persistenceReader.CurrentState}, {persistedState}, {baseBlock}");
+            if (attempt != 0)
+            {
+                Thread.Yield();
+            }
+
+            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
+            SnapshotPooledList snapshots;
+            try
+            {
+                snapshots = _snapshotRepository.AssembleSnapshots(
+                    baseBlock,
+                    persistenceReader.CurrentState,
+                    estimatedSize: Math.Max(1, _snapshotRepository.SnapshotCount / _compactSize));
+            }
+            catch (Exception)
+            {
+                persistenceReader.Dispose();
+                throw;
+            }
+            _knownStatesSize.Observe(snapshots.Count);
+
+            if (snapshots[0].From != persistenceReader.CurrentState)
+            {
+                // Cannot assemble snapshot that reach the persisted state snapshot. It could be that the snapshots was removed
+                // concurrently. We will retry.
+                snapshots.Dispose();
+                persistenceReader.Dispose();
+                attempt++;
+                continue;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
+
+            ReadOnlySnapshotBundle res = new ReadOnlySnapshotBundle(
+                snapshots,
+                persistenceReader);
+
+            res.TryLease();
+            if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
+            {
+                res.Dispose();
+            }
+
+            return res;
         }
 
-        if (persistenceReader.CurrentState.BlockNumber > baseBlock.BlockNumber)
-        {
-            persistenceReader.Dispose();
-            throw new InvalidOperationException($"Unable to prepare state before persisted state. Persisted state: {persistenceReader.CurrentState}, requested state: {baseBlock}");
-        }
-
-        _flatdiffimes.WithLabels("gather_readonly_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
-        sw = Stopwatch.GetTimestamp();
-
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {_persistenceManager.GetCurrentPersistedStateId()}");
-        var res = new ReadOnlySnapshotBundle(
-            snapshots,
-            persistenceReader);
-        _flatdiffimes.WithLabels("gather_readonly_cache", "done").Observe(Stopwatch.GetTimestamp() - sw);
-
-        res.TryLease();
-        if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
-        {
-            res.Dispose();
-        }
-
-        return res;
+        throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock}");
     }
 
     private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, ResourcePool.Usage usage)
     {
         // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
-        long sw = Stopwatch.GetTimestamp();
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         ReadOnlySnapshotBundle readOnlySnapshotBundle = GatherReadOnlySnapshotBundle(baseBlock);
-        _flatdiffimes.WithLabels("gather_cache", "gather_readonly").Observe(Stopwatch.GetTimestamp() - sw);
-
-        if (baseBlock == StateId.PreGenesis)
-        {
-            // Special case for pregenesis. Note: nethermind always try to generate genesis.
-            return new SnapshotBundle(
-                readOnlySnapshotBundle,
-                _trieNodeCache,
-                _resourcePool,
-                usage: usage);
-        }
-
-        sw = Stopwatch.GetTimestamp();
-
-        var res = new SnapshotBundle(
+        return new SnapshotBundle(
             readOnlySnapshotBundle,
             _trieNodeCache,
             _resourcePool,
             usage: usage);
-
-        _flatdiffimes.WithLabels("gather_cache", "done").Observe(Stopwatch.GetTimestamp() - sw);
-        return res;
     }
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)

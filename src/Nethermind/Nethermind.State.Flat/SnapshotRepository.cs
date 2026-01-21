@@ -33,15 +33,30 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         using (var _ = _sortedKnownStates.EnterWriteLock(out SortedSet<StateId> sortedSnapshots)) sortedSnapshots.Add(stateId);
     }
 
-    public SnapshotPooledList AssembleSnapshotsUntil(StateId stateId, long startingBlockNumber, int estimatedSize)
+    public SnapshotPooledList AssembleSnapshots(StateId baseBlock, StateId targetState, int estimatedSize)
+    {
+        SnapshotPooledList list = AssembleSnapshotsUntil(baseBlock, targetState.BlockNumber, estimatedSize);
+        if (list.Count > 0 && list[0].From.BlockNumber == targetState.BlockNumber && list[0].From != targetState)
+        {
+            list.Dispose();
+
+            // Likely persisted a non finalized block.
+            throw new InvalidOperationException( $"Attempted to compile snapshots from {baseBlock} to {targetState} but target is not reachable from baseBlock");
+        }
+
+        return list;
+    }
+
+    public SnapshotPooledList AssembleSnapshotsUntil(StateId baseBlock, long minBlockNumber, int estimatedSize)
     {
         SnapshotPooledList snapshots = new(estimatedSize);
-        StateId current = stateId;
+
+        StateId current = baseBlock;
         while (TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
         {
             if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
 
-            if (snapshot.From.BlockNumber < startingBlockNumber)
+            if (snapshot.From.BlockNumber < minBlockNumber)
             {
                 // `snapshot` is now a compacted snapshot, we dont want to use it.
                 snapshot.Dispose();
@@ -54,17 +69,18 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
                 }
             }
 
-            snapshots.Add(snapshot);
             if (snapshot.From == current)
             {
                 break; // Some test commit two block with the same id, so we dont know the parent anymore.
             }
 
-            current = snapshot.From;
-            if (snapshot.From.BlockNumber == startingBlockNumber)
+            snapshots.Add(snapshot);
+            if (snapshot.From.BlockNumber == minBlockNumber)
             {
                 break;
             }
+
+            current = snapshot.From;
         }
 
         snapshots.Reverse();

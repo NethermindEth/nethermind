@@ -60,7 +60,14 @@ public class TrieNodeCache
         int shardIdx;
         int h1;
 
-        shardIdx = path.Path.Bytes[0];
+        if (address is null)
+        {
+            shardIdx = path.Path.Bytes[0];
+        }
+        else
+        {
+            shardIdx = address.Bytes[0];
+        }
         h1 = address is null ? 0 : address.GetHashCode();
 
         int h2 = path.GetHashCode();

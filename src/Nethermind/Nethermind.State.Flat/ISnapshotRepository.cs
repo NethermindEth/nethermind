@@ -20,7 +20,8 @@ public interface ISnapshotRepository
     bool TryLeaseCompactedState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
     bool RemoveAndReleaseCompactedKnownState(StateId stateId);
     bool HasState(StateId stateId);
-    SnapshotPooledList AssembleSnapshotsUntil(StateId stateId, long startingBlockNumber, int estimatedSize);
+    SnapshotPooledList AssembleSnapshots(StateId stateId, StateId targetStateId, int estimatedSize);
+    SnapshotPooledList AssembleSnapshotsUntil(StateId stateId, long minBlockNumber, int estimatedSize);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
     void RemoveStatesUntil(StateId currentPersistedStateId);
