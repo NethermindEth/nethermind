@@ -10,7 +10,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -47,21 +46,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         long startTime,
         bool isWrite);
 
-    private static Histogram _serviceTimeHistogram = DevMetric.Factory.CreateHistogram("trie_warmer_service_time_elapsed", "time elapsed", new HistogramConfiguration()
-    {
-        LabelNames = ["is_main", "category"],
-        Buckets = Histogram.PowersOfTenDividedBuckets(2, 10, 10)
-    });
-
-    // Pre-cached histogram children to avoid string allocation per job
-    private static readonly Histogram.Child _mainStateHistogram =
-        _serviceTimeHistogram.WithLabels("True", "state");
-    private static readonly Histogram.Child _mainStorageHistogram =
-        _serviceTimeHistogram.WithLabels("True", "storage");
-    private static readonly Histogram.Child _secondaryStateHistogram =
-        _serviceTimeHistogram.WithLabels("False", "state");
-    private static readonly Histogram.Child _secondaryStorageHistogram =
-        _serviceTimeHistogram.WithLabels("False", "storage");
+    // Pre-cached labels to avoid string allocation per job
+    private static readonly TwoStringLabel _mainStateLabel = new("True", "state");
+    private static readonly TwoStringLabel _mainStorageLabel = new("True", "storage");
+    private static readonly TwoStringLabel _secondaryStateLabel = new("False", "state");
+    private static readonly TwoStringLabel _secondaryStorageLabel = new("False", "storage");
 
     private Task? _warmerJob = null;
 
@@ -310,14 +299,14 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             if (scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                (isMain ? _mainStateHistogram : _secondaryStateHistogram).Observe(sw - startTime);
+                Metrics.TrieWarmerServiceTime.Observe(sw - startTime, isMain ? _mainStateLabel : _secondaryStateLabel);
                 if (scope.WarmUpStateTrie(address!, sequenceId, isWrite))
                 {
                 }
             }
             else
             {
-                (isMain ? _mainStorageHistogram : _secondaryStorageHistogram).Observe(sw - startTime);
+                Metrics.TrieWarmerServiceTime.Observe(sw - startTime, isMain ? _mainStorageLabel : _secondaryStorageLabel);
                 ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)scopeOrStorageTree;
                 if (storageTree.WarmUpStorageTrie(index, sequenceId, isWrite))
                 {

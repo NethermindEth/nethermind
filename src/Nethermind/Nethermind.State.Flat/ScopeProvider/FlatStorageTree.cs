@@ -11,7 +11,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using NonBlocking;
-using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -31,7 +30,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
-    private readonly Histogram.Child _storageTreePrewarm;
+    private readonly TwoStringLabel _storageTreePrewarmLabel;
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
@@ -64,8 +63,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _warmupStorageTree.SetRootHash(storageRoot, false);
         _warmupStorageTree.RootRef = _tree.RootRef;
 
-        var _isPrewarmerLabel = (_trieCacheWarmer is NoopTrieWarmer).ToString();
-        _storageTreePrewarm = FlatWorldStateScope._flatScopeTime.WithLabels("storage_tree_prewarm", _isPrewarmerLabel);
+        var isPrewarmerLabel = (_trieCacheWarmer is NoopTrieWarmer).ToString();
+        _storageTreePrewarmLabel = new TwoStringLabel("storage_tree_prewarm", isPrewarmerLabel);
 
         _config = config;
     }
@@ -142,7 +141,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         long sw = Stopwatch.GetTimestamp();
         _warmupStorageTree.WarmUpPath(key.BytesAsSpan, isWrite);
-        _storageTreePrewarm.Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, _storageTreePrewarmLabel);
         return true;
     }
 

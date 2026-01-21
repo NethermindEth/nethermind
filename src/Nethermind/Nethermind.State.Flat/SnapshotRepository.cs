@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -21,8 +20,6 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new(new SortedSet<StateId>());
-
-    private static Gauge _compactedMemory = DevMetric.Factory.CreateGauge("flatdiff_compacted_memory", "memory", "category");
 
     public int SnapshotCount => _snapshots.Count;
     public int CompactedSnapshotCount => _compactedSnapshots.Count;
@@ -127,10 +124,10 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             foreach (var keyValuePair in snapshot.EstimateMemory())
             {
-                _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
+                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
             }
 
-            _compactedMemory.WithLabels("count").Inc(1);
+            Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
 
             return true;
         }
@@ -181,9 +178,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
-                _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Dec(keyValuePair.Value);
+                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
             }
-            _compactedMemory.WithLabels("count").Dec(1);
+            Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
 
             existingState.Dispose();
 

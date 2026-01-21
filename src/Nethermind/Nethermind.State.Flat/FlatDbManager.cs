@@ -5,13 +5,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -51,15 +49,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly bool _inlineCompaction;
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
-
-    internal static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
-    {
-        LabelNames = new[] { "category", "type" },
-        // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
-        Buckets = [1]
-    });
-
-    private static Gauge _snapshotCount = DevMetric.Factory.CreateGauge("flatdiff_snapshot_count", "memory", "category");
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -123,7 +112,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         long sw = Stopwatch.GetTimestamp();
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
-        _flatdiffimes.WithLabels("compact", "add_state_id").Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "add_state_id"));
 
         sw = Stopwatch.GetTimestamp();
         if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
@@ -140,17 +129,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (stateId.BlockNumber % _compactSize == 0)
             {
-                _flatdiffimes.WithLabels("compact", "do_compact_full").Observe(Stopwatch.GetTimestamp() - sw);
+                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "do_compact_full"));
             }
             else
             {
                 if (stateId.BlockNumber % _midCompactSize == 0)
                 {
-                    _flatdiffimes.WithLabels("compact", "do_mid_compact").Observe(Stopwatch.GetTimestamp() - sw);
+                    Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "do_mid_compact"));
                 }
                 else
                 {
-                    _flatdiffimes.WithLabels("compact", "do_compact").Observe(Stopwatch.GetTimestamp() - sw);
+                    Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "do_compact"));
                 }
             }
         }
@@ -158,11 +147,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         sw = Stopwatch.GetTimestamp();
         if (stateId.BlockNumber % _compactSize == 0)
         {
-            _snapshotCount.WithLabels("snapshots").Set(_snapshotRepository.SnapshotCount);
-            _snapshotCount.WithLabels("compacted_snapshots").Set(_snapshotRepository.CompactedSnapshotCount);
             // Trigger persistence job.
             await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
-            _flatdiffimes.WithLabels("compact", "persist_queue_signal").Observe(Stopwatch.GetTimestamp() - sw);
+            Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("compact", "persist_queue_signal"));
         }
     }
 
@@ -365,7 +352,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         StateId startingBlock = snapshot.From;
         StateId endBlock = snapshot.To;
-        _flatdiffimes.WithLabels("add_snapshot", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "repolock"));
         sw = Stopwatch.GetTimestamp();
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
@@ -385,7 +372,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "add_block"));
         sw = Stopwatch.GetTimestamp();
 
         if (_inlineCompaction)
@@ -404,15 +391,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
-                _flatdiffimes.WithLabels("add_snapshot", "try_write_failed").Observe(Stopwatch.GetTimestamp() - sw);
+                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "try_write_failed"));
                 sw = Stopwatch.GetTimestamp();
                 _logger.Warn("Compactor job stall!");
                 _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
-                _flatdiffimes.WithLabels("add_snapshot", "write_async").Observe(Stopwatch.GetTimestamp() - sw);
+                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "write_async"));
             }
             else
             {
-                _flatdiffimes.WithLabels("add_snapshot", "try_write_ok").Observe(Stopwatch.GetTimestamp() - sw);
+                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "try_write_ok"));
             }
         }
     }

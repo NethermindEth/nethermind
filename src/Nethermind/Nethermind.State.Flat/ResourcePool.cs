@@ -4,8 +4,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
-using Prometheus;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -33,16 +34,6 @@ public class ResourcePool(IFlatDbConfig flatConfig)
         { Usage.Compactor, new ResourcePoolCategory(Usage.Compactor, 4, 1) },
         { Usage.MidCompactor, new ResourcePoolCategory(Usage.MidCompactor, 2, 1) },
     };
-
-    private static Counter _createdSnapshotContent = DevMetric.Factory.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");
-    private static Gauge _activeSnapshotContent = DevMetric.Factory.CreateGauge("resourcepool_active_snapshot_content", "active snapshot content", "category");
-    private static Gauge _cachedSnapshotContent = DevMetric.Factory.CreateGauge("resourcepool_cached_snapshot_content", "active snapshot content", "category");
-    private static Gauge _poolFullSnapshotContent = DevMetric.Factory.CreateGauge("resourcepool_pool_full_snapshot_content", "active snapshot content", "category");
-
-    private static Counter _createdCachedResource = DevMetric.Factory.CreateCounter("resourcepool_created_cached_resource", "created snapshot content", "compacted");
-    private static Gauge _activeCachedResource = DevMetric.Factory.CreateGauge("resourcepool_active_cached_resource", "active snapshot content", "category");
-    private static Gauge _cachedCachedResource = DevMetric.Factory.CreateGauge("resourcepool_cached_cached_resource", "active snapshot content", "category");
-    private static Gauge _poolFullCachedResource = DevMetric.Factory.CreateGauge("resourcepool_pool_full_cached_resource", "active snapshot content", "category");
 
     public SnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
 
@@ -102,54 +93,55 @@ public class ResourcePool(IFlatDbConfig flatConfig)
         private ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new TransientResource.Size(1024, 1024);
+        private readonly StringLabel _usageLabel = new(usage.ToString());
 
         public SnapshotContent GetSnapshotContent()
         {
-            _activeSnapshotContent.WithLabels(usage.ToString()).Inc();
+            Metrics.ActiveSnapshotContent.AddBy(_usageLabel, 1);
             if (_snapshotPool.TryGet(out var snapshotContent))
             {
-                _cachedSnapshotContent.WithLabels(usage.ToString()).Set(_snapshotPool.PooledItemCount);
+                Metrics.CachedSnapshotContent[_usageLabel] = (long)_snapshotPool.PooledItemCount;
                 return snapshotContent;
             }
 
-            _createdSnapshotContent.WithLabels(usage.ToString()).Inc();
+            Metrics.CreatedSnapshotContent.AddBy(_usageLabel, 1);
             return new SnapshotContent();
         }
 
         public void ReturnSnapshotContent(SnapshotContent snapshotContent)
         {
-            _activeSnapshotContent.WithLabels(usage.ToString()).Dec();
+            Metrics.ActiveSnapshotContent.AddBy(_usageLabel, -1);
             if (!_snapshotPool.Return(snapshotContent))
             {
-                _poolFullSnapshotContent.WithLabels(usage.ToString()).Inc();
+                Metrics.PoolFullSnapshotContent.AddBy(_usageLabel, 1);
             }
 
-            _cachedSnapshotContent.WithLabels(usage.ToString()).Set(_snapshotPool.PooledItemCount);
+            Metrics.CachedSnapshotContent[_usageLabel] = (long)_snapshotPool.PooledItemCount;
         }
 
         public TransientResource GetCachedResource()
         {
-            _activeCachedResource.WithLabels(usage.ToString()).Inc();
+            Metrics.ActiveCachedResource.AddBy(_usageLabel, 1);
             if (_cachedResourcePool.TryGet(out var cachedResource))
             {
-                _cachedCachedResource.WithLabels(usage.ToString()).Set(_cachedResourcePool.PooledItemCount);
+                Metrics.CachedCachedResource[_usageLabel] = (long)_cachedResourcePool.PooledItemCount;
                 return cachedResource;
             }
 
-            _createdCachedResource.WithLabels(usage.ToString()).Inc();
+            Metrics.CreatedCachedResource.AddBy(_usageLabel, 1);
             return new TransientResource(_lastCachedResourceSize);
         }
 
         public void ReturnCachedResource(TransientResource transientResource)
         {
-            _activeCachedResource.WithLabels(usage.ToString()).Dec();
+            Metrics.ActiveCachedResource.AddBy(_usageLabel, -1);
             if (!_cachedResourcePool.Return(transientResource))
             {
                 _lastCachedResourceSize = transientResource.GetSize();
-                _poolFullCachedResource.WithLabels(usage.ToString()).Inc();
+                Metrics.PoolFullCachedResource.AddBy(_usageLabel, 1);
             }
 
-            _cachedCachedResource.WithLabels(usage.ToString()).Set(_cachedResourcePool.PooledItemCount);
+            Metrics.CachedCachedResource[_usageLabel] = (long)_cachedResourcePool.PooledItemCount;
         }
     }
 }

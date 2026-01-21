@@ -169,3 +169,8 @@ public record MemoryTypeMetric(MemoryType MemoryType) : IMetricLabels
 
     public string[] Labels => [Names[MemoryType]];
 }
+
+public record TwoStringLabel(string Label1, string Label2) : IMetricLabels
+{
+    public string[] Labels => [Label1, Label2];
+}

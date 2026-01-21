@@ -9,7 +9,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -23,8 +22,6 @@ public class SnapshotCompactor(
     private readonly int _midCompactSize = config.MidCompactSize;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
 
-    private Counter _tooSlowSkip = DevMetric.Factory.CreateCounter("snapshot_compactor_too_slow", "too slow");
-
     public void DoCompactSnapshot(Snapshot snapshot)
     {
         using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
@@ -37,8 +34,6 @@ public class SnapshotCompactor(
             return;
         }
     }
-
-    private Gauge MidCompactCount = DevMetric.Factory.CreateGauge("mid_compact_count", "mcc");
 
     public SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot)
     {
@@ -55,7 +50,6 @@ public class SnapshotCompactor(
             StateId? last = snapshotRepository.GetLastSnapshotId();
             if (last != null && last.Value.BlockNumber - blockNumber > 1)
             {
-                _tooSlowSkip.Inc();
                 // To slow. Just skip this block number.
                 return SnapshotPooledList.Empty();
             }
@@ -65,7 +59,6 @@ public class SnapshotCompactor(
             {
                 if (snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
                 {
-                    MidCompactCount.Dec();
                 }
             }
         }
@@ -101,11 +94,6 @@ public class SnapshotCompactor(
 
             // Nothing to combine if its just one
             if (snapshots.Count == 1) return SnapshotPooledList.Empty();
-
-            if (isMidCompaction)
-            {
-                MidCompactCount.Inc();
-            }
 
             snapshotsOk = true;
             return snapshots;

@@ -12,7 +12,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Init.Steps;

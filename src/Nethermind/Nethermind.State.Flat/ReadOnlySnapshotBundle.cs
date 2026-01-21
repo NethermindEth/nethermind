@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,7 +12,6 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -26,19 +26,12 @@ public sealed class ReadOnlySnapshotBundle(
     public int SnapshotCount => snapshots.Count;
     private bool _isDisposed;
 
-    private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("readonly_snapshot_bundle_times", "aha", new HistogramConfiguration()
-    {
-        LabelNames = new[] { "type" },
-        Buckets = [1]
-    });
-
-    private static Histogram.Child _readAccountPersistence = _snapshotBundleTimes.WithLabels("account_persistence");
-    private static Histogram.Child _readAccountPersistenceNull = _snapshotBundleTimes.WithLabels("account_persistence_null");
-    private static Histogram.Child _readStoragePersistence = _snapshotBundleTimes.WithLabels("storage_persistence");
-    private static Histogram.Child _readStoragePersistenceNull = _snapshotBundleTimes.WithLabels("storage_persistence_null");
-
-    private static Histogram.Child _readStateRlp = _snapshotBundleTimes.WithLabels("state_rlp");
-    private static Histogram.Child _readStorageRlp = _snapshotBundleTimes.WithLabels("storage_rlp");
+    private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
+    private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
+    private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
+    private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
+    private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
+    private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
     public bool TryGetAccount(Address address, out Account? acc)
     {
@@ -58,11 +51,11 @@ public sealed class ReadOnlySnapshotBundle(
         acc = persistenceReader.GetAccount(address);
         if (acc == null)
         {
-            _readAccountPersistenceNull.Observe(Stopwatch.GetTimestamp() - sw);
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
         }
         else
         {
-            _readAccountPersistence.Observe(Stopwatch.GetTimestamp() - sw);
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
         }
 
         return true;
@@ -115,11 +108,11 @@ public sealed class ReadOnlySnapshotBundle(
 
         if (value is null || value.IsZero())
         {
-            _readStoragePersistenceNull.Observe(Stopwatch.GetTimestamp() - sw);
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
         }
         else
         {
-            _readStoragePersistence.Observe(Stopwatch.GetTimestamp() - sw);
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
         }
 
         return true;
@@ -172,7 +165,7 @@ public sealed class ReadOnlySnapshotBundle(
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = Stopwatch.GetTimestamp();
         var value = persistenceReader.TryLoadStateRlp(path, flags);
-        _readStateRlp.Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
         return value;
     }
@@ -184,7 +177,7 @@ public sealed class ReadOnlySnapshotBundle(
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = Stopwatch.GetTimestamp();
         var value = persistenceReader.TryLoadStorageRlp(address, path, flags);
-        _readStorageRlp.Observe(Stopwatch.GetTimestamp() - sw);
+        Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
     }

@@ -539,11 +539,6 @@ namespace Nethermind.Trie
             return null;
         }
 
-        private static Counter ComputeKeccakTime =
-            DevMetric.Factory.CreateCounter("trienode_compute_keccak_time", "compute time");
-        private static Counter EncodeTime =
-            DevMetric.Factory.CreateCounter("trienode_encode_time", "compute time");
-
         internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
             return NodeType switch

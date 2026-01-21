@@ -15,7 +15,6 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 

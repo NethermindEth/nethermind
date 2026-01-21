@@ -4,16 +4,14 @@
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 
-namespace Nethermind.State.Flat.Importer;
+namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Imports state from trie-based persistence to flat persistence.
@@ -35,15 +33,6 @@ public class Importer(
     int batchSize = 128_000;
     int flushInterval = 50_000_000;
     int logInterval = 1_000_000;
-
-    private Histogram _importerTime = DevMetric.Factory.CreateHistogram("importer_time", "importer time", new HistogramConfiguration()
-    {
-        LabelNames = ["part"],
-        Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 5)
-    });
-
-    private Counter _entriesCount = DevMetric.Factory.CreateCounter("importer_entries", "importer time");
-    private Counter _entriesCountFlat = DevMetric.Factory.CreateCounter("importer_entries_flat", "importer time");
 
     private record struct Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -155,7 +144,7 @@ public class Importer(
         await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
         {
             // Write it
-            _entriesCount.Inc();
+            Metrics.ImporterEntriesCount++;
 
             long sw = Stopwatch.GetTimestamp();
             TrieNode node = entry.node;
@@ -194,7 +183,6 @@ public class Importer(
 
                     writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
                 }
-                _importerTime.WithLabels("leaf_set").Observe(Stopwatch.GetTimestamp() - isw);
             }
 
             long theTotalNode = Interlocked.Increment(ref totalNodes);
@@ -209,13 +197,11 @@ public class Importer(
                 _logger.Info("Flushing next");
                 sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
-                _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
                 writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
                 currentItemSize = 0;
                 isFlush = true;
             }
 
-            _importerTime.WithLabels("flush_set").Observe(Stopwatch.GetTimestamp() - sw);
 
             currentItemSize++;
             if (currentItemSize > this.batchSize)
@@ -224,13 +210,11 @@ public class Importer(
                 writeBatch.Dispose();
                 if (isFlush)
                 {
-                    _importerTime.WithLabels("flush_really").Observe(Stopwatch.GetTimestamp() - sw);
                     Console.Error.WriteLine($"Hard flush too {Stopwatch.GetElapsedTime(sw)}");
                     isFlush = false;
                 }
                 else
                 {
-                    _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
                 }
                 writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
                 currentItemSize = 0;
@@ -250,7 +234,7 @@ public class Importer(
         await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
         {
             // Write it
-            _entriesCount.Inc();
+            Metrics.ImporterEntriesCount++;
 
             long sw = Stopwatch.GetTimestamp();
             TrieNode node = entry.node;
@@ -262,7 +246,6 @@ public class Importer(
             {
                 writeBatch.SetStorageTrieNode(entry.address, entry.path, node);
             }
-            _importerTime.WithLabels("flush_set").Observe(Stopwatch.GetTimestamp() - sw);
 
             if (node.IsLeaf)
             {
@@ -281,7 +264,6 @@ public class Importer(
                 _logger.Info("Flushing next");
                 sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
-                _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
                 writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
                 currentItemSize = 0;
                 isFlush = true;
@@ -294,13 +276,11 @@ public class Importer(
                 writeBatch.Dispose();
                 if (isFlush)
                 {
-                    _importerTime.WithLabels("flush_really").Observe(Stopwatch.GetTimestamp() - sw);
                     Console.Error.WriteLine($"Hard flush too {Stopwatch.GetElapsedTime(sw)}");
                     isFlush = false;
                 }
                 else
                 {
-                    _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
                 }
                 writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
                 currentItemSize = 0;
@@ -321,7 +301,7 @@ public class Importer(
         await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
         {
             // Write it
-            _entriesCountFlat.Inc();
+            Metrics.ImporterEntriesCountFlat++;
 
             long sw = Stopwatch.GetTimestamp();
             TrieNode node = entry.node;
@@ -351,7 +331,6 @@ public class Importer(
 
                 writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
             }
-            _importerTime.WithLabels("flat_set").Observe(Stopwatch.GetTimestamp() - isw);
 
             long theTotalNode = Interlocked.Increment(ref totalFlat);
             if (theTotalNode % flushInterval == 0)
@@ -360,7 +339,6 @@ public class Importer(
                 _logger.Info("Flushing next");
                 sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
-                _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
                 writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
                 currentItemSize = 0;
                 isFlush = true;
@@ -373,13 +351,8 @@ public class Importer(
                 writeBatch.Dispose();
                 if (isFlush)
                 {
-                    _importerTime.WithLabels("flush_really_flat").Observe(Stopwatch.GetTimestamp() - sw);
                     Console.Error.WriteLine($"Hard flush flat too {Stopwatch.GetElapsedTime(sw)}");
                     isFlush = false;
-                }
-                else
-                {
-                    _importerTime.WithLabels("flush_flat").Observe(Stopwatch.GetTimestamp() - sw);
                 }
                 writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
                 currentItemSize = 0;
