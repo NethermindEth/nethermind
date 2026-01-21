@@ -199,6 +199,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
 
             Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
+
+            Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

@@ -14,6 +14,7 @@ public class Amsterdam : BPO5
     {
         Name = "Amsterdam";
         IsEip7928Enabled = true;
+        IsEip8024Enabled = true;
         Released = false;
     }
 
