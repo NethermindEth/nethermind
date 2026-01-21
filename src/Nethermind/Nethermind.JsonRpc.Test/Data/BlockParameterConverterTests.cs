@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -16,18 +15,6 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        [SetUp]
-        public void SetUp()
-        {
-            EthereumJsonSerializer.StrictHexFormat = false;
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            EthereumJsonSerializer.StrictHexFormat = false;
-        }
-
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]

@@ -79,8 +79,8 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _enrFactory = new EnrFactory(new EnrEntryRegistry());
 
         ENR[] bootstrapEnrs = [
-            .. networkConfig.Bootnodes.Where(bn => bn.IsEnr).Select(bn => bn.Enode).Select(ToEnr),
-            .. networkConfig.Bootnodes.Where(bn => bn.IsEnr).Select(bn => bn.Enr).Distinct(),
+            .. networkConfig.Bootnodes.Where(bn => bn.IsEnode).Select(bn => bn.Enode).Select(ToEnr),
+            .. networkConfig.Bootnodes.Where(bn => bn.IsEnr).Select(bn => bn.Enr),
             .. (discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : []),
             .. LoadStoredEnrs(),
             ];

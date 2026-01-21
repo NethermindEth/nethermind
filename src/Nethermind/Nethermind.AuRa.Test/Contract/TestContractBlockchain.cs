@@ -29,7 +29,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) GetSpecProvider()
             {
-                ChainSpecLoader loader = new(new EthereumJsonSerializer(), NullLogManager.Instance);
+                ChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
                 string name = string.IsNullOrEmpty(testSuffix) ? $"{typeof(TTestClass).FullName}.json" : $"{typeof(TTestClass).FullName}.{testSuffix}.json";
                 using Stream? stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
                 ChainSpec chainSpec = loader.Load(stream);

@@ -33,14 +33,14 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     /// </summary>
     private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
     {
-        IConfigProvider configProvider = new ConfigProvider();
+        ConfigProvider configProvider = new();
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
         spec.Bootnodes = [];
 
         if (bootEnode is not null)
         {
-            spec.Bootnodes = [new NetworkNode(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
+            spec.Bootnodes = [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
         }
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();

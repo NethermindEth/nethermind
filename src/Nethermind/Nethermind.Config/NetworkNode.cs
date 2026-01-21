@@ -33,7 +33,6 @@ public class NetworkNode
     {
         if (Enode.IsEnode(nodeString, out _))
         {
-            //enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303
             _enode = new Enode(nodeString);
         }
         else
@@ -42,7 +41,7 @@ public class NetworkNode
         }
     }
 
-    public static NetworkNode[] ParseNodes(string nodeRecords, ILogger logger)
+    public static NetworkNode[] ParseNodes(string? nodeRecords, ILogger logger)
     {
         if (nodeRecords is null)
         {
@@ -54,7 +53,7 @@ public class NetworkNode
         return ParseNodes(nodeStrings, logger);
     }
 
-    public static NetworkNode[] ParseNodes(string[] nodeRecords, ILogger logger)
+    public static NetworkNode[] ParseNodes(string[]? nodeRecords, ILogger logger)
     {
         if (nodeRecords is null)
         {
@@ -88,8 +87,8 @@ public class NetworkNode
 
     public NetworkNode(Enode enode) => _enode = enode;
 
-    public Enode Enode => _enode ?? throw new InvalidDataException("Enode");
-    public Enr Enr => _enr ?? throw new InvalidDataException("Enode");
+    public Enode Enode => _enode ?? throw new InvalidDataException(nameof(Enode));
+    public Enr Enr => _enr ?? throw new InvalidDataException(nameof(Enr));
 
     public PublicKey NodeId => IsEnode ? _enode!.PublicKey : new PublicKey(_enr!.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value);
     public string Host => IsEnode ? _enode!.HostIp.ToString() : _enr!.GetEntry<EntryIp>(EnrEntryKey.Ip).Value.ToString();
