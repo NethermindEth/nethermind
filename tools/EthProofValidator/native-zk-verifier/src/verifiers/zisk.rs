@@ -8,6 +8,11 @@ pub struct ZiskVerifier;
 
 impl Verifier for ZiskVerifier {
     fn verify(proof: &[u8], vk: &[u8]) -> Result<bool> {
-        Ok(proofman_verifier::verify(proof, vk))
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            proofman_verifier::verify(proof, vk)
+        })) {
+            Ok(true) => Ok(true),
+            _ => Ok(proofman_verifier_fallback::verify(proof, vk)),
+        }
     }
 }

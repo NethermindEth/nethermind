@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # Zisk / ZKCLoud
 proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.15.0" }
+proofman-verifier_fallback = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", package = 'proofman-verifier', tag = "v0.12.0" }
 # OpenVM
 verify-stark = { git = "https://github.com/openvm-org/openvm.git", branch = "feat/v1-verify-stark", package = "verify-stark" }
 # Pico
