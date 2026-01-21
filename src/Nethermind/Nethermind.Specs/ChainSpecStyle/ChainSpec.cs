@@ -27,7 +27,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong ChainId { get; set; }
 
-        public NetworkNode[] Bootnodes { get; set; }
+        public NetworkNode[] Bootnodes { get; set; } = [];
 
         public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }

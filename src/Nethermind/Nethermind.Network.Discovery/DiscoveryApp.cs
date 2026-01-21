@@ -282,7 +282,7 @@ public class DiscoveryApp : IDiscoveryApp
 
             if (!bootnode.IsEnode)
             {
-                if (_logger.IsTrace) _logger.Trace($"Ingoreing ENR in discvery V4: {bootnode}");
+                if (_logger.IsTrace) _logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
                 continue;
             }
 

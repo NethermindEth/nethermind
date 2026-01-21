@@ -75,7 +75,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
     uint MaxNettyArenaCount { get; set; }
 
-    [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
+    [ConfigItem(DefaultValue = "", Description = "A comma - separated enode list to be used as boot nodes.")]
     NetworkNode[] Bootnodes { get; set; }
 
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable automatic port forwarding via UPnP.")]
