@@ -23,28 +23,42 @@ public class SnapshotCompactor(
     private readonly int _midCompactSize = config.MidCompactSize;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
 
-    public void DoCompactSnapshot(Snapshot snapshot)
+    public bool DoCompactSnapshot(StateId stateId)
     {
-        long sw = Stopwatch.GetTimestamp();
-        using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
-        if (snapshots.Count == 0) return;
+        if (snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
+        {
+            using var _ = snapshot; // dispose
 
-        Snapshot compactedSnapshot = CompactSnapshotBundle(snapshots);
-        if (!snapshotRepository.TryAddCompactedSnapshot(compactedSnapshot))
-        {
-            compactedSnapshot.Dispose();
-            return;
+            // Actually do the compaction
+            long sw = Stopwatch.GetTimestamp();
+            using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
+
+            if (snapshots.Count != 0)
+            {
+                Snapshot compactedSnapshot = CompactSnapshotBundle(snapshots);
+                if (snapshotRepository.TryAddCompactedSnapshot(compactedSnapshot))
+                {
+                    StateId stateId1 = snapshot.To;
+                    if (stateId1.BlockNumber % _compactSize == 0)
+                    {
+                        Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
+                    }
+                    else if (stateId1.BlockNumber % _midCompactSize == 0)
+                    {
+                        Metrics.MidCompactTime.Observe(Stopwatch.GetTimestamp() - sw);
+                    }
+
+                    return true;
+                }
+                else
+                {
+                    compactedSnapshot.Dispose();
+                    return false;
+                }
+            }
         }
 
-        StateId stateId = snapshot.To;
-        if (stateId.BlockNumber % _compactSize == 0)
-        {
-            Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else if (stateId.BlockNumber % _midCompactSize == 0)
-        {
-            Metrics.MidCompactTime.Observe(Stopwatch.GetTimestamp() - sw);
-        }
+        return false;
     }
 
     public SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot)

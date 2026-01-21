@@ -37,13 +37,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _populateTrieNodeCacheTask;
     private Channel<TransientResource> _populateTrieNodeCacheJobs;
 
-    // Then eventually a compacted snapshot will be sent here where this will decide what to compact exactly
+    // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
     private Channel<StateId> _persistenceJobs;
 
-
     private readonly int _compactSize;
-    private readonly int _midCompactSize;
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
@@ -70,7 +68,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<FlatDbManager>();
 
         _compactSize = config.CompactSize;
-        _midCompactSize = config.MidCompactSize;
         _inlineCompaction = config.InlineCompaction;
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
@@ -112,17 +109,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
+        if (_snapshotCompactor.DoCompactSnapshot(stateId))
         {
-            using var _ = snapshot; // dispose
-
-            // Actually do the compaction
-            _snapshotCompactor.DoCompactSnapshot(snapshot);
-
-            if (stateId.BlockNumber % _compactSize == 0 || stateId.BlockNumber % _midCompactSize == 0)
-            {
-                ClearReadOnlyBundleCache();
-            }
+            ClearReadOnlyBundleCache();
         }
 
         if (stateId.BlockNumber % _compactSize == 0)
@@ -224,17 +213,20 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public SnapshotBundle GatherReaderAtBaseBlock(StateId baseBlock, ResourcePool.Usage usage)
     {
-        return GatherSnapshotBundle(baseBlock, usage);
+        // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
+        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+        ReadOnlySnapshotBundle readOnlySnapshotBundle = GatherReadOnlyReaderAtBaseBlock(baseBlock);
+        return new SnapshotBundle(
+            readOnlySnapshotBundle,
+            _trieNodeCache,
+            _resourcePool,
+            usage: usage);
     }
 
     public ReadOnlySnapshotBundle GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
     {
-        return GatherReadOnlySnapshotBundle(baseBlock);
-    }
-
-    private ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock)
-    {
-        // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
+        // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
+        // hard to pull of due to the constantly moving chain making invalidation hard.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)
@@ -272,7 +264,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 throw;
             }
 
-            Metrics.SnapshotBundleSize = snapshots.Count;
 
             if (snapshots.Count == 0)
             {
@@ -307,22 +298,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 res.Dispose();
             }
 
+            Metrics.SnapshotBundleSize = snapshots.Count;
             return res;
         }
 
         throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock}");
-    }
-
-    private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, ResourcePool.Usage usage)
-    {
-        // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
-        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
-        ReadOnlySnapshotBundle readOnlySnapshotBundle = GatherReadOnlySnapshotBundle(baseBlock);
-        return new SnapshotBundle(
-            readOnlySnapshotBundle,
-            _trieNodeCache,
-            _resourcePool,
-            usage: usage);
     }
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
