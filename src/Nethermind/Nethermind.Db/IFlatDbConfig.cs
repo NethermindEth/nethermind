@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Db;
 
-public interface IFlatDbConfig: IConfig
+public interface IFlatDbConfig : IConfig
 {
     [ConfigItem(Description = "Enabled", DefaultValue = "false")]
     bool Enabled { get; set; }

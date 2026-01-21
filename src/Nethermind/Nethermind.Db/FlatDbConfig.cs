@@ -5,7 +5,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db;
 
-public class FlatDbConfig: IFlatDbConfig
+public class FlatDbConfig : IFlatDbConfig
 {
     public bool Enabled { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;

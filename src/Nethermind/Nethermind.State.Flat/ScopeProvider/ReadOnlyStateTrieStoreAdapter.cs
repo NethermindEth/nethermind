@@ -38,7 +38,7 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
 internal class ReadOnlyStorageTrieStoreAdapter(
     ReadOnlySnapshotBundle bundle,
     Hash256AsKey addressHash
-): AbstractMinimalTrieStore
+) : AbstractMinimalTrieStore
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {

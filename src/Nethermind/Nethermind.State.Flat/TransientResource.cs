@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat;
 /// as part of a <see cref="Snapshot"/>. Pooling this is largely for performance reason.
 /// </summary>
 /// <param name="size"></param>
-public record TransientResource(TransientResource.Size size): IDisposable, IResettable
+public record TransientResource(TransientResource.Size size) : IDisposable, IResettable
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 

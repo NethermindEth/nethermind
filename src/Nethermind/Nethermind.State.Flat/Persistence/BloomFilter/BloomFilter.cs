@@ -17,11 +17,11 @@ public sealed unsafe class BloomFilter : IDisposable
 {
     // ---- constants ----
     private const int CacheLineBytes = 64;      // 512 bits
-    private const ulong ProbeDelta   = 0x9E3779B97F4A7C15UL;
+    private const ulong ProbeDelta = 0x9E3779B97F4A7C15UL;
 
     // RocksDB golden ratio constants
     private const uint Mul32 = 0x9E3779B9u;
-    private const uint Mul8  = 0xAB25F4C1u;
+    private const uint Mul8 = 0xAB25F4C1u;
 
     // Linux THP constants
     private const int MADV_HUGEPAGE = 14;
@@ -263,7 +263,7 @@ public sealed unsafe class BloomFilter : IDisposable
         Vector256<int> zeroToSeven = Vector256.Create(0, 1, 2, 3, 4, 5, 6, 7);
         Vector256<uint> ones = Vector256.Create(1u);
 
-        for (;;)
+        for (; ; )
         {
             Vector256<uint> hashVec = Vector256.Create(h);
             hashVec = Avx2.MultiplyLow(hashVec, multipliers);

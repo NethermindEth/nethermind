@@ -167,7 +167,7 @@ public class FlatVerifyTrieVisitor : ITreeVisitor<FlatVerifyTrieVisitor.Context>
                 nodeSlot = ctx.DecodeByteArray();
             }
 
-            byte[]? flatSlot = _persistenceReader.GetStorageRaw(nodeContext.Storage!,  fullPath);
+            byte[]? flatSlot = _persistenceReader.GetStorageRaw(nodeContext.Storage!, fullPath);
             if (!Bytes.AreEqual(flatSlot, nodeSlot))
             {
                 if (_logger.IsWarn) _logger.Warn($"Mismatched slot. AddressHash: {nodeContext.Storage}. SlotHash {fullPath}. Trie slot: {nodeSlot.ToHexString() ?? ""}, Flat slot; {flatSlot?.ToHexString()}");

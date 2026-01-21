@@ -37,7 +37,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         SnapshotPooledList snapshots = new(estimatedSize);
         StateId current = stateId;
-        while(TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
+        while (TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
         {
             if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
 
@@ -55,7 +55,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             }
 
             snapshots.Add(snapshot);
-            if (snapshot.From == current) {
+            if (snapshot.From == current)
+            {
                 break; // Some test commit two block with the same id, so we dont know the parent anymore.
             }
 

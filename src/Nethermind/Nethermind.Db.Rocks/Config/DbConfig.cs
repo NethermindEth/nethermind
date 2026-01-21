@@ -414,7 +414,7 @@ public class DbConfig : IDbConfig
     public bool? FlatStorageDbVerifyChecksum { get; set; }
     public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
-    public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)32.MiB();
+    public ulong FlatStorageDbWriteBufferSize { get; set; } = (ulong)32.MiB();
     public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
 
     public string? FlatStorageDbRocksDbOptions

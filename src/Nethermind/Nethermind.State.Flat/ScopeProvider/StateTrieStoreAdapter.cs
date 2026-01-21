@@ -58,7 +58,7 @@ internal class StorageTrieStoreAdapter(
     Hash256AsKey addressHash,
     int selfDestructKnownStateIdx,
     bool isTrieWarmer
-): AbstractMinimalTrieStore
+) : AbstractMinimalTrieStore
 {
     internal int SelfDestructKnownStateIdx = selfDestructKnownStateIdx;
 

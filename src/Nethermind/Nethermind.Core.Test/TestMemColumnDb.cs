@@ -50,7 +50,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
         }
     }
 
-    private class Snapshot(IDictionary<TKey, TestMemDb> columns): IColumnDbSnapshot<TKey>
+    private class Snapshot(IDictionary<TKey, TestMemDb> columns) : IColumnDbSnapshot<TKey>
     {
         public IReadOnlyKeyValueStore GetColumn(TKey key)
         {

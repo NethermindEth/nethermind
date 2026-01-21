@@ -40,7 +40,7 @@ public class TrieNodeCache
         long maxCacheMemoryThreshold = flatDbConfig.TrieCacheMemoryTarget;
         long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
 
-        int targetBucketSize = (int)((totalNodeCount / UtilRatio) / ShardCount) ;
+        int targetBucketSize = (int)((totalNodeCount / UtilRatio) / ShardCount);
         _bucketSize = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, targetBucketSize));
         _bucketMask = _bucketSize - 1;
 
@@ -96,7 +96,7 @@ public class TrieNodeCache
                 var shard = transientResource.Nodes.Shards[i];
                 for (int j = 0; j < shard.Length; j++)
                 {
-                    if (shard[j].node is {} newNode) newNode.PrunePersistedRecursively(1);
+                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(1);
 
                 }
             }
@@ -124,12 +124,12 @@ public class TrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is {} newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
             }
         });
 
         long currentTotalMemory = 0;
-        for(int i=0; i < ShardCount; i++) currentTotalMemory += _shardMemoryUsages[i];
+        for (int i = 0; i < ShardCount; i++) currentTotalMemory += _shardMemoryUsages[i];
 
         long prevMemory = currentTotalMemory;
         bool wasPruned = false;

@@ -10,7 +10,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public abstract class AbstractMinimalTrieStore: IScopedTrieStore
+public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 {
     public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
 

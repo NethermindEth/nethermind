@@ -56,7 +56,7 @@ public class Importer(
         }
 
         ITrieStore trieStore = new RawTrieStore(nodeStorage);
-        PatriciaTree tree =  new PatriciaTree(trieStore, logManager);
+        PatriciaTree tree = new PatriciaTree(trieStore, logManager);
         tree.RootHash = to.StateRoot.ToHash256();
 
         Channel<Entry> channel = Channel.CreateBounded<Entry>(2_000_000);
@@ -246,7 +246,7 @@ public class Importer(
 
         int currentItemSize = 0;
         bool isFlush = false;
-        var writeBatch = ((IPersistenceWithConcurrentTrie) persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL); // It writes form initial state to initial state.
+        var writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL); // It writes form initial state to initial state.
         await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
         {
             // Write it
@@ -282,7 +282,7 @@ public class Importer(
                 sw = Stopwatch.GetTimestamp();
                 writeBatch.Dispose();
                 _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
-                writeBatch = ((IPersistenceWithConcurrentTrie) persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
+                writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
                 currentItemSize = 0;
                 isFlush = true;
             }
@@ -302,7 +302,7 @@ public class Importer(
                 {
                     _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
                 }
-                writeBatch = ((IPersistenceWithConcurrentTrie) persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
+                writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
                 currentItemSize = 0;
             }
         }

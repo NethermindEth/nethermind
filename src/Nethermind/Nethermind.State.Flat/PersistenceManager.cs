@@ -19,7 +19,7 @@ using Prometheus;
 
 namespace Nethermind.State.Flat;
 
-public class PersistenceManager: IAsyncDisposable
+public class PersistenceManager : IAsyncDisposable
 {
     private readonly ILogger _logger;
     private static readonly Histogram _flatdiffimes = FlatDbManager._flatdiffimes;
@@ -145,7 +145,7 @@ public class PersistenceManager: IAsyncDisposable
         return new KeepReaderLock(this);
     }
 
-    private ref struct KeepReaderLock(PersistenceManager manager): IDisposable
+    private ref struct KeepReaderLock(PersistenceManager manager) : IDisposable
     {
         public void Dispose()
         {

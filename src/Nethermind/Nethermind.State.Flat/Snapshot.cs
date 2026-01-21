@@ -95,12 +95,12 @@ public sealed class SnapshotContent() : IDisposable, IResettable
     public readonly ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages = new();
 
     // Bool is true if this is a new account also
-    public readonly ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses = new ();
+    public readonly ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses = new();
 
     // Use of a separate dictionary just for state have a small but measurable impact
     public readonly ConcurrentDictionary<TreePath, TrieNode> StateNodes = new();
 
-    public readonly ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes = new ();
+    public readonly ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes = new();
 
     public void Reset()
     {
@@ -134,7 +134,7 @@ public sealed class SnapshotContent() : IDisposable, IResettable
               result[MemoryType.StorageBytes] +
               result[MemoryType.SelfDestructedAddress] * 40 +
               result[MemoryType.StateNodes] * 40 +
-              result[MemoryType.StateNodesBytes]  +
+              result[MemoryType.StateNodesBytes] +
               result[MemoryType.StorageNodes] * 48 +
               result[MemoryType.StorageNodesBytes];
 

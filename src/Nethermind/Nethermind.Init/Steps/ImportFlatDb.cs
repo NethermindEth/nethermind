@@ -28,7 +28,7 @@ public class ImportFlatDb(
     IProcessExitSource exitSource,
     IFlatDbConfig flatDbConfig,
     ILogManager logManager
-): IStep
+) : IStep
 {
     ILogger _logger = logManager.GetClassLogger<ImportFlatDb>();
 

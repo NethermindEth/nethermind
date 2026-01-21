@@ -8,7 +8,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class NoopPersistenceReader: IPersistence.IPersistenceReader
+public class NoopPersistenceReader : IPersistence.IPersistenceReader
 {
     public void Dispose()
     {

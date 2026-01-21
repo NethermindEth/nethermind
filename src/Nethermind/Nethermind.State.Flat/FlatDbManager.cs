@@ -298,7 +298,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock)
     {
         // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
-        long sw =  Stopwatch.GetTimestamp();
+        long sw = Stopwatch.GetTimestamp();
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)
@@ -317,7 +317,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId current = baseBlock;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(baseBlock, persistedState.BlockNumber, Math.Max(1, (int)(_snapshotRepository.SnapshotCount / _compactSize)));
         _flatdiffimes.WithLabels("gather_readonly_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
-        sw =  Stopwatch.GetTimestamp();
+        sw = Stopwatch.GetTimestamp();
         _knownStatesSize.Observe(snapshots.Count);
 
         // Note: By the time the previous loop finished checking all state, the persistencc may have added new state and removed some
@@ -336,7 +336,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
 
         _flatdiffimes.WithLabels("gather_readonly_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
-        sw =  Stopwatch.GetTimestamp();
+        sw = Stopwatch.GetTimestamp();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {_persistenceManager.GetCurrentPersistedStateId()}");
         var res = new ReadOnlySnapshotBundle(
@@ -356,7 +356,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, ResourcePool.Usage usage)
     {
         // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
-        long sw =  Stopwatch.GetTimestamp();
+        long sw = Stopwatch.GetTimestamp();
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         ReadOnlySnapshotBundle readOnlySnapshotBundle = GatherReadOnlySnapshotBundle(baseBlock);
         _flatdiffimes.WithLabels("gather_cache", "gather_readonly").Observe(Stopwatch.GetTimestamp() - sw);
@@ -371,7 +371,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 usage: usage);
         }
 
-        sw =  Stopwatch.GetTimestamp();
+        sw = Stopwatch.GetTimestamp();
 
         var res = new SnapshotBundle(
             readOnlySnapshotBundle,

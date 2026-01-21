@@ -21,7 +21,7 @@ using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.Init.Modules;
 
-public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
+public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

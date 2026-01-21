@@ -27,7 +27,7 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeProviderTests
 {
 
-    private class TestContext: IDisposable
+    private class TestContext : IDisposable
     {
         private readonly ContainerBuilder _containerBuilder;
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -197,7 +197,8 @@ public class FlatWorldStateScopeProviderTests
         ctx.PersistenceReader.GetAccount(testAddress).Returns(persistedAccount);
         SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue)!.Value;
         ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
-            .Returns(x => {
+            .Returns(x =>
+            {
                 x[2] = outValue;
                 return true;
             });

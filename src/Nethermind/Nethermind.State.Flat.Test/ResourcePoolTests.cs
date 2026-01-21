@@ -35,14 +35,14 @@ public class ResourcePoolTests
     {
         var usage = ResourcePool.Usage.MainBlockProcessing;
         var content1 = _resourcePool.GetSnapshotContent(usage);
-        
+
         content1.Accounts[new AddressAsKey(new Address("0x1234567890123456789012345678901234567890"))] = new Account(1, 2);
         Assert.That(content1.Accounts, Is.Not.Empty);
 
         _resourcePool.ReturnSnapshotContent(usage, content1);
 
         var content2 = _resourcePool.GetSnapshotContent(usage);
-        
+
         // Should be the same instance (LIFO)
         Assert.That(content2, Is.SameAs(content1));
         // Should have been reset
@@ -93,11 +93,11 @@ public class ResourcePoolTests
     {
         var usage = ResourcePool.Usage.MainBlockProcessing;
         var resource1 = _resourcePool.GetCachedResource(usage);
-        
+
         _resourcePool.ReturnCachedResource(usage, resource1);
 
         var resource2 = _resourcePool.GetCachedResource(usage);
-        
+
         // Should be the same instance
         Assert.That(resource2, Is.SameAs(resource1));
     }
@@ -107,7 +107,7 @@ public class ResourcePoolTests
     {
         // For MainBlockProcessing: capacity = 2
         var usage = ResourcePool.Usage.MainBlockProcessing;
-        
+
         var r1 = _resourcePool.GetCachedResource(usage);
         var r2 = _resourcePool.GetCachedResource(usage);
         var r3 = _resourcePool.GetCachedResource(usage);

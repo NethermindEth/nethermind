@@ -24,7 +24,7 @@ public interface IPersistence
         ReadOnlySpan<byte> CurrentValue { get; }
     }
 
-    public interface IPersistenceReader: IDisposable
+    public interface IPersistenceReader : IDisposable
     {
         Account? GetAccount(Address address);
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
@@ -51,7 +51,7 @@ public interface IPersistence
         bool IsPreimageMode { get; }
     }
 
-    public interface IWriteBatch: IDisposable
+    public interface IWriteBatch : IDisposable
     {
         int SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
@@ -73,7 +73,7 @@ public interface IPersistenceWithConcurrentTrie
 {
     IWriteBatch CreateTrieWriteBatch(WriteFlags flags = WriteFlags.None);
 
-    public interface IWriteBatch: IDisposable
+    public interface IWriteBatch : IDisposable
     {
         void SetStateTrieNode(in TreePath path, TrieNode tnValue);
         void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);

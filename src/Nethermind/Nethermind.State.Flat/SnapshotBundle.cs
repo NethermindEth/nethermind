@@ -134,7 +134,7 @@ public sealed class SnapshotBundle : IDisposable
         _snapshotAccountMiss = _snapshotBundleTimes.WithLabels("snapshot_account_miss", _isPrewarmer.ToString());
 
         _findStorageNodeLoadedNodes = _snapshotBundleTimes.WithLabels("find_storage_node_loaded_nodes", _isPrewarmer.ToString());
-        _findStorageNodeChangedNodes = _snapshotBundleTimes.WithLabels("find_storage_node_changed_nodes", _isPrewarmer.ToString());;
+        _findStorageNodeChangedNodes = _snapshotBundleTimes.WithLabels("find_storage_node_changed_nodes", _isPrewarmer.ToString()); ;
 
         _findStateNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_state_node_trie_warmer", _isPrewarmer.ToString());
         _findStorageNode = _snapshotBundleTimes.WithLabels("find_storage_node", _isPrewarmer.ToString());
@@ -505,7 +505,7 @@ public sealed class SnapshotBundle : IDisposable
         if (!isNewAccount)
         {
             // Collect keys first to avoid modifying during iteration
-            ArrayPoolListRef<(Hash256AsKey, TreePath)> storageKeysToRemove = new (0);
+            ArrayPoolListRef<(Hash256AsKey, TreePath)> storageKeysToRemove = new(0);
             foreach (var kv in _changedStorageNodes)
             {
                 if (kv.Key.Item1.Value == addressHash)
@@ -519,7 +519,7 @@ public sealed class SnapshotBundle : IDisposable
                 _changedStorageNodes.TryRemove(key, out _);
             }
 
-            ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new (0);
+            ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new(0);
             foreach (var kv in _changedSlots)
             {
                 if (kv.Key.Item1.Value == address)
