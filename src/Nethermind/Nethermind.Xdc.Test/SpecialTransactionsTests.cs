@@ -514,7 +514,7 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        UInt256 tooHighBlockNumber = (UInt256)head.Number;
+        UInt256 tooHighBlockNumber = (UInt256)head.Number + 1;
         Transaction txTooHigh = SignTransactionManager.CreateTxSign(
             tooHighBlockNumber,
             head.Hash!,
@@ -666,6 +666,8 @@ internal class SpecialTransactionsTests
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = false;
+
+            spec.IsTIPXDCXMiner = true;
 
             spec.TradingStateAddressBinary = new Address("0x00000000000000000000000000000000b000091");
             spec.XDCXAddressBinary = new Address("0x00000000000000000000000000000000b000092");
