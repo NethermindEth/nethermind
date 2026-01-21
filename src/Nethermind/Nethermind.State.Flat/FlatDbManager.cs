@@ -55,7 +55,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IProcessExitSource processExitSource,
         TrieNodeCache trieNodeCache,
         SnapshotCompactor snapshotCompactor,
-        SnapshotRepository snapshotRepository,
+        ISnapshotRepository snapshotRepository,
         PersistenceManager persistenceManager,
         IFlatDbConfig config,
         ILogManager logManager)

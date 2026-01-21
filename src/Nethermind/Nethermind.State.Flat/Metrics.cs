@@ -51,6 +51,18 @@ public static class Metrics
     [Description("Number of compacted snapshots")]
     public static long CompactedSnapshotCount { get; set; }
 
+    [GaugeMetric]
+    [Description("Estimated memory used by snapshots in bytes")]
+    public static long SnapshotMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated memory used by compacted snapshot dictionaries in bytes")]
+    public static long CompactedSnapshotMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Total estimated snapshot memory in bytes")]
+    public static long TotalSnapshotMemory { get; set; }
+
     // === Gauges with single label ===
     [DetailedMetric]
     [Description("Compacted snapshot memory by category")]

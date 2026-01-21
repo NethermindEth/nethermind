@@ -33,8 +33,8 @@ public class Snapshot(
     ResourcePool.Usage usage
 ) : RefCountingDisposable
 {
-    private Dictionary<MemoryType, long>? _memory = null; // The memory changes, so we use this as a smoewhat estimate so it make some seense
-    public Dictionary<MemoryType, long> EstimateMemory() => _memory ??= content.EstimateMemory();
+    public long EstimateMemory() => content.EstimateMemory();
+    public Dictionary<MemoryType, long> EstimateDetailedMemory() => content.EstimateDetailedMemory();
     public ResourcePool.Usage Usage => usage;
 
     public StateId From => from;
@@ -116,31 +116,60 @@ public sealed class SnapshotContent() : IDisposable, IResettable
         StorageNodes.NoResizeClear();
     }
 
-    public Dictionary<MemoryType, long> EstimateMemory()
+    public long EstimateMemory()
+    {
+        // ConcurrentDictionary entry overhead ~48 bytes, includes Account object (~104 bytes)
+        return
+            Accounts.Count * 168 +                         // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48) + Account object (~104B)
+            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
+            SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
+            StateNodes.Count * 792 +                       // Key (36B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode (~700B)
+            StorageNodes.Count * 800;                      // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode (~700B)
+    }
+
+    public Dictionary<MemoryType, long> EstimateDetailedMemory()
     {
         Dictionary<MemoryType, long> result = new Dictionary<MemoryType, long>(){
             { MemoryType.Account, Accounts.Count },
             { MemoryType.Storage, Storages.Count },
-            { MemoryType.StorageBytes, Storages.Count * 40 },
+            { MemoryType.StorageBytes, Storages.Count * 32 },  // SlotValue is 32 bytes
             { MemoryType.SelfDestructedAddress, SelfDestructedStorageAddresses.Count },
             { MemoryType.StateNodes, StateNodes.Count },
-            { MemoryType.StateNodesBytes, StateNodes.Count * 700 }, // Just estimate
+            { MemoryType.StateNodesBytes, StateNodes.Count * 700 },
             { MemoryType.StorageNodes, StorageNodes.Count },
             { MemoryType.StorageNodesBytes, StorageNodes.Count * 700 },
         };
 
-        // I'm just winging it here.
+        // ConcurrentDictionary entry overhead ~48 bytes
+        // Account object ~104 bytes (2 Hash256? refs + 2 UInt256 + object header)
         result[MemoryType.TotalBytes]
-            = result[MemoryType.Account] * 40 +
-              result[MemoryType.Storage] * 48 +
-              result[MemoryType.StorageBytes] +
-              result[MemoryType.SelfDestructedAddress] * 40 +
-              result[MemoryType.StateNodes] * 40 +
-              result[MemoryType.StateNodesBytes] +
-              result[MemoryType.StorageNodes] * 48 +
-              result[MemoryType.StorageNodesBytes];
+            = result[MemoryType.Account] * 168 +           // 8 + 8 + concurrent dictionary overhead (48) + 104 (Account object)
+              result[MemoryType.Storage] * 96 +            // 40 (key) + 8 (nullable) + concurrent dictionary overhead (48)
+              result[MemoryType.StorageBytes] +            // 32 bytes SlotValue data
+              result[MemoryType.SelfDestructedAddress] * 60 +  // 8 + 4 + concurrent dictionary overhead (48)
+              result[MemoryType.StateNodes] * 92 +         // 36 + 8 + concurrent dictionary overhead (48)
+              result[MemoryType.StateNodesBytes] +         // 700 bytes TrieNode
+              result[MemoryType.StorageNodes] * 100 +      // 44 + 8 + concurrent dictionary overhead (48)
+              result[MemoryType.StorageNodesBytes];        // 700 bytes TrieNode
 
         return result;
+    }
+
+    /// <summary>
+    /// Estimates memory for compacted snapshots, counting only dictionary overhead + keys + value-type values.
+    /// Does not count reference type values (Account and TrieNode) as they are already accounted for
+    /// by non-compacted snapshots (compacted snapshots share these references with the original snapshots).
+    /// </summary>
+    public long EstimateCompactedMemory()
+    {
+        // ConcurrentDictionary entry overhead ~48 bytes
+        // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
+        return
+            Accounts.Count * 64 +                          // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48)
+            Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
+            SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
+            StateNodes.Count * 92 +                        // Key (36B TreePath) + Value ref (8B) + concurrent dictionary overhead (48)
+            StorageNodes.Count * 100;                      // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48)
     }
 
     public void Dispose()

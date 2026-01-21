@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
+public class SnapshotRepository(ILogManager logManager, bool enableDetailedMetrics = false) : ISnapshotRepository
 {
     private const int MaxLeaseAttempt = 10_000;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
@@ -124,12 +124,18 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             Metrics.CompactedSnapshotCount++;
 
-            foreach (var keyValuePair in snapshot.EstimateMemory())
+            if (enableDetailedMetrics)
             {
-                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
+                foreach (var keyValuePair in snapshot.EstimateDetailedMemory())
+                {
+                    Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
+                }
+                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
             }
 
-            Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
+            long compactedBytes = snapshot.Content.EstimateCompactedMemory();
+            Metrics.CompactedSnapshotMemory += compactedBytes;
+            Metrics.TotalSnapshotMemory += compactedBytes;
 
             return true;
         }
@@ -143,12 +149,19 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             Metrics.SnapshotCount++;
 
-            var memory = snapshot.EstimateMemory(); // Note: This is slow, do it outside.
-            foreach (var keyValuePair in memory)
+            if (enableDetailedMetrics)
             {
-                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
+                var memory = snapshot.EstimateDetailedMemory();
+                foreach (var keyValuePair in memory)
+                {
+                    Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
+                }
+                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
             }
-            Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
+
+            long totalBytes = snapshot.EstimateMemory();
+            Metrics.SnapshotMemory += totalBytes;
+            Metrics.TotalSnapshotMemory += totalBytes;
 
             return true;
         }
@@ -181,12 +194,19 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             Metrics.CompactedSnapshotCount--;
 
-            var memory = existingState.EstimateMemory();
-            foreach (var keyValuePair in memory)
+            if (enableDetailedMetrics)
             {
-                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
+                var memory = existingState.EstimateDetailedMemory();
+                foreach (var keyValuePair in memory)
+                {
+                    Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
+                }
+                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
             }
-            Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
+
+            long compactedBytes = existingState.Content.EstimateCompactedMemory();
+            Metrics.CompactedSnapshotMemory -= compactedBytes;
+            Metrics.TotalSnapshotMemory -= compactedBytes;
 
             existingState.Dispose();
 
@@ -207,12 +227,19 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
                 sortedSnapshots.Remove(stateId);
             }
 
-            var memory = existingState.EstimateMemory();
-            foreach (var keyValuePair in memory)
+            if (enableDetailedMetrics)
             {
-                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
+                var memory = existingState.EstimateDetailedMemory();
+                foreach (var keyValuePair in memory)
+                {
+                    Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
+                }
+                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
             }
-            Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
+
+            long totalBytes = existingState.EstimateMemory();
+            Metrics.SnapshotMemory -= totalBytes;
+            Metrics.TotalSnapshotMemory -= totalBytes;
 
             existingState.Dispose(); // After memory
         }

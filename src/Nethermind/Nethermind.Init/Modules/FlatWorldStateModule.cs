@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
@@ -35,7 +36,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<TrieNodeCache>()
             .AddSingleton<SnapshotCompactor>()
             .AddSingleton<PersistenceManager>()
-            .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            .AddSingleton<ISnapshotRepository>((ctx) => new SnapshotRepository(ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<ITrieWarmer, TrieWarmer>()
 
