@@ -254,6 +254,15 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.LOG3] = &InstructionLog<TGasPolicy, Op3>;
         lookup[(int)Instruction.LOG4] = &InstructionLog<TGasPolicy, Op4>;
 
+        // EIP-8024: Backward-compatible stack operations for legacy code.
+        // These are registered first and will be overridden by EOF handlers if EOF is enabled.
+        if (spec.IsEip8024Enabled)
+        {
+            lookup[(int)Instruction.DUPN] = &InstructionDupN<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.SWAPN] = &InstructionSwapN<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.EXCHANGE] = &InstructionExchange<TGasPolicy, TTracingInst>;
+        }
+
         // Extended opcodes for EO (EoF) mode.
         if (spec.IsEofEnabled)
         {
@@ -267,9 +276,9 @@ internal static unsafe partial class EvmInstructions
             lookup[(int)Instruction.CALLF] = &InstructionCallFunction;
             lookup[(int)Instruction.RETF] = &InstructionReturnFunction;
             lookup[(int)Instruction.JUMPF] = &InstructionJumpFunction;
-            lookup[(int)Instruction.DUPN] = &InstructionDupN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.SWAPN] = &InstructionSwapN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.EXCHANGE] = &InstructionExchange<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.DUPN] = &InstructionEofDupN<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.SWAPN] = &InstructionEofSwapN<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.EXCHANGE] = &InstructionEofExchange<TGasPolicy, TTracingInst>;
             lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate<TGasPolicy, TTracingInst>;
             lookup[(int)Instruction.RETURNCODE] = &InstructionReturnCode;
         }

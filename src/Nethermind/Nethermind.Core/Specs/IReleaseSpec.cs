@@ -321,6 +321,11 @@ namespace Nethermind.Core.Specs
         bool IsEofEnabled { get; }
 
         /// <summary>
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE for legacy (non-EOF) code
+        /// </summary>
+        bool IsEip8024Enabled { get; }
+
+        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }

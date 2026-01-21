@@ -572,6 +572,153 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// EIP-8024: DUPN instruction for (non-EOF) code.
+    /// Duplicates a stack item based on an immediate operand with extended encoding.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+            goto BadInstruction;
+
+        byte imm = code[programCounter];
+        if (!TryDecodeSingle(imm, out int depth))
+            goto BadInstruction;
+
+        // depth is 1-indexed (17 = DUP17 = duplicate 17th item from top)
+        EvmExceptionType result = stack.Dup<TTracingInst>(depth);
+        programCounter += 1;
+        return result;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
+    /// <summary>
+    /// EIP-8024: SWAPN instruction for (non-EOF) code.
+    /// Swaps top of stack with the Nth element, where N is decoded from the immediate.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+            goto BadInstruction;
+
+        byte imm = code[programCounter];
+        if (!TryDecodeSingle(imm, out int depth))
+            goto BadInstruction;
+
+        // depth is 1-indexed (17 = SWAP17 = swap top with 17th item)
+        EvmExceptionType result = stack.Swap<TTracingInst>(depth);
+        programCounter += 1;
+        return result;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
+    /// <summary>
+    /// EIP-8024: EXCHANGE instruction for (non-EOF) code.
+    /// Exchanges stack items at positions (n + 1) and (m + 1) from the top.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+            goto BadInstruction;
+
+        byte imm = code[programCounter];
+        if (!TryDecodePair(imm, out int n, out int m))
+            goto BadInstruction;
+
+        // n and m are 1-based offsets below the top of the stack.
+        if (!stack.Exchange<TTracingInst>(n + 1, m + 1))
+            goto StackUnderflow;
+
+        programCounter += 1;
+        return EvmExceptionType.None;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Decodes a single-byte immediate for EIP-8024 DUPN/SWAPN instructions.
+    /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
+    /// Valid ranges: 0x00-0x5a (0-90) and 0x80-0xff (128-255).
+    /// </summary>
+    /// <param name="imm">The immediate byte from the code.</param>
+    /// <param name="depth">The decoded stack depth (17-235).</param>
+    /// <returns>True if the immediate is valid; false if in disallowed range.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodeSingle(byte imm, out int depth)
+    {
+        // Disallowed range: 0x5b-0x7f (91-127)
+        if (imm >= 0x5b && imm <= 0x7f)
+        {
+            depth = 0;
+            return false;
+        }
+        // For imm <= 90: depth = imm + 17 (range 17-107)
+        // For imm >= 128: depth = imm - 20 (range 108-235)
+        depth = imm <= 90 ? imm + 17 : imm - 20;
+        return true;
+    }
+
+    /// <summary>
+    /// Decodes a single-byte immediate for EIP-8024 EXCHANGE instruction.
+    /// Disallowed range: 0x50-0x7f (80-127) to avoid PUSH opcode patterns.
+    /// Valid ranges: 0x00-0x4f (0-79) and 0x80-0xff (128-255).
+    /// Returns n and m as 1-based offsets below the top of the stack; the exchange swaps
+    /// positions (n + 1) and (m + 1).
+    /// </summary>
+    /// <param name="imm">The immediate byte from the code.</param>
+    /// <param name="n">The first stack offset below the top (1-based).</param>
+    /// <param name="m">The second stack offset below the top (1-based).</param>
+    /// <returns>True if the immediate is valid; false if in disallowed range.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryDecodePair(byte imm, out int n, out int m)
+    {
+        // Disallowed range: 0x50-0x7f (80-127)
+        if (imm >= 0x50 && imm <= 0x7f)
+        {
+            n = m = 0;
+            return false;
+        }
+
+        // k = x if x <= 79 else x - 48
+        int k = imm <= 79 ? imm : imm - 48;
+        int q = k >> 4;  // k / 16
+        int r = k & 0x0f; // k % 16
+
+        if (q < r)
+        {
+            n = q + 1;
+            m = r + 1;
+        }
+        else
+        {
+            n = r + 1;
+            m = 29 - q;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Executes a LOG operation which records a log entry with topics and data.
     /// Pops data offset and length, then pops a fixed number of topics from the stack.
     /// Validates memory expansion and deducts gas accordingly.
