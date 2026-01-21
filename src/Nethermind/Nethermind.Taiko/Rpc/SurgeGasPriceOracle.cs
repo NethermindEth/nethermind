@@ -5,6 +5,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -15,26 +16,29 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
-using Nethermind.Abi;
 
 namespace Nethermind.Taiko.Rpc;
 
 public class SurgeGasPriceOracle : GasPriceOracle
 {
     private const string ClassName = nameof(SurgeGasPriceOracle);
-    private const int BlobSize = (4 * 31 + 3) * 1024 - 4;
+    private const int BlobGasPerBlob = 131072;
 
-    // ABI signatures and encoded function selectors for TaikoInbox
-    private static readonly AbiSignature GetStats2Signature = new("getStats2");
-    private static readonly AbiSignature GetBatchSignature = new("getBatch", AbiType.UInt64);
-    private static readonly string GetStats2HexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetStats2Signature));
+    // ABI signatures and encoded function selectors for TaikoInbox contract.
+    private static readonly AbiSignature GetCoreStateSignature = new("getCoreState");
+    private static readonly AbiSignature GetConfigSignature = new("getConfig");
+    private static readonly string GetCoreStateHexData = "0x" + Convert.ToHexString(
+        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetCoreStateSignature));
+    private static readonly string GetConfigHexData = "0x" + Convert.ToHexString(
+        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetConfigSignature));
 
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;
-    private readonly GasUsageRingBuffer _gasUsageBuffer;
 
     private DateTime _lastGasPriceCalculation = DateTime.MinValue;
+    private ulong _averageGasUsage;
+    private ulong _inboxRingBufferSize;
+    private bool _isInboxRingBufferFull;
 
     public SurgeGasPriceOracle(
         IBlockFinder blockFinder,
@@ -46,8 +50,6 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         _l1RpcClient = l1RpcClient;
         _surgeConfig = surgeConfig;
-        _gasUsageBuffer = new GasUsageRingBuffer(_surgeConfig.L2GasUsageWindowSize);
-        _gasUsageBuffer.Add(_surgeConfig.L2GasPerL2Batch);
     }
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
@@ -63,7 +65,6 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         Hash256 headBlockHash = headBlock.Hash!;
         bool forceRefresh = ForceRefreshGasPrice();
-        ulong averageGasUsage;
 
         // Check if the cached price exists.
         if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
@@ -74,14 +75,19 @@ public class SurgeGasPriceOracle : GasPriceOracle
                 if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
                 return price!.Value;
             }
-
-            // Since the head block has not changed, we can reuse the existing average gas usage (even with force refresh)
-            averageGasUsage = _gasUsageBuffer.Average;
         }
         else
         {
-            averageGasUsage = await GetAverageGasUsageAcrossBatches();
+            // Since the head block has changed, we need to re-compute the average gas usage and
+            // update the inbox ring buffer full status
+            _averageGasUsage = GetAverageGasUsagePerBlock();
+
+            if (!_isInboxRingBufferFull)
+            {
+                await UpdateInboxRingBufferFullAsync();
+            }
         }
+
 
         // Get the fee history from the L1 client with RPC
         L1FeeHistoryResults? feeHistory = await GetL1FeeHistory();
@@ -91,23 +97,30 @@ public class SurgeGasPriceOracle : GasPriceOracle
             return FallbackGasPrice();
         }
 
-        // Get the latest base fee and blob base fee from the fee history
-        UInt256 l1BaseFee = feeHistory.BaseFeePerGas[^1];
-        UInt256 l1BlobBaseFee = feeHistory.BaseFeePerBlobGas.Length > 0 ? feeHistory.BaseFeePerBlobGas[^1] : UInt256.Zero;
-        UInt256 l1AverageBaseFee = (UInt256)feeHistory.BaseFeePerGas.Average(fee => (decimal)fee);
+        // Compute TWAP for L1 base fee and blob base fee
+        UInt256 twapL1BaseFee = (UInt256)feeHistory.BaseFeePerGas.Average(fee => (decimal)fee);
+        UInt256 twapBlobBaseFee = feeHistory.BaseFeePerBlobGas.Length > 0
+            ? (UInt256)feeHistory.BaseFeePerBlobGas.Average(fee => (decimal)fee)
+            : UInt256.Zero;
 
-        // Compute the gas cost to post a batch on L1
-        UInt256 costWithCallData = _surgeConfig.BatchPostingGasWithCallData * l1BaseFee;
-        UInt256 costWithBlobs = _surgeConfig.BatchPostingGasWithoutCallData * l1BaseFee + BlobSize * l1BlobBaseFee;
-        UInt256 minProposingCost = UInt256.Min(costWithCallData, costWithBlobs);
+        // Based on the inbox ring buffer status, use the appropriate fixed proposal gas.
+        UInt256 gasRequiredForProposal = _isInboxRingBufferFull ?
+            _surgeConfig.FixedProposalGasWithFullInboxBuffer
+            : _surgeConfig.FixedProposalGas;
 
-        UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
+        // Compute submission cost per batch
+        UInt256 submissionCostPerBatch = (gasRequiredForProposal + _surgeConfig.FixedProvingGas) * twapL1BaseFee
+                                       + _surgeConfig.TargetBlobCount * BlobGasPerBlob * twapBlobBaseFee
+                                       + _surgeConfig.EstimatedOffchainProvingCost;
+
+        // Compute submission cost per block
+        UInt256 submissionCostPerBlock = submissionCostPerBatch / _surgeConfig.BlocksPerBatch;
 
         // Reduce the average gas usage to prevent upward trend
-        averageGasUsage = averageGasUsage * (ulong)_surgeConfig.AverageGasUsagePercentage / 100;
+        _averageGasUsage = _averageGasUsage * (ulong)_surgeConfig.AverageGasUsagePercentage / 100;
 
-        UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
-                                   Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
+        UInt256 gasPriceEstimate = submissionCostPerBlock /
+                                   Math.Max(_averageGasUsage, _surgeConfig.L2BlockGasTarget);
 
         // Adjust the gas price estimate with the config values.
         UInt256 adjustedGasPriceEstimate;
@@ -120,6 +133,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
             adjustedGasPriceEstimate = gasPriceEstimate + gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
             adjustedGasPriceEstimate = adjustedGasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
         }
+
         // Update the cache and timestamp
         _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
         _lastGasPriceCalculation = DateTime.UtcNow;
@@ -127,8 +141,8 @@ public class SurgeGasPriceOracle : GasPriceOracle
         if (_logger.IsDebug)
         {
             _logger.Debug($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
-                          $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, " +
-                          $"L1 Average Base Fee: {l1AverageBaseFee}, Average Gas Usage: {averageGasUsage}, " +
+                          $"TWAP L1 Base Fee: {twapL1BaseFee}, TWAP Blob Base Fee: {twapBlobBaseFee}, " +
+                          $"Submission Cost Per Block: {submissionCostPerBlock}, Average Gas Usage: {_averageGasUsage}, " +
                           $"Adjusted with boost base fee percentage of {_surgeConfig.BoostBaseFeePercentage}% " +
                           $"and sharing percentage of {_surgeConfig.SharingPercentage}%");
         }
@@ -161,83 +175,103 @@ public class SurgeGasPriceOracle : GasPriceOracle
     }
 
     /// <summary>
-    /// Get the average gas usage across L2GasUsageWindowSize batches.
-    /// It uses the TaikoInbox contract to get the total number of blocks in the latest proposed batch.
+    /// Get the average gas usage per block across L2GasUsageWindowSize recent blocks.
     /// </summary>
-    private async ValueTask<ulong> GetAverageGasUsageAcrossBatches()
+    private ulong GetAverageGasUsagePerBlock()
     {
-        // Get the current batch information
-        ulong? numBatches = await GetNumBatches();
-        if (numBatches is null or < 1)
+        Block? headBlock = _blockFinder.Head;
+        if (headBlock is null)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get numBatches");
-            return 0;
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] No head block available for gas usage tracking");
+            return _surgeConfig.L2BlockGasTarget;
         }
 
-        // Get the latest proposed batch and the previous batch to compute the start and end block ids
-        ulong? currentBatchLastBlockId = numBatches > 1 ? await GetLastBlockId(numBatches.Value - 1) : 0;
-        ulong? previousBatchLastBlockId = numBatches > 2 ? await GetLastBlockId(numBatches.Value - 2) : 0;
-
-        if (currentBatchLastBlockId == null || previousBatchLastBlockId == null)
-        {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get batch lastBlockId");
-            return 0;
-        }
-
-        ulong startBlockId = previousBatchLastBlockId.Value == 0 ? 0 : previousBatchLastBlockId.Value + 1;
-        ulong endBlockId = currentBatchLastBlockId.Value;
-
-        // Calculate total gas used for the batch
         ulong totalGasUsed = 0;
-        for (ulong blockId = startBlockId; blockId <= endBlockId; blockId++)
+        int count = 0;
+        long currentBlockNumber = headBlock.Number;
+
+        while (count < _surgeConfig.L2GasUsageWindowSize && currentBlockNumber >= 0)
         {
-            Block? block = _blockFinder.FindBlock((long)blockId, BlockTreeLookupOptions.RequireCanonical);
+            Block? block = _blockFinder.FindBlock(currentBlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block != null)
             {
                 totalGasUsed += (ulong)block.GasUsed;
+                count++;
             }
+            currentBlockNumber--;
         }
 
-        // Record the batch's gas usage and compute the average
-        _gasUsageBuffer.Add(totalGasUsed);
+        ulong average = count > 0 ? totalGasUsed / (ulong)count : _surgeConfig.L2BlockGasTarget;
 
         if (_logger.IsTrace)
         {
-            _logger.Trace($"[{ClassName}] Total gas used: {totalGasUsed}, " +
-                          $"startBlockId: {startBlockId}, endBlockId: {endBlockId}, " +
-                          $"Average gas usage: {_gasUsageBuffer.Average}, " +
-                          $"L2GasUsageWindowSize: {_surgeConfig.L2GasUsageWindowSize}, " +
-                          $"numBatches: {numBatches}");
+            _logger.Trace($"[{ClassName}] Average gas usage: {average}, " +
+                          $"Head block: {headBlock.Number}, Blocks sampled: {count}");
         }
 
-        return _gasUsageBuffer.Average;
+        return average;
     }
 
     /// <summary>
-    /// Get the number of batches from the TaikoInbox contract's getStats2() function.
+    /// Update the inbox ring buffer full status.
+    /// Ring buffer is full when: nextProposalId - lastFinalizedProposalId >= ringBufferSize
     /// </summary>
-    private async ValueTask<ulong?> GetNumBatches()
+    private async ValueTask UpdateInboxRingBufferFullAsync()
     {
-        string? response = await CallTaikoInboxFunction(GetStats2HexData);
+        if (_inboxRingBufferSize == 0)
+        {
+            ulong? ringBufferSize = await GetInboxRingBufferSize();
+            if (ringBufferSize is null) return;
+            _inboxRingBufferSize = ringBufferSize.Value;
+        }
 
-        if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
+        ulong? unfinalizedCount = await GetUnfinalizedProposalCount();
+        if (unfinalizedCount is null) return;
 
-        // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
-        return ulong.Parse(response[2..66], NumberStyles.HexNumber);
+        _isInboxRingBufferFull = unfinalizedCount.Value >= _inboxRingBufferSize;
     }
 
     /// <summary>
-    /// Get the last block id from the TaikoInbox contract's getBatch(uint64) function.
+    /// Get ringBufferSize from the TaikoInbox contract's getConfig() function.
+    /// Config struct has ringBufferSize at word index 10 (0-indexed).
     /// </summary>
-    private async ValueTask<ulong?> GetLastBlockId(ulong batchId)
+    private async ValueTask<ulong?> GetInboxRingBufferSize()
     {
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetBatchSignature, batchId);
-        string? response = await CallTaikoInboxFunction("0x" + Convert.ToHexString(encodedData));
+        string? response = await CallTaikoInboxFunction(GetConfigHexData);
 
-        if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
+        // ringBufferSize is at word 10: offset = 2 + 10*64 = 642, length = 64
+        if (string.IsNullOrEmpty(response) || response.Length < 706)
+        {
+            if (_logger.IsDebug) _logger.Debug($"[{ClassName}] Failed to get config, response length: {response?.Length}");
+            return null;
+        }
 
-        // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
-        return ulong.Parse(response[66..130], NumberStyles.HexNumber);
+        return ulong.Parse(response[642..706], NumberStyles.HexNumber);
+    }
+
+    /// <summary>
+    /// Get the count of unfinalized proposals (nextProposalId - lastFinalizedProposalId) from getCoreState().
+    /// CoreState struct layout:
+    ///   Word 0: nextProposalId (uint48)
+    ///   Word 2: lastFinalizedProposalId (uint48)
+    /// </summary>
+    private async ValueTask<ulong?> GetUnfinalizedProposalCount()
+    {
+        string? response = await CallTaikoInboxFunction(GetCoreStateHexData);
+
+        // Need at least 3 fields: 2 + 3*64 = 194 chars
+        if (string.IsNullOrEmpty(response) || response.Length < 194)
+        {
+            if (_logger.IsDebug) _logger.Debug($"[{ClassName}] Failed to get core state, response length: {response?.Length}");
+            return null;
+        }
+
+        // nextProposalId at [2..66]
+        ulong nextProposalId = ulong.Parse(response[2..66], NumberStyles.HexNumber);
+        // lastFinalizedProposalId at [130..194]
+        ulong lastFinalizedProposalId = ulong.Parse(response[130..194], NumberStyles.HexNumber);
+
+        return nextProposalId - lastFinalizedProposalId;
     }
 
     /// <summary>
@@ -255,47 +289,11 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Contract call to TaikoInbox with data: {data} failed: {ex.Message}");
+            if (_logger.IsDebug) _logger.Debug($"[{ClassName}] Contract call to TaikoInbox with data: {data} failed: {ex.Message}");
             return null;
         }
     }
 
-    /// <summary>
-    /// A fixed-size ring buffer for tracking gas usage and computing moving averages.
-    ///
-    /// +----+----+----+----+
-    /// | A  | B  | C  | D  |
-    /// +----+----+----+----+
-    ///       ^
-    /// insertAt = 1 (next insert location)
-    /// average = (A + B + C + D) / 4
-    /// </summary>
-    private sealed class GasUsageRingBuffer(int capacity)
-    {
-        private readonly ulong[] _buffer = new ulong[capacity];
-        private int _insertAt;
-        private int _numItems;
-        private ulong _sum;
-
-        public ulong Average => _numItems == 0 ? 0 : _sum / (ulong)_numItems;
-
-        public void Add(ulong gasUsed)
-        {
-            // If the buffer is full, overwrite the oldest value
-            if (_numItems == _buffer.Length)
-            {
-                _sum -= _buffer[_insertAt];
-            }
-            else
-            {
-                _numItems++;
-            }
-
-            _buffer[_insertAt] = gasUsed;
-            _sum += _buffer[_insertAt];
-            _insertAt = (_insertAt + 1) % _buffer.Length;
-        }
-    }
 }
 
 /// <summary>
