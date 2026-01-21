@@ -104,7 +104,12 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         {
             stream.StartSequence(SignaturesLength(item));
             foreach (Signature sig in item.Signatures)
-                stream.Encode(sig.BytesWithRecovery);
+            {
+                stream.StartByteArray(65, false);
+                stream.Write(sig.RAsSpan);
+                stream.Write(sig.SAsSpan);
+                stream.WriteByte(sig.RecoveryId);
+            }
         }
 
         stream.Encode(item.GapNumber);
