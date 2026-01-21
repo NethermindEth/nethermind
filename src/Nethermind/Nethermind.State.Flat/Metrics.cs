@@ -81,11 +81,6 @@ public static class Metrics
     public static ConcurrentDictionary<TwoStringLabel, long> SnapshotBundleEvents { get; } = new();
 
     [DetailedMetric]
-    [Description("Flat diff operation times")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["category", "type"])]
-    public static IMetricObserver FlatDiffTimes { get; set; } = new NoopMetricObserver();
-
-    [DetailedMetric]
     [Description("Snapshot bundle times")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type", "is_prewarmer"])]
     public static IMetricObserver SnapshotBundleTimes { get; set; } = new NoopMetricObserver();

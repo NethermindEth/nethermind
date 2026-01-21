@@ -307,12 +307,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
     {
-        long sw = Stopwatch.GetTimestamp();
-
         StateId startingBlock = snapshot.From;
         StateId endBlock = snapshot.To;
-        Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "repolock"));
-        sw = Stopwatch.GetTimestamp();
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
@@ -331,9 +327,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "add_block"));
-        sw = Stopwatch.GetTimestamp();
-
         if (_inlineCompaction)
         {
             RunCompactJobSync(endBlock, transientResource, _cancelTokenSource.Token).Wait();
@@ -350,15 +343,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
-                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "try_write_failed"));
-                sw = Stopwatch.GetTimestamp();
                 _logger.Warn("Compactor job stall!");
                 _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
-                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "write_async"));
-            }
-            else
-            {
-                Metrics.FlatDiffTimes.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("add_snapshot", "try_write_ok"));
             }
         }
     }
