@@ -563,13 +563,6 @@ public sealed class SnapshotBundle : IDisposable
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
 
-            Metrics.SnapshotBundleResultSize.Observe(transientResource.CachedNodes, new StringLabel("cached_nodes"));
-            Metrics.SnapshotBundleResultSize.Observe(transientResource.PrewarmedAddresses.Count, new StringLabel("maybe_warmup_dict"));
-            Metrics.SnapshotBundleResultSize.Observe(snapshot.AccountsCount, new StringLabel("account"));
-            Metrics.SnapshotBundleResultSize.Observe(snapshot.StoragesCount, new StringLabel("storage"));
-            Metrics.SnapshotBundleResultSize.Observe(snapshot.StateNodesCount, new StringLabel("state_node"));
-            Metrics.SnapshotBundleResultSize.Observe(snapshot.StorageNodesCount, new StringLabel("storage_node"));
-
             return (snapshot, transientResource);
         }
         else

@@ -60,63 +60,30 @@ public static class Metrics
     [Description("Total estimated snapshot memory in bytes")]
     public static long TotalSnapshotMemory { get; set; }
 
-    // === Gauges with single label ===
     [DetailedMetric]
-    [Description("Active snapshot content by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<StringLabel, long> ActiveSnapshotContent { get; } = new();
+    [Description("Active pooled resources by category and type")]
+    [KeyIsLabel("category", "resource_type")]
+    public static ConcurrentDictionary<TwoStringLabel, long> ActivePooledResource { get; } = new();
 
     [DetailedMetric]
-    [Description("Cached snapshot content by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<StringLabel, long> CachedSnapshotContent { get; } = new();
+    [Description("Cached pooled resources by category and type")]
+    [KeyIsLabel("category", "resource_type")]
+    public static ConcurrentDictionary<TwoStringLabel, long> CachedPooledResource { get; } = new();
 
     [DetailedMetric]
-    [Description("Pool full snapshot content by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<StringLabel, long> PoolFullSnapshotContent { get; } = new();
-
-    [DetailedMetric]
-    [Description("Active cached resource by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<StringLabel, long> ActiveCachedResource { get; } = new();
-
-    [DetailedMetric]
-    [Description("Cached cached resource by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<StringLabel, long> CachedCachedResource { get; } = new();
-
-    [DetailedMetric]
-    [Description("Pool full cached resource by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<StringLabel, long> PoolFullCachedResource { get; } = new();
-
-    // === Counters with labels ===
-    [DetailedMetric]
-    [Description("Created snapshot content count")]
-    [KeyIsLabel("compacted")]
-    public static ConcurrentDictionary<StringLabel, long> CreatedSnapshotContent { get; } = new();
-
-    [DetailedMetric]
-    [Description("Created cached resource count")]
-    [KeyIsLabel("compacted")]
-    public static ConcurrentDictionary<StringLabel, long> CreatedCachedResource { get; } = new();
+    [Description("Created pooled resources by category and type")]
+    [KeyIsLabel("category", "resource_type")]
+    public static ConcurrentDictionary<TwoStringLabel, long> CreatedPooledResource { get; } = new();
 
     [DetailedMetric]
     [Description("Snapshot bundle events")]
     [KeyIsLabel("type", "is_prewarmer")]
     public static ConcurrentDictionary<TwoStringLabel, long> SnapshotBundleEvents { get; } = new();
 
-    // === Histograms ===
     [DetailedMetric]
     [Description("Flat diff operation times")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["category", "type"])]
     public static IMetricObserver FlatDiffTimes { get; set; } = new NoopMetricObserver();
-
-    [DetailedMetric]
-    [Description("Snapshot bundle result size")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
-    public static IMetricObserver SnapshotBundleResultSize { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
     [Description("Snapshot bundle times")]

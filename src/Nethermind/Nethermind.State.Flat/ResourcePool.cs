@@ -57,7 +57,6 @@ public class ResourcePool(IFlatDbConfig flatConfig)
     {
         MainBlockProcessing,
         PostMainBlockProcessing,
-        StateReader,
         ReadOnlyProcessingEnv,
         MidCompactor,
         Compactor,
@@ -93,55 +92,54 @@ public class ResourcePool(IFlatDbConfig flatConfig)
         private ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new TransientResource.Size(1024, 1024);
-        private readonly StringLabel _usageLabel = new(usage.ToString());
+        private readonly TwoStringLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
+        private readonly TwoStringLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
         {
-            Metrics.ActiveSnapshotContent.AddBy(_usageLabel, 1);
+            Metrics.ActivePooledResource.AddBy(_snapshotLabel, 1);
             if (_snapshotPool.TryGet(out var snapshotContent))
             {
-                Metrics.CachedSnapshotContent[_usageLabel] = (long)_snapshotPool.PooledItemCount;
+                Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
                 return snapshotContent;
             }
 
-            Metrics.CreatedSnapshotContent.AddBy(_usageLabel, 1);
+            Metrics.CreatedPooledResource.AddBy(_snapshotLabel, 1);
             return new SnapshotContent();
         }
 
         public void ReturnSnapshotContent(SnapshotContent snapshotContent)
         {
-            Metrics.ActiveSnapshotContent.AddBy(_usageLabel, -1);
+            Metrics.ActivePooledResource.AddBy(_snapshotLabel, -1);
             if (!_snapshotPool.Return(snapshotContent))
             {
-                Metrics.PoolFullSnapshotContent.AddBy(_usageLabel, 1);
             }
 
-            Metrics.CachedSnapshotContent[_usageLabel] = (long)_snapshotPool.PooledItemCount;
+            Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
         }
 
         public TransientResource GetCachedResource()
         {
-            Metrics.ActiveCachedResource.AddBy(_usageLabel, 1);
+            Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, 1);
             if (_cachedResourcePool.TryGet(out var cachedResource))
             {
-                Metrics.CachedCachedResource[_usageLabel] = (long)_cachedResourcePool.PooledItemCount;
+                Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
                 return cachedResource;
             }
 
-            Metrics.CreatedCachedResource.AddBy(_usageLabel, 1);
+            Metrics.CreatedPooledResource.AddBy(_cachedResourceLabel, 1);
             return new TransientResource(_lastCachedResourceSize);
         }
 
         public void ReturnCachedResource(TransientResource transientResource)
         {
-            Metrics.ActiveCachedResource.AddBy(_usageLabel, -1);
+            Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, -1);
             if (!_cachedResourcePool.Return(transientResource))
             {
                 _lastCachedResourceSize = transientResource.GetSize();
-                Metrics.PoolFullCachedResource.AddBy(_usageLabel, 1);
             }
 
-            Metrics.CachedCachedResource[_usageLabel] = (long)_cachedResourcePool.PooledItemCount;
+            Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
         }
     }
 }
