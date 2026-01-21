@@ -26,10 +26,12 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["payload"])]
     public static IMetricObserver FlatPersistenceSnapshotSize { get; set; } = new NoopMetricObserver();
 
+    [DetailedMetric]
     [CounterMetric]
     [Description("Importer entries count")]
     public static long ImporterEntriesCount { get; set; }
 
+    [DetailedMetric]
     [CounterMetric]
     [Description("Importer entries count flat")]
     public static long ImporterEntriesCountFlat { get; set; }
