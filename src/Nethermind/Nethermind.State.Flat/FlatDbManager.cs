@@ -379,7 +379,46 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public void FlushCache(CancellationToken cancellationToken)
     {
-        Console.Error.WriteLine("Flush cache not implemented");
+        if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
+
+        // Step 1: Wait for pending jobs to complete
+        int maxWaitIterations = 1000;
+        int iteration = 0;
+        while (iteration < maxWaitIterations)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+
+            if (_compactorJobs.Reader.Count == 0 &&
+                _populateTrieNodeCacheJobs.Reader.Count == 0 &&
+                _persistenceJobs.Reader.Count == 0)
+            {
+                Thread.Sleep(100);
+                if (_compactorJobs.Reader.Count == 0 &&
+                    _populateTrieNodeCacheJobs.Reader.Count == 0 &&
+                    _persistenceJobs.Reader.Count == 0)
+                {
+                    break;
+                }
+            }
+            Thread.Sleep(10);
+            iteration++;
+        }
+
+        if (cancellationToken.IsCancellationRequested) return;
+
+        // Step 2: Force persist all snapshots
+        StateId persistedState = _persistenceManager.FlushToPersistence();
+
+        if (cancellationToken.IsCancellationRequested) return;
+
+        // Step 3: Remove all snapshots up to persisted state
+        _snapshotRepository.RemoveStatesUntil(persistedState);
+
+        // Step 4: Clear caches
+        ClearReadOnlyBundleCache();
+        _trieNodeCache.Clear();
+
+        if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
 
     public bool HasStateForBlock(StateId stateId)

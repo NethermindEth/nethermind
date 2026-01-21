@@ -283,6 +283,59 @@ public class PersistenceManager : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Force persist all snapshots regardless of finalization status.
+    /// Used by FlushCache to ensure all state is persisted before clearing caches.
+    /// </summary>
+    internal StateId FlushToPersistence()
+    {
+        StateId currentPersistedState = GetCurrentPersistedStateId();
+        StateId? latestStateId = _snapshotRepository.GetLastSnapshotId();
+
+        if (latestStateId is null)
+        {
+            return currentPersistedState;
+        }
+
+        // Persist all snapshots from current persisted state to latest
+        while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
+        {
+            // Try finalized snapshots first (compacted, then non-compacted)
+            Snapshot? snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(
+                currentPersistedState.BlockNumber + _compactSize,
+                currentPersistedState,
+                compactedSnapshot: true);
+
+            snapshotToPersist ??= GetFinalizedSnapshotAtBlockNumber(
+                currentPersistedState.BlockNumber + 1,
+                currentPersistedState,
+                compactedSnapshot: false);
+
+            // Fall back to first available snapshot if finalized not available
+            snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
+                currentPersistedState.BlockNumber + _compactSize,
+                currentPersistedState,
+                compactedSnapshot: true);
+
+            snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
+                currentPersistedState.BlockNumber + 1,
+                currentPersistedState,
+                compactedSnapshot: false);
+
+            if (snapshotToPersist is null)
+            {
+                break;
+            }
+
+            using var _ = snapshotToPersist;
+            PersistSnapshot(snapshotToPersist);
+            _currentPersistedStateId = snapshotToPersist.To;
+            currentPersistedState = _currentPersistedStateId;
+        }
+
+        return currentPersistedState;
+    }
+
     internal void PersistSnapshot(Snapshot snapshot)
     {
         long compactLength = snapshot.To.BlockNumber! - snapshot.From.BlockNumber!;

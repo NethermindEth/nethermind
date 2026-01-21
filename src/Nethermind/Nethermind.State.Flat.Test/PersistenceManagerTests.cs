@@ -402,6 +402,124 @@ public class PersistenceManagerTests
 
     #endregion
 
+    #region FlushToPersistence Tests
+
+    [Test]
+    public void FlushToPersistence_NoSnapshots_ReturnsCurrentPersistedState()
+    {
+        // Arrange - no snapshots added
+        StateId persisted = Block0;
+
+        // Act
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        // Assert
+        Assert.That(result, Is.EqualTo(persisted));
+    }
+
+    [Test]
+    public void FlushToPersistence_WithFinalizedSnapshots_PersistsFinalizedFirst()
+    {
+        // Arrange
+        StateId state16 = CreateStateId(16);
+        StateId state32 = CreateStateId(32);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(state16.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(32, new Hash256(state32.StateRoot.Bytes));
+
+        using var snapshot1 = CreateSnapshot(Block0, state16, compacted: true);
+        using var snapshot2 = CreateSnapshot(state16, state32, compacted: true);
+
+        var writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        // Act
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        // Assert
+        Assert.That(result, Is.EqualTo(state32));
+        _persistence.Received().CreateWriteBatch(Block0, state16);
+        _persistence.Received().CreateWriteBatch(state16, state32);
+    }
+
+    [Test]
+    public void FlushToPersistence_WithUnfinalizedSnapshots_FallsBackToFirstAvailable()
+    {
+        // Arrange - no finalization info available
+        StateId state16 = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // Nothing finalized
+
+        using var snapshot = CreateSnapshot(Block0, state16, compacted: true);
+
+        var writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        // Act
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        // Assert
+        Assert.That(result, Is.EqualTo(state16));
+        _persistence.Received().CreateWriteBatch(Block0, state16);
+    }
+
+    [Test]
+    public void FlushToPersistence_PrefersFinalizedOverUnfinalized()
+    {
+        // Arrange - two snapshots at same block, one finalized
+        StateId finalizedState = CreateStateId(16, rootByte: 1);
+        StateId unfinalizedState = CreateStateId(16, rootByte: 2);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(finalizedState.StateRoot.Bytes));
+
+        // Create both snapshots
+        using var finalizedSnapshot = CreateSnapshot(Block0, finalizedState, compacted: true);
+        using var unfinalizedSnapshot = CreateSnapshot(Block0, unfinalizedState, compacted: true);
+
+        var writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        // Act
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        // Assert - should persist finalized state
+        Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
+    }
+
+    [Test]
+    public void FlushToPersistence_PersistsMultipleSnapshots_InOrder()
+    {
+        // Arrange
+        StateId state1 = CreateStateId(1);
+        StateId state2 = CreateStateId(2);
+        StateId state3 = CreateStateId(3);
+
+        // No finalization - will use first available
+        _finalizedStateProvider.SetFinalizedBlockNumber(0);
+
+        using var snapshot1 = CreateSnapshot(Block0, state1, compacted: false);
+        using var snapshot2 = CreateSnapshot(state1, state2, compacted: false);
+        using var snapshot3 = CreateSnapshot(state2, state3, compacted: false);
+
+        var writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        // Act
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        // Assert
+        Assert.That(result, Is.EqualTo(state3));
+        Received.InOrder(() =>
+        {
+            _persistence.CreateWriteBatch(Block0, state1);
+            _persistence.CreateWriteBatch(state1, state2);
+            _persistence.CreateWriteBatch(state2, state3);
+        });
+    }
+
+    #endregion
+
     #region Helper Classes
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider

@@ -168,6 +168,24 @@ public class TrieNodeCache
     }
 
     /// <summary>
+    /// Clears all cached trie nodes.
+    /// </summary>
+    public void Clear()
+    {
+        for (int i = 0; i < ShardCount; i++)
+        {
+            for (int j = 0; j < _bucketSize; j++)
+            {
+                _cacheShards[i][j]?.PrunePersistedRecursively(1);
+            }
+            Array.Clear(_cacheShards[i]);
+            Interlocked.Exchange(ref _shardMemoryUsages[i], 0);
+        }
+        _nextShardToClear = 0;
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = 0;
+    }
+
+    /// <summary>
     /// Small cached for use in <see cref="TransientResource"/>. Its also sharded with the same shard mechanics so that
     /// when adding to trie node cache can be done in parallel.
     /// </summary>

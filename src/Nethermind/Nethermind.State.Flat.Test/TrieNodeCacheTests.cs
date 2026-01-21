@@ -241,6 +241,67 @@ public class TrieNodeCacheTests
         Assert.That(_cache.TryGet(address1, in path, hash1, out _), Is.True);
         Assert.That(_cache.TryGet(address2, in path, hash2, out _), Is.True);
     }
+
+    [Test]
+    public void Clear_RemovesAllCachedNodes()
+    {
+        // Add multiple nodes across different shards
+        var transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        TreePath path1 = TreePath.FromHexString("1000");
+        TreePath path2 = TreePath.FromHexString("2000");
+        TreePath path3 = TreePath.FromHexString("3000");
+        Hash256 hash1 = Keccak.Compute([1]);
+        Hash256 hash2 = Keccak.Compute([2]);
+        Hash256 hash3 = Keccak.Compute([3]);
+
+        transientResource.Nodes.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
+        transientResource.Nodes.Set(null, in path2, new TrieNode(NodeType.Branch, hash2));
+        transientResource.Nodes.Set(null, in path3, new TrieNode(NodeType.Extension, hash3));
+
+        _cache.Add(transientResource);
+
+        // Verify nodes are cached
+        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+
+        // Clear the cache
+        _cache.Clear();
+
+        // Verify all nodes are removed
+        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.False);
+        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.False);
+        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.False);
+    }
+
+    [Test]
+    public void Clear_RemovesStateAndStorageNodes()
+    {
+        var transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        Hash256 storageAddress = Keccak.Compute([0xaa]);
+        TreePath statePath = TreePath.FromHexString("1111");
+        TreePath storagePath = TreePath.FromHexString("2222");
+        Hash256 stateHash = Keccak.Compute([1]);
+        Hash256 storageHash = Keccak.Compute([2]);
+
+        transientResource.Nodes.Set(null, in statePath, new TrieNode(NodeType.Leaf, stateHash));
+        transientResource.Nodes.Set(storageAddress, in storagePath, new TrieNode(NodeType.Leaf, storageHash));
+
+        _cache.Add(transientResource);
+
+        // Verify nodes are cached
+        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
+        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+
+        // Clear the cache
+        _cache.Clear();
+
+        // Verify all nodes are removed
+        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.False);
+        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.False);
+    }
 }
 
 [TestFixture]
