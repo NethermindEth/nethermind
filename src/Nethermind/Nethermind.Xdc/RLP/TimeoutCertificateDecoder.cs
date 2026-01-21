@@ -103,8 +103,12 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         else
         {
             stream.StartSequence(SignaturesLength(item));
+            Span<byte> sigBuffer = stackalloc byte[Signature.Size];
             foreach (Signature sig in item.Signatures)
-                stream.Encode(sig.BytesWithRecovery);
+            {
+                sig.WriteBytesWithRecoveryTo(sigBuffer);
+                stream.Encode(sigBuffer);
+            }
         }
 
         stream.Encode(item.GapNumber);
