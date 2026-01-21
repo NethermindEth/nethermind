@@ -118,11 +118,11 @@ public static class Metrics
 
     [DetailedMetric]
     [Description("Time spend compacting snapshots")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 0, Count = 1, LabelNames = [])]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
     [Description("Time spend compaction snapshots for mid compaction")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 0, Count = 1, LabelNames = [])]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver MidCompactTime { get; set; } = new NoopMetricObserver();
 }
