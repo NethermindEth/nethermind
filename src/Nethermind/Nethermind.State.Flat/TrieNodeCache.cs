@@ -162,7 +162,7 @@ public class TrieNodeCache
             _nextShardToClear = (_nextShardToClear + 1) & 255; // Fast modulo 256
         }
 
-        if (wasPruned && _logger.IsInfo) _logger.Info($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
+        if (wasPruned && _logger.IsTrace) _logger.Trace($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
     }

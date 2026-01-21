@@ -297,10 +297,9 @@ public class PersistenceManager : IAsyncDisposable
     internal void PersistSnapshot(Snapshot snapshot)
     {
         long compactLength = snapshot.To.BlockNumber! - snapshot.From.BlockNumber!;
-        if (compactLength != _compactSize)
-        {
-            _logger.Warn($"ccompact length is {compactLength}");
-        }
+
+        // Usually at the start of the application
+        if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
         using var _rl = EnterReaderLockScope();
 
