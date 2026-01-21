@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Metric;
 using Nethermind.Int256;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -39,34 +35,8 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly TrieNodeCache _trieNodeCache;
-    private bool _isPrewarmer;
     private bool _isDisposed;
     private readonly ResourcePool _resourcePool;
-
-    // Cached label for this instance
-    private TwoStringLabel _nodeGetChangedLabel = null!;
-    private TwoStringLabel _nodeGetSnapshotsLabel = null!;
-    private TwoStringLabel _nodeGetTrieCacheLabel = null!;
-    private TwoStringLabel _nodeGetSelfDestructLabel = null!;
-    private TwoStringLabel _findStateNodeLabel = null!;
-    private TwoStringLabel _findStorageNodeLoadedNodesLabel = null!;
-    private TwoStringLabel _findStorageNodeChangedNodesLabel = null!;
-    private TwoStringLabel _findStateNodeTrieWarmerLabel = null!;
-    private TwoStringLabel _findStorageNodeLabel = null!;
-    private TwoStringLabel _findStorageNodeTrieWarmerLabel = null!;
-    private TwoStringLabel _setStateNodesTimeLabel = null!;
-    private TwoStringLabel _setStorageNodesTimeLabel = null!;
-    private TwoStringLabel _setSlotTimeLabel = null!;
-    private TwoStringLabel _setSlotToZeroTimeLabel = null!;
-    private TwoStringLabel _setAccountTimeLabel = null!;
-    private TwoStringLabel _loadStateRlpTrieWarmerLabel = null!;
-    private TwoStringLabel _loadStateRlpLabel = null!;
-    private TwoStringLabel _loadStorageRlpTrieWarmerLabel = null!;
-    private TwoStringLabel _loadStorageRlpLabel = null!;
-    private TwoStringLabel _accountGetLabel = null!;
-    private TwoStringLabel _slotGetLabel = null!;
-    private TwoStringLabel _snapshotAccountHitLabel = null!;
-    private TwoStringLabel _snapshotAccountMissLabel = null!;
 
     internal ResourcePool.Usage _usage;
 
@@ -81,7 +51,6 @@ public sealed class SnapshotBundle : IDisposable
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _usage = usage;
-        SetupMetric();
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
@@ -100,46 +69,6 @@ public sealed class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
     }
 
-    public void SetPrewarmer()
-    {
-        _isPrewarmer = true;
-        SetupMetric();
-    }
-
-    private void SetupMetric()
-    {
-        string isPrewarmerStr = _isPrewarmer.ToString();
-        _nodeGetChangedLabel = new TwoStringLabel("node_get_changed", isPrewarmerStr);
-        _nodeGetSnapshotsLabel = new TwoStringLabel("node_get_snapshots", isPrewarmerStr);
-        _nodeGetTrieCacheLabel = new TwoStringLabel("node_get_trie_cache", isPrewarmerStr);
-        _nodeGetSelfDestructLabel = new TwoStringLabel("node_get_self_destruct", isPrewarmerStr);
-        _accountGetLabel = new TwoStringLabel("account_get", isPrewarmerStr);
-        _slotGetLabel = new TwoStringLabel("slot_get", isPrewarmerStr);
-
-        _findStateNodeLabel = new TwoStringLabel("find_state_node", isPrewarmerStr);
-
-        _snapshotAccountHitLabel = new TwoStringLabel("snapshot_account_hit", isPrewarmerStr);
-        _snapshotAccountMissLabel = new TwoStringLabel("snapshot_account_miss", isPrewarmerStr);
-
-        _findStorageNodeLoadedNodesLabel = new TwoStringLabel("find_storage_node_loaded_nodes", isPrewarmerStr);
-        _findStorageNodeChangedNodesLabel = new TwoStringLabel("find_storage_node_changed_nodes", isPrewarmerStr);
-
-        _findStateNodeTrieWarmerLabel = new TwoStringLabel("find_state_node_trie_warmer", isPrewarmerStr);
-        _findStorageNodeLabel = new TwoStringLabel("find_storage_node", isPrewarmerStr);
-        _findStorageNodeTrieWarmerLabel = new TwoStringLabel("find_storage_node_trie_warmer", isPrewarmerStr);
-        _setSlotTimeLabel = new TwoStringLabel("set_slot", isPrewarmerStr);
-        _setSlotToZeroTimeLabel = new TwoStringLabel("set_slot_zero", isPrewarmerStr);
-        _setAccountTimeLabel = new TwoStringLabel("set_account", isPrewarmerStr);
-
-        _setStateNodesTimeLabel = new TwoStringLabel("set_state_nodes", isPrewarmerStr);
-        _setStorageNodesTimeLabel = new TwoStringLabel("set_storage_nodes", isPrewarmerStr);
-
-        _loadStateRlpTrieWarmerLabel = new TwoStringLabel("load_state_rlp_trie_warmer", isPrewarmerStr);
-        _loadStateRlpLabel = new TwoStringLabel("load_state_rlp", isPrewarmerStr);
-        _loadStorageRlpTrieWarmerLabel = new TwoStringLabel("load_storage_rlp_trie_warmer", isPrewarmerStr);
-        _loadStorageRlpLabel = new TwoStringLabel("load_storage_rlp", isPrewarmerStr);
-    }
-
     public bool TryGetAccount(Address address, out Account? acc)
     {
         return DoTryGetAccount(address, false, out acc);
@@ -149,22 +78,16 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        Metrics.SnapshotBundleEvents.AddBy(_accountGetLabel, 1);
-
         if (!excludeChanged && _changedAccounts.TryGetValue(address, out acc)) return true;
-
-        long sw = Stopwatch.GetTimestamp();
 
         AddressAsKey key = address;
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetAccount(key, out acc))
             {
-                Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _snapshotAccountHitLabel);
                 return true;
             }
         }
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _snapshotAccountMissLabel);
 
         return _readOnlySnapshotBundle.TryGetAccount(address, out acc);
     }
@@ -185,8 +108,6 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        Metrics.SnapshotBundleEvents.AddBy(_slotGetLabel, 1);
-
         if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
         {
             value = slotValue is null ? null : slotValue.Value.ToEvmBytes();
@@ -196,7 +117,6 @@ public sealed class SnapshotBundle : IDisposable
         // Self destructed at the point of latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
-            Metrics.SnapshotBundleEvents.AddBy(_nodeGetSelfDestructLabel, 1);
             value = null;
             return true;
         }
@@ -234,12 +154,10 @@ public sealed class SnapshotBundle : IDisposable
         if (_changedStateNodes.TryGetValue(path, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleEvents.AddBy(_nodeGetChangedLabel, 1);
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleEvents.AddBy(_nodeGetChangedLabel, 1);
             node = _changedStateNodes.GetOrAdd(path, node);
         }
         else
@@ -249,8 +167,6 @@ public sealed class SnapshotBundle : IDisposable
                     node :
                     new TrieNode(NodeType.Unknown, hash));
         }
-
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _findStateNodeLabel);
 
         return node;
     }
@@ -266,7 +182,6 @@ public sealed class SnapshotBundle : IDisposable
         if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleEvents.AddBy(_nodeGetChangedLabel, 1);
         }
         else
         {
@@ -276,8 +191,6 @@ public sealed class SnapshotBundle : IDisposable
                     : new TrieNode(NodeType.Unknown, hash));
         }
 
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _findStateNodeTrieWarmerLabel);
-
         return node;
     }
 
@@ -286,7 +199,6 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleEvents.AddBy(_nodeGetTrieCacheLabel, 1);
             return true;
         }
 
@@ -295,7 +207,6 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStateNode(path, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                Metrics.SnapshotBundleEvents.AddBy(_nodeGetSnapshotsLabel, 1);
                 return true;
             }
         }
@@ -305,20 +216,17 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash, int selfDestructStateIdx)
     {
-        long sw = Stopwatch.GetTimestamp();
         GuardDispose();
 
         TrieNode? node;
         if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _findStorageNodeChangedNodesLabel);
             _transientResource.UpdateStorageNode((Hash256AsKey)address, path, node);
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _findStorageNodeLoadedNodesLabel);
             node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
         }
         else
@@ -329,15 +237,12 @@ public sealed class SnapshotBundle : IDisposable
                     : new TrieNode(NodeType.Unknown, hash));
         }
 
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _findStorageNodeLabel);
-
         return node;
     }
 
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash, int selfDestructStateIdx)
     {
-        long sw = Stopwatch.GetTimestamp();
         GuardDispose();
 
         TrieNode? node;
@@ -353,7 +258,6 @@ public sealed class SnapshotBundle : IDisposable
                     : new TrieNode(NodeType.Unknown, hash));
         }
 
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _findStorageNodeTrieWarmerLabel);
         return node;
     }
 
@@ -362,7 +266,6 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            Metrics.SnapshotBundleEvents.AddBy(_nodeGetTrieCacheLabel, 1);
             return true;
         }
 
@@ -374,7 +277,6 @@ public sealed class SnapshotBundle : IDisposable
                 if (_snapshots[i].TryGetStorageNode(address, path, out node))
                 {
                     Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    Metrics.SnapshotBundleEvents.AddBy(_nodeGetSnapshotsLabel, 1);
                     return true;
                 }
 
@@ -394,13 +296,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        long sw = Stopwatch.GetTimestamp();
         byte[]? value = _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
-        if (isTrieWarmer)
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _loadStateRlpTrieWarmerLabel);
-        else
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _loadStateRlpLabel);
-
         return value;
     }
 
@@ -408,13 +304,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        long sw = Stopwatch.GetTimestamp();
         byte[]? value = _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
-        if (isTrieWarmer)
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _loadStorageRlpTrieWarmerLabel);
-        else
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _loadStorageRlpLabel);
-
         return value;
     }
 
@@ -424,7 +314,6 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
-        long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
         _changedStateNodes[path] = newNode;
 
@@ -432,7 +321,6 @@ public sealed class SnapshotBundle : IDisposable
         // Skipping the cached resource update and doing it in background in TrieNodeCache barely make a dent
         // to block processing time but increase the trie node add time by 3x.
         _transientResource.UpdateStateNode(path, newNode);
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _setStateNodesTimeLabel);
     }
 
     // This is called only during trie commit
@@ -441,37 +329,28 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
-        long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
         _changedStorageNodes[(addr, path)] = newNode;
         _transientResource.UpdateStorageNode(addr, path, newNode);
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _setStorageNodesTimeLabel);
     }
 
     public void SetAccount(AddressAsKey addr, Account? account)
     {
-        long sw = Stopwatch.GetTimestamp();
         _changedAccounts[addr] = account;
-        Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _setAccountTimeLabel);
     }
 
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
-        // Note: Hot path
-
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
-        long sw = Stopwatch.GetTimestamp();
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
             _changedSlots[(address, index)] = null;
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _setSlotToZeroTimeLabel);
         }
         else
         {
             _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
-            Metrics.SnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _setSlotTimeLabel);
         }
     }
 

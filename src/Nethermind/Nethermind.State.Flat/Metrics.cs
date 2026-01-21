@@ -14,7 +14,7 @@ public static class Metrics
 {
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
-    public static double SnapshotBundleSize { get; set; }
+    public static long SnapshotBundleSize { get; set; }
 
     [DetailedMetric]
     [Description("Time for persistence job")]
@@ -74,16 +74,6 @@ public static class Metrics
     [Description("Created pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
     public static ConcurrentDictionary<TwoStringLabel, long> CreatedPooledResource { get; } = new();
-
-    [DetailedMetric]
-    [Description("Snapshot bundle events")]
-    [KeyIsLabel("type", "is_prewarmer")]
-    public static ConcurrentDictionary<TwoStringLabel, long> SnapshotBundleEvents { get; } = new();
-
-    [DetailedMetric]
-    [Description("Snapshot bundle times")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type", "is_prewarmer"])]
-    public static IMetricObserver SnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
     [Description("Readonly snapshot bundle times")]

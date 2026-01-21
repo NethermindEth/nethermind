@@ -46,7 +46,6 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     {
         StateId currentState = new StateId(baseBlock);
         SnapshotBundle snapshotBundle = _flatDbManager.GatherReaderAtBaseBlock(currentState, usage: _usage);
-        if (_trieWarmer is NoopTrieWarmer) snapshotBundle.SetPrewarmer();
 
         ITrieWarmer warmer = _trieWarmer;
         if (_configuration.TrieWarmerWorkerCount == 0)
