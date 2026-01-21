@@ -1035,7 +1035,7 @@ public class TrieNodeTests
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
-            return _nodes.GetOrAdd(path, new  TrieNode(NodeType.Unknown, hash));
+            return _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
         }
 
         public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
