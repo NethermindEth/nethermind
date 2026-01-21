@@ -112,11 +112,6 @@ public static class Metrics
     public static IMetricObserver SnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
-    [Description("Flat scope time")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type", "isPrewarmer"])]
-    public static IMetricObserver FlatScopeTime { get; set; } = new NoopMetricObserver();
-
-    [DetailedMetric]
     [Description("Readonly snapshot bundle times")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver ReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();

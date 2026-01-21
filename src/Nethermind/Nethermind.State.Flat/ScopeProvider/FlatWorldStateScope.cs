@@ -20,12 +20,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
-    private TwoStringLabel _storageTreeCreateTimeLabel = null!;
-    private TwoStringLabel _storageTreeCreateGetTimeLabel = null!;
-    private TwoStringLabel _statePrewarmPausedLabel = null!;
-    private TwoStringLabel _statePrewarmWrongNumLabel = null!;
-    private TwoStringLabel _stateTreePrewarmLabel = null!;
-
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
     private readonly IFlatDbManager _flatDbManager;
@@ -78,12 +72,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
-        _storageTreeCreateTimeLabel = new TwoStringLabel("storage_create", _isPrewarmerLabel);
-        _storageTreeCreateGetTimeLabel = new TwoStringLabel("storage_create_get_time", _isPrewarmerLabel);
-        _statePrewarmPausedLabel = new TwoStringLabel("state_prewarm_paused", _isPrewarmerLabel);
-        _statePrewarmWrongNumLabel = new TwoStringLabel("state_prewarm_wrong_num", _isPrewarmerLabel);
-
-        _stateTreePrewarmLabel = new TwoStringLabel("state_tree_prewarm", _isPrewarmerLabel);
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -170,7 +158,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return false;
         }
 
-        long sw = Stopwatch.GetTimestamp();
         try
         {
             // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
@@ -181,10 +168,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             // So there is this highly confusing case where patriciatree attempted to set storage nodes as persisted
             // if its parent is persisted. No idea what is the case, but in this case, we really dont care.
-        }
-        finally
-        {
-            Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, _stateTreePrewarmLabel);
         }
 
         return true;
@@ -202,10 +185,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 return storage!;
             }
 
-            long sw = Stopwatch.GetTimestamp();
             Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-            Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, _storageTreeCreateGetTimeLabel);
-            sw = Stopwatch.GetTimestamp();
             storage = new FlatStorageTree(
                 this,
                 _warmer,
@@ -215,7 +195,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 storageRoot,
                 address,
                 _logManager);
-            Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, _storageTreeCreateTimeLabel);
 
             return storage;
         }
@@ -233,16 +212,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         StateId newStateId = new StateId(blockNumber, RootHash);
         if (!_isReadOnly)
         {
-            long sw = Stopwatch.GetTimestamp();
             // Commit will copy the trie nodes from the tree to the bundle.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
 
             commitTask.Add(Task.Factory.StartNew(() =>
             {
-                sw = Stopwatch.GetTimestamp();
                 // Commit will copy the trie nodes from the tree to the bundle.
                 _stateTree.Commit();
-                Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("statetree_commit", _isPrewarmerLabel));
             }));
 
             lock (_storages)
@@ -266,7 +242,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
 
             Task.WaitAll(commitTask.AsSpan());
-            Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("storage_commit_wait", _isPrewarmerLabel));
         }
 
         lock (_storages)
@@ -337,7 +312,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             try
             {
-                long sw = Stopwatch.GetTimestamp();
                 while (_dirtyStorageTree.TryDequeue(out var entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -351,19 +325,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                     if (logger.IsTrace) Trace(key, storageRoot, account);
                 }
-                Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("dirtystorage_dequeue", scope._isPrewarmerLabel));
 
                 using (var stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count))
                 {
-                    sw = Stopwatch.GetTimestamp();
                     foreach (var kv in _dirtyAccounts)
                     {
                         stateSetter.Set(kv.Key, kv.Value);
                     }
-                    Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("account_set", scope._isPrewarmerLabel));
-                    sw = Stopwatch.GetTimestamp();
                 }
-                Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, new TwoStringLabel("account_set_dispose", scope._isPrewarmerLabel));
             }
             finally
             {

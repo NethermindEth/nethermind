@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,7 +9,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -30,7 +28,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
-    private readonly TwoStringLabel _storageTreePrewarmLabel;
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
@@ -62,9 +59,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _warmupStorageTree = new StorageTree(_warmerStorageTrieAdapter, logManager);
         _warmupStorageTree.SetRootHash(storageRoot, false);
         _warmupStorageTree.RootRef = _tree.RootRef;
-
-        var isPrewarmerLabel = (_trieCacheWarmer is NoopTrieWarmer).ToString();
-        _storageTreePrewarmLabel = new TwoStringLabel("storage_tree_prewarm", isPrewarmerLabel);
 
         _config = config;
     }
@@ -139,9 +133,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ValueHash256 key = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(index, ref key);
 
-        long sw = Stopwatch.GetTimestamp();
         _warmupStorageTree.WarmUpPath(key.BytesAsSpan, isWrite);
-        Metrics.FlatScopeTime.Observe(Stopwatch.GetTimestamp() - sw, _storageTreePrewarmLabel);
         return true;
     }
 
