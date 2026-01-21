@@ -49,7 +49,7 @@ public class NodeRecordSigner : INodeRecordSigner
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
-        long enrSequence = rlpStream.DecodeLong();
+        long enrSequence = rlpStream.DecodePositiveLong();
         while (rlpStream.Position < startPosition + recordRlpLength)
         {
             ReadOnlySpan<byte> key = rlpStream.DecodeByteArraySpan();
@@ -68,7 +68,7 @@ public class NodeRecordSigner : INodeRecordSigner
                     _ = rlpStream.ReadSequenceLength();
                     _ = rlpStream.ReadSequenceLength();
                     byte[] forkHash = rlpStream.DecodeByteArray();
-                    long nextBlock = rlpStream.DecodeLong();
+                    long nextBlock = rlpStream.DecodePositiveLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):

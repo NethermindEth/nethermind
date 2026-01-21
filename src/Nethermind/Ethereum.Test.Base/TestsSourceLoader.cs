@@ -29,7 +29,6 @@ namespace Ethereum.Test.Base
         public IEnumerable<TTestType> LoadTests<TTestType>()
             where TTestType : EthereumTest
         {
-            // Use OfType instead of Cast to filter out FailedToLoadTest instances
             return _testLoadStrategy.Load(_path, _wildcard).OfType<TTestType>();
         }
     }
