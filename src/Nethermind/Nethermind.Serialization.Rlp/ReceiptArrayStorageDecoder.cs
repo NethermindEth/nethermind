@@ -64,7 +64,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (rlpStream.PeekByte() == CompactEncoding)
         {
             rlpStream.ReadByte();
-            return CompactDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
+            return CompactDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
@@ -113,7 +113,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
             var decoderContext = new Rlp.ValueDecoderContext(receiptsData[1..]);
-            return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+            return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
@@ -148,18 +148,10 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    public static bool IsCompactEncoding(Span<byte> receiptsData)
-    {
-        return receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
-    }
+    public static bool IsCompactEncoding(Span<byte> receiptsData) => receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
 
-    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
-    {
-        if (IsCompactEncoding(receiptsData))
-        {
-            return (IReceiptRefDecoder)CompactValueDecoder;
-        }
-
-        return (IReceiptRefDecoder)ValueDecoder;
-    }
+    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData) =>
+        IsCompactEncoding(receiptsData)
+            ? (IReceiptRefDecoder)CompactValueDecoder
+            : (IReceiptRefDecoder)ValueDecoder;
 }

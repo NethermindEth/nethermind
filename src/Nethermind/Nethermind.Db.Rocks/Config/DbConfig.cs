@@ -18,13 +18,14 @@ public class DbConfig : IDbConfig
     public uint StatsDumpPeriodSec { get; set; } = 600;
 
     public int? MaxOpenFiles { get; set; }
+    public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
     public string RocksDbOptions { get; set; } =
 
         // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
         // file which affect compactions. The options here does not effect how the sst files are read... probably.
-        // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
+        // But read does go through the write buffer first, before going through the row cache (or is it before memtable?)
         // block cache and then finally the LSM/SST files.
         "min_write_buffer_number_to_merge=1;" +
         "write_buffer_size=16000000;" +
@@ -32,7 +33,7 @@ public class DbConfig : IDbConfig
         "memtable_whole_key_filtering=true;" +
         "memtable_prefix_bloom_size_ratio=0.02;" +
 
-        // Rocksdb turn this on by default a few release ago. But we dont want it yet, not sure the impact on read is
+        // Rocksdb turned this on by default a few releases ago, but we don't want it yet; the impact on reads is unclear
         // significant or not.
         "level_compaction_dynamic_level_bytes=false;" +
 
@@ -65,7 +66,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.format_version=5;" +
 
         // Two level index split the index into two level. First index point to second level index, which actually
-        // point to the block, which get bsearched to the value. This means potentially two iop instead of one per
+        // point to the block, which get binary searched to the value. This means potentially two iop instead of one per
         // read, and probably more processing overhead. But it significantly reduces memory usage and make block
         // processing time more consistent. So its enabled by default. That said, if you got the RAM, maybe disable
         // this.
@@ -248,7 +249,7 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_multiplier=10;" +
         "max_bytes_for_level_base=350000000;" +
 
-        // Change back file size multiplier as we dont want ridiculous file size, making compaction uneven,
+        // Change back file size multiplier as we don't want ridiculous file sizes making compaction uneven,
         // but set high base size. This mean a lot of file, but you are using archive mode, so this should be expected.
         "target_file_size_multiplier=1;" +
         "target_file_size_base=256000000;" +

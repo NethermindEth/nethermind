@@ -441,14 +441,14 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
+    public async Task executePayloadV1_result_is_fail_when_blockchain_processor_reports_exception()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ((TestBranchProcessorInterceptor)chain.BranchProcessor).ExceptionToThrow =
-            new Exception("unxpected exception");
+            new Exception("unexpected exception");
 
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
@@ -729,7 +729,7 @@ public partial class EngineModuleTests
         chain.ReadOnlyState.GetBalance(TestItem.AddressA).Should().BeGreaterThan(UInt256.One);
 
         // block is an invalid block, but it is impossible to detect until we process it.
-        // it is invalid because after you processs its transactions, the root of the state trie
+        // it is invalid because after you process its transactions, the root of the state trie
         // doesn't match the state root in the block
         Block? block = Build.A.Block
             .WithNumber(head.Number + 1)
@@ -1553,7 +1553,8 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_newPayloadV4),
 
             nameof(IEngineRpcModule.engine_getPayloadV5),
-            nameof(IEngineRpcModule.engine_getBlobsV2)
+            nameof(IEngineRpcModule.engine_getBlobsV2),
+            nameof(IEngineRpcModule.engine_getBlobsV3)
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

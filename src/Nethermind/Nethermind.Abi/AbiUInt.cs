@@ -24,7 +24,7 @@ namespace Nethermind.Abi
         public static new readonly AbiUInt UInt96 = new(96);
         public static new readonly AbiUInt UInt256 = new(256);
 
-        private static readonly byte[][] PrealocatedBytes =
+        private static readonly byte[][] PreallocatedBytes =
             Enumerable.Range(0, 256).Select(x => new[] { (byte)x }).ToArray();
 
         public AbiUInt(int length)
@@ -109,7 +109,7 @@ namespace Nethermind.Abi
             }
             else if (arg is byte byteInput)
             {
-                bytes = PrealocatedBytes[byteInput];
+                bytes = PreallocatedBytes[byteInput];
             }
             else if (arg is JsonElement element && element.ValueKind == JsonValueKind.Number)
             {

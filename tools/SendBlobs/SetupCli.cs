@@ -201,15 +201,14 @@ internal static class SetupCli
                 parseResult.GetValue(rpcUrlOption)!,
                 SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
-            ulong chainId = HexConvert.ToUInt64(chainIdString);
+            ulong chainId = await GetChainIdAsync(rpcClient);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
 
             FundsDistributor distributor = new(
                 rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            IEnumerable<string> hashes = await distributor.DitributeFunds(
+            await distributor.DistributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
                 parseResult.GetValue(maxFeeOption),
@@ -254,6 +253,7 @@ internal static class SetupCli
         };
 
         command.Add(rpcUrlOption);
+        command.Add(receiverOption);
         command.Add(keyFileOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(maxFeeOption);
@@ -263,16 +263,21 @@ internal static class SetupCli
                 parseResult.GetValue(rpcUrlOption)!,
                 SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
-            ulong chainId = HexConvert.ToUInt64(chainIdString);
+            ulong chainId = await GetChainIdAsync(rpcClient);
 
             FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            IEnumerable<string> hashes = await distributor.ReclaimFunds(
+            await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
         });
         root.Add(command);
+    }
+
+    private static async Task<ulong> GetChainIdAsync(IJsonRpcClient rpcClient)
+    {
+        string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
+        return HexConvert.ToUInt64(chainIdString);
     }
 
     public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>

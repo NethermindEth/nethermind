@@ -212,6 +212,11 @@ namespace Nethermind.Serialization.Rlp
                 result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
             }
 
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                rlpStream.Check(checkPosition);
+            }
+
             return result;
         }
 
@@ -223,7 +228,7 @@ namespace Nethermind.Serialization.Rlp
                 : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
             int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
@@ -232,6 +237,11 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < length; i++)
             {
                 result.Add(rlpDecoder.Decode(rlpStream, rlpBehaviors));
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                rlpStream.Check(checkPosition);
             }
 
             return result;
@@ -1541,13 +1551,16 @@ namespace Nethermind.Serialization.Rlp
                     return [];
                 }
 
-                int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+                int checkPosition = Position + length;
+                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
                 byte[][] result = new byte[itemsCount][];
 
                 for (int i = 0; i < itemsCount; i++)
                 {
                     result[i] = DecodeByteArray();
                 }
+
+                Check(checkPosition);
 
                 return result;
             }
@@ -1641,6 +1654,11 @@ namespace Nethermind.Serialization.Rlp
                     {
                         result[i] = decoder.Decode(ref this);
                     }
+                }
+
+                if (checkPositions)
+                {
+                    Check(positionCheck);
                 }
 
                 return result;

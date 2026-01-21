@@ -11,7 +11,7 @@ namespace Nethermind.State.OverridableEnv;
 
 /// <summary>
 /// A utility that provide `IOverridableEnv<T>`
-/// Dont forget do dispose it!
+/// Don't forget to dispose it!
 /// </summary>
 /// <param name="overridableEnv"></param>
 /// <param name="resolvedComponents"></param>

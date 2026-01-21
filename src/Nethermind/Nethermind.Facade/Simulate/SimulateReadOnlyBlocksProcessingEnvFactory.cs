@@ -48,6 +48,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
+            .AddSingleton<IReadOnlyDbProvider>(editableDbProvider)
             .AddSingleton<IBlockTree>(overrideBlockTree)
             .AddSingleton<BlockTreeOverlay>(overrideBlockTree)
             .AddSingleton<IHeaderStore>(tmpHeaderStore)
@@ -64,6 +65,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddScoped<SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
 
+        envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(envLifetimeScope);
         return envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
     }
@@ -76,10 +78,10 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         SimulateDictionaryHeaderStore tmpHeaderStore,
         IBlockAccessListStore tmpBalStore)
     {
-        IBlockStore mainblockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb);
         const int badBlocksStored = 1;
 
-        SimulateDictionaryBlockStore tmpBlockStore = new(mainblockStore);
+        SimulateDictionaryBlockStore tmpBlockStore = new(mainBlockStore);
         IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
 
         return new(tmpBlockStore,

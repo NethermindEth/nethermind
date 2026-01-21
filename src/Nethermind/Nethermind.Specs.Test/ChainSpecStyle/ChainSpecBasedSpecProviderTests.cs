@@ -56,8 +56,7 @@ public class ChainSpecBasedSpecProviderTests
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
-            .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
+        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
         expectedSpec.Name = "Genesis_with_non_zero_timestamp";
         expectedSpec.IsEip3651Enabled = true;
         expectedSpec.IsEip3198Enabled = false;
@@ -239,7 +238,7 @@ public class ChainSpecBasedSpecProviderTests
                 expectedDepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress;
                 break;
             default:
-                Assert.Fail("Unrecognised chain id when verifying Prague specifics.");
+                Assert.Fail("Unrecognized chain id when verifying Prague specifics.");
                 return;
         }
 
@@ -378,10 +377,10 @@ public class ChainSpecBasedSpecProviderTests
         {
             yield return new TestCaseData((ForkActivation)0) { TestName = "Genesis" };
             yield return new TestCaseData((ForkActivation)1) { TestName = "Genesis + 1" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - 1)) { TestName = "Before Constantinopole" };
-            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber) { TestName = "Constantinopole" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber - 1)) { TestName = "Before ConstantinopoleFix" };
-            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopoleFixBlockNumber) { TestName = "ConstantinopoleFix" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopleBlockNumber - 1)) { TestName = "Before Constantinople" };
+            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopleBlockNumber) { TestName = "Constantinople" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopleFixBlockNumber - 1)) { TestName = "Before ConstantinopleFix" };
+            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopleFixBlockNumber) { TestName = "ConstantinopleFix" };
             yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber - 1)) { TestName = "Before Istanbul" };
             yield return new TestCaseData((ForkActivation)GnosisSpecProvider.IstanbulBlockNumber) { TestName = "Istanbul" };
             yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.BerlinBlockNumber - 1)) { TestName = "Before Berlin" };
@@ -506,10 +505,10 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(specProvider.GenesisSpec.MaximumUncleCount, Is.Zero);
-            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - 1)).IsEip1283Enabled, Is.False);
-            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber)).IsEip1283Enabled, Is.True);
-            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - 1)).UseConstantinopleNetGasMetering, Is.False);
-            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber)).UseConstantinopleNetGasMetering, Is.True);
+            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopleBlockNumber - 1)).IsEip1283Enabled, Is.False);
+            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopleBlockNumber)).IsEip1283Enabled, Is.True);
+            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopleBlockNumber - 1)).UseConstantinopleNetGasMetering, Is.False);
+            Assert.That(specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopleBlockNumber)).UseConstantinopleNetGasMetering, Is.True);
         }
     }
 
@@ -661,12 +660,9 @@ public class ChainSpecBasedSpecProviderTests
 
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
-                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled)))
         {
             Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);

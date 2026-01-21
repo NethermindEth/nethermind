@@ -70,7 +70,6 @@ internal static partial class MetricsGenerator
         writeStream.Close();
 
         File.Move(tempFileName, fileName, true);
-        File.Delete(tempFileName);
 
         AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
