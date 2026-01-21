@@ -34,7 +34,6 @@ public class Snapshot(
 ) : RefCountingDisposable
 {
     public long EstimateMemory() => content.EstimateMemory();
-    public Dictionary<MemoryType, long> EstimateDetailedMemory() => content.EstimateDetailedMemory();
     public ResourcePool.Usage Usage => usage;
 
     public StateId From => from;
@@ -92,6 +91,8 @@ public class Snapshot(
 
 public sealed class SnapshotContent() : IDisposable, IResettable
 {
+    private int NodeSizeEstimate = 650; // Counting the node size one by one have a notable overhead. So we use estimate.
+
     // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
     public readonly ConcurrentDictionary<AddressAsKey, Account?> Accounts = new();
     public readonly ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages = new();
@@ -123,36 +124,8 @@ public sealed class SnapshotContent() : IDisposable, IResettable
             Accounts.Count * 168 +                         // Key (8B) + Value ref (8B) + concurrent dictionary overhead (48) + Account object (~104B)
             Storages.Count * 128 +                         // Key (40B) + Value (40B SlotValue?) + concurrent dictionary overhead (48)
             SelfDestructedStorageAddresses.Count * 60 +    // Key (8B) + Value (4B) + concurrent dictionary overhead (48)
-            StateNodes.Count * 792 +                       // Key (36B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode (~700B)
-            StorageNodes.Count * 800;                      // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode (~700B)
-    }
-
-    public Dictionary<MemoryType, long> EstimateDetailedMemory()
-    {
-        Dictionary<MemoryType, long> result = new Dictionary<MemoryType, long>(){
-            { MemoryType.Account, Accounts.Count },
-            { MemoryType.Storage, Storages.Count },
-            { MemoryType.StorageBytes, Storages.Count * 32 },  // SlotValue is 32 bytes
-            { MemoryType.SelfDestructedAddress, SelfDestructedStorageAddresses.Count },
-            { MemoryType.StateNodes, StateNodes.Count },
-            { MemoryType.StateNodesBytes, StateNodes.Count * 700 },
-            { MemoryType.StorageNodes, StorageNodes.Count },
-            { MemoryType.StorageNodesBytes, StorageNodes.Count * 700 },
-        };
-
-        // ConcurrentDictionary entry overhead ~48 bytes
-        // Account object ~104 bytes (2 Hash256? refs + 2 UInt256 + object header)
-        result[MemoryType.TotalBytes]
-            = result[MemoryType.Account] * 168 +           // 8 + 8 + concurrent dictionary overhead (48) + 104 (Account object)
-              result[MemoryType.Storage] * 96 +            // 40 (key) + 8 (nullable) + concurrent dictionary overhead (48)
-              result[MemoryType.StorageBytes] +            // 32 bytes SlotValue data
-              result[MemoryType.SelfDestructedAddress] * 60 +  // 8 + 4 + concurrent dictionary overhead (48)
-              result[MemoryType.StateNodes] * 92 +         // 36 + 8 + concurrent dictionary overhead (48)
-              result[MemoryType.StateNodesBytes] +         // 700 bytes TrieNode
-              result[MemoryType.StorageNodes] * 100 +      // 44 + 8 + concurrent dictionary overhead (48)
-              result[MemoryType.StorageNodesBytes];        // 700 bytes TrieNode
-
-        return result;
+            StateNodes.Count * (NodeSizeEstimate + 92) +   // Key (36B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
+            StorageNodes.Count * (NodeSizeEstimate + 100); // Key (44B) + Value ref (8B) + concurrent dictionary overhead (48) + TrieNode
     }
 
     /// <summary>
@@ -175,28 +148,6 @@ public sealed class SnapshotContent() : IDisposable, IResettable
     public void Dispose()
     {
     }
-}
-
-public enum MemoryType
-{
-    Account,
-    Storage,
-    StorageBytes,
-    SelfDestructedAddress,
-    StateNodes,
-    StateNodesBytes,
-    StorageNodes,
-    StorageNodesBytes,
-    TotalBytes,
-    Count,
-}
-
-public record MemoryTypeMetric(MemoryType MemoryType) : IMetricLabels
-{
-    private static FrozenDictionary<MemoryType, string> Names = Enum.GetValues<MemoryType>().ToDictionary((k) => k, (k) => k.ToString())
-        .ToFrozenDictionary();
-
-    public string[] Labels => [Names[MemoryType]];
 }
 
 public record TwoStringLabel(string Label1, string Label2) : IMetricLabels

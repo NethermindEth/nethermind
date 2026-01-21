@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotRepository(ILogManager logManager, bool enableDetailedMetrics = false) : ISnapshotRepository
+public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 {
     private const int MaxLeaseAttempt = 10_000;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
@@ -124,15 +123,6 @@ public class SnapshotRepository(ILogManager logManager, bool enableDetailedMetri
         {
             Metrics.CompactedSnapshotCount++;
 
-            if (enableDetailedMetrics)
-            {
-                foreach (var keyValuePair in snapshot.EstimateDetailedMemory())
-                {
-                    Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
-                }
-                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
-            }
-
             long compactedBytes = snapshot.Content.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory += compactedBytes;
             Metrics.TotalSnapshotMemory += compactedBytes;
@@ -148,16 +138,6 @@ public class SnapshotRepository(ILogManager logManager, bool enableDetailedMetri
         if (_snapshots.TryAdd(snapshot.To, snapshot))
         {
             Metrics.SnapshotCount++;
-
-            if (enableDetailedMetrics)
-            {
-                var memory = snapshot.EstimateDetailedMemory();
-                foreach (var keyValuePair in memory)
-                {
-                    Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), keyValuePair.Value);
-                }
-                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), 1);
-            }
 
             long totalBytes = snapshot.EstimateMemory();
             Metrics.SnapshotMemory += totalBytes;
@@ -194,16 +174,6 @@ public class SnapshotRepository(ILogManager logManager, bool enableDetailedMetri
         {
             Metrics.CompactedSnapshotCount--;
 
-            if (enableDetailedMetrics)
-            {
-                var memory = existingState.EstimateDetailedMemory();
-                foreach (var keyValuePair in memory)
-                {
-                    Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
-                }
-                Metrics.CompactedMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
-            }
-
             long compactedBytes = existingState.Content.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory -= compactedBytes;
             Metrics.TotalSnapshotMemory -= compactedBytes;
@@ -225,16 +195,6 @@ public class SnapshotRepository(ILogManager logManager, bool enableDetailedMetri
             using (var _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             {
                 sortedSnapshots.Remove(stateId);
-            }
-
-            if (enableDetailedMetrics)
-            {
-                var memory = existingState.EstimateDetailedMemory();
-                foreach (var keyValuePair in memory)
-                {
-                    Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(keyValuePair.Key), -keyValuePair.Value);
-                }
-                Metrics.SnapshotsMemory.AddBy(new MemoryTypeMetric(MemoryType.Count), -1);
             }
 
             long totalBytes = existingState.EstimateMemory();

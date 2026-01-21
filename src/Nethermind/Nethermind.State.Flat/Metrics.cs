@@ -26,11 +26,6 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["payload"])]
     public static IMetricObserver FlatPersistenceSnapshotSize { get; set; } = new NoopMetricObserver();
 
-    [DetailedMetric]
-    [Description("Persistence write size")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<MemoryTypeMetric, long> SnapshotsMemory { get; } = new ConcurrentDictionary<MemoryTypeMetric, long>();
-
     [CounterMetric]
     [Description("Importer entries count")]
     public static long ImporterEntriesCount { get; set; }
@@ -64,11 +59,6 @@ public static class Metrics
     public static long TotalSnapshotMemory { get; set; }
 
     // === Gauges with single label ===
-    [DetailedMetric]
-    [Description("Compacted snapshot memory by category")]
-    [KeyIsLabel("category")]
-    public static ConcurrentDictionary<MemoryTypeMetric, long> CompactedMemory { get; } = new();
-
     [DetailedMetric]
     [Description("Active snapshot content by category")]
     [KeyIsLabel("category")]

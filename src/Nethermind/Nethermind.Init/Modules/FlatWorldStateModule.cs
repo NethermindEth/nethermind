@@ -36,8 +36,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<TrieNodeCache>()
             .AddSingleton<SnapshotCompactor>()
             .AddSingleton<PersistenceManager>()
-            .AddSingleton<ISnapshotRepository>((ctx) => new SnapshotRepository(ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+            .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<ITrieWarmer, TrieWarmer>()
 
