@@ -7,7 +7,6 @@ using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -123,67 +122,54 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private async Task RunCompactJobSync(StateId stateId, TransientResource transientResource, CancellationToken cancellationToken)
     {
         PopulateTrieNodeCache(transientResource);
-
         await RunCompactJob(stateId, cancellationToken);
     }
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        try
+        long sw = Stopwatch.GetTimestamp();
+        // We do this async because of the lock
+        _snapshotRepository.AddStateId(stateId);
+        _flatdiffimes.WithLabels("compact", "add_state_id").Observe(Stopwatch.GetTimestamp() - sw);
+
+        sw = Stopwatch.GetTimestamp();
+        if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
         {
-            long sw = Stopwatch.GetTimestamp();
-            // We do this async because of the lock
-            _snapshotRepository.AddStateId(stateId);
-            _flatdiffimes.WithLabels("compact", "add_state_id").Observe(Stopwatch.GetTimestamp() - sw);
+            using var _ = snapshot; // dispose
 
-            sw = Stopwatch.GetTimestamp();
-            if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
+            // Actually do the compaction
+            _snapshotCompactor.DoCompactSnapshot(snapshot);
+
+            if (stateId.BlockNumber % _compactSize == 0 || stateId.BlockNumber % _midCompactSize == 0)
             {
-                using var _ = snapshot; // dispose
+                ClearReadOnlyBundleCache();
+            }
 
-                // Actually do the compaction
-                _snapshotCompactor.DoCompactSnapshot(snapshot);
-
-                if (stateId.BlockNumber % _compactSize == 0 || stateId.BlockNumber % _midCompactSize == 0)
+            if (stateId.BlockNumber % _compactSize == 0)
+            {
+                _flatdiffimes.WithLabels("compact", "do_compact_full").Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                if (stateId.BlockNumber % _midCompactSize == 0)
                 {
-                    ClearReadOnlyBundleCache();
-                }
-
-                if (stateId.BlockNumber % _compactSize == 0)
-                {
-                    _flatdiffimes.WithLabels("compact", "do_compact_full").Observe(Stopwatch.GetTimestamp() - sw);
+                    _flatdiffimes.WithLabels("compact", "do_mid_compact").Observe(Stopwatch.GetTimestamp() - sw);
                 }
                 else
                 {
-                    if (stateId.BlockNumber % _midCompactSize == 0)
-                    {
-                        _flatdiffimes.WithLabels("compact", "do_mid_compact").Observe(Stopwatch.GetTimestamp() - sw);
-                    }
-                    else
-                    {
-                        _flatdiffimes.WithLabels("compact", "do_compact").Observe(Stopwatch.GetTimestamp() - sw);
-                    }
+                    _flatdiffimes.WithLabels("compact", "do_compact").Observe(Stopwatch.GetTimestamp() - sw);
                 }
             }
+        }
 
-            sw = Stopwatch.GetTimestamp();
-            if (stateId.BlockNumber % _compactSize == 0)
-            {
-                _snapshotCount.WithLabels("snapshots").Set(_snapshotRepository.SnapshotCount);
-                _snapshotCount.WithLabels("compacted_snapshots").Set(_snapshotRepository.CompactedSnapshotCount);
-                // Trigger persistence job.
-                await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
-                _flatdiffimes.WithLabels("compact", "persist_queue_signal").Observe(Stopwatch.GetTimestamp() - sw);
-            }
-        }
-        catch (OperationCanceledException)
+        sw = Stopwatch.GetTimestamp();
+        if (stateId.BlockNumber % _compactSize == 0)
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Compact job failed", ex);
-            throw;
+            _snapshotCount.WithLabels("snapshots").Set(_snapshotRepository.SnapshotCount);
+            _snapshotCount.WithLabels("compacted_snapshots").Set(_snapshotRepository.CompactedSnapshotCount);
+            // Trigger persistence job.
+            await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
+            _flatdiffimes.WithLabels("compact", "persist_queue_signal").Observe(Stopwatch.GetTimestamp() - sw);
         }
     }
 
@@ -247,6 +233,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         Task jobTask = Task.Run(async () =>
         {
+            long sw = Stopwatch.GetTimestamp();
             try
             {
                 await closure();
@@ -259,19 +246,21 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 _logger.Error($"Error on {name}", ex);
             }
+            if (_logger.IsTrace) _logger.Trace($"{name} took {Stopwatch.GetElapsedTime(sw)}");
         });
-        Task waiterTask = Task.Run(async () =>
+
+        _ = Task.Run(async () =>
         {
             Stopwatch sw = Stopwatch.StartNew();
             while (true)
             {
-                await Task.Delay(slowTime);
-                if (jobTask.IsCompleted) break;
-                _logger.Warn($"Slot task \"{name}\". Took {sw.Elapsed}");
+                Task delayTask = Task.Delay(slowTime);
+                if (await Task.WhenAny(jobTask, delayTask) == jobTask) break;
+                _logger.Warn($"Slow task \"{name}\". Took {sw.Elapsed}");
             }
         });
 
-        await Task.WhenAll(jobTask, waiterTask);
+        await jobTask;
     }
 
     public SnapshotBundle GatherReaderAtBaseBlock(StateId baseBlock, ResourcePool.Usage usage)
@@ -325,14 +314,25 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
             _knownStatesSize.Observe(snapshots.Count);
 
-            if (snapshots[0].From != persistenceReader.CurrentState)
+            if (snapshots.Count == 0)
             {
-                // Cannot assemble snapshot that reach the persisted state snapshot. It could be that the snapshots was removed
-                // concurrently. We will retry.
-                snapshots.Dispose();
-                persistenceReader.Dispose();
-                attempt++;
-                continue;
+                if (persistenceReader.CurrentState != baseBlock)
+                {
+                    persistenceReader.Dispose();
+                    throw new InvalidOperationException($"Unable to gather snapshots for state {baseBlock}.");
+                }
+            }
+            else
+            {
+                if (snapshots[0].From != persistenceReader.CurrentState)
+                {
+                    // Cannot assemble snapshot that reach the persisted state snapshot. It could be that the snapshots was removed
+                    // concurrently. We will retry.
+                    snapshots.Dispose();
+                    persistenceReader.Dispose();
+                    attempt++;
+                    continue;
+                }
             }
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");

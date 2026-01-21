@@ -93,8 +93,9 @@ public class SnapshotCompactor(
 
             if (snapshots[0].From.BlockNumber != startingBlockNumber)
             {
-                _logger.Warn($"Unable to compile snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}");
-                // unable to compile list of snapshot for the whole thing
+                // Could happen especially at start where the block may not be aligned, but not a big problem.
+                if (_logger.IsDebug) _logger.Debug($"Unable to compile snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Snarting block number should be {startingBlockNumber}");
+
                 return SnapshotPooledList.Empty();
             }
 
