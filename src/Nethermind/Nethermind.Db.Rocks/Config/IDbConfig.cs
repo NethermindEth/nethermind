@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
 
 
     int? MaxOpenFiles { get; set; }
+    bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
     string RocksDbOptions { get; set; }
@@ -36,6 +37,9 @@ public interface IDbConfig : IConfig
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
+
+    string BlockAccessListsDbRocksDbOptions { get; set; }
+    string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
 
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }

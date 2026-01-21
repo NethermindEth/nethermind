@@ -269,11 +269,16 @@ public class BlockAccessListTests()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
 
-        IWorldState worldState = testBlockchain.WorldStateManager.GlobalWorldState;
-        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
-        InitWorldState(worldState);
+        // Get the main world state which should be a TracedAccessWorldState after DI fix
+        IWorldState mainWorldState = testBlockchain.MainWorldState;
+        TracedAccessWorldState? tracedWorldState = mainWorldState as TracedAccessWorldState;
+        Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be TracedAccessWorldState");
 
-        (worldState as TracedAccessWorldState)!.BlockAccessList = new();
+        // Begin scope and initialize state
+        using IDisposable _ = mainWorldState.BeginScope(IWorldState.PreGenesis);
+        InitWorldState(mainWorldState);
+
+        tracedWorldState!.BlockAccessList = new();
 
         const long gasUsed = 167340;
         const long gasUsedBeforeFinal = 92100;

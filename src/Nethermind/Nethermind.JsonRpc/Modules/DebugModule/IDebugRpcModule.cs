@@ -104,8 +104,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get Raw Transaction format.")]
     ResultWrapper<string> debug_getRawTransaction(Hash256 transactionHash);
 
-    [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
-    Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
+    [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]
+    Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage();
 
     [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
         IsImplemented = true, IsSharable = false)]

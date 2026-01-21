@@ -10,13 +10,12 @@ on:
         description: Test suite
         type: choice
         options:
-          - ''
+          - 'all'
           - devp2p
           - ethereum/consensus
           - ethereum/eest
           - ethereum/engine
           - ethereum/graphql
-          - ethereum/rpc
           - ethereum/rpc-compat
           - ethereum/sync
       limit:
@@ -56,8 +55,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test-suite: ${{ fromJson(github.event.inputs.test-suite == '' &&
-          '["ethereum/engine","ethereum/graphql","ethereum/rpc","ethereum/rpc-compat","ethereum/sync"]' ||
+        test-suite: ${{ fromJson((
+            github.event_name == 'push' || 
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.test-suite == 'all')) &&
+          '["ethereum/engine","ethereum/graphql","ethereum/rpc-compat","ethereum/sync"]' ||
           format('["{0}"]', github.event.inputs.test-suite)
           ) }}
     steps:

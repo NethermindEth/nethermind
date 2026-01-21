@@ -35,7 +35,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
         IAsyncHandler<Hash256[], IEnumerable<byte[]?>> getBALsByHashV1Handler,
         IAsyncHandler<(long, long), IEnumerable<byte[]>?> getBALsByRangeV1Handler,
         IEngineRequestsTracker engineRequestsTracker,

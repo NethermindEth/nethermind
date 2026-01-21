@@ -132,9 +132,18 @@ public class BlockValidator(
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            if (block.BlockAccessList is null || block.BlockAccessListHash is null)
+            // Genesis blocks don't have a BlockAccessList (only the hash of an empty list)
+            bool isGenesis = block.IsGenesis;
+            if (!isGenesis && (block.BlockAccessList is null || block.BlockAccessListHash is null))
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+                return false;
+            }
+
+            if (isGenesis && block.BlockAccessListHash is null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Genesis block missing BlockAccessListHash");
                 errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }

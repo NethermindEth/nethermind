@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -12,44 +11,96 @@ namespace Nethermind.HealthChecks.Test;
 
 public class ClHealthTrackerTests
 {
-    [Test]
-    public async Task ClHealthRequestsTracker_multiple_requests()
+    private const int MaxIntervalSeconds = 300;
+
+    private static ClHealthRequestsTracker CreateHealthTracker(ManualTimestamper timestamper)
     {
-        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = new(
+        return new ClHealthRequestsTracker(
             timestamper,
             new HealthChecksConfig()
             {
-                MaxIntervalClRequestTime = 300
+                MaxIntervalClRequestTime = MaxIntervalSeconds
             }, LimboLogs.Instance);
+    }
+
+    [Test]
+    public void CheckClAlive_Initially_ReturnsTrue()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         healthTracker.CheckClAlive().Should().BeTrue();
+    }
 
-        timestamper.Add(TimeSpan.FromSeconds(299));
-        healthTracker.CheckClAlive().Should().BeTrue(); // Not enough time from start
+    [Test]
+    public void CheckClAlive_AfterMaxInterval_ReturnsFalse()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
-        timestamper.Add(TimeSpan.FromSeconds(2));
-        healthTracker.CheckClAlive().Should().BeFalse(); // More than 300 since start
+        timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
+        healthTracker.CheckClAlive().Should().BeFalse();
+    }
+
+    [Test]
+    public void CheckClAlive_BeforeMaxInterval_ReturnsTrue()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
+
+        timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds - 1));
+        healthTracker.CheckClAlive().Should().BeTrue();
+    }
+
+    [Test]
+    public void CheckClAlive_AfterForkchoiceUpdated_ResetsTimer()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
+
+        timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
+        healthTracker.CheckClAlive().Should().BeFalse();
 
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeTrue(); // Fcu
+        healthTracker.CheckClAlive().Should().BeTrue();
+    }
+
+    [Test]
+    public void CheckClAlive_AfterNewPayload_ResetsTimer()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
+
+        timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
+        healthTracker.CheckClAlive().Should().BeFalse();
 
         healthTracker.OnNewPayloadCalled();
-        healthTracker.CheckClAlive().Should().BeTrue(); // Fcu + Np
+        healthTracker.CheckClAlive().Should().BeTrue();
+    }
 
-        timestamper.Add(TimeSpan.FromSeconds(301));
-        healthTracker.CheckClAlive().Should().BeFalse(); // Big gap since fcu + Np
+    [Test]
+    public void CheckClAlive_WithBothRequests_WorksCorrectly()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         healthTracker.OnForkchoiceUpdatedCalled();
         healthTracker.CheckClAlive().Should().BeTrue();
 
-        timestamper.Add(TimeSpan.FromSeconds(301));
-        healthTracker.CheckClAlive().Should().BeFalse(); // Big gap
-
         healthTracker.OnNewPayloadCalled();
         healthTracker.CheckClAlive().Should().BeTrue();
 
-        timestamper.Add(TimeSpan.FromSeconds(299));
+        timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
+        healthTracker.CheckClAlive().Should().BeFalse();
+    }
+
+    [Test]
+    public void CheckClAlive_AtBoundaryConditions_WorksCorrectly()
+    {
+        ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
+        ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
+
+        timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds - 1));
         healthTracker.OnForkchoiceUpdatedCalled();
         healthTracker.CheckClAlive().Should().BeTrue();
 
