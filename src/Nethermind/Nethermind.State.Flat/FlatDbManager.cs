@@ -47,6 +47,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly bool _inlineCompaction;
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
+    private readonly bool _enableDetailedMetrics;
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -58,7 +59,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotRepository snapshotRepository,
         PersistenceManager persistenceManager,
         IFlatDbConfig config,
-        ILogManager logManager)
+        ILogManager logManager,
+        bool enableDetailedMetrics)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -66,6 +68,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _resourcePool = resourcePool;
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
+        _enableDetailedMetrics = enableDetailedMetrics;
 
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
@@ -232,7 +235,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always try to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader());
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
         }
 
         // Fastpath: Share recently created ReadOnlySnapshotBundle
@@ -290,7 +293,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReadOnlySnapshotBundle res = new ReadOnlySnapshotBundle(
                 snapshots,
-                persistenceReader);
+                persistenceReader, _enableDetailedMetrics);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

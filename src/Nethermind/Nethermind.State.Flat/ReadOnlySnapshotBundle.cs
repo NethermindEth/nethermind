@@ -20,7 +20,8 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
-    IPersistence.IPersistenceReader persistenceReader)
+    IPersistence.IPersistenceReader persistenceReader,
+    bool recordMetrics)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
@@ -47,15 +48,15 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        long sw = Stopwatch.GetTimestamp();
+        long sw = recordMetrics ? Stopwatch.GetTimestamp() : 0;
         acc = persistenceReader.GetAccount(address);
         if (acc == null)
         {
-            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
+            if (recordMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
         }
         else
         {
-            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
+            if (recordMetrics)  Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
         }
 
         return true;

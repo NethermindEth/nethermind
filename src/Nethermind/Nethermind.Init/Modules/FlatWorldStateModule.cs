@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
@@ -30,7 +31,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
         builder
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .AddSingleton<IFlatDbManager, FlatDbManager>()
+            .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
+                ctx.Resolve<ResourcePool>(),
+                ctx.Resolve<IProcessExitSource>(),
+                ctx.Resolve<TrieNodeCache>(),
+                ctx.Resolve<SnapshotCompactor>(),
+                ctx.Resolve<ISnapshotRepository>(),
+                ctx.Resolve<PersistenceManager>(),
+                ctx.Resolve<IFlatDbConfig>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<ResourcePool>()
             .AddSingleton<Importer>()
             .AddSingleton<TrieNodeCache>()
