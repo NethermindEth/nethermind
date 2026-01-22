@@ -462,9 +462,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <param name="gasAvailableForCodeDeposit">
     /// The amount of gas available for covering the cost of code deposit.
     /// </param>
-    /// <param name="spec">
-    /// The release specification containing the rules and parameters that affect code deposit behavior.
-    /// </param>
     /// <param name="previousStateSucceeded">
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
@@ -1213,7 +1210,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
@@ -1339,16 +1336,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
-        if (ReturnData is VmState<TGasPolicy> state)
+        return ReturnData switch
         {
-            return new CallResult(state);
-        }
-        else if (ReturnData is EofCodeInfo eofCodeInfo)
-        {
-            return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
-        }
-        // Fall back to returning a CallResult with a byte array as the return data.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
+            VmState<TGasPolicy> state => new CallResult(state),
+            EofCodeInfo eofCodeInfo => new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version),
+            // Fall back to returning a CallResult with a byte array as the return data.
+            _ => new CallResult(null, (byte[])ReturnData, null, codeInfo.Version)
+        };
 
     Revert:
         // Return a CallResult indicating a revert.
@@ -1428,7 +1422,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    private static int GetAlignmentOffset(byte[] array, uint alignment)
     {
         ArgumentNullException.ThrowIfNull(array);
         ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
@@ -1438,19 +1432,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
 
         uint mask = alignment - 1;
-        // address & mask is misalignment, so (â€“address) & mask is exactly the adjustment
-        uint adjustment = (uint)((-(nint)address) & mask);
+        // address & mask is misalignment, so (-address) & mask is exactly the adjustment
+        uint adjustment = (uint)(-(nint)address & mask);
 
         return (int)adjustment;
     }
 
-    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    private static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsSpan(offset, size);
     }
 
-    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
     {
         int offset = GetAlignmentOffset(array, alignment);
         return array.AsMemory(offset, size);
