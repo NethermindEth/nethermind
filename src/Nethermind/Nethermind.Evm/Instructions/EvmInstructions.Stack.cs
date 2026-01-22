@@ -611,7 +611,7 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// EIP-8024: EXCHANGE instruction for (non-EOF) code.
-    /// Exchanges stack items at positions (n + 1) and (m + 1) from the top.
+    /// Exchanges stack items at positions n and m from the top.
     /// </summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
@@ -687,8 +687,8 @@ internal static partial class EvmInstructions
         // mask = -1 if q < r, 0 otherwise
         int mask = (q - r) >> 31;
 
-        // EIP-8024: if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
-        // Add +1 for 1-indexed stack positions used by Exchange
+        // EIP-8024 base mapping (0-based stack): if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
+        // Add +1 for 1-indexed stack positions used by Exchange: if (q < r) final_n=q+2, final_m=r+2; else final_n=r+2, final_m=31-q
         n = ((q & mask) | (r & ~mask)) + 2;
         m = ((r & mask) | ((29 - q) & ~mask)) + 2;
 
