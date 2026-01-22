@@ -6,6 +6,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
   <Target Name="BuildRustDependency" BeforeTargets="Build">
     <Exec Command="cargo build --release" WorkingDirectory="../native-zk-verifier" />
     <ItemGroup>
