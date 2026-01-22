@@ -143,7 +143,7 @@ namespace Nethermind.Consensus.Processing
             _startStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
             _startStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
             _startCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
-            _startCodeCacheMisses = Evm.Metrics.ThreadLocalContractsAnalysed;
+            _startCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
             // EIP-7702 delegation tracking
             _startEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
             _startEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
@@ -207,7 +207,7 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
             blockData.CurrentStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
             blockData.CurrentCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
-            blockData.CurrentCodeCacheMisses = Evm.Metrics.ThreadLocalContractsAnalysed;
+            blockData.CurrentCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
             blockData.StartAccountCacheHits = _startAccountCacheHits;
             blockData.StartAccountCacheMisses = _startAccountCacheMisses;
             blockData.StartStorageCacheHits = _startStorageCacheHits;
