@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Threshold in milliseconds for slow block logging (default: 1000ms).
         /// </summary>
-        private const long SlowBlockThresholdMs = 0;
+        private const long SlowBlockThresholdMs = 1000;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
