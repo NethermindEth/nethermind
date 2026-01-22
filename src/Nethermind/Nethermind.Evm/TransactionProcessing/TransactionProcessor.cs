@@ -225,6 +225,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
+            tx.BlockGasUsed = spentGas.EffectiveBlockGas;
 
             // Finalize
             if (restore)

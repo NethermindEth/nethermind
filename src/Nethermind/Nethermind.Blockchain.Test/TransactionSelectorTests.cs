@@ -473,6 +473,41 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
+            IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
+            selectedTransactions.Should()
+                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+        }
+
+        [Test]
+        public void Block_gas_budget_uses_pre_refund_value_for_sender_chain()
+        {
+            Transaction first = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                .WithGasPrice(10).WithGasLimit(30_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction second = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+                .WithGasPrice(10).WithGasLimit(30_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            first.SpentGas = 10_000;
+            first.BlockGasUsed = 20_000;
+            second.SpentGas = 10_000;
+            second.BlockGasUsed = 20_000;
+
+            ProperTransactionsSelectedTestCase testCase = new()
+            {
+                ReleaseSpec = Berlin.Instance,
+                BaseFee = 0,
+                AccountStates = { { TestItem.AddressA, (1_000_000, 1) } },
+                Transactions = { first, second },
+                GasLimit = 30_000
+            };
+            testCase.ExpectedSelectedTransactions.Add(first);
+
+            IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
+            selectedTransactions.Should()
+                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+        }
+
+        private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)
+        {
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
@@ -548,11 +583,7 @@ namespace Nethermind.Blockchain.Test
                 parentHeader = parentHeader.WithExcessBlobGas(0);
             }
 
-            IEnumerable<Transaction> selectedTransactions =
-                poolTxSource.GetTransactions(parentHeader.TestObject,
-                    testCase.GasLimit);
-            selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+            return poolTxSource.GetTransactions(parentHeader.TestObject, testCase.GasLimit).ToArray();
         }
 
         public class ProperTransactionsSelectedTestCase
