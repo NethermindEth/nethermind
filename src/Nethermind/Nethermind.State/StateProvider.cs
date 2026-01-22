@@ -721,6 +721,8 @@ namespace Nethermind.State
             if (!exists)
             {
                 Metrics.IncrementStateTreeReads();
+                // Track account read for execution metrics (DB reads only, not cache hits)
+                EvmMetrics.IncrementAccountReads();
                 Account? account = _tree.Get(address);
 
                 accountChanges = new(account, account);
@@ -746,8 +748,6 @@ namespace Nethermind.State
             if (_nullAccountReads.Contains(address)) return null;
 
             Account? account = GetState(address);
-            // Track account read for execution metrics
-            EvmMetrics.IncrementAccountReads();
             if (account is not null)
             {
                 PushJustCache(address, account);
