@@ -142,7 +142,7 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
-        // Contract that selfdestructs to a different address (inheritor)
+        // Contract that self-destructs to a different address (inheritor)
         Address inheritor = TestItem.AddressC;
         byte[] contractCode = Prepare.EvmCode
             .SELFDESTRUCT(inheritor)
@@ -209,7 +209,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         // Calculate contract address first - we need it for the selfdestruct target
         Address contractAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
 
-        // Contract that selfdestructs to itself
+        // Contract that self-destructs to itself
         byte[] contractCode = Prepare.EvmCode
             .SELFDESTRUCT(contractAddress)
             .Done;
@@ -271,7 +271,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         // Calculate contract A address first
         Address contractAAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
 
-        // Contract A: selfdestructs to another address, then Contract B will send it ETH
+        // Contract A: self-destructs to another address, then Contract B will send it ETH
         Address inheritorA = TestItem.AddressD;
         byte[] contractACode = Prepare.EvmCode
             .SELFDESTRUCT(inheritorA)
@@ -297,7 +297,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         ulong ethToSend = 500_000;
         byte[] contractBCode = Prepare.EvmCode
             .Call(contractAAddress, 100000)             // This triggers Contract A's selfdestruct
-            .CallWithValue(contractAAddress, 100000, ethToSend) // Send ETH to selfdestructed contract
+            .CallWithValue(contractAAddress, 100000, ethToSend) // Send ETH to self-destructed contract
             .STOP()
             .Done;
         byte[] initCodeB = Prepare.EvmCode
