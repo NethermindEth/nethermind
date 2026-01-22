@@ -121,6 +121,24 @@ internal class XdcTransactionProcessor(
         return base.ValidateGas(tx, header, minGasRequired);
     }
 
+    protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
+    {
+        // IMPORTANT: if we override the effective gas price to 0, we must also set opcodeGasPrice to 0.
+        // TxExecutionContext is created with opcodeGasPrice and is later used for refunding, tracing, etc.
+        //
+        // Also: IsSpecialTransaction requires the IXdcReleaseSpec to decide Randomize vs BlockSigner, so
+        // we need the current block spec here.
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec;
+
+        if (tx.IsSpecialTransaction(xdcSpec))
+        {
+            opcodeGasPrice = UInt256.Zero;
+            return UInt256.Zero;
+        }
+
+        return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
+    }
+
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
