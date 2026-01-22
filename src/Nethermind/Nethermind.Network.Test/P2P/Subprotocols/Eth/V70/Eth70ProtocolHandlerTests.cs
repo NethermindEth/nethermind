@@ -128,15 +128,113 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_return_empty_receipts_block_when_local_block_has_no_receipts()
+    {
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 1 && m.EthMessage.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_return_receipts_when_first_block_receipt_index_is_zero()
+    {
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 1 &&
+            m.EthMessage.TxReceipts[0].Length == receipts.Length &&
+            m.EthMessage.TxReceipts[0][0].GasUsedTotal == receipts[0].GasUsedTotal &&
+            m.EthMessage.TxReceipts[0][2].GasUsedTotal == receipts[2].GasUsedTotal &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_return_last_receipt_when_first_block_receipt_index_is_last()
+    {
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, receipts.Length - 1, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 1 &&
+            m.EthMessage.TxReceipts[0].Length == 1 &&
+            m.EthMessage.TxReceipts[0][0].GasUsedTotal == receipts.Last().GasUsedTotal &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_disconnect_when_first_block_receipt_index_equals_receipts_count()
+    {
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, receipts.Length, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+            Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
+    }
+
+    [Test]
+    public void Should_disconnect_when_first_block_receipt_index_exceeds_receipts_count()
+    {
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, receipts.Length + 1, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+            Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
+    }
+
+    [Test]
     public async Task Should_request_additional_pages_until_complete()
     {
         Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
         TxReceipt[] receipts =
-        {
+        [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
-        };
+        ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
@@ -162,17 +260,17 @@ public class Eth70ProtocolHandlerTests
     {
         Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
         TxReceipt[] block1 =
-        {
+        [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
-        };
+        ];
 
         TxReceipt[] block2 =
-        {
+        [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
-        };
+        ];
 
         using ArrayPoolList<long> seenOffsets = new(2);
 
@@ -182,8 +280,8 @@ public class Eth70ProtocolHandlerTests
             seenOffsets.Add(sent.FirstBlockReceiptIndex);
 
             TxReceipt[][] payload = sent.FirstBlockReceiptIndex == 0
-                ? new[] { block1.Take(2).ToArray() }
-                : new[] { block1.Skip((int)sent.FirstBlockReceiptIndex).ToArray(), block2 };
+                ? [block1.Take(2).ToArray()]
+                : [block1.Skip((int)sent.FirstBlockReceiptIndex).ToArray(), block2];
 
             bool lastBlockIncomplete = sent.FirstBlockReceiptIndex == 0;
             ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete);
@@ -204,9 +302,9 @@ public class Eth70ProtocolHandlerTests
     public async Task Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =
-        {
+        [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
-        };
+        ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
@@ -226,10 +324,10 @@ public class Eth70ProtocolHandlerTests
     public void Should_reject_when_intrinsic_exceeds_block_gas()
     {
         TxReceipt[] receipts =
-        {
+        [
             new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
-        };
+        ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
@@ -248,13 +346,13 @@ public class Eth70ProtocolHandlerTests
     public void Should_reject_when_logs_gas_exceeds_block_gas()
     {
         TxReceipt[] receipts =
-        {
+        [
             new()
             {
                 GasUsedTotal = 500,
-                Logs = new[] { new LogEntry(TestItem.AddressA, new byte[100], Array.Empty<Hash256>()) }
+                Logs = [new LogEntry(TestItem.AddressA, new byte[100], Array.Empty<Hash256>())]
             }
-        };
+        ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {

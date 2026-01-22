@@ -92,17 +92,26 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
             TxReceipt[] receipts = SyncServer.GetReceipts(getReceiptsMessage.EthMessage.Hashes[blockIndex]);
             int startIndex = blockIndex == 0 ? checked((int)getReceiptsMessage.FirstBlockReceiptIndex) : 0;
 
-            if (startIndex < 0 || startIndex > receipts.Length)
+            if (receipts.Length == 0)
             {
-                throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
-            }
+                if (startIndex != 0)
+                {
+                    txReceipts.Dispose();
+                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
+                }
 
-            if (startIndex == receipts.Length)
-            {
+                txReceipts.Add([]);
                 continue;
             }
 
+            if (startIndex < 0 || startIndex >= receipts.Length)
+            {
+                txReceipts.Dispose();
+                throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
+            }
+
             int taken = 0;
+
             for (int receiptIndex = startIndex; receiptIndex < receipts.Length; receiptIndex++)
             {
                 taken++;
@@ -115,12 +124,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                 }
             }
 
-            if (taken > 0)
-            {
-                TxReceipt[] truncated = new TxReceipt[taken];
-                Array.Copy(receipts, startIndex, truncated, 0, taken);
-                txReceipts.Add(truncated);
-            }
+            TxReceipt[] truncated = new TxReceipt[taken];
+            Array.Copy(receipts, startIndex, truncated, 0, taken);
+            txReceipts.Add(truncated);
 
             if (lastBlockIncomplete || sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
             {
@@ -186,11 +192,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                         throw new SubprotocolException($"Received partial receipts response below minimum size ({size} bytes < {SoftOutgoingMessageSizeLimit / 4} bytes)");
                     }
 
-                    for (int i = 0; i < response.EthMessage.TxReceipts.Count; i++)
+                    IOwnedReadOnlyList<TxReceipt[]?> txReceipts = response.EthMessage.TxReceipts;
+
+                    for (int i = 0; i < txReceipts.Count; i++)
                     {
                         bool isFirst = i == 0;
-                        bool isLast = i == response.EthMessage.TxReceipts.Count - 1;
-                        TxReceipt[] blockReceipts = response.EthMessage.TxReceipts[i];
+                        bool isLast = i == txReceipts.Count - 1;
+                        TxReceipt[] blockReceipts = txReceipts[i];
 
                         if (isFirst && firstBlockReceiptIndex > 0)
                         {
@@ -301,7 +309,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
         }
 
         long prevCumulative = firstReceiptIndex == 0 ? 0 : blockReceipts[0].GasUsedTotal;
-        for (int i = 0; i < blockReceipts.Length; i++)
+        for (int i = 1; i < blockReceipts.Length; i++)
         {
             if (blockReceipts[i].GasUsedTotal < prevCumulative)
             {

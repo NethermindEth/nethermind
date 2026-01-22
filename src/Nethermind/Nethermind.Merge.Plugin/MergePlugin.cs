@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -36,7 +35,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -222,7 +220,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug("Delayed adding eth/69 capability until terminal block reached");
+                if (_logger.IsDebug) _logger.Debug("Delayed adding post-merge eth/* capabilities until terminal block reached");
                 _poSSwitcher.TerminalBlockReached += (_, _) => AddPostMergeNetworkProtocols();
             }
         }
