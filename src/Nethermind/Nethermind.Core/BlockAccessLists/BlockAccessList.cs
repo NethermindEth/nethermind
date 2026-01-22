@@ -217,25 +217,29 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
 
         // Push revertible changes for nonce changes (reverse order for correct restore)
-        foreach (NonceChange nonceChange in accountChanges.NonceChanges.Reverse())
+        IList<NonceChange> nonceChanges = accountChanges.NonceChanges;
+        int nonceCount = nonceChanges.Count;
+        for (int i = nonceCount - 1; i >= 0; i--)
         {
             _changes.Push(new()
             {
                 Address = address,
                 Type = ChangeType.NonceChange,
-                PreviousValue = nonceChange,
+                PreviousValue = nonceChanges[i],
                 BlockAccessIndex = Index
             });
         }
 
         // Push revertible changes for code changes (reverse order for correct restore)
-        foreach (CodeChange codeChange in accountChanges.CodeChanges.Reverse())
+        IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+        int codeCount = codeChanges.Count;
+        for (int i = codeCount - 1; i >= 0; i--)
         {
             _changes.Push(new()
             {
                 Address = address,
                 Type = ChangeType.CodeChange,
-                PreviousValue = codeChange,
+                PreviousValue = codeChanges[i],
                 BlockAccessIndex = Index
             });
         }
