@@ -380,21 +380,9 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long ToPositiveLong(this byte[] bytes)
-        {
-            BigInteger value = ToUnsignedBigInteger(bytes.AsSpan());
-
-            if (value > long.MaxValue)
-            {
-                ThrowExceedsMaxValue(value);
-            }
-
-            return (long)value;
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowExceedsMaxValue(BigInteger value)
-                => throw new OverflowException($"Value {value} exceeds maximum allowed value");
-        }
+            => ((ReadOnlySpan<byte>)bytes).ToPositiveLong();
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
         {
