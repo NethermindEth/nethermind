@@ -10,7 +10,9 @@
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
-  <Target Name="BuildRustDependency" BeforeTargets="Build">
+  <Target Name="BuildRustDependency" BeforeTargets="Build"
+          Inputs="$(MSBuildProjectDirectory)/../native-zk-verifier/src/**/*.rs;$(MSBuildProjectDirectory)/../native-zk-verifier/Cargo.toml"
+          Outputs="$(MSBuildProjectDirectory)/../native-zk-verifier/target/release/native_zk_verifier.dll">
     <Exec Command="cargo build --release" WorkingDirectory="../native-zk-verifier" />
     <ItemGroup>
       <NativeLibs Include="../native-zk-verifier/target/release/libnative_zk_verifier.so" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
