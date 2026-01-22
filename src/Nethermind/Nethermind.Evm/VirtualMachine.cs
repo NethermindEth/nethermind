@@ -1495,6 +1495,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             AddLog(TransferLog.CreateTransfer(from, to, value));
         }
     }
+
+    internal void AddSelfDestructLog(Address contract, in UInt256 value)
+    {
+        if (Spec.IsEip7708Enabled && value > UInt256.Zero)
+        {
+            AddLog(TransferLog.CreateSelfDestruct(contract, value));
+        }
+    }
 }
 
 /// <summary>

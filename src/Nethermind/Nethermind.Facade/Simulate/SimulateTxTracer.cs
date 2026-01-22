@@ -53,7 +53,7 @@ public sealed class SimulateTxTracer : TxTracer
         if (callType == ExecutionType.DELEGATECALL) return;
         if (value > UInt256.Zero)
         {
-            _logs.Add(TransferLog.CreateTransfer(from, to, value));
+            _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
         }
     }
 
@@ -62,7 +62,7 @@ public sealed class SimulateTxTracer : TxTracer
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (balance > UInt256.Zero)
         {
-            _logs.Add(TransferLog.CreateTransfer(address, refundAddress, balance));
+            _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
         }
     }
 

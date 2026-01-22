@@ -759,8 +759,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
-                        if (Logger.IsTrace)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
+                        if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                        if (spec.IsEip7708Enabled)
+                        {
+                            UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                            if (!balance.IsZero)
+                            {
+                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                            }
+                        }
 
                         WorldState.ClearStorage(toBeDestroyed);
                         WorldState.DeleteAccount(toBeDestroyed);

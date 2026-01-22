@@ -20,7 +20,7 @@ public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
     private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
-    private static readonly IToArrayCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
+    private static readonly JournalCollection<LogEntry>_emptyLogs = new();
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -46,7 +46,7 @@ public readonly ref struct TransactionSubstate
     }.ToFrozenDictionary();
 
     private readonly IHashSetEnumerableCollection<Address>? _destroyList;
-    private readonly IToArrayCollection<LogEntry>? _logs;
+    private readonly JournalCollection<LogEntry>? _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -55,7 +55,7 @@ public readonly ref struct TransactionSubstate
     public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
+    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
@@ -83,7 +83,7 @@ public readonly ref struct TransactionSubstate
     public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IHashSetEnumerableCollection<Address> destroyList,
-        IToArrayCollection<LogEntry> logs,
+        JournalCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
         EvmExceptionType evmExceptionType = default,
@@ -169,7 +169,7 @@ public readonly ref struct TransactionSubstate
         }
         catch (Exception e) // shouldn't happen, just for being safe
         {
-            if (_logger.IsError == true) _logger.Error("Couldn't parse revert message", e);
+            if (_logger.IsError) _logger.Error("Couldn't parse revert message", e);
             return null;
         }
     }

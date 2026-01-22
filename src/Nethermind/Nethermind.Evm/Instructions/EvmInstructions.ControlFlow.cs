@@ -239,7 +239,16 @@ internal static partial class EvmInstructions
 
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
-        vm.AddTransferLog(executingAccount, inheritor, result);
+
+        if (executingAccount == inheritor)
+        {
+            vm.AddSelfDestructLog(executingAccount, result);
+        }
+        else
+        {
+            vm.AddTransferLog(executingAccount, inheritor, result);
+        }
+
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
