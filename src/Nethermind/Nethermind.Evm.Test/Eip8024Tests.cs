@@ -132,11 +132,11 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_ValidImmediate_ExchangesStackElements()
     {
-        // Push values, then EXCHANGE with immediate 0x12 -> decode_pair gives (2, 3)
-        // Exchange positions 2 and 3 from top
+        // Push values, then EXCHANGE with immediate 0x12 -> decode_pair gives (3, 4)
+        // Exchange positions 3 and 4 from top
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .Op(Instruction.EXCHANGE).Data(0x12) // n=2, m=3 -> exchange positions 2 and 3
+            .Op(Instruction.EXCHANGE).Data(0x12) // n=3, m=4 -> exchange positions 3 and 4
             .MSTORE(0) // Store top
             .Return(32, 0)
             .Done;
@@ -145,7 +145,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         result.StatusCode.Should().Be(StatusCode.Success);
 
         // Stack before EXCHANGE: [1, 2, 3, 4, 5] (5 on top)
-        // decode_pair(0x12) returns n=2, m=3
+        // decode_pair(0x12) returns n=3, m=4
         // EXCHANGE swaps positions 3 and 4 from top (values 3 and 2)
         // After EXCHANGE: stack = [1, 3, 2, 4, 5] (5 still on top)
         // MSTORE stores 5 at offset 0
