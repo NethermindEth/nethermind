@@ -138,7 +138,7 @@ namespace Nethermind.Benchmarks.Store
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
             }),
-            ("extenson_create_new_extension", tree =>
+            ("extension_create_new_extension", tree =>
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);

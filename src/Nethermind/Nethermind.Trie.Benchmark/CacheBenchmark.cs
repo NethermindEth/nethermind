@@ -1,3 +1,4 @@
+using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Caching;
@@ -55,7 +56,7 @@ namespace Nethermind.Trie.Benchmark
         {
             MemCountingCache cache
                 = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(Keccak.Zero, new byte[0]);
+            cache.Set(Keccak.Zero, Array.Empty<byte>());
             return cache;
         }
 
@@ -64,8 +65,8 @@ namespace Nethermind.Trie.Benchmark
         {
             MemCountingCache cache
                 = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
+            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
             return cache;
         }
 
@@ -74,9 +75,9 @@ namespace Nethermind.Trie.Benchmark
         {
             MemCountingCache cache
                 = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
+            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakC, Array.Empty<byte>());
             return cache;
         }
 
@@ -85,10 +86,10 @@ namespace Nethermind.Trie.Benchmark
         {
             MemCountingCache cache
                 = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
-            cache.Set(TestItem.KeccakD, new byte[0]);
+            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakC, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakD, Array.Empty<byte>());
             return cache;
         }
     }

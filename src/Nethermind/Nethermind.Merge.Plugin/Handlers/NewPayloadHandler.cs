@@ -367,7 +367,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // been suggested. there are three possibilities, either the block hasn't been processed yet,
                 // the block was processed and returned invalid but this wasn't saved anywhere or the block was
                 // processed and marked as valid.
-                // if marked as processed by the blocktree then return VALID, otherwise null so that it's process a few lines below
+                // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
                 AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) ? ValidationResult.Valid : null,
                 _ => null
             };

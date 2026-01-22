@@ -269,7 +269,10 @@ public partial class BlockProcessor
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.WithReplacedHeader(headerForProcessing);
+        Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
+        block.BlockAccessList = suggestedBlock.BlockAccessList;
+
+        return block;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)

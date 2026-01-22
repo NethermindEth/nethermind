@@ -84,7 +84,7 @@ public sealed class SimulateTxTracer : TxTracer
                 Address = entry.Address,
                 Topics = entry.Topics,
                 Data = entry.Data,
-                LogIndex = (ulong)i,
+                LogIndex = _txIndex + (ulong)i,
                 TransactionHash = _tx.Hash!,
                 TransactionIndex = _txIndex,
                 BlockHash = _currentBlockHash,

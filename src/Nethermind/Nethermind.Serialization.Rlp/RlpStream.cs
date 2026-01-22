@@ -27,10 +27,8 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
-        private static readonly BlockBodyDecoder _blockBodyDecoder = new();
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
-        private static readonly ReceiptMessageDecoder _receiptDecoder = new();
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly BlockAccessListDecoder _blockAccessListDecoder = BlockAccessListDecoder.Instance;
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
@@ -76,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
 
             StartSequence(contentLength);
 
-            foreach (T item in items)
+            foreach (T? item in items)
             {
                 decoder.Encode(this, item, rlpBehaviors);
             }
@@ -959,6 +957,11 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
+            if (checkPositions)
+            {
+                Check(positionCheck);
+            }
+
             return result;
         }
 
@@ -979,6 +982,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     result[i] = decodeItem(this);
                 }
+            }
+
+            if (checkPositions)
+            {
+                Check(positionCheck);
             }
 
             return result;
@@ -1233,7 +1241,8 @@ namespace Nethermind.Serialization.Rlp
                 return [];
             }
 
-            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            int checkPosition = Position + length;
+            int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
             GuardLimit(itemsCount, limit);
             byte[][] result = new byte[itemsCount][];
 
@@ -1241,6 +1250,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 result[i] = DecodeByteArray();
             }
+
+            Check(checkPosition);
 
             return result;
         }

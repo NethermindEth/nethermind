@@ -241,7 +241,7 @@ namespace Nethermind.Trie
                     }
                 }
 
-                return nonEmptyNodes > 2;
+                return false;
             }
         }
 
@@ -641,7 +641,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public bool IsChildDirty(int i)
+        public bool TryGetDirtyChild(int i, [NotNullWhen(true)] out TrieNode? dirtyChild)
         {
             if (IsExtension)
             {
@@ -651,20 +651,24 @@ namespace Nethermind.Trie
             ref var data = ref _nodeData[i];
             if (data is null)
             {
+                dirtyChild = null;
                 return false;
             }
 
             if (ReferenceEquals(data, _nullNode))
             {
+                dirtyChild = null;
                 return false;
             }
 
             if (data is Hash256)
             {
+                dirtyChild = null;
                 return false;
             }
 
-            return ((TrieNode)data)!.IsDirty;
+            dirtyChild = (TrieNode)data;
+            return dirtyChild.IsDirty;
         }
 
         public TrieNode? this[int i]
@@ -732,7 +736,7 @@ namespace Nethermind.Trie
             }
 
             // pruning trick so we never store long persisted paths
-            // Dont unresolve node of path length <= 4. there should be a relatively small number of these, enough to fit
+            // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
             // in RAM, but they are hit quite a lot, and don't have very good data locality.
             // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
             if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)
@@ -1146,7 +1150,7 @@ namespace Nethermind.Trie
             // else
             // {
             //     // we assume that the storage root will get resolved during persistence even if not persisted yet
-            //     // if this is not true then the code above that is commented out would be critical to call isntead
+            //     // if this is not true then the code above that is commented out would be critical to call instead
             //     _storageRoot = null;
             // }
         }
@@ -1496,7 +1500,7 @@ namespace Nethermind.Trie
                 }
 
                 // pruning trick so we never store long persisted paths
-                // Dont unresolve node of path length <= 4. there should be a relatively small number of these, enough to fit
+                // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
                 // in RAM, but they are hit quite a lot, and don't have very good data locality.
                 // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
                 if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)

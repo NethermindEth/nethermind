@@ -284,6 +284,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     if (previousStorage is not null)
                     {
                         slotChanges.Changes.Add(previousStorage.Value);
+                        accountChanges.RemoveStorageRead(change.Slot.Value);
                     }
 
                     accountChanges.ClearEmptySlotChangesAndAddRead(change.Slot!.Value);

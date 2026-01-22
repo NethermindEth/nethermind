@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Json
         {
             if (s.Length == 0)
             {
-                throw new JsonException("null cannot be assigned to long");
+                throw new JsonException("null cannot be assigned to int");
             }
 
             if (s.SequenceEqual("0x0"u8))

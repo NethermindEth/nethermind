@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
-    protected long TestTimout { get; init; } = DefaultTimeout;
+    protected long TestTimeout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
     public INonceManager NonceManager => _fromContainer.NonceManager;
@@ -57,6 +57,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool => _fromContainer.TxPool;
     public IForkInfo ForkInfo => _fromContainer.ForkInfo;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
+    public IWorldState MainWorldState => MainProcessingContext.WorldState;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBranchProcessor BranchProcessor => _fromContainer.MainProcessingContext.BranchProcessor;
@@ -323,7 +324,7 @@ public class TestBlockchain : IDisposable
             // Eip2935
             if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
             {
-                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress, 1);
+                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress!, 1);
             }
 
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
@@ -393,7 +394,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual AutoCancelTokenSource CreateCancellationSource()
     {
-        return AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
+        return AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimeout));
     }
 
     protected virtual async Task AddBlocksOnStart()

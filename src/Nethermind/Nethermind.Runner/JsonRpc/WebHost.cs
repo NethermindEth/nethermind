@@ -82,7 +82,6 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
 
         _applicationLifetime = _applicationServices.GetRequiredService<ApplicationLifetime>();
 
-        _applicationServices.GetRequiredService<IHttpContextFactory>();
         var httpContextFactory = new HttpContextFactory(Services);
         var hostingApp = new HostingApplication(application, _logManager, httpContextFactory);
 

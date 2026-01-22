@@ -739,7 +739,7 @@ public class TxBroadcasterTests
         IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
         mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.BlobProofVersion.Returns(versionMatches ? proofVersion : GetInvalidVersion(proofVersion));
+        spec.IsEip7594Enabled.Returns(versionMatches ? proofVersion == ProofVersion.V1 : proofVersion == ProofVersion.V0);
 
         SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
 
@@ -755,13 +755,6 @@ public class TxBroadcasterTests
 
         // Assert
         result.Should().Be(versionMatches, "LightTransaction from blob transaction should be gossiped when proof version matches.");
-
-        // Gets (version + 1) % (version + 1) - so next version round robin
-        ProofVersion GetInvalidVersion(ProofVersion version)
-        {
-            byte mod = (byte)(FastEnum.GetMaxValue<ProofVersion>() + 1);
-            return (ProofVersion)((byte)(version + 1) % mod);
-        }
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
