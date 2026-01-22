@@ -136,12 +136,6 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
         }
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
-
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
@@ -178,6 +172,14 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
+
+        // Charge gas for accessing the account's code (including delegation logic if applicable).
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
+        bool _ = vm.TxExecutionContext.CodeInfoRepository
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
