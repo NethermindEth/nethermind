@@ -144,6 +144,10 @@ namespace Nethermind.State
 
                 _blockCodeInsertFilter.Set(codeHash);
                 inserted = true;
+
+                // Track code write for execution metrics
+                EvmMetrics.IncrementCodeWrites();
+                EvmMetrics.IncrementCodeBytesWritten(code.Length);
             }
 
             Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -730,6 +734,8 @@ namespace Nethermind.State
 
         internal void SetState(Address address, Account? account)
         {
+            // Track account write for execution metrics
+            EvmMetrics.IncrementAccountWrites();
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
             _needsStateRootUpdate = true;
