@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -62,7 +63,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
-                });
+                })
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
         }
     }
 }
