@@ -152,7 +152,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public void DeleteInvalidBlock(Block invalidBlock)
         => throw new NotSupportedException();
 
-    public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash)
+    public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         => throw new NotSupportedException();
 
     public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
