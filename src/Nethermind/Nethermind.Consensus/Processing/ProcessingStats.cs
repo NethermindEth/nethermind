@@ -81,6 +81,9 @@ namespace Nethermind.Consensus.Processing
         private long _startStorageCacheMisses;
         private long _startCodeCacheHits;
         private long _startCodeCacheMisses;
+        // EIP-7702 delegation tracking for cross-client slow block logging
+        private long _startEip7702DelegationsSet;
+        private long _startEip7702DelegationsCleared;
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
@@ -141,6 +144,9 @@ namespace Nethermind.Consensus.Processing
             _startStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
             _startCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
             _startCodeCacheMisses = Evm.Metrics.ThreadLocalContractsAnalysed;
+            // EIP-7702 delegation tracking
+            _startEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
+            _startEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -208,6 +214,11 @@ namespace Nethermind.Consensus.Processing
             blockData.StartStorageCacheMisses = _startStorageCacheMisses;
             blockData.StartCodeCacheHits = _startCodeCacheHits;
             blockData.StartCodeCacheMisses = _startCodeCacheMisses;
+            // EIP-7702 delegation tracking
+            blockData.CurrentEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
+            blockData.CurrentEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
+            blockData.StartEip7702DelegationsSet = _startEip7702DelegationsSet;
+            blockData.StartEip7702DelegationsCleared = _startEip7702DelegationsCleared;
 
             CaptureReportData(blockData);
         }
@@ -530,6 +541,10 @@ namespace Nethermind.Consensus.Processing
                 long codeWrites = data.CurrentCodeWrites - data.StartCodeWrites;
                 long codeBytesWritten = data.CurrentCodeBytesWritten - data.StartCodeBytesWritten;
 
+                // EIP-7702 delegation tracking
+                long eip7702DelegationsSet = data.CurrentEip7702DelegationsSet - data.StartEip7702DelegationsSet;
+                long eip7702DelegationsCleared = data.CurrentEip7702DelegationsCleared - data.StartEip7702DelegationsCleared;
+
                 // Timing metrics for cross-client standardization (convert ticks to ms with sub-ms precision)
                 // 1 tick = 100 nanoseconds, so 10000 ticks = 1 ms
                 double stateReadMs = (data.CurrentStateReadTime - data.StartStateReadTime) / (double)TimeSpan.TicksPerMillisecond;
@@ -587,7 +602,9 @@ namespace Nethermind.Consensus.Processing
                         accounts = accountWrites,
                         storage_slots = storageWrites,
                         code = codeWrites,
-                        code_bytes = codeBytesWritten
+                        code_bytes = codeBytesWritten,
+                        eip7702_delegations_set = eip7702DelegationsSet,
+                        eip7702_delegations_cleared = eip7702DelegationsCleared
                     },
                     cache = new
                     {
@@ -718,6 +735,11 @@ namespace Nethermind.Consensus.Processing
             public long StartStorageCacheMisses;
             public long StartCodeCacheHits;
             public long StartCodeCacheMisses;
+            // EIP-7702 delegation tracking for cross-client slow block logging
+            public long CurrentEip7702DelegationsSet;
+            public long CurrentEip7702DelegationsCleared;
+            public long StartEip7702DelegationsSet;
+            public long StartEip7702DelegationsCleared;
         }
     }
 }

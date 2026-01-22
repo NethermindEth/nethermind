@@ -167,6 +167,23 @@ public class Metrics
     internal static long ThreadLocalCodeBytesWritten => _codeBytesWritten.ThreadLocalValue;
     internal static void IncrementCodeBytesWritten(int bytes) => _codeBytesWritten.Increment(bytes);
 
+    // EIP-7702 delegation tracking for cross-client execution metrics standardization
+    [CounterMetric]
+    [Description("Number of EIP-7702 delegations set during execution.")]
+    public static long Eip7702DelegationsSet => _eip7702DelegationsSet.GetTotalValue();
+    private static readonly ZeroContentionCounter _eip7702DelegationsSet = new();
+    [Description("Number of EIP-7702 delegations set on thread.")]
+    internal static long ThreadLocalEip7702DelegationsSet => _eip7702DelegationsSet.ThreadLocalValue;
+    internal static void IncrementEip7702DelegationsSet() => _eip7702DelegationsSet.Increment();
+
+    [CounterMetric]
+    [Description("Number of EIP-7702 delegations cleared during execution.")]
+    public static long Eip7702DelegationsCleared => _eip7702DelegationsCleared.GetTotalValue();
+    private static readonly ZeroContentionCounter _eip7702DelegationsCleared = new();
+    [Description("Number of EIP-7702 delegations cleared on thread.")]
+    internal static long ThreadLocalEip7702DelegationsCleared => _eip7702DelegationsCleared.ThreadLocalValue;
+    internal static void IncrementEip7702DelegationsCleared() => _eip7702DelegationsCleared.Increment();
+
     // Timing metrics for cross-client execution metrics standardization (in ticks for precision)
     [Description("Time spent reading state during execution (ticks).")]
     public static long StateReadTime => _stateReadTime.GetTotalValue();
