@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
@@ -196,6 +197,50 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public void DeleteAccount(Address address, UInt256 oldBalance)
     {
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
+
+        // Push revertible changes for each storage change that will be cleared.
+        // Push ALL changes per slot in reverse order so they restore in correct order (LIFO).
+        foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+        {
+            ReadOnlySpan<StorageChange> changes = CollectionsMarshal.AsSpan(slotChanges.Changes);
+            // Push changes in reverse order so they restore in original order
+            for (int i = changes.Length - 1; i >= 0; i--)
+            {
+                _changes.Push(new()
+                {
+                    Address = address,
+                    Type = ChangeType.StorageChange,
+                    Slot = slotChanges.Slot,
+                    PreviousValue = changes[i],
+                    BlockAccessIndex = Index
+                });
+            }
+        }
+
+        // Push revertible changes for nonce changes (reverse order for correct restore)
+        foreach (NonceChange nonceChange in accountChanges.NonceChanges.Reverse())
+        {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.NonceChange,
+                PreviousValue = nonceChange,
+                BlockAccessIndex = Index
+            });
+        }
+
+        // Push revertible changes for code changes (reverse order for correct restore)
+        foreach (CodeChange codeChange in accountChanges.CodeChanges.Reverse())
+        {
+            _changes.Push(new()
+            {
+                Address = address,
+                Type = ChangeType.CodeChange,
+                PreviousValue = codeChange,
+                BlockAccessIndex = Index
+            });
+        }
+
         accountChanges.SelfDestruct();
         AddBalanceChange(address, oldBalance, 0);
     }
