@@ -15,7 +15,7 @@ internal static partial class NativeMethods
         int zk_type,
         [In] byte[] proof_ptr, // Pins automatically for the duration of call
         nuint proof_len,
-        IntPtr vk_ptr,
+        nint vk_ptr,
         nuint vk_len
     );
 }

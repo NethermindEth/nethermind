@@ -10,7 +10,7 @@ namespace Nethermind.EthProofValidator.Verifiers;
 public class ZkProofVerifier : IDisposable
 {
     private readonly ZKType _zkType;
-    private IntPtr _vkPtr;
+    private nint _vkPtr;
     private nuint _vkLen;
 
     private bool _disposed;
@@ -71,10 +71,10 @@ public class ZkProofVerifier : IDisposable
 
     private void ReleaseVerificationKey()
     {
-        if (_vkPtr != IntPtr.Zero)
+        if (_vkPtr != nint.Zero)
         {
             Marshal.FreeHGlobal(_vkPtr);
-            _vkPtr = IntPtr.Zero;
+            _vkPtr = nint.Zero;
         }
     }
 
