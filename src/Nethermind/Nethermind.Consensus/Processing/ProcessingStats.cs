@@ -552,7 +552,9 @@ namespace Nethermind.Consensus.Processing
                 double commitMs = (data.CurrentCommitTime - data.StartCommitTime) / (double)TimeSpan.TicksPerMillisecond;
                 // Convert from microseconds to milliseconds with sub-ms precision
                 double totalMs = data.ProcessingMicroseconds / 1000.0;
-                double executionMs = data.ProcessingMicroseconds / 1000.0;
+                // Derive execution time by subtracting state I/O overhead from total
+                double executionMs = totalMs - stateReadMs - stateHashMs - commitMs;
+                if (executionMs < 0) executionMs = totalMs; // Fallback if timing not fully captured
 
                 // Calculate cache deltas for this block
                 long accountCacheHits = data.CurrentAccountCacheHits - data.StartAccountCacheHits;
