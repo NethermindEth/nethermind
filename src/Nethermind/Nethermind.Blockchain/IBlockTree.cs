@@ -161,7 +161,7 @@ namespace Nethermind.Blockchain
         void DeleteInvalidBlock(Block invalidBlock);
         void DeleteOldBlock(long blockNumber, Hash256 blockHash);
 
-        void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
+        void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash);
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
