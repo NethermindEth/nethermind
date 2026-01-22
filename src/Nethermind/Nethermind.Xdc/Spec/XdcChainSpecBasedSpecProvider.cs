@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -32,7 +34,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
-        releaseSpec.BlackListedAddresses = chainSpecEngineParameters.BlackListedAddresses;
+        releaseSpec.BlackListedAddresses = new HashSet<Address>(chainSpecEngineParameters.BlackListedAddresses);
 
         releaseSpec.RandomizeSMCBinary = chainSpecEngineParameters.RandomizeSMCBinary;
 
