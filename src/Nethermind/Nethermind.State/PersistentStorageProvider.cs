@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -352,9 +353,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
+        long start = Stopwatch.GetTimestamp();
         // Track storage read for execution metrics
         EvmMetrics.IncrementStorageReads();
-        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+        ReadOnlySpan<byte> result = GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+        EvmMetrics.AddStateReadTime(Stopwatch.GetElapsedTime(start).Ticks);
+        return result;
     }
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)

@@ -720,10 +720,12 @@ namespace Nethermind.State
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
+                long start = Stopwatch.GetTimestamp();
                 Metrics.IncrementStateTreeReads();
                 // Track account read for execution metrics (DB reads only, not cache hits)
                 EvmMetrics.IncrementAccountReads();
                 Account? account = _tree.Get(address);
+                EvmMetrics.AddStateReadTime(Stopwatch.GetElapsedTime(start).Ticks);
 
                 accountChanges = new(account, account);
             }
