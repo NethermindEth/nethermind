@@ -298,7 +298,6 @@ public class EthSimulateTestsBlocksAndTransactions
         return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
     }
 
-
     [Test]
     public async Task TestTransferLogsAddress([Values] bool eip7708)
     {
@@ -310,7 +309,7 @@ public class EthSimulateTestsBlocksAndTransactions
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         var logs = result.Data.First().Calls.First().Logs.ToArray();
         Assert.That(logs.Length, Is.EqualTo(1));
-        Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
+        Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));
     }
 
     [Test]

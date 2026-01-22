@@ -21,11 +21,9 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip7708Tests(bool eip7708Enabled)
 {
-    private readonly bool _eip7708Enabled = eip7708Enabled;
-
     private Task<BasicTestBlockchain> CreateChain()
     {
-        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip7708Enabled = _eip7708Enabled };
+        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip7708Enabled = eip7708Enabled };
         return BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(new TestSpecProvider(spec)));
     }
 
@@ -49,7 +47,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         Block block = await chain.AddBlock(tx);
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        int expectedLogCount = _eip7708Enabled ? expectedLogCountWhenEnabled : 0;
+        int expectedLogCount = eip7708Enabled ? expectedLogCountWhenEnabled : 0;
 
         Assert.Multiple(() =>
         {
@@ -117,7 +115,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         {
             Assert.That(receipts, Has.Length.EqualTo(1));
 
-            if (_eip7708Enabled && innerValue > 0 && receipts[0].Logs?.Length > 0)
+            if (eip7708Enabled && innerValue > 0 && receipts[0].Logs?.Length > 0)
             {
                 // Inner transfer log (contract -> target)
                 LogEntry innerLog = receipts[0].Logs![0];
@@ -128,7 +126,7 @@ public class Eip7708Tests(bool eip7708Enabled)
                 Assert.That(innerLog.Topics[2], Is.EqualTo(targetAddress.ToHash().ToHash256()));
                 Assert.That(new UInt256(innerLog.Data, isBigEndian: true), Is.EqualTo((UInt256)innerValue));
             }
-            else if (!_eip7708Enabled || innerValue == 0)
+            else if (!eip7708Enabled || innerValue == 0)
             {
                 // No logs expected when EIP-7708 is disabled or value is 0
                 Assert.That(receipts[0].Logs, Has.Length.EqualTo(0));
@@ -179,7 +177,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         Block block = await chain.AddBlock(callTx);
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        int expectedLogCount = _eip7708Enabled ? expectedLogCountWhenEnabled : 0;
+        int expectedLogCount = eip7708Enabled ? expectedLogCountWhenEnabled : 0;
 
         Assert.Multiple(() =>
         {
@@ -243,7 +241,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         Block block = await chain.AddBlock(callTx);
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        int expectedLogCount = _eip7708Enabled ? expectedLogCountWhenEnabled : 0;
+        int expectedLogCount = eip7708Enabled ? expectedLogCountWhenEnabled : 0;
 
         Assert.Multiple(() =>
         {
@@ -336,7 +334,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         {
             Assert.That(receipts, Has.Length.EqualTo(1));
 
-            if (_eip7708Enabled)
+            if (eip7708Enabled)
             {
                 // Expected logs:
                 // 1. TransferLog from Contract A selfdestruct (Contract A -> inheritorA)
