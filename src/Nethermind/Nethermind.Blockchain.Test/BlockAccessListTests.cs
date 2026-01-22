@@ -632,4 +632,962 @@ public class BlockAccessListTests()
         }
     }
 
+    [Test]
+    public void StorageWrite_ThenRevert_ShouldResultInStorageRead()
+    {
+        // Scenario: SSTORE then REVERT
+        // Expected: The slot should be tracked as a storage READ (since the write was reverted)
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 originalValue = 100;
+        UInt256 newValue = 200;
+
+        // Take snapshot before the write
+        int snapshot = bal.TakeSnapshot();
+
+        // Simulate SSTORE (write to storage)
+        bal.AddStorageChange(address, slot, originalValue, newValue);
+
+        // Verify we have a storage change
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+
+        // Revert to before the write
+        bal.Restore(snapshot);
+
+        // After revert, the slot should be tracked as a storage READ
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0), "Storage changes should be empty after revert");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(1), "Should have one storage read after revert");
+        Assert.That(accountChanges.StorageReads.First().Key, Is.EqualTo(slot), "Storage read should be for the reverted slot");
+    }
+
+    [Test]
+    public void StorageRead_ThenStorageWrite_ThenRevert_ShouldResultInStorageRead()
+    {
+        // Scenario: SLOAD, SSTORE, REVERT
+        // Expected: The slot should be tracked as a storage READ
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 originalValue = 100;
+        UInt256 newValue = 200;
+
+        // Simulate SLOAD (read from storage)
+        bal.AddStorageRead(address, slot);
+
+        // Verify we have a storage read
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1));
+
+        // Take snapshot before the write
+        int snapshot = bal.TakeSnapshot();
+
+        // Simulate SSTORE (write to storage) - this should remove the read and add a change
+        bal.AddStorageChange(address, slot, originalValue, newValue);
+
+        // Verify storage read was converted to storage change
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should have storage change after SSTORE");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Storage read should be removed after SSTORE");
+
+        // Revert to before the write
+        bal.Restore(snapshot);
+
+        // After revert, we should have the storage read back
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0), "Storage changes should be empty after revert");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(1), "Should have storage read after revert");
+        Assert.That(accountChanges.StorageReads.First().Key, Is.EqualTo(slot));
+    }
+
+    [Test]
+    public void TwoStorageWrites_RevertSecond_ShouldRestoreFirstChange()
+    {
+        // Scenario: SSTORE, SSTORE, REVERT second
+        // Expected: First storage change should be restored
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 originalValue = 100;
+        UInt256 firstWriteValue = 200;
+        UInt256 secondWriteValue = 300;
+
+        // First SSTORE
+        bal.AddStorageChange(address, slot, originalValue, firstWriteValue);
+
+        // Verify first storage change
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        SlotChanges slotChanges = accountChanges.StorageChanges.First();
+        Assert.That(slotChanges.Changes.Count, Is.EqualTo(1));
+        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(firstWriteValue));
+
+        // Take snapshot before second write
+        int snapshot = bal.TakeSnapshot();
+
+        // Second SSTORE
+        bal.AddStorageChange(address, slot, firstWriteValue, secondWriteValue);
+
+        // Verify second storage change replaced first
+        accountChanges = bal.GetAccountChanges(address);
+        slotChanges = accountChanges!.StorageChanges.First();
+        Assert.That(slotChanges.Changes.Count, Is.EqualTo(1));
+        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(secondWriteValue));
+
+        // Revert to before second write
+        bal.Restore(snapshot);
+
+        // First storage change should be restored
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should still have one storage change");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should have no storage reads");
+        slotChanges = accountChanges.StorageChanges.First();
+        Assert.That(slotChanges.Changes.Count, Is.EqualTo(1));
+        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(firstWriteValue), "First write value should be restored");
+    }
+
+    [Test]
+    public void StorageRead_TwoStorageWrites_RevertSecond_ShouldHaveFirstChangeNoRead()
+    {
+        // Scenario: SLOAD, SSTORE, SSTORE, REVERT second
+        // Expected: First storage change should be restored, no storage read
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 originalValue = 100;
+        UInt256 firstWriteValue = 200;
+        UInt256 secondWriteValue = 300;
+
+        // SLOAD
+        bal.AddStorageRead(address, slot);
+
+        // First SSTORE (removes read, adds change)
+        bal.AddStorageChange(address, slot, originalValue, firstWriteValue);
+
+        // Verify: change exists, read removed
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+
+        // Take snapshot before second write
+        int snapshot = bal.TakeSnapshot();
+
+        // Second SSTORE
+        bal.AddStorageChange(address, slot, firstWriteValue, secondWriteValue);
+
+        // Revert to before second write
+        bal.Restore(snapshot);
+
+        // First storage change should be restored, NO storage read
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should have first storage change");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have storage read - it was converted to change");
+        SlotChanges slotChanges = accountChanges.StorageChanges.First();
+        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(firstWriteValue));
+    }
+
+    [Test]
+    public void MultipleSlots_PartialRevert_ShouldOnlyAffectRevertedSlot()
+    {
+        // Scenario: Write to slot 1, write to slot 2, revert slot 2 write
+        // Expected: Slot 1 has change, slot 2 has read
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 originalValue = 100;
+        UInt256 newValue = 200;
+
+        // Write to slot 1
+        bal.AddStorageChange(address, slot1, originalValue, newValue);
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // Write to slot 2
+        bal.AddStorageChange(address, slot2, originalValue, newValue);
+
+        // Verify both changes exist
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(2));
+
+        // Revert slot 2 write
+        bal.Restore(snapshot);
+
+        // Slot 1 should have change, slot 2 should have read
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should have one storage change (slot 1)");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(1), "Should have one storage read (slot 2)");
+        Assert.That(accountChanges.StorageChanges.First().Slot, Is.EqualTo(slot1));
+        Assert.That(accountChanges.StorageReads.First().Key, Is.EqualTo(slot2));
+    }
+
+    [Test]
+    public void NestedSnapshots_FullRevert_ShouldRestoreAllReads()
+    {
+        // Scenario: Snapshot, SSTORE slot1, Snapshot, SSTORE slot2, Revert all
+        // Expected: Both slots should be reads
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 originalValue = 100;
+        UInt256 newValue = 200;
+
+        // Take initial snapshot
+        int snapshot1 = bal.TakeSnapshot();
+
+        // Write to slot 1
+        bal.AddStorageChange(address, slot1, originalValue, newValue);
+
+        // Take second snapshot
+        int snapshot2 = bal.TakeSnapshot();
+
+        // Write to slot 2
+        bal.AddStorageChange(address, slot2, originalValue, newValue);
+
+        // Verify both changes exist
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(2));
+
+        // Revert all the way to initial snapshot
+        bal.Restore(snapshot1);
+
+        // Both slots should be reads
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0), "Should have no storage changes");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(2), "Should have two storage reads");
+    }
+
+    [Test]
+    public void WriteToSameValueAsOriginal_ShouldNotCreateChange()
+    {
+        // Scenario: SSTORE slot with same value as original
+        // Expected: No storage change (optimization)
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 originalValue = 100;
+
+        // Write same value
+        bal.AddStorageChange(address, slot, originalValue, originalValue);
+
+        // Should not create a change
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Null.Or.Property("StorageChanges").Empty);
+    }
+
+    [Test]
+    public void StorageRead_DoesNotCreateRevertibleChange()
+    {
+        // Scenario: SLOAD creates a read that is NOT reverted by Restore
+        // This is expected behavior - reads track access, not state changes
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // SLOAD
+        bal.AddStorageRead(address, slot);
+
+        // Verify read exists
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1));
+
+        // Restore should NOT remove the read (reads are not revertible on their own)
+        bal.Restore(snapshot);
+
+        // Read should still exist
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1),
+            "Storage reads are tracked for block access and should persist after revert");
+    }
+
+    [Test]
+    public void StorageRead_ThenWrite_ThenRevert_ShouldHaveOneRead()
+    {
+        // Scenario: SLOAD, SLOAD (same slot), SSTORE, REVERT
+        // Expected: One storage read (not duplicated)
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 originalValue = 100;
+        UInt256 newValue = 200;
+
+        // First SLOAD
+        bal.AddStorageRead(address, slot);
+
+        // Second SLOAD (same slot - should not duplicate)
+        bal.AddStorageRead(address, slot);
+
+        // Verify only one read
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1));
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // SSTORE
+        bal.AddStorageChange(address, slot, originalValue, newValue);
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Should have exactly one read
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1), "Should have exactly one storage read");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(0), "Should have no storage changes");
+    }
+
+    [Test]
+    public void BalanceChange_ThenRevert_ShouldRemoveChange()
+    {
+        // Test balance change revert behavior for completeness
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 originalBalance = 1000;
+        UInt256 newBalance = 500;
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // Add balance change
+        bal.AddBalanceChange(address, originalBalance, newBalance);
+
+        // Verify change exists
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.BalanceChanges.Count(), Is.EqualTo(1));
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Balance change should be removed
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.BalanceChanges.Count(), Is.EqualTo(0), "Balance change should be reverted");
+    }
+
+    [Test]
+    public void ThreeStorageWrites_RevertToFirst_ShouldRestoreFirstChange()
+    {
+        // Scenario: SSTORE v1, SSTORE v2, SSTORE v3, REVERT to after first write
+        // Expected: First storage change should be restored
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100; // original
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+        UInt256 v3 = 400;
+
+        // First SSTORE
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Take snapshot after first write
+        int snapshotAfterFirst = bal.TakeSnapshot();
+
+        // Second SSTORE
+        bal.AddStorageChange(address, slot, v1, v2);
+
+        // Third SSTORE
+        bal.AddStorageChange(address, slot, v2, v3);
+
+        // Verify we have v3
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        SlotChanges slotChanges = accountChanges!.StorageChanges.First();
+        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(v3));
+
+        // Revert to after first write
+        bal.Restore(snapshotAfterFirst);
+
+        // Should have v1
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        slotChanges = accountChanges.StorageChanges.First();
+        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(v1), "Should restore to first write value");
+    }
+
+    [Test]
+    public void WriteRevertWriteRevert_ShouldEndWithRead()
+    {
+        // Scenario: SSTORE, REVERT, SSTORE, REVERT
+        // Expected: Storage read (from the second revert)
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+
+        // First write/revert cycle
+        int snapshot1 = bal.TakeSnapshot();
+        bal.AddStorageChange(address, slot, v0, v1);
+        bal.Restore(snapshot1);
+
+        // After first revert, should have a read
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1), "Should have read after first revert");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(0));
+
+        // Second write/revert cycle
+        int snapshot2 = bal.TakeSnapshot();
+        bal.AddStorageChange(address, slot, v0, v2); // Note: original value is still v0
+
+        // After second write, should have change (read converted)
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+
+        bal.Restore(snapshot2);
+
+        // After second revert, should have read again
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1), "Should have read after second revert");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(0), "Should have no changes after second revert");
+    }
+
+    [Test]
+    public void DifferentAddresses_RevertOnlyAffectsTargetAddress()
+    {
+        // Scenario: Write to address A, write to address B, revert B's write
+        // Expected: A has change, B has read
+        BlockAccessList bal = new();
+        Address addressA = TestItem.AddressA;
+        Address addressB = TestItem.AddressB;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+
+        // Write to address A
+        bal.AddStorageChange(addressA, slot, v0, v1);
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // Write to address B
+        bal.AddStorageChange(addressB, slot, v0, v1);
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Address A should still have change
+        AccountChanges? accountChangesA = bal.GetAccountChanges(addressA);
+        Assert.That(accountChangesA!.StorageChanges.Count(), Is.EqualTo(1), "Address A should keep its change");
+
+        // Address B should have read
+        AccountChanges? accountChangesB = bal.GetAccountChanges(addressB);
+        Assert.That(accountChangesB!.StorageReads.Count(), Is.EqualTo(1), "Address B should have read after revert");
+        Assert.That(accountChangesB.StorageChanges.Count(), Is.EqualTo(0), "Address B should have no changes");
+    }
+
+    [Test]
+    public void Line287Fix_TwoWrites_RevertSecond_ShouldNotHaveSpuriousRead()
+    {
+        // This test specifically targets the fix on line 287:
+        // accountChanges.RemoveStorageRead(change.Slot.Value);
+        //
+        // The scenario: When reverting a storage change that had a previous storage change,
+        // we should ensure no spurious storage read exists.
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+
+        // First write: v0 -> v1
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Verify: one change, no reads
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // Second write: v1 -> v2
+        bal.AddStorageChange(address, slot, v1, v2);
+
+        // Verify: still one change (updated), no reads
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v2));
+
+        // Revert second write - this triggers the code path with previousStorage != null
+        bal.Restore(snapshot);
+
+        // After revert: first change restored, NO spurious read
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "First change should be restored");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have any storage reads - line 287 fix ensures this");
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Should have v1 value");
+    }
+
+    [Test]
+    public void Line287Fix_ReadWriteWrite_RevertSecond_ShouldHaveFirstChangeNoRead()
+    {
+        // Scenario: SLOAD, SSTORE, SSTORE, REVERT second
+        // After first SSTORE: read removed, change added
+        // After second SSTORE: change updated
+        // After REVERT: first change restored, NO read (it was removed by first SSTORE)
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+
+        // SLOAD: adds read
+        bal.AddStorageRead(address, slot);
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1), "Should have read after SLOAD");
+
+        // First SSTORE: v0 -> v1 (removes read, adds change)
+        bal.AddStorageChange(address, slot, v0, v1);
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(0), "Read should be removed after SSTORE");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(1), "Should have change after SSTORE");
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // Second SSTORE: v1 -> v2
+        bal.AddStorageChange(address, slot, v1, v2);
+
+        // Revert second SSTORE
+        bal.Restore(snapshot);
+
+        // Should have first change, NO read
+        // The line 287 fix ensures any spurious read is removed, but in this case
+        // there shouldn't be one anyway since the read was removed by first SSTORE
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "First change should be restored");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have read - it was removed by first SSTORE");
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+    }
+
+    [Test]
+    public void Line287Fix_SimulateSubcallRevert_ShouldHandleCorrectly()
+    {
+        // Simulate a subcall scenario:
+        // 1. Main call writes to slot
+        // 2. Subcall writes to same slot
+        // 3. Subcall reverts
+        // Expected: Main call's change should be restored
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200; // main call value
+        UInt256 v2 = 300; // subcall value
+
+        // Main call writes: v0 -> v1
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Take snapshot (simulate subcall entry)
+        int subcallSnapshot = bal.TakeSnapshot();
+
+        // Subcall writes: v1 -> v2
+        bal.AddStorageChange(address, slot, v1, v2);
+
+        // Verify subcall value
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v2));
+
+        // Subcall reverts
+        bal.Restore(subcallSnapshot);
+
+        // Main call's value should be restored
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+    }
+
+    [Test]
+    public void Line287Fix_SubcallReadsThenWrites_MainCallHadChange_Revert_ShouldRestoreMainChange()
+    {
+        // Scenario:
+        // 1. Main call writes slot (v0 -> v1)
+        // 2. Subcall reads slot (SLOAD - should NOT add read because change exists)
+        // 3. Subcall writes slot (v1 -> v2)
+        // 4. Subcall reverts
+        // Expected: Main call's change (v1) restored, no reads
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+
+        // Main call writes
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Take subcall snapshot
+        int subcallSnapshot = bal.TakeSnapshot();
+
+        // Subcall tries to read - but AddStorageRead checks if change exists first
+        bal.AddStorageRead(address, slot);
+
+        // Verify: read should NOT be added because change exists
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(0), "Read should NOT be added when change exists");
+
+        // Subcall writes
+        bal.AddStorageChange(address, slot, v1, v2);
+
+        // Subcall reverts
+        bal.Restore(subcallSnapshot);
+
+        // Main call's change should be restored, no reads
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+    }
+
+    [Test]
+    public void Line287Fix_MultipleRevertLevels_ShouldHandleCorrectly()
+    {
+        // Deep nesting scenario:
+        // Main: write v1
+        // Sub1: write v2
+        // Sub2: write v3
+        // Revert Sub2 -> should have v2
+        // Revert Sub1 -> should have v1
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+        UInt256 v3 = 400;
+
+        // Main writes
+        bal.AddStorageChange(address, slot, v0, v1);
+        int snapshot1 = bal.TakeSnapshot();
+
+        // Sub1 writes
+        bal.AddStorageChange(address, slot, v1, v2);
+        int snapshot2 = bal.TakeSnapshot();
+
+        // Sub2 writes
+        bal.AddStorageChange(address, slot, v2, v3);
+
+        // Verify v3
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v3));
+
+        // Revert Sub2
+        bal.Restore(snapshot2);
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v2), "Should have v2 after Sub2 revert");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "No reads");
+
+        // Revert Sub1
+        bal.Restore(snapshot1);
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Should have v1 after Sub1 revert");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "No reads");
+    }
+
+    [Test]
+    public void Line287Fix_WriteToZeroValue_ShouldBeTrackedCorrectly()
+    {
+        // Edge case: Writing zero value should still be tracked as a change
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 0; // Writing zero
+
+        // Write zero
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Should have a change (not a read)
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should track change to zero");
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(UInt256.Zero));
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // Write non-zero
+        bal.AddStorageChange(address, slot, v1, 500);
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Should have change back to zero
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    public void SelfDestruct_ConvertsStorageChangesToReads()
+    {
+        // Verify that SelfDestruct converts storage changes to reads
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+
+        // Write to two slots
+        bal.AddStorageChange(address, slot1, v0, v1);
+        bal.AddStorageChange(address, slot2, v0, v1);
+
+        // Verify changes exist
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(2), "Should have two storage changes");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should have no reads");
+
+        // SelfDestruct (via DeleteAccount)
+        bal.DeleteAccount(address, 1000); // balance = 1000
+
+        // Changes should be converted to reads
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0), "Storage changes should be cleared after selfdestruct");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(2), "Should have two storage reads after selfdestruct");
+        Assert.That(accountChanges.BalanceChanges.Count(), Is.EqualTo(1), "Should have balance change for selfdestruct");
+    }
+
+    [Test]
+    public void SelfDestruct_ThenRevert_ShouldRestoreStorageChanges()
+    {
+        // After the fix: When selfdestruct is reverted, storage changes are properly restored.
+        // This ensures the block access list accurately reflects the final state of storage.
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 balance = 1000;
+
+        // Write to slot
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Verify change exists
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should have storage change before selfdestruct");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // SelfDestruct (converts storage changes to reads)
+        bal.DeleteAccount(address, balance);
+
+        // Verify selfdestruct state
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0), "Storage changes should be cleared after selfdestruct");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(1), "Should have storage read after selfdestruct");
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Storage changes should be restored
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.BalanceChanges.Count(), Is.EqualTo(0), "Balance change should be reverted");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(1), "Storage changes should be restored after revert");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Storage reads from selfdestruct should be removed after revert");
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Storage change value should be restored");
+    }
+
+    [Test]
+    public void SelfDestruct_WithNoStorageChanges_JustAddsBalanceChange()
+    {
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 balance = 1000;
+
+        // SelfDestruct without any prior storage changes
+        bal.DeleteAccount(address, balance);
+
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.BalanceChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.BalanceChanges.First().PostBalance, Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    public void SelfDestruct_ThenRevert_ShouldRestoreMultipleStorageChanges()
+    {
+        // Test with multiple storage slots
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 slot3 = 3;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 v2 = 300;
+        UInt256 v3 = 400;
+        UInt256 balance = 1000;
+
+        // Write to multiple slots
+        bal.AddStorageChange(address, slot1, v0, v1);
+        bal.AddStorageChange(address, slot2, v0, v2);
+        bal.AddStorageChange(address, slot3, v0, v3);
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // SelfDestruct
+        bal.DeleteAccount(address, balance);
+
+        // Verify all converted to reads
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(3));
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // All storage changes should be restored
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(3), "All storage changes should be restored");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "No storage reads after revert");
+
+        // Verify each slot's value
+        SlotChanges[] slots = [.. accountChanges.StorageChanges];
+        Assert.That(slots.Any(s => s.Slot == slot1 && s.Changes.First().NewValue == v1), "Slot 1 should be restored");
+        Assert.That(slots.Any(s => s.Slot == slot2 && s.Changes.First().NewValue == v2), "Slot 2 should be restored");
+        Assert.That(slots.Any(s => s.Slot == slot3 && s.Changes.First().NewValue == v3), "Slot 3 should be restored");
+    }
+
+    [Test]
+    public void SelfDestruct_ThenRevert_ShouldRestoreNonceAndCodeChanges()
+    {
+        // Test that nonce and code changes are also restored
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 balance = 1000;
+
+        // Add nonce change
+        bal.AddNonceChange(address, 5);
+
+        // Add code change
+        bal.AddCodeChange(address, [], [0x60, 0x00]);
+
+        // Verify changes exist
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.NonceChanges.Count(), Is.EqualTo(1));
+        Assert.That(accountChanges.CodeChanges.Count(), Is.EqualTo(1));
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // SelfDestruct (clears nonce and code changes)
+        bal.DeleteAccount(address, balance);
+
+        // Verify cleared
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.NonceChanges.Count(), Is.EqualTo(0), "Nonce changes should be cleared after selfdestruct");
+        Assert.That(accountChanges.CodeChanges.Count(), Is.EqualTo(0), "Code changes should be cleared after selfdestruct");
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Nonce and code changes should be restored
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.NonceChanges.Count(), Is.EqualTo(1), "Nonce changes should be restored");
+        Assert.That(accountChanges.CodeChanges.Count(), Is.EqualTo(1), "Code changes should be restored");
+        Assert.That(accountChanges.NonceChanges.First().NewNonce, Is.EqualTo(5ul));
+    }
+
+    [Test]
+    public void SelfDestruct_InSubcall_ThenRevert_ShouldRestoreMainCallChanges()
+    {
+        // Simulate: Main call writes, subcall selfdestructs, subcall reverts
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 balance = 1000;
+
+        // Main call writes
+        bal.AddStorageChange(address, slot, v0, v1);
+
+        // Take snapshot (subcall entry)
+        int subcallSnapshot = bal.TakeSnapshot();
+
+        // Subcall selfdestructs
+        bal.DeleteAccount(address, balance);
+
+        // Verify selfdestruct state
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(1));
+
+        // Subcall reverts
+        bal.Restore(subcallSnapshot);
+
+        // Main call's change should be restored
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Main call's storage change should be restored");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+    }
+
+    [Test]
+    public void SelfDestruct_WithExistingReads_ShouldNotAffectUnrelatedReads()
+    {
+        // Test that existing storage reads (from other slots) are not affected
+        BlockAccessList bal = new();
+        Address address = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 v0 = 100;
+        UInt256 v1 = 200;
+        UInt256 balance = 1000;
+
+        // Read slot 1 (via AddStorageRead - simulating SLOAD without SSTORE)
+        bal.AddStorageRead(address, slot1);
+
+        // Write slot 2
+        bal.AddStorageChange(address, slot2, v0, v1);
+
+        // Verify initial state
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1), "Should have read for slot 1");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(1), "Should have change for slot 2");
+
+        // Take snapshot
+        int snapshot = bal.TakeSnapshot();
+
+        // SelfDestruct
+        bal.DeleteAccount(address, balance);
+
+        // Verify: slot 1 read persists, slot 2 converted to read
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(2), "Should have reads for both slots");
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(0));
+
+        // Revert
+        bal.Restore(snapshot);
+
+        // Slot 1 should still be a read, slot 2 should be restored as a change
+        accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges!.StorageReads.Count(), Is.EqualTo(1), "Slot 1 should still be a read");
+        Assert.That(accountChanges.StorageReads.First().Key, Is.EqualTo(slot1));
+        Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(1), "Slot 2 should be restored as change");
+        Assert.That(accountChanges.StorageChanges.First().Slot, Is.EqualTo(slot2));
+    }
 }
