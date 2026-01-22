@@ -46,7 +46,7 @@ public class RewardTests
         await chain.AddBlocks(epochLength + 15 - 3);
         var header915 = chain.BlockTree.Head!.Header as XdcBlockHeader;
         Assert.That(header915, Is.Not.Null);
-        PrivateKey signer915 = GetSignerFromMasternodes(chain, header915, spec);
+        PrivateKey signer915 = chain.Signer.Key!;
         Address owner = signer915.Address;
         masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signer915.Address).Returns(owner);
         await chain.AddBlock(BuildSigningTx(
@@ -60,7 +60,7 @@ public class RewardTests
         await chain.AddBlocks(2 * epochLength - 31);
         var header2685 = chain.BlockTree.Head!.Header as XdcBlockHeader;
         Assert.That(header2685, Is.Not.Null);
-        PrivateKey signer2685 = GetSignerFromMasternodes(chain, header2685, spec);
+        PrivateKey signer2685 = chain.Signer.Key!;
         Address owner2 = signer2685.Address;
         masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signer2685.Address).Returns(owner2);
         // Continue adding blocks up until 3E
@@ -154,7 +154,7 @@ public class RewardTests
         EpochSwitchInfo? epochInfo = chain.EpochSwitchManager.GetEpochSwitchInfo(header915);
         Assert.That(epochInfo, Is.Not.Null);
         PrivateKey[] masternodes = chain.TakeRandomMasterNodes(spec, epochInfo);
-        PrivateKey signerA = GetSignerFromMasternodes(chain, header915, spec);
+        PrivateKey signerA = chain.Signer.Key!;
         Address ownerA = signerA.Address;
         masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signerA.Address).Returns(ownerA);
 
@@ -178,11 +178,8 @@ public class RewardTests
 
         await chain.AddBlocks(13);
 
-        PrivateKey signerB = GetSignerFromMasternodes(chain, header1785, spec);
+        PrivateKey signerB = chain.Signer.Key!;
         Address ownerB = signerB.Address;
-
-        var signer = (Signer)chain.Signer;
-        signer.SetSigner(signerB);
 
         masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signerB.Address).Returns(ownerB);
         Transaction txB1 = BuildSigningTx(
@@ -197,6 +194,9 @@ public class RewardTests
             header1785.Hash!,
             signerB,
             1);
+
+
+        Assert.That(ownerA, Is.Not.EqualTo(ownerB));
 
         // Advance to (2E - 2), then add a block with both signerB txs to be at (2E - 1)
         await chain.AddBlock(txB1, txB2); // now at (2E - 1)
@@ -321,10 +321,5 @@ public class RewardTests
             .ToBlockSignerContract(spec)
             .SignedAndResolved(signer)
             .TestObject;
-    }
-
-    private static PrivateKey GetSignerFromMasternodes(XdcTestBlockchain chain, XdcBlockHeader header, IXdcReleaseSpec spec)
-    {
-        return chain.Signer.Key!;
     }
 }
