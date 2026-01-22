@@ -233,11 +233,11 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_StackUnderflow_Fails()
     {
-        // EXCHANGE with immediate 0x12 -> decode_pair gives (2, 3)
+        // EXCHANGE with immediate 0x12 -> decode_pair gives (3, 4)
         // Exchange(n+1, m+1) = Exchange(3, 4) requires at least 4 items on stack
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2)
-            .Op(Instruction.EXCHANGE).Data(0x12) // n=2, m=3 -> needs at least 4 elements
+            .Op(Instruction.EXCHANGE).Data(0x12) // n=3, m=4 -> needs at least 4 elements
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -315,13 +315,13 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void Exchange_MaxDepth_StackUnderflow()
     {
         Prepare prepare = Prepare.EvmCode;
-        for (int i = 0; i < 29; i++)
+        for (int i = 0; i < 30; i++)
         {
             prepare.PushData(0);
         }
 
         byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x00) // n=1, m=29 -> needs depth 30
+            .Op(Instruction.EXCHANGE).Data(0x00) // n=2, m=31 -> needs depth 31
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -376,7 +376,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-            .Op(Instruction.EXCHANGE).Data(0x12) // decode_pair(0x12) = (2, 3)
+            .Op(Instruction.EXCHANGE).Data(0x12) // decode_pair(0x12) = (3, 4)
             .Op(Instruction.STOP)
             .Done;
 
@@ -445,7 +445,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // PUSH1 00, PUSH1 01, PUSH1 02, EXCHANGE 0x01
         // Stack before: [0, 1, 2] (2 on top)
         // decode_pair(0x01): k=1, q=0, r=1, q<r -> (1, 2)
-        // Exchange positions (n+1) and (m+1) = positions 2 and 3 from top.
+        // TryDecodePair returns n=2, m=3, so EXCHANGE swaps stack positions 2 and 3 from the top.
         // After: [1, 0, 2] (2 on top), matching the EIP vector.
         byte[] code = Prepare.EvmCode
             .PushData(0)
@@ -569,7 +569,7 @@ public class Eip8024Tests : VirtualMachineTestsBase
         {
             byte[] code = Prepare.EvmCode
                 .PushData(1).PushData(2).PushData(3).PushData(4).PushData(5)
-                .Op(Instruction.EXCHANGE).Data(0x12) // decode_pair(0x12) = (2, 3)
+                .Op(Instruction.EXCHANGE).Data(0x12) // decode_pair(0x12) = (3, 4)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
