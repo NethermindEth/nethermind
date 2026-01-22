@@ -20,7 +20,7 @@ public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
     private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
-    private static readonly JournalCollection<LogEntry>_emptyLogs = new();
+    private static readonly JournalCollection<LogEntry> _emptyLogs = new();
 
     private const string SomeError = "error";
     public const string Revert = "revert";
