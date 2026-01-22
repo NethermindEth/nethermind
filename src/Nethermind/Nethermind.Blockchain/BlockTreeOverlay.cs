@@ -119,8 +119,8 @@ public class BlockTreeOverlay : IBlockTree
     public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
 
-    public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
-        _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
+    public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash) =>
+        _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
 
     public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
     {
