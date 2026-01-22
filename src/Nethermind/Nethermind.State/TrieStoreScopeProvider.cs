@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Metric;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -115,6 +117,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Commit(long blockNumber)
         {
+            IMetricObserver metricObserver = Db.Metrics.PrewarmerGetTime;
+            bool measureMetric = !ReferenceEquals(metricObserver, NoopMetricObserver.Instance);
+            long sw = measureMetric ? Stopwatch.GetTimestamp() : 0;
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
@@ -140,6 +145,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
             _storages.Clear();
+            if (measureMetric) metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("commit", false));
         }
 
         internal StorageTree LookupStorageTree(Address address)
@@ -165,13 +171,23 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    private class WorldStateWriteBatch(
-        TrieStoreWorldStateBackendScope scope,
-        int estimatedAccountCount,
-        ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private class WorldStateWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly TrieStoreWorldStateBackendScope _scope;
+        private readonly ILogger _logger;
+        private readonly IMetricObserver _metricObserver;
+        private readonly long _startTimestamp;
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts;
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+
+        public WorldStateWriteBatch(TrieStoreWorldStateBackendScope scope, int estimatedAccountCount, ILogger logger)
+        {
+            _scope = scope;
+            _logger = logger;
+            _dirtyAccounts = new(estimatedAccountCount);
+            _metricObserver = Db.Metrics.PrewarmerGetTime;
+            _startTimestamp = !ReferenceEquals(_metricObserver, NoopMetricObserver.Instance) ? Stopwatch.GetTimestamp() : 0;
+        }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -182,7 +198,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
+            return new StorageTreeBulkWriteBatch(estimatedEntries, _scope.LookupStorageTree(address), this, address);
         }
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
@@ -195,16 +211,16 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
+                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = _scope.Get(key);
                 if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
                 account ??= ThrowNullAccount(key);
                 account = account!.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                if (logger.IsTrace) Trace(key, storageRoot, account);
+                if (_logger.IsTrace) Trace(key, storageRoot, account);
             }
 
-            using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            using (var stateSetter = _scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
                 foreach (var kv in _dirtyAccounts)
                 {
@@ -212,12 +228,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
             }
 
-            scope.ClearLoadedAccounts();
+            _scope.ClearLoadedAccounts();
+            if (_startTimestamp != 0) _metricObserver.Observe(Stopwatch.GetTimestamp() - _startTimestamp, new PrewarmerGetTimeLabel("write_batch_open", false));
 
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
-                => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+                => _logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
 
             [DoesNotReturn, StackTraceHidden]
             static Account ThrowNullAccount(Address address)
