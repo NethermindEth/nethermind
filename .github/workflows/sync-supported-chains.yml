@@ -2,14 +2,39 @@ name: Execute Gas benchmarks
 
 on:
   workflow_dispatch:
+    inputs:
+      runs:
+        description: Number of benchmark runs
+        required: false
+        default: "1"
+      testPath:
+        description: Path to test files
+        required: false
+        default: "eest_tests"
+      genesisFile:
+        description: Genesis file to use
+        required: false
+        default: "zkevmgenesis.json"
+      warmupFile:
+        description: Warmup file path
+        required: false
+        default: "warmup/warmup-1000bl-16wi-24tx.txt"
+      clients:
+        description: Comma-separated list of clients to test
+        required: false
+        default: "nethermind"
+      filter:
+        description: Test filter pattern
+        required: false
+        default: ""
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
 jobs:
-  setup-runner:
-    runs-on: ubuntu-latest
+  setup:
+    runs-on: ubuntu-slim
     outputs:
       runner-name: ${{ steps.setup-runner.outputs.runner-name }}
       machine-ip: ${{ steps.setup-runner.outputs.machine-ip }}
@@ -46,22 +71,50 @@ jobs:
           timeout: "5"
           setup-wait-time: "60"
 
-  run-on-self-hosted:
-    needs: setup-runner
-    runs-on: ${{ needs.setup-runner.outputs.runner-name }}
+  gas-benchmark:
+    needs: setup
+    runs-on: ${{ needs.setup.outputs.runner-name }}
     timeout-minutes: 360
-
+    env:
+      GAS_BENCHMARK_RUNS: "${{ inputs.runs || '1' }}"
+      GAS_BENCHMARK_TEST_PATH: "${{ inputs.testPath || 'eest_tests' }}"
+      GAS_BENCHMARK_GENESIS_FILE: "${{ inputs.genesisFile || 'zkevmgenesis.json' }}"
+      GAS_BENCHMARK_WARMUP_FILE: "${{ inputs.warmupFile || 'warmup/warmup-1000bl-16wi-24tx.txt' }}"
+      GAS_BENCHMARK_CLIENTS: "${{ inputs.clients || 'nethermind' }}"
+      GAS_BENCHMARK_FILTER: "${{ inputs.filter || '' }}"
     steps:
-      - name: Display runner information
-        run: |
-          echo "Running on self-hosted runner: ${{ needs.setup-runner.outputs.runner-name }}"
-          echo "Machine IP: ${{ needs.setup-runner.outputs.machine-ip }}"
-          echo "Workflow Run ID: ${{ needs.setup-runner.outputs.run-id }}"
+      - name: Checkout Gas Benchmarks
+        uses: actions/checkout@v6
+        with:
+          repository: NethermindEth/gas-benchmarks
+          ref: main
+          lfs: true
+
+      - name: Run gas-benchmarks composite action
+        uses: ./.github/actions/gas-benchmark-action
+        with:
+          # Benchmark configuration (all optional, with sensible defaults)
+          testPath: ${{ env.GAS_BENCHMARK_TEST_PATH }}
+          genesisFile: ${{ env.GAS_BENCHMARK_GENESIS_FILE }}
+          warmupFile: ${{ env.GAS_BENCHMARK_WARMUP_FILE }}
+          clients: ${{ env.GAS_BENCHMARK_CLIENTS }}
+          runs: ${{ env.GAS_BENCHMARK_RUNS }}
+          opcodeWarmupCount: "1"
+          filter: ${{ env.GAS_BENCHMARK_FILTER }}
+          images: '{"nethermind":"default","geth":"default","reth":"default","erigon":"default","besu":"default","nimbus":"default","ethrex":"default"}'
+
+          # PostgreSQL target (no DB is provisioned by this workflow)
+          postgresHost: ${{ secrets.GAS_BENCHMARKS_DB_HOST }}
+          postgresPort: ${{ secrets.GAS_BENCHMARKS_DB_PORT }}
+          postgresDbName: ${{ secrets.GAS_BENCHMARKS_DB_NAME }}
+          postgresTable: ${{ secrets.GAS_BENCHMARKS_DB_TABLE }}
+          postgresUser: ${{ secrets.GAS_BENCHMARKS_DB_USER }}
+          postgresPassword: ${{ secrets.GAS_BENCHMARKS_DB_PASSWORD }}
 
   cleanup:
-    needs: [setup-runner, run-on-self-hosted]
+    needs: [setup, gas-benchmark]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
 
     steps:
       - name: Checkout repository
@@ -88,5 +141,5 @@ jobs:
         with:
           gh-token: ${{ steps.gh-app.outputs.token }}
           gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
-          runner-name: ${{ needs.setup-runner.outputs.runner-name }}
-          workflow-run-id: ${{ needs.setup-runner.outputs.run-id }}
+          runner-name: ${{ needs.setup.outputs.runner-name }}
+          workflow-run-id: ${{ needs.setup.outputs.run-id }}
