@@ -25,8 +25,12 @@ fi
 
 # Install dependencies
 echo "Installing dependencies..."
+
+# Preparing Git-LFS
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+
 apt-get update
-apt-get install -y curl jq
+apt-get install -y curl jq git-lfs
 
 # Create runner user if it doesn't exist
 echo "Creating dedicated runner user..."
