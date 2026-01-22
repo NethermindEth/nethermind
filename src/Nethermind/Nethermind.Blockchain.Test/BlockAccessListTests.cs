@@ -1091,12 +1091,9 @@ public class BlockAccessListTests()
     }
 
     [Test]
-    public void Line287Fix_TwoWrites_RevertSecond_ShouldNotHaveSpuriousRead()
+    public void RevertSecondWrite_ShouldNotIntroduceStorageRead()
     {
-        // This test specifically targets the fix on line 287:
-        // accountChanges.RemoveStorageRead(change.Slot.Value);
-        //
-        // The scenario: When reverting a storage change that had a previous storage change,
+        // When reverting a storage change that had a previous storage change,
         // we should ensure no spurious storage read exists.
         BlockAccessList bal = new();
         Address address = TestItem.AddressA;
@@ -1131,12 +1128,12 @@ public class BlockAccessListTests()
         // After revert: first change restored, NO spurious read
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "First change should be restored");
-        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have any storage reads - line 287 fix ensures this");
+        Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have any storage reads");
         Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Should have v1 value");
     }
 
     [Test]
-    public void Line287Fix_ReadWriteWrite_RevertSecond_ShouldHaveFirstChangeNoRead()
+    public void ReadWriteWrite_RevertSecond_ShouldRestoreFirstChangeWithoutRead()
     {
         // Scenario: SLOAD, SSTORE, SSTORE, REVERT second
         // After first SSTORE: read removed, change added
@@ -1170,7 +1167,7 @@ public class BlockAccessListTests()
         bal.Restore(snapshot);
 
         // Should have first change, NO read
-        // The line 287 fix ensures any spurious read is removed, but in this case
+        // Any spurious read should be removed during revert, but in this case
         // there shouldn't be one anyway since the read was removed by first SSTORE
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "First change should be restored");
@@ -1179,7 +1176,7 @@ public class BlockAccessListTests()
     }
 
     [Test]
-    public void Line287Fix_SimulateSubcallRevert_ShouldHandleCorrectly()
+    public void SubcallRevert_ShouldRestoreMainCallChange()
     {
         // Simulate a subcall scenario:
         // 1. Main call writes to slot
@@ -1217,7 +1214,7 @@ public class BlockAccessListTests()
     }
 
     [Test]
-    public void Line287Fix_SubcallReadsThenWrites_MainCallHadChange_Revert_ShouldRestoreMainChange()
+    public void SubcallReadWrite_MainCallHasChange_Revert_ShouldRestoreMainChange()
     {
         // Scenario:
         // 1. Main call writes slot (v0 -> v1)
@@ -1259,7 +1256,7 @@ public class BlockAccessListTests()
     }
 
     [Test]
-    public void Line287Fix_MultipleRevertLevels_ShouldHandleCorrectly()
+    public void NestedSubcalls_MultipleReverts_ShouldRestoreCorrectValues()
     {
         // Deep nesting scenario:
         // Main: write v1
@@ -1304,7 +1301,7 @@ public class BlockAccessListTests()
     }
 
     [Test]
-    public void Line287Fix_WriteToZeroValue_ShouldBeTrackedCorrectly()
+    public void WriteZeroValue_ThenRevert_ShouldRestoreZeroValue()
     {
         // Edge case: Writing zero value should still be tracked as a change
         BlockAccessList bal = new();
