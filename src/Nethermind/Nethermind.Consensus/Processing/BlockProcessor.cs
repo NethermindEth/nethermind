@@ -37,6 +37,7 @@ public partial class BlockProcessor(
     IWorldState stateProvider,
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
+#pragma warning disable CS9113 // Parameter is unread.
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
@@ -101,11 +102,15 @@ public partial class BlockProcessor(
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr = _stateProvider.StateRoot;
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
-        _stateProvider.Commit(spec, commitRoots: false);
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr2 = _stateProvider.StateRoot;
 
         CalculateBlooms(receipts);
 
@@ -118,6 +123,9 @@ public partial class BlockProcessor(
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr3 = _stateProvider.StateRoot;
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
@@ -129,6 +137,9 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: true);
 
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr4 = _stateProvider.StateRoot;
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             // Get the accounts that have been changed

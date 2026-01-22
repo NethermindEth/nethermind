@@ -212,6 +212,7 @@ namespace Nethermind.Merge.Plugin
                     isPostMerge = !isTerminal;
                 }
             }
+            isPostMerge = true;
 
             header.IsPostMerge = isPostMerge;
             if (_logger.IsTrace)
