@@ -75,46 +75,6 @@ public class TrieWarmerTests
     }
 
     [Test]
-    public async Task PushJobMulti_WithStorageTree_CallsWarmUpStorageTrie()
-    {
-        var warmer = new TrieWarmer(_processExitSource, _logManager, _config);
-
-        var addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        var storageWarmer = Substitute.For<ITrieWarmer.IStorageWarmer>();
-        var address = new Address("0x1234567890123456789012345678901234567890");
-        UInt256 index = 100;
-
-        warmer.PushJobMulti(addressWarmer, address, storageWarmer, index, sequenceId: 3);
-
-        await Task.Delay(200);
-
-        storageWarmer.Received().WarmUpStorageTrie(index, 3);
-        addressWarmer.DidNotReceive().WarmUpStateTrie(Arg.Any<Address>(), Arg.Any<int>());
-
-        _cts.Cancel();
-        await warmer.DisposeAsync();
-    }
-
-    [Test]
-    public async Task PushJobMulti_WithoutStorageTree_CallsWarmUpStateTrie()
-    {
-        var warmer = new TrieWarmer(_processExitSource, _logManager, _config);
-
-        var addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        var address = new Address("0xabcdef0123456789abcdef0123456789abcdef01");
-        UInt256 index = 200;
-
-        warmer.PushJobMulti(addressWarmer, address, storageTree: null, index, sequenceId: 7);
-
-        await Task.Delay(200);
-
-        addressWarmer.Received().WarmUpStateTrie(address, 7);
-
-        _cts.Cancel();
-        await warmer.DisposeAsync();
-    }
-
-    [Test]
     public async Task PushAddressJob_PassesCorrectSequenceId()
     {
         var warmer = new TrieWarmer(_processExitSource, _logManager, _config);

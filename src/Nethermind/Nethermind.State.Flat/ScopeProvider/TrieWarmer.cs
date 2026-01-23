@@ -14,8 +14,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
 /// The trie warmer warms up the trie to speed up the final commit in block processing.
-/// The goal is to have very low latency in the enqueue so that it does not slow down block processing. An exception
-/// is the PushJobMulti which is called from prewarmer.
+/// The goal is to have very low latency in the enqueue so that it does not slow down block processing.
 /// Additionally, it must not take up a lot of CPU as prewarmer is also run concurrently. Taking up CPU cycle will
 /// slow down other part of the processing also.
 /// </summary>
@@ -221,29 +220,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return wokeUpWorker;
     }
 
-    private void MaybeWakeOpOtherWorkerSingle()
-    {
-        if (!ShouldWakeUpMoreWorker()) return;
-
-        // Yes, this could mean that two concurrent attempt both does not fill the worker count, but its fine, primary worker
-        // should do this more properly.
-        if (Interlocked.Increment(ref _pendingWakeUpSlots) + _activeSecondaryWorker > _secondaryWorkerCount)
-        {
-            Interlocked.Decrement(ref _pendingWakeUpSlots);
-            return;
-        }
-
-        try
-        {
-            _executionSlots.Release();
-        }
-        catch (SemaphoreFullException)
-        {
-            Console.Error.WriteLine($"Throw 1, {_activeSecondaryWorker}:{_secondaryWorkerCount}");
-            Interlocked.Decrement(ref _pendingWakeUpSlots);
-        }
-    }
-
     private bool MaybeWakeupFast()
     {
         // Skipping wakeup due to non atomic read is fine. Doing atomic operation all the time is really slow
@@ -326,25 +302,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             MaybeWakeupFast();
         }
-    }
-
-    public void PushJobMulti(ITrieWarmer.IAddressWarmer scope, Address? path, ITrieWarmer.IStorageWarmer? storageTree, in UInt256? index,
-        int sequenceId)
-    {
-        bool queued;
-
-        if (storageTree is null)
-        {
-            queued = _jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId));
-        }
-        else
-        {
-            queued = _jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId));
-        }
-
-        if (!queued) return;
-        if (MaybeWakeupFast()) return;
-        MaybeWakeOpOtherWorkerSingle(); // Multi does not block main block processing, so we can do slow things here.
     }
 
     public void OnEnterScope()

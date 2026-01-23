@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -86,10 +85,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void ResetState()
     {
         // Clear storage tree cache
-        lock (_storages)
-        {
-            _storages.Clear();
-        }
+        _storages.Clear();
 
         // Reset the snapshot bundle
         _snapshotBundle.Reset();
@@ -175,27 +171,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
     {
-        lock (_storages)
+        ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+        if (exists)
         {
-            ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-            if (exists)
-            {
-                return storage!;
-            }
-
-            Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-            storage = new FlatStorageTree(
-                this,
-                _warmer,
-                _snapshotBundle,
-                _configuration,
-                _concurrencyQuota,
-                storageRoot,
-                address,
-                _logManager);
-
-            return storage;
+            return storage!;
         }
+
+        Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+        storage = new FlatStorageTree(
+            this,
+            _warmer,
+            _snapshotBundle,
+            _configuration,
+            _concurrencyQuota,
+            storageRoot,
+            address,
+            _logManager);
+
+        return storage;
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -219,33 +212,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _stateTree.Commit();
             }));
 
-            lock (_storages)
+            foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
             {
-                foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
+                if (_concurrencyQuota.TryRequestConcurrencyQuota())
                 {
-                    if (_concurrencyQuota.TryRequestConcurrencyQuota())
+                    commitTask.Add(Task.Factory.StartNew((ctx) =>
                     {
-                        commitTask.Add(Task.Factory.StartNew((ctx) =>
-                        {
-                            FlatStorageTree st = (FlatStorageTree)ctx!;
-                            st.CommitTree();
-                            _concurrencyQuota.ReturnConcurrencyQuota();
-                        }, storage.Value));
-                    }
-                    else
-                    {
-                        storage.Value.CommitTree();
-                    }
+                        FlatStorageTree st = (FlatStorageTree)ctx!;
+                        st.CommitTree();
+                        _concurrencyQuota.ReturnConcurrencyQuota();
+                    }, storage.Value));
+                }
+                else
+                {
+                    storage.Value.CommitTree();
                 }
             }
 
             Task.WaitAll(commitTask.AsSpan());
         }
 
-        lock (_storages)
-        {
-            _storages.Clear();
-        }
+        _storages.Clear();
 
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
 

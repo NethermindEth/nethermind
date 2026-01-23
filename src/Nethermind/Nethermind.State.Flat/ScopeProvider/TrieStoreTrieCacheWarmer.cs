@@ -18,13 +18,6 @@ public interface ITrieWarmer
         Address? path,
         int sequenceId);
 
-    public void PushJobMulti(
-        IAddressWarmer scope,
-        Address? path,
-        IStorageWarmer? storageTree,
-        in UInt256? index,
-        int sequenceId);
-
     void OnEnterScope();
     void OnExitScope();
 
@@ -46,10 +39,6 @@ public class NoopTrieWarmer : ITrieWarmer
     }
 
     public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
-    {
-    }
-
-    public void PushJobMulti(ITrieWarmer.IAddressWarmer scope, Address? path, ITrieWarmer.IStorageWarmer? storageTree, in UInt256? index, int sequenceId)
     {
     }
 
