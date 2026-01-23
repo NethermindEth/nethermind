@@ -18,6 +18,7 @@ using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -533,6 +534,7 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
+                _logger.Info($"~~~0: (!{AcceptTxWhenNotSynced} && {_headInfo.IsSyncing}) || {_hashCache.Get(tx.Hash!)} = {(!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(tx.Hash!)}({tx.Hash}) at {string.Join(" ", new StackTrace().GetFrames().Take(5))}");
                 return AcceptTxResult.Syncing;
             }
 
@@ -574,6 +576,7 @@ namespace Nethermind.TxPool
 
             if (accepted != AcceptTxResult.Invalid)
             {
+                _logger.Info($"~~~1: (!{AcceptTxWhenNotSynced} && {_headInfo.IsSyncing}) || {_hashCache.Get(tx.Hash!)} = {(!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(tx.Hash!)}({tx.Hash}) at {string.Join(" ", new StackTrace().GetFrames().Take(5))}");
                 _retryCache.Received(tx.Hash!);
             }
 
@@ -616,10 +619,13 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
+        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
+        {
+            _logger.Info($"~~~2: (!{AcceptTxWhenNotSynced} && {_headInfo.IsSyncing}) || {_hashCache.Get(hash)} = {(!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash)}({hash}) at {string.Join(" ", new StackTrace().GetFrames().Take(5))}");
+            return (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
                 AnnounceResult.Delayed :
                 _retryCache.Announced(hash, retryHandler);
+        }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {

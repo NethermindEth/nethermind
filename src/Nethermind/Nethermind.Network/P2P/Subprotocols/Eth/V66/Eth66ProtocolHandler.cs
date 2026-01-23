@@ -6,6 +6,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
@@ -17,6 +18,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
@@ -83,14 +85,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<GetPooledTransactionsMessage, PooledTransactionsMessage>(message, Handle);
                     break;
                 case Eth66MessageCode.PooledTransactions:
+                    PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        Logger.Info($"Got pooled transactions from peer {Node}: {string.Join(",", pooledTxMsg.EthMessage.Transactions.Select(s => s.CalculateHash()))}.");
+
                         ReportIn(pooledTxMsg, size);
                         Handle(pooledTxMsg.EthMessage);
                     }
                     else
                     {
+                        Logger.Info($"Got and ingored pooled transactions from peer {Node}: {string.Join(",", pooledTxMsg.EthMessage.Transactions.Select(s => s.CalculateHash()))}.");
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
                         ReportIn(ignored, size);
                     }

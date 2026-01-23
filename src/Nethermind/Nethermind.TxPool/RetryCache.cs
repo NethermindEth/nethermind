@@ -73,7 +73,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                                             _requestingResources.Set(item.ResourceId);
                                             set = true;
 
-                                            if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
+                                            if (_logger.IsWarn) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
                                         }
 
                                         try
@@ -96,12 +96,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError) _logger.Error($"Unexpected error in {nameof(TResourceId)} retry cache loop", ex);
+                    if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId).Name} retry cache loop", ex);
                     Clear();
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{nameof(TResourceId)} retry cache stopped");
+            if (_logger.IsWarn) _logger.Warn($"{typeof(TResourceId).Name} retry cache stopped");
         }, token);
     }
 
@@ -112,9 +112,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             return AnnounceResult.RequestRequired;
         }
 
+        if (_logger.IsError) _logger.Info($"{typeof(TResourceId).Name}({resourceId}) retry queue is {_expiringQueueCounter} long");
+
+
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            if (_logger.IsDebug) _logger.Warn($"{nameof(TResourceId)} retry queue is full");
+            if (_logger.IsError) _logger.Error($"{typeof(TResourceId).Name} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }
@@ -144,12 +147,16 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         result = AnnounceResult.RequestRequired;
 
+        if (_logger.IsError) _logger.Info($"Request {resourceId}");
+
         return _handlerBagsPool.Get();
     }
 
     private ConcurrentHashSet<IMessageHandler<TMessage>> AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
     {
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
+
+        if (_logger.IsError) _logger.Info($"Delay {resourceId}");
 
         if (requests.Count < _maxRetryRequests)
         {

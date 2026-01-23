@@ -139,6 +139,7 @@ public class Eth68ProtocolHandler(ISession session,
 
             if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
             {
+                Logger.Info($"~~~4 Requesting {toRequestCount} transactions from peer {Node}: {string.Join(",", hashesToRequest)}.");
                 Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
                 hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
                 packetSizeLeft = TransactionsMessage.MaxPacketSize;
@@ -155,6 +156,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         if (hashesToRequest.Count is not 0)
         {
+            Logger.Info($"~~~4.2 Requesting {toRequestCount} transactions from peer {Node}: {string.Join(",", hashesToRequest)}.");
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
         }
         else

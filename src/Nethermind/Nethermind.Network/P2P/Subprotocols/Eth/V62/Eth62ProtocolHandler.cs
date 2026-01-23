@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -21,6 +22,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -145,14 +147,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.Transactions:
                     if (CanReceiveTransactions)
                     {
+                        TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+
                         if (_floodController.IsAllowed())
                         {
-                            TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+                            Logger.Info($"Got oldway transactions from peer {Node}: {string.Join(",", txMsg.Transactions.Select(s => s.CalculateHash()))}.");
+
                             ReportIn(txMsg, size);
                             Handle(txMsg);
                         }
                         else
                         {
+                            Logger.Info($"Got and ingoring oldway transactions from peer {Node}: {string.Join(",", txMsg.Transactions.Select(s => s.CalculateHash()))}.");
                             const string txFlooding = $"Ignoring {nameof(TransactionsMessage)} because of message flooding.";
                             ReportIn(txFlooding, size);
                         }
