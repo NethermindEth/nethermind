@@ -740,6 +740,10 @@ namespace Nethermind.State
         {
             // Track account write for execution metrics
             EvmMetrics.IncrementAccountWrites();
+            if (account is null)
+            {
+                EvmMetrics.IncrementAccountDeleted();
+            }
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
             _needsStateRootUpdate = true;

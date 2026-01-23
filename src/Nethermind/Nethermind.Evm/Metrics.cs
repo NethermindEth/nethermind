@@ -143,12 +143,28 @@ public class Metrics
     internal static void IncrementAccountWrites() => _accountWrites.Increment();
 
     [CounterMetric]
+    [Description("Number of accounts deleted during execution.")]
+    public static long AccountDeleted => _accountDeleted.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountDeleted = new();
+    [Description("Number of accounts deleted on thread.")]
+    internal static long ThreadLocalAccountDeleted => _accountDeleted.ThreadLocalValue;
+    internal static void IncrementAccountDeleted() => _accountDeleted.Increment();
+
+    [CounterMetric]
     [Description("Number of storage slot writes during execution.")]
     public static long StorageWrites => _storageWrites.GetTotalValue();
     private static readonly ZeroContentionCounter _storageWrites = new();
     [Description("Number of storage slot writes on thread.")]
     internal static long ThreadLocalStorageWrites => _storageWrites.ThreadLocalValue;
     internal static void IncrementStorageWrites() => _storageWrites.Increment();
+
+    [CounterMetric]
+    [Description("Number of storage slots deleted during execution.")]
+    public static long StorageDeleted => _storageDeleted.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageDeleted = new();
+    [Description("Number of storage slots deleted on thread.")]
+    internal static long ThreadLocalStorageDeleted => _storageDeleted.ThreadLocalValue;
+    internal static void IncrementStorageDeleted() => _storageDeleted.Increment();
 
     // Code write metrics for cross-client execution metrics standardization
     [CounterMetric]

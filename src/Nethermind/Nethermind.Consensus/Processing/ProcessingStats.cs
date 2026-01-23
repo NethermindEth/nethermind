@@ -67,7 +67,9 @@ namespace Nethermind.Consensus.Processing
         private long _startCodeReads;
         private long _startCodeBytesRead;
         private long _startAccountWrites;
+        private long _startAccountDeleted;
         private long _startStorageWrites;
+        private long _startStorageDeleted;
         private long _startCodeWrites;
         private long _startCodeBytesWritten;
         // Timing metrics for cross-client slow block logging
@@ -130,7 +132,9 @@ namespace Nethermind.Consensus.Processing
             _startCodeReads = Evm.Metrics.ThreadLocalCodeReads;
             _startCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
             _startAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            _startAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted;
             _startStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            _startStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted;
             _startCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
             _startCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
             // Timing metrics for cross-client slow block logging
@@ -183,13 +187,17 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentCodeReads = Evm.Metrics.ThreadLocalCodeReads;
             blockData.CurrentCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
             blockData.CurrentAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            blockData.CurrentAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted;
             blockData.CurrentStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            blockData.CurrentStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted;
             blockData.StartAccountReads = _startAccountReads;
             blockData.StartStorageReads = _startStorageReads;
             blockData.StartCodeReads = _startCodeReads;
             blockData.StartCodeBytesRead = _startCodeBytesRead;
             blockData.StartAccountWrites = _startAccountWrites;
+            blockData.StartAccountDeleted = _startAccountDeleted;
             blockData.StartStorageWrites = _startStorageWrites;
+            blockData.StartStorageDeleted = _startStorageDeleted;
             blockData.CurrentCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
             blockData.CurrentCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
             blockData.StartCodeWrites = _startCodeWrites;
@@ -537,7 +545,9 @@ namespace Nethermind.Consensus.Processing
                 long codeReads = data.CurrentCodeReads - data.StartCodeReads;
                 long codeBytesRead = data.CurrentCodeBytesRead - data.StartCodeBytesRead;
                 long accountWrites = data.CurrentAccountWrites - data.StartAccountWrites;
+                long accountDeleted = data.CurrentAccountDeleted - data.StartAccountDeleted;
                 long storageWrites = data.CurrentStorageWrites - data.StartStorageWrites;
+                long storageDeleted = data.CurrentStorageDeleted - data.StartStorageDeleted;
                 long codeWrites = data.CurrentCodeWrites - data.StartCodeWrites;
                 long codeBytesWritten = data.CurrentCodeBytesWritten - data.StartCodeBytesWritten;
 
@@ -602,7 +612,9 @@ namespace Nethermind.Consensus.Processing
                     state_writes = new
                     {
                         accounts = accountWrites,
+                        accounts_deleted = accountDeleted,
                         storage_slots = storageWrites,
+                        storage_slots_deleted = storageDeleted,
                         code = codeWrites,
                         code_bytes = codeBytesWritten,
                         eip7702_delegations_set = eip7702DelegationsSet,
@@ -706,13 +718,17 @@ namespace Nethermind.Consensus.Processing
             public long CurrentCodeReads;
             public long CurrentCodeBytesRead;
             public long CurrentAccountWrites;
+            public long CurrentAccountDeleted;
             public long CurrentStorageWrites;
+            public long CurrentStorageDeleted;
             public long StartAccountReads;
             public long StartStorageReads;
             public long StartCodeReads;
             public long StartCodeBytesRead;
             public long StartAccountWrites;
+            public long StartAccountDeleted;
             public long StartStorageWrites;
+            public long StartStorageDeleted;
             public long CurrentCodeWrites;
             public long CurrentCodeBytesWritten;
             public long StartCodeWrites;
