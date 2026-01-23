@@ -321,22 +321,17 @@ namespace Nethermind.State
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
-
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
 
             if (commitRoots)
             {
-                using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
-                       _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount))
-                {
-                    writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
-                    _persistentStorageProvider.FlushToTree(writeBatch);
-                    _stateProvider.FlushToTree(writeBatch);
-                }
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                _persistentStorageProvider.FlushToTree(writeBatch);
+                _stateProvider.FlushToTree(writeBatch);
             }
-
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
