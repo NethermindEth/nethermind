@@ -13,6 +13,9 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
+/// <summary>
+/// The main top level FlatDb orchestrator.
+/// </summary>
 public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
     private const int MaxGatherAttempts = 16;

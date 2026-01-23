@@ -67,19 +67,17 @@ public class FlatVerifyTrieVisitor : ITreeVisitor<FlatVerifyTrieVisitor.Context>
         }
     }
 
-    public bool ExpectAccounts { get; }
+    public bool ExpectAccounts => true;
 
     public FlatVerifyTrieVisitor(
         IKeyValueStore codeKeyValueStore,
         IPersistence.IPersistenceReader persistenceReader,
         ILogManager logManager,
-        CancellationToken cancellationToken = default,
-        bool expectAccounts = true)
+        CancellationToken cancellationToken = default)
     {
         _persistenceReader = persistenceReader;
         _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
         _logger = logManager.GetClassLogger();
-        ExpectAccounts = expectAccounts;
         _cancellationToken = cancellationToken;
         _progressTracker = new VisitorProgressTracker("Trie->Flat Verify", logManager);
     }
@@ -302,8 +300,6 @@ public class FlatVerifyTrieVisitor : ITreeVisitor<FlatVerifyTrieVisitor.Context>
         public long StateSize => _stateSize;
 
         public long Size => StateSize + StorageSize + CodeSize;
-
-        //        public List<string> MissingNodes { get; set; } = new List<string>();
 
         public long[] StateLevels => _stateLevels;
         public long[] StorageLevels => _storageLevels;
