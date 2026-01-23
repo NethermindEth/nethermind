@@ -14,7 +14,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
-using Prometheus;
 using static Nethermind.Trie.BranchData;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
@@ -501,22 +500,10 @@ namespace Nethermind.Trie
             if (rlp.IsNull || IsDirty)
             {
                 SpanSource oldRlp = rlp.IsNotNull ? rlp : SpanSource.Empty;
-                SpanSource fullRlp;
-
-                if (path.Length == 0)
-                {
-                    fullRlp = NodeType == NodeType.Branch
-                        ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                            canBeParallel: isRoot && canBeParallel)
-                        : RlpEncode(tree, ref path, bufferPool);
-                }
-                else
-                {
-                    fullRlp = NodeType == NodeType.Branch
-                        ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                            canBeParallel: isRoot && canBeParallel)
-                        : RlpEncode(tree, ref path, bufferPool);
-                }
+                SpanSource fullRlp = NodeType == NodeType.Branch
+                    ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                        canBeParallel: isRoot && canBeParallel)
+                    : RlpEncode(tree, ref path, bufferPool);
 
                 if (oldRlp.IsNotNullOrEmpty)
                 {
@@ -532,21 +519,11 @@ namespace Nethermind.Trie
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                long sw = Stopwatch.GetTimestamp();
-                Hash256? res = Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
-                TrieNodeComputeTime.WithLabels(NodeType.ToString()).Observe(Stopwatch.GetTimestamp() - sw);
-                return res;
+                return Nethermind.Core.Crypto.Keccak.Compute(rlp.Span);
             }
 
             return null;
         }
-
-        private Histogram TrieNodeComputeTime = DevMetric.Factory.CreateHistogram("trienode_compute_time", "",
-            new HistogramConfiguration()
-            {
-                LabelNames = ["type"],
-                Buckets = [1]
-            });
 
         internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
@@ -1275,14 +1252,6 @@ namespace Nethermind.Trie
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 data = childOrRef = child;
-
-                                /*
-                                if (IsPersisted && !child.IsPersisted)
-                                {
-                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                        NullLogger.Instance);
-                                }
-                                */
 
                                 break;
                             }

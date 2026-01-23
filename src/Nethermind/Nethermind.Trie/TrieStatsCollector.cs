@@ -74,7 +74,7 @@ namespace Nethermind.Trie
             _progressTracker = new VisitorProgressTracker(progressTrackerName, logManager);
         }
 
-        public virtual TrieStats Stats { get; } = new();
+        public TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
         public void VisitTree(in Context nodeContext, in ValueHash256 rootHash)
