@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat;
 /// The use of sharding is so that when memory target is exceeded, whole shard which is grouped by tree path is cleared.
 /// This improve block cache hit rate as trie nodes of similar subtree tend to be clustered together.
 /// </summary>
-public class TrieNodeCache
+public sealed class TrieNodeCache : ITrieNodeCache
 {
     private const int EstimatedSizePerNode = 700;
     private const double UtilRatio = 0.25;

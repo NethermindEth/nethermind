@@ -31,20 +31,20 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         builder
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
-                ctx.Resolve<ResourcePool>(),
+                ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<TrieNodeCache>(),
-                ctx.Resolve<SnapshotCompactor>(),
+                ctx.Resolve<ITrieNodeCache>(),
+                ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
-                ctx.Resolve<PersistenceManager>(),
+                ctx.Resolve<IPersistenceManager>(),
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
-            .AddSingleton<ResourcePool>()
+            .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<Importer>()
-            .AddSingleton<TrieNodeCache>()
-            .AddSingleton<SnapshotCompactor>()
-            .AddSingleton<PersistenceManager>()
+            .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
+            .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<ITrieWarmer, TrieWarmer>()

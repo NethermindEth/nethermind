@@ -21,11 +21,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private const int MaxGatherAttempts = 16;
 
     private readonly ILogger _logger;
-    private readonly PersistenceManager _persistenceManager;
-    private readonly SnapshotCompactor _snapshotCompactor;
+    private readonly IPersistenceManager _persistenceManager;
+    private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
-    private readonly TrieNodeCache _trieNodeCache;
-    private readonly ResourcePool _resourcePool;
+    private readonly ITrieNodeCache _trieNodeCache;
+    private readonly IResourcePool _resourcePool;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -55,12 +55,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public FlatDbManager(
-        ResourcePool resourcePool,
+        IResourcePool resourcePool,
         IProcessExitSource processExitSource,
-        TrieNodeCache trieNodeCache,
-        SnapshotCompactor snapshotCompactor,
+        ITrieNodeCache trieNodeCache,
+        ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
-        PersistenceManager persistenceManager,
+        IPersistenceManager persistenceManager,
         IFlatDbConfig config,
         ILogManager logManager,
         bool enableDetailedMetrics)

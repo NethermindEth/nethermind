@@ -15,9 +15,9 @@ namespace Nethermind.State.Flat;
 
 public class SnapshotCompactor(
     IFlatDbConfig config,
-    ResourcePool resourcePool,
+    IResourcePool resourcePool,
     ISnapshotRepository snapshotRepository,
-    ILogManager logManager)
+    ILogManager logManager) : ISnapshotCompactor
 {
     private readonly int _compactSize = config.CompactSize;
     private readonly int _midCompactSize = config.MidCompactSize;

@@ -29,7 +29,7 @@ public class Snapshot(
     StateId from,
     StateId to,
     SnapshotContent content,
-    ResourcePool resourcePool,
+    IResourcePool resourcePool,
     ResourcePool.Usage usage
 ) : RefCountingDisposable
 {

@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat;
 /// A pool of objects used to manage different sized pool objects for different category.
 /// </summary>
 /// <param name="flatConfig"></param>
-public class ResourcePool(IFlatDbConfig flatConfig)
+public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 {
     private Dictionary<Usage, ResourcePoolCategory> _categories = new()
     {

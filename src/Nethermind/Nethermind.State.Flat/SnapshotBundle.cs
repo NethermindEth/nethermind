@@ -34,16 +34,16 @@ public sealed class SnapshotBundle : IDisposable
     private TransientResource _transientResource = null!;
 
     internal SnapshotPooledList _snapshots;
-    private readonly TrieNodeCache _trieNodeCache;
+    private readonly ITrieNodeCache _trieNodeCache;
     private bool _isDisposed;
-    private readonly ResourcePool _resourcePool;
+    private readonly IResourcePool _resourcePool;
 
     internal ResourcePool.Usage _usage;
 
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        TrieNodeCache trieNodeCache,
-        ResourcePool resourcePool,
+        ITrieNodeCache trieNodeCache,
+        IResourcePool resourcePool,
         ResourcePool.Usage usage)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;

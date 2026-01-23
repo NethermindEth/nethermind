@@ -19,7 +19,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
-public class PersistenceManager : IAsyncDisposable
+public class PersistenceManager : IPersistenceManager, IAsyncDisposable
 {
     private readonly ILogger _logger;
     private readonly int _minReorgDepth;
@@ -157,7 +157,7 @@ public class PersistenceManager : IAsyncDisposable
         cachedReader?.Dispose();
     }
 
-    internal StateId GetCurrentPersistedStateId()
+    public StateId GetCurrentPersistedStateId()
     {
         return _currentPersistedStateId;
     }
@@ -267,7 +267,7 @@ public class PersistenceManager : IAsyncDisposable
         return snapshotToPersist;
     }
 
-    internal void AddToPersistence(StateId latestSnapshot)
+    public void AddToPersistence(StateId latestSnapshot)
     {
         // Attempt to add snapshots into bigcache
         while (true)
@@ -287,7 +287,7 @@ public class PersistenceManager : IAsyncDisposable
     /// Force persist all snapshots regardless of finalization status.
     /// Used by FlushCache to ensure all state is persisted before clearing caches.
     /// </summary>
-    internal StateId FlushToPersistence()
+    public StateId FlushToPersistence()
     {
         StateId currentPersistedState = GetCurrentPersistedStateId();
         StateId? latestStateId = _snapshotRepository.GetLastSnapshotId();

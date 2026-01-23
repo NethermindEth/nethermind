@@ -81,7 +81,9 @@ public class FlatWorldStateScopeProviderTests
                 ;
 
             // Externally owned because snapshot bundle take ownership
-            _containerBuilder.RegisterType<ReadOnlySnapshotBundle>().ExternallyOwned();
+            _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
+                .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
+                .ExternallyOwned();
 
             ConfigureSnapshotBundle();
             ConfigureFlatWorldStateScope();
