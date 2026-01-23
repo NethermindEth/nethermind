@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -27,6 +29,18 @@ public class Eip7708Tests(bool eip7708Enabled)
         return BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(new TestSpecProvider(spec)));
     }
 
+    private static LogEntry ExpectedTransferLog(Address from, Address to, UInt256 value) =>
+        new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.TransferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]);
+
+    private static LogEntry ExpectedSelfDestructLog(Address account, UInt256 value) =>
+        new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.SelfDestructSignature, account.ToHash().ToHash256()]);
+
+    private void AssertLogs(TxReceipt[] receipts, LogEntry[] expectedLogs, bool logCondition = true)
+    {
+        LogEntry[][] expected = [eip7708Enabled && logCondition ? expectedLogs : []];
+        receipts.Select(r => r.Logs).Should().BeEquivalentTo(expected);
+    }
+
     [TestCase(1_000_000ul, 1, TestName = "transfer value > 0")]
     [TestCase(1ul, 1, TestName = "transfer value = 1")]
     [TestCase(0ul, 0, TestName = "transfer value = 0")]
@@ -45,26 +59,8 @@ public class Eip7708Tests(bool eip7708Enabled)
             .TestObject;
 
         Block block = await chain.AddBlock(tx);
-        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        int expectedLogCount = eip7708Enabled ? expectedLogCountWhenEnabled : 0;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(receipts, Has.Length.EqualTo(1));
-            Assert.That(receipts[0].Logs, Has.Length.EqualTo(expectedLogCount));
-
-            if (expectedLogCount > 0)
-            {
-                LogEntry log = receipts[0].Logs![0];
-                Assert.That(log.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(log.Topics, Has.Length.EqualTo(3));
-                Assert.That(log.Topics[0], Is.EqualTo(TransferLog.TransferSignature));
-                Assert.That(log.Topics[1], Is.EqualTo(TestItem.AddressA.ToHash().ToHash256()));
-                Assert.That(log.Topics[2], Is.EqualTo(TestItem.AddressB.ToHash().ToHash256()));
-                Assert.That(new UInt256(log.Data, isBigEndian: true), Is.EqualTo((UInt256)transferValue));
-            }
-        });
+        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedTransferLog(TestItem.AddressA, TestItem.AddressB, transferValue)], transferValue != 0);
     }
 
     [TestCase(1_000_000ul, TestName = "subcall with value")]
@@ -109,29 +105,8 @@ public class Eip7708Tests(bool eip7708Enabled)
             .TestObject;
 
         Block block = await chain.AddBlock(callTx);
-        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(receipts, Has.Length.EqualTo(1));
-
-            if (eip7708Enabled && innerValue > 0 && receipts[0].Logs?.Length > 0)
-            {
-                // Inner transfer log (contract -> target)
-                LogEntry innerLog = receipts[0].Logs![0];
-                Assert.That(innerLog.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(innerLog.Topics, Has.Length.EqualTo(3));
-                Assert.That(innerLog.Topics[0], Is.EqualTo(TransferLog.TransferSignature));
-                Assert.That(innerLog.Topics[1], Is.EqualTo(contractAddress.ToHash().ToHash256()));
-                Assert.That(innerLog.Topics[2], Is.EqualTo(targetAddress.ToHash().ToHash256()));
-                Assert.That(new UInt256(innerLog.Data, isBigEndian: true), Is.EqualTo((UInt256)innerValue));
-            }
-            else if (!eip7708Enabled || innerValue == 0)
-            {
-                // No logs expected when EIP-7708 is disabled or value is 0
-                Assert.That(receipts[0].Logs, Has.Length.EqualTo(0));
-            }
-        });
+        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedTransferLog(contractAddress, targetAddress, innerValue)], logCondition: innerValue != 0);
     }
 
     [TestCase(1_000_000ul, 1, TestName = "selfdestruct to other")]
@@ -175,27 +150,8 @@ public class Eip7708Tests(bool eip7708Enabled)
             .TestObject;
 
         Block block = await chain.AddBlock(callTx);
-        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        int expectedLogCount = eip7708Enabled ? expectedLogCountWhenEnabled : 0;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(receipts, Has.Length.EqualTo(1));
-            Assert.That(receipts[0].Logs, Has.Length.EqualTo(expectedLogCount));
-
-            if (expectedLogCount > 0)
-            {
-                // TransferLog: contract -> inheritor
-                LogEntry log = receipts[0].Logs![0];
-                Assert.That(log.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(log.Topics, Has.Length.EqualTo(3));
-                Assert.That(log.Topics[0], Is.EqualTo(TransferLog.TransferSignature));
-                Assert.That(log.Topics[1], Is.EqualTo(contractAddress.ToHash().ToHash256()));
-                Assert.That(log.Topics[2], Is.EqualTo(inheritor.ToHash().ToHash256()));
-                Assert.That(new UInt256(log.Data, isBigEndian: true), Is.EqualTo((UInt256)contractBalance));
-            }
-        });
+        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedTransferLog(contractAddress, inheritor, contractBalance)], contractBalance != 0);
     }
 
     [TestCase(1_000_000ul, 1, TestName = "selfdestruct to self")]
@@ -239,26 +195,8 @@ public class Eip7708Tests(bool eip7708Enabled)
             .TestObject;
 
         Block block = await chain.AddBlock(callTx);
-        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        int expectedLogCount = eip7708Enabled ? expectedLogCountWhenEnabled : 0;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(receipts, Has.Length.EqualTo(1));
-            Assert.That(receipts[0].Logs, Has.Length.EqualTo(expectedLogCount));
-
-            if (expectedLogCount > 0)
-            {
-                // SelfDestructLog: uses different signature and LOG2 format (only 2 topics)
-                LogEntry log = receipts[0].Logs![0];
-                Assert.That(log.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(log.Topics, Has.Length.EqualTo(2));
-                Assert.That(log.Topics[0], Is.EqualTo(TransferLog.SelfDestructSignature));
-                Assert.That(log.Topics[1], Is.EqualTo(contractAddress.ToHash().ToHash256()));
-                Assert.That(new UInt256(log.Data, isBigEndian: true), Is.EqualTo((UInt256)contractBalance));
-            }
-        });
+        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedSelfDestructLog(contractAddress, contractBalance)], contractBalance != 0);
     }
 
     [Test]
@@ -268,50 +206,48 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
-        // Calculate contract A address first
-        Address contractAAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
-
-        // Contract A: self-destructs to another address, then Contract B will send it ETH
+        // Contract A: self-destructs to inheritor only when called with zero value.
+        // When called with value, it just accepts the ETH without selfdestructing again.
         Address inheritorA = TestItem.AddressD;
         byte[] contractACode = Prepare.EvmCode
+            .CALLVALUE()        // Get call value
+            .Op(Instruction.ISZERO)  // Check if zero
+            .PushData(6)        // Jump destination (SELFDESTRUCT starts at byte 6)
+            .JUMPI()            // Jump if value is zero
+            .STOP()             // If value > 0, just stop
+            .JUMPDEST()
             .SELFDESTRUCT(inheritorA)
             .Done;
         byte[] initCodeA = Prepare.EvmCode
             .ForInitOf(contractACode)
             .Done;
 
-        // Deploy Contract A with some ETH
         ulong contractABalance = 1_000_000;
-        Transaction deployATx = Build.A.Transaction
-            .WithCode(initCodeA)
-            .WithValue(contractABalance)
-            .WithNonce(senderNonce)
-            .WithGasLimit(1_000_000)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        await chain.AddBlock(deployATx);
-        senderNonce++;
-
-        // Contract B: calls Contract A (triggers selfdestruct), then sends ETH to Contract A
         ulong ethToSend = 500_000;
+
+        // Contract B creates Contract A in the same transaction, calls it (triggers selfdestruct),
+        // then sends more ETH to it. Under EIP-6780, Contract A will be destroyed at end of tx
+        // because it was created in the same transaction.
+        // Contract A address = CREATE from Contract B with nonce 1 (contract nonces start at 1 after EIP-161)
+        Address contractBAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
+        Address contractAAddress = ContractAddress.From(contractBAddress, 1);
+
         byte[] contractBCode = Prepare.EvmCode
-            .Call(contractAAddress, 100000)             // This triggers Contract A's selfdestruct
-            .CallWithValue(contractAAddress, 100000, ethToSend) // Send ETH to self-destructed contract
+            .Create(initCodeA, contractABalance)        // Create Contract A with initial balance
+            .Call(contractAAddress, 100000)             // Call Contract A (triggers selfdestruct)
+            .CallWithValue(contractAAddress, 100000, ethToSend) // Send ETH to selfdestructed contract
             .STOP()
             .Done;
         byte[] initCodeB = Prepare.EvmCode
             .ForInitOf(contractBCode)
             .Done;
 
-        Address contractBAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
-
-        // Deploy Contract B with enough ETH to send
+        // Deploy Contract B with enough ETH
         Transaction deployBTx = Build.A.Transaction
             .WithCode(initCodeB)
             .WithValue(10.Ether())
             .WithNonce(senderNonce)
-            .WithGasLimit(1_000_000)
+            .WithGasLimit(2_000_000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
@@ -323,52 +259,23 @@ public class Eip7708Tests(bool eip7708Enabled)
             .WithTo(contractBAddress)
             .WithValue(0)
             .WithNonce(senderNonce)
-            .WithGasLimit(1_000_000)
+            .WithGasLimit(2_000_000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
         Block block = await chain.AddBlock(callTx);
-        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(receipts, Has.Length.EqualTo(1));
-
-            if (eip7708Enabled)
-            {
-                // Expected logs:
-                // 1. TransferLog from Contract A selfdestruct (Contract A -> inheritorA)
-                // 2. TransferLog from Contract B sending ETH to Contract A (Contract B -> Contract A)
-                // 3. SelfDestructLog for account closure (Contract A with new balance)
-                Assert.That(receipts[0].Logs, Has.Length.EqualTo(3));
-
-                // First log: selfdestruct transfer (Contract A -> inheritorA)
-                LogEntry selfDestructTransfer = receipts[0].Logs![0];
-                Assert.That(selfDestructTransfer.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(selfDestructTransfer.Topics[0], Is.EqualTo(TransferLog.TransferSignature));
-                Assert.That(selfDestructTransfer.Topics[1], Is.EqualTo(contractAAddress.ToHash().ToHash256()));
-                Assert.That(selfDestructTransfer.Topics[2], Is.EqualTo(inheritorA.ToHash().ToHash256()));
-                Assert.That(new UInt256(selfDestructTransfer.Data, isBigEndian: true), Is.EqualTo((UInt256)contractABalance));
-
-                // Second log: ETH transfer from B to A
-                LogEntry ethTransfer = receipts[0].Logs![1];
-                Assert.That(ethTransfer.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(ethTransfer.Topics[0], Is.EqualTo(TransferLog.TransferSignature));
-                Assert.That(ethTransfer.Topics[1], Is.EqualTo(contractBAddress.ToHash().ToHash256()));
-                Assert.That(ethTransfer.Topics[2], Is.EqualTo(contractAAddress.ToHash().ToHash256()));
-                Assert.That(new UInt256(ethTransfer.Data, isBigEndian: true), Is.EqualTo((UInt256)ethToSend));
-
-                // Third log: account closure - TransferLog sending remaining balance to zero address
-                // Per EIP-6780/7708: when account is destroyed, any balance received after SELFDESTRUCT
-                // is transferred out at end of transaction
-                LogEntry closureLog = receipts[0].Logs![2];
-                Assert.That(closureLog.Address, Is.EqualTo(TransferLog.Sender));
-                Assert.That(closureLog.Topics[0], Is.EqualTo(TransferLog.TransferSignature));
-            }
-            else
-            {
-                Assert.That(receipts[0].Logs, Has.Length.EqualTo(0));
-            }
-        });
+        // Expected logs:
+        // 1. TransferLog from CREATE (Contract B -> Contract A with initial balance)
+        // 2. TransferLog from Contract A selfdestruct (Contract A -> inheritorA)
+        // 3. TransferLog from Contract B sending ETH to Contract A (Contract B -> Contract A)
+        // 4. SelfDestructLog for account closure - from TransactionProcessor.cs when destroying
+        //    accounts in DestroyList at end of transaction (EIP-6780: created in same tx)
+        AssertLogs(chain.ReceiptStorage.Get(block), [
+            ExpectedTransferLog(contractBAddress, contractAAddress, contractABalance),
+            ExpectedTransferLog(contractAAddress, inheritorA, contractABalance),
+            ExpectedTransferLog(contractBAddress, contractAAddress, ethToSend),
+            ExpectedSelfDestructLog(contractAAddress, ethToSend)
+        ]);
     }
 }
