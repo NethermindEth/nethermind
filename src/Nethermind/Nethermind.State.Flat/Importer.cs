@@ -16,10 +16,9 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Imports state from trie-based persistence to flat persistence.
 ///
-/// NOTE: This importer is NOT compatible with FlatLayout.PreimageFlat mode because it uses
-/// SetAccountRaw/SetStorageRaw with hash-based keys. PreimageFlat mode does not support
-/// raw operations as it stores data using preimage keys (original addresses/slots) only.
-/// Use FlatLayout.Flat or FlatLayout.FlatInTrie when importing from trie state.
+/// This importer uses SetAccountRaw/SetStorageRaw with hash-based keys. For PreimageFlat mode,
+/// wrap the persistence with PreimageRecordingPersistence and provide a previously recorded
+/// preimage database - it will automatically translate raw operations to preimage-keyed operations.
 /// </summary>
 public class Importer(
     INodeStorage nodeStorage,

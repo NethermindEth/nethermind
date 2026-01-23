@@ -96,7 +96,7 @@ public class PreimageRecordingPersistenceTests
     }
 
     [Test]
-    public void TrieAndRawOperations_DelegateWithoutRecordingPreimages()
+    public void TrieAndRawOperations_WithoutPreimage_DelegateAsRaw()
     {
         var from = StateId.PreGenesis;
         var to = new StateId(1, TestItem.KeccakA);
@@ -118,14 +118,82 @@ public class PreimageRecordingPersistenceTests
             batch.SetAccountRaw(addrHash, account);
         }
 
-        // Verify all inner batch calls
+        // Verify trie operations delegated
         innerBatch.Received(1).SetStateTrieNode(path, node);
         innerBatch.Received(1).SetStorageTrieNode(addrHash, path, node);
+
+        // Without preimage, raw operations stay raw
         innerBatch.Received(1).SetStorageRaw(addrHash, slotHash, Arg.Is<SlotValue?>(v => v != null));
         innerBatch.Received(1).SetAccountRaw(addrHash, account);
 
         // No preimages should be recorded for trie/raw operations
         _preimageDb.Keys.Should().BeEmpty();
+    }
+
+    [Test]
+    public void RawOperations_WithPreimage_TranslatedToNonRaw()
+    {
+        Address address = TestItem.AddressA;
+        UInt256 slot = 42;
+        Account account = TestItem.GenerateIndexedAccount(0);
+        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+
+        // Pre-populate preimage database with address and slot preimages
+        ValueHash256 addrHash = address.ToAccountPath;
+        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes);
+
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        _preimageDb.Set(slotHash.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
+
+        var from = StateId.PreGenesis;
+        var to = new StateId(1, TestItem.KeccakA);
+        var innerBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
+
+        using (var batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
+        {
+            batch.SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), value);
+            batch.SetAccountRaw(new Hash256(addrHash), account);
+        }
+
+        // With preimage available, raw operations are translated to non-raw
+        innerBatch.Received(1).SetStorage(address, slot, Arg.Is<SlotValue?>(v => v != null));
+        innerBatch.Received(1).SetAccount(address, account);
+
+        // Raw operations should NOT be called
+        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<SlotValue?>());
+        innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<Hash256>(), Arg.Any<Account>());
+    }
+
+    [Test]
+    public void SetStorageRaw_WithOnlyAddressPreimage_FallsBackToRaw()
+    {
+        Address address = TestItem.AddressA;
+        UInt256 slot = 42;
+        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+
+        // Pre-populate only address preimage (missing slot preimage)
+        ValueHash256 addrHash = address.ToAccountPath;
+        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes);
+
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        // Note: NOT setting slot preimage
+
+        var from = StateId.PreGenesis;
+        var to = new StateId(1, TestItem.KeccakA);
+        var innerBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
+
+        using (var batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
+        {
+            batch.SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), value);
+        }
+
+        // Without slot preimage, storage stays raw
+        innerBatch.Received(1).SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), Arg.Is<SlotValue?>(v => v != null));
+        innerBatch.DidNotReceive().SetStorage(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<SlotValue?>());
     }
 
     [Test]
