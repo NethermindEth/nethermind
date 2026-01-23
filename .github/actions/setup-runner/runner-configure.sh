@@ -78,6 +78,18 @@ ssh ${SSH_OPTS} root@${MACHINE_IP} \
   bash << 'ENDSSH'
   set -e
 
+  # Set up logging to file in home directory
+  LOG_FILE="${HOME}/runner-configure-$(date +%Y%m%d-%H%M%S).log"
+
+  # Redirect all output (stdout and stderr) to both console and log file
+  exec > >(tee -a "${LOG_FILE}") 2>&1
+
+  echo "========================================="
+  echo "Runner Configuration via SSH"
+  echo "Started at: $(date)"
+  echo "Log file: ${LOG_FILE}"
+  echo "========================================="
+
   cd /root/actions-runner
   export RUNNER_ALLOW_RUNASROOT="1"
 
@@ -104,7 +116,11 @@ ssh ${SSH_OPTS} root@${MACHINE_IP} \
   sleep 2
   ./svc.sh status
 
-  echo "Runner service started successfully"
+  echo ""
+  echo "========================================="
+  echo "Runner Configuration Complete"
+  echo "Log file saved to: ${LOG_FILE}"
+  echo "========================================="
 ENDSSH
 
 EXIT_CODE=$?

@@ -182,6 +182,14 @@ runs:
         echo "Machine IP: $MACHINE_IP"
         echo "machine_ip=$MACHINE_IP" >> $GITHUB_OUTPUT
 
+    - name: Wait for runner setup to complete
+      shell: bash
+      run: |
+        WAIT_TIME="${{ inputs.setup-wait-time }}"
+        echo "Waiting ${WAIT_TIME} seconds for runner setup to complete..."
+        sleep "${WAIT_TIME}"
+        echo "Runner setup wait time completed"
+
     - name: Configure runner via SSH
       env:
         MACHINE_IP: ${{ steps.extract-details.outputs.machine_ip }}
@@ -194,14 +202,6 @@ runs:
       run: |
         chmod +x ${{ github.action_path }}/runner-configure.sh
         ${{ github.action_path }}/runner-configure.sh
-
-    - name: Wait for runner setup to complete
-      shell: bash
-      run: |
-        WAIT_TIME="${{ inputs.setup-wait-time }}"
-        echo "Waiting ${WAIT_TIME} seconds for runner setup to complete..."
-        sleep "${WAIT_TIME}"
-        echo "Runner setup wait time completed"
 
     - name: Display runner information
       shell: bash

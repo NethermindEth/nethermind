@@ -5,9 +5,17 @@ set -e
 # This script is generated from a Jinja2 template and sets up a self-hosted GitHub Actions runner
 # This part runs on the remote machine and prepares it for runner configuration
 
+# Determine script directory (where Stackscript is typically created)
+SCRIPT_DIR="${HOME}"
+LOG_FILE="${SCRIPT_DIR}/runner-setup-$(date +%Y%m%d-%H%M%S).log"
+
+# Redirect all output (stdout and stderr) to both console and log file
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
 echo "========================================="
 echo "GitHub Actions Runner Setup (Machine Preparation)"
 echo "Started at: $(date)"
+echo "Log file: ${LOG_FILE}"
 echo "========================================="
 
 # Display environment for debugging
@@ -16,6 +24,8 @@ echo "  HOME: ${HOME}"
 echo "  USER: ${USER}"
 echo "  PWD: $(pwd)"
 echo "  Hostname: $(hostname)"
+echo "  Script directory: ${SCRIPT_DIR}"
+echo "  Log file: ${LOG_FILE}"
 echo ""
 
 # Check if running as root
@@ -60,5 +70,6 @@ echo ""
 echo "========================================="
 echo "Machine Preparation Complete"
 echo "Ready for runner registration via SSH"
+echo "Log file saved to: ${LOG_FILE}"
 echo "========================================="
 echo ""
