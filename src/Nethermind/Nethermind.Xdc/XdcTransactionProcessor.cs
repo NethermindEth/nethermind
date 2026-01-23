@@ -139,6 +139,16 @@ internal class XdcTransactionProcessor(
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    {
+        if (tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
+        {
+            return new IntrinsicGas<EthereumGasPolicy>();
+        }
+
+        return base.CalculateIntrinsicGas(tx, spec);
+    }
+
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -146,13 +156,12 @@ internal class XdcTransactionProcessor(
 
         // maybe a better approach would be adding an XdcGasPolicy 
         TransactionResult result;
+        bool _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
-        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
-        bool _ = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
-            || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
+            || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
         {
             return result;
         }
