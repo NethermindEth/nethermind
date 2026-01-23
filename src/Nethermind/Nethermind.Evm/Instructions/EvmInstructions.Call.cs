@@ -164,16 +164,6 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
-        // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
-        {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
-        {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
-
         // todo: move into function
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
@@ -185,6 +175,16 @@ internal static partial class EvmInstructions
         {
             if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                     vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
+        }
+
+        // Charge additional gas if the target account is new or considered empty.
+        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        {
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+        }
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
+        {
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
 
         // Retrieve code information for the call and schedule background analysis if needed.
