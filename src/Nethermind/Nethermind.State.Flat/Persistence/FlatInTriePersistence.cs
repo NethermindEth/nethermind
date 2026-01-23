@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -14,7 +10,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// Persistence implementation that stores flat state data in the trie node columns (StateNodes/StorageNodes)
 /// instead of separate Account/Storage columns.
 /// </summary>
-public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence, IPersistenceWithConcurrentTrie
+public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     public IPersistence.IPersistenceReader CreateReader()
     {
@@ -96,40 +92,5 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence,
                 }
             })
         );
-    }
-
-    public IPersistenceWithConcurrentTrie.IWriteBatch CreateTrieWriteBatch(WriteFlags flags = WriteFlags.None)
-    {
-        var dbSnap = db.CreateSnapshot();
-        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        var trieWriteBatch = new BaseTriePersistence.WriteBatch(
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateNodes),
-            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
-            batch.GetColumnBatch(FlatDbColumns.FallbackNodes),
-            flags);
-
-        return new ConcurrentTrieWriter(trieWriteBatch, dbSnap, batch);
-    }
-
-    private class ConcurrentTrieWriter(BaseTriePersistence.WriteBatch trieWriteBatch, IColumnDbSnapshot<FlatDbColumns> dbSnap, IColumnsWriteBatch<FlatDbColumns> batch) : IPersistenceWithConcurrentTrie.IWriteBatch
-    {
-        public void Dispose()
-        {
-            dbSnap.Dispose();
-            batch.Dispose();
-        }
-
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue)
-        {
-            trieWriteBatch.SetStateTrieNode(path, tnValue);
-        }
-
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue)
-        {
-            trieWriteBatch.SetStorageTrieNode(address, path, tnValue);
-        }
     }
 }

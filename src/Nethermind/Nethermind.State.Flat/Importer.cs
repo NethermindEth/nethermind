@@ -72,59 +72,14 @@ public class Importer(
         List<Task> tasks = new List<Task>();
         tasks.Add(visitTask);
 
-        if (persistence is IPersistenceWithConcurrentTrie concurrentTriePersistence)
+        int concurrentIngestCount = Math.Min(Environment.ProcessorCount, maxConcurrency);
+
+        tasks.AddRange(Enumerable.Range(0, concurrentIngestCount).Select((_) => Task.Run(async () =>
         {
-            _logger.Warn("Using concurrent trie");
-            int concurrentIngestCount = Environment.ProcessorCount;
-            concurrentIngestCount = Math.Min(concurrentIngestCount, maxConcurrency);
+            await IngestLogic(from, channel.Reader, cancellationToken);
+        }, cancellationToken)));
 
-            Channel<Entry> flatChannel = Channel.CreateBounded<Entry>(2_000_000);
-
-            Task[] trieTasks = (Enumerable.Range(0, concurrentIngestCount).Select((_) => Task.Run(async () =>
-            {
-                try
-                {
-                    await IngestLogicTrie(from, concurrentTriePersistence, channel.Reader, flatChannel.Writer,
-                        cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }, cancellationToken)).ToArray());
-
-            tasks.Add(Task.Run(async () =>
-            {
-                try
-                {
-                    await IngestLogicFlat(from, flatChannel.Reader, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }, cancellationToken));
-
-            await Task.WhenAll(trieTasks);
-            flatChannel.Writer.Complete();
-
-            await Task.WhenAll(tasks);
-        }
-        else
-        {
-            int concurrentIngestCount = Environment.ProcessorCount;
-            if (!persistence.SupportConcurrentWrites)
-            {
-                concurrentIngestCount = 1;
-            }
-
-            concurrentIngestCount = Math.Min(concurrentIngestCount, maxConcurrency);
-
-            tasks.AddRange(Enumerable.Range(0, concurrentIngestCount).Select((_) => Task.Run(async () =>
-            {
-                await IngestLogic(from, channel.Reader, cancellationToken);
-            }, cancellationToken)));
-
-            await Task.WhenAll(tasks);
-        }
+        await Task.WhenAll(tasks);
 
         // Finally we increment the state id
         var writeBatch = persistence.CreateWriteBatch(from, to);
@@ -213,137 +168,6 @@ public class Importer(
                 }
                 else
                 {
-                }
-                writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
-                currentItemSize = 0;
-            }
-        }
-
-        writeBatch.Dispose();
-    }
-
-    private async Task IngestLogicTrie(StateId from, IPersistenceWithConcurrentTrie concurrentTriePersistence, ChannelReader<Entry> channelReader, ChannelWriter<Entry> flatWriter, CancellationToken cancellationToken = default)
-    {
-        _logger.Info($"Ingest thread started trie");
-
-        int currentItemSize = 0;
-        bool isFlush = false;
-        var writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL); // It writes form initial state to initial state.
-        await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
-        {
-            // Write it
-            Metrics.ImporterEntriesCount++;
-
-            long sw = Stopwatch.GetTimestamp();
-            TrieNode node = entry.node;
-            if (entry.address is null)
-            {
-                writeBatch.SetStateTrieNode(entry.path, node);
-            }
-            else
-            {
-                writeBatch.SetStorageTrieNode(entry.address, entry.path, node);
-            }
-
-            if (node.IsLeaf)
-            {
-                await flatWriter.WriteAsync(entry, cancellationToken);
-            }
-
-            long theTotalNode = Interlocked.Increment(ref _totalNodes);
-            if (theTotalNode % _checkCancelInterval == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            if (theTotalNode % _flushInterval == 0)
-            {
-                _logger.Info("Flushing next");
-                writeBatch.Dispose();
-                writeBatch = concurrentTriePersistence.CreateTrieWriteBatch(WriteFlags.DisableWAL);
-                currentItemSize = 0;
-                isFlush = true;
-            }
-
-            currentItemSize++;
-            if (currentItemSize > this._batchSize)
-            {
-                writeBatch.Dispose();
-                if (isFlush)
-                {
-                    isFlush = false;
-                }
-
-                writeBatch = ((IPersistenceWithConcurrentTrie)persistence).CreateTrieWriteBatch(WriteFlags.DisableWAL);
-                currentItemSize = 0;
-            }
-        }
-
-        writeBatch.Dispose();
-    }
-
-    private async Task IngestLogicFlat(StateId from, ChannelReader<Entry> channelReader, CancellationToken cancellationToken = default)
-    {
-        _logger.Info($"Ingest thread started");
-
-        long totalFlat = 0;
-        int currentItemSize = 0;
-        bool isFlush = false;
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
-        await foreach (var entry in channelReader.ReadAllAsync(cancellationToken))
-        {
-            // Write it
-            Metrics.ImporterEntriesCountFlat++;
-
-            long sw = Stopwatch.GetTimestamp();
-            TrieNode node = entry.node;
-
-            long isw = Stopwatch.GetTimestamp();
-            ValueHash256 fullPath = entry.path.Append(node.Key).Path;
-            if (entry.address is null)
-            {
-                Account acc = _accountDecoder.Decode(node.Value.Span)!;
-                writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
-            }
-            else
-            {
-
-                ReadOnlySpan<byte> value = node.Value.Span;
-                byte[] toWrite;
-
-                if (value.IsEmpty)
-                {
-                    toWrite = StorageTree.ZeroBytes;
-                }
-                else
-                {
-                    Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                    toWrite = rlp.DecodeByteArray();
-                }
-
-                writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
-            }
-
-            long theTotalNode = Interlocked.Increment(ref totalFlat);
-            if (theTotalNode % _flushInterval == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                _logger.Info("Flushing next");
-                sw = Stopwatch.GetTimestamp();
-                writeBatch.Dispose();
-                writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
-                currentItemSize = 0;
-                isFlush = true;
-            }
-
-            currentItemSize++;
-            if (currentItemSize > this._batchSize)
-            {
-                sw = Stopwatch.GetTimestamp();
-                writeBatch.Dispose();
-                if (isFlush)
-                {
-                    isFlush = false;
                 }
                 writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
                 currentItemSize = 0;
