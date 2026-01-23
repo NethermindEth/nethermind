@@ -12,6 +12,9 @@ using Nethermind.State.Flat;
 
 namespace Nethermind.Init.Modules;
 
+/// <summary>
+/// Adjust rocksdb config depending on the flatdb config
+/// </summary>
 internal class FlatRocksDbConfigAdjuster(
     IRocksDbConfigFactory rocksDbConfigFactory,
     IFlatDbConfig flatDbConfig,

@@ -252,12 +252,23 @@ public class FlatToTrieVerifier
     {
         using IPersistence.IFlatIterator storageIterator = _reader.CreateStorageIterator(accountKey);
 
-        // Get storage root from trie for this account
-        byte[]? accountRlp = _reader.GetAccountRaw(new Hash256(triePath));
-        if (accountRlp is null) return;
+        // Get storage root from the account
+        Account? account;
+        if (_reader.IsPreimageMode)
+        {
+            // In preimage mode, accountKey contains the raw address (20 bytes)
+            Address address = new Address(accountKey.Bytes[..20].ToArray());
+            account = _reader.GetAccount(address);
+        }
+        else
+        {
+            // In non-preimage mode, use GetAccountRaw with the hash
+            byte[]? accountRlp = _reader.GetAccountRaw(new Hash256(triePath));
+            if (accountRlp is null) return;
+            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(accountRlp);
+            account = AccountDecoder.Slim.Decode(ref ctx);
+        }
 
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(accountRlp);
-        Account? account = AccountDecoder.Slim.Decode(ref ctx);
         if (account is null || account.StorageRoot == Keccak.EmptyTreeHash) return;
 
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(new Hash256(triePath));
