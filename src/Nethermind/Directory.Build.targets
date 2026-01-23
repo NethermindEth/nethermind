@@ -1,0 +1,28 @@
+<Project>
+
+  <!-- Share native runtimes dir across projects during with a shared location and junctions/symlinks.
+    Enable with `-p:SaveDiskSpace=true` or an environment variable. -->
+  <PropertyGroup Condition="'$(SaveDiskSpace)' == 'true'">
+    <_SharedRuntimesDir>$(ArtifactsPath)\runtimes\$(Configuration)</_SharedRuntimesDir>
+  </PropertyGroup>
+
+  <Target Name="_UseSharedNativeRuntimes" AfterTargets="Build"
+    Condition="'$(SaveDiskSpace)' == 'true' AND '$(_SharedRuntimesDir)' != '' AND Exists('$(OutputPath)runtimes')">
+
+    <ItemGroup>
+      <_RuntimeFilesToShare Include="$(OutputPath)runtimes\**\*" />
+    </ItemGroup>
+
+    <!-- Copy the runtimes dir to a shared location -->
+    <Copy SkipUnchangedFiles="true"
+      SourceFiles="@(_RuntimeFilesToShare)"
+      DestinationFiles="@(_RuntimeFilesToShare->'$(_SharedRuntimesDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <!-- Replace the runtimes dir with junction (Windows) or symlink (Linux/macOS) -->
+    <RemoveDir Directories="$(OutputPath)runtimes" />
+    <Exec Condition="$([MSBuild]::IsOSPlatform('Windows'))"
+      Command="mklink /J &quot;$(OutputPath)runtimes&quot; &quot;$(_SharedRuntimesDir)&quot;" />
+    <Exec Condition="!$([MSBuild]::IsOSPlatform('Windows'))"
+      Command="ln -sfn &quot;$(_SharedRuntimesDir)&quot; &quot;$(OutputPath)runtimes&quot;" />
+  </Target>
+
+</Project>

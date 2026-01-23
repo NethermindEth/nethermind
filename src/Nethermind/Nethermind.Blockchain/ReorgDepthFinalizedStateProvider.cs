@@ -4,12 +4,14 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
+using System;
 
 namespace Nethermind.Blockchain;
 
 public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree) : IFinalizedStateProvider
 {
-    public long FinalizedBlockNumber => blockTree.BestKnownNumber - Reorganization.MaxDepth;
+    public long FinalizedBlockNumber => Math.Max(0, blockTree.BestKnownNumber - Reorganization.MaxDepth);
+
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
     {
         if (FinalizedBlockNumber < blockNumber) return null;

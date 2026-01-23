@@ -64,7 +64,7 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
-    public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
+    public bool IsBreakpointSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<VmState<TGasPolicy>, bool> condition = null)
     {

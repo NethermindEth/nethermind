@@ -431,7 +431,7 @@ namespace Nethermind.Trie.Test
 
             public PruningContext SyncPruneCheck()
             {
-                _trieStore.SyncPruneCheck();
+                _trieStore.SyncPruneQueue();
                 return this;
             }
 

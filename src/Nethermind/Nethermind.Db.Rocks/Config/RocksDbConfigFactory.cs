@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -35,6 +36,13 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
                 }
 
                 dbConfig.MaxOpenFiles = perDbLimit;
+            }
+
+            bool skipSstChecks = dbConfig.SkipCheckingSstFileSizesOnDbOpen ?? RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+            if (skipSstChecks)
+            {
+                if (_logger.IsTrace) _logger.Trace("Skipping SST file size checks on DB open for faster startup.");
+                dbConfig.RocksDbOptions += "skip_checking_sst_file_sizes_on_db_open=true;";
             }
         }
 

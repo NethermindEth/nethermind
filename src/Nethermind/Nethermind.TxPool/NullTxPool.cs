@@ -87,7 +87,7 @@ namespace Nethermind.TxPool
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.New;
+        public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {
@@ -113,5 +113,6 @@ namespace Nethermind.TxPool
             remove { }
         }
         public bool AcceptTxWhenNotSynced { get; set; }
+        public void ResetTxPoolState() { }
     }
 }

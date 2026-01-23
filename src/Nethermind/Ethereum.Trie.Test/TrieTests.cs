@@ -311,7 +311,7 @@ namespace Ethereum.Trie.Test
         public void Delete_on_empty()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
-            patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
+            patriciaTree.Set(Keccak.Compute("1").Bytes, Array.Empty<byte>());
             patriciaTree.Commit();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
@@ -323,7 +323,7 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(Keccak.Compute("1123").Bytes, new byte[] { 1 });
             patriciaTree.Set(Keccak.Compute("1124").Bytes, new byte[] { 2 });
             Hash256 rootBefore = patriciaTree.RootHash;
-            patriciaTree.Set(Keccak.Compute("1125").Bytes, new byte[0]);
+            patriciaTree.Set(Keccak.Compute("1125").Bytes, Array.Empty<byte>());
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }
 
@@ -335,7 +335,7 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), new byte[] { 2 });
             patriciaTree.UpdateRootHash();
             Hash256 rootBefore = patriciaTree.RootHash;
-            patriciaTree.Set(new Nibble[] { 1, 2, 3 }.ToPackedByteArray(), new byte[] { });
+            patriciaTree.Set(new Nibble[] { 1, 2, 3 }.ToPackedByteArray(), Array.Empty<byte>());
             patriciaTree.UpdateRootHash();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }
@@ -348,7 +348,7 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(Keccak.Compute("1234501").Bytes, new byte[] { 2 });
             patriciaTree.UpdateRootHash();
             Hash256 rootBefore = patriciaTree.RootHash;
-            patriciaTree.Set(Keccak.Compute("1234502").Bytes, new byte[0]);
+            patriciaTree.Set(Keccak.Compute("1234502").Bytes, Array.Empty<byte>());
             patriciaTree.UpdateRootHash();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }

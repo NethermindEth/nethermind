@@ -143,9 +143,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Address[] result = _wallet.GetAccounts();
-            Address[] data = result.ToArray();
-            return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
+            return ResultWrapper<IEnumerable<Address>>.Success(_wallet.GetAccounts());
         }
         catch (Exception)
         {
@@ -684,7 +682,7 @@ public partial class EthRpcModule(
         }
 
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
-        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!.StateRoot!);
+        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }
 

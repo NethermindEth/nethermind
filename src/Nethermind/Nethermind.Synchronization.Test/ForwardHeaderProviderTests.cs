@@ -118,7 +118,7 @@ public partial class ForwardHeaderProviderTests
         {
         }, new ConfigProvider(new SyncConfig()
         {
-            PivotNumber = syncPivot.Number.ToString(),
+            PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
         }));
 
