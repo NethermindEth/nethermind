@@ -1,11 +1,12 @@
 #!/bin/bash
 set -e
 
-# GitHub Actions Runner Setup Script
+# GitHub Actions Runner Setup Script (Part 1 - Machine Setup)
 # This script is generated from a Jinja2 template and sets up a self-hosted GitHub Actions runner
+# This part runs on the remote machine and prepares it for runner configuration
 
 echo "========================================="
-echo "GitHub Actions Runner Setup"
+echo "GitHub Actions Runner Setup (Machine Preparation)"
 echo "Started at: $(date)"
 echo "========================================="
 
@@ -27,22 +28,13 @@ fi
 echo "Installing dependencies..."
 
 # Preparing Git-LFS
-curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
 
 apt-get update
 apt-get install -y curl jq git-lfs
 
-# Create runner user if it doesn't exist
-echo "Creating dedicated runner user..."
-if ! id "runner" &>/dev/null; then
-  useradd -m -s /bin/bash runner
-  echo "Created user 'runner'"
-else
-  echo "User 'runner' already exists"
-fi
-
 # Create runner directory
-GH_RUNNER_DIR="/home/runner/actions-runner"
+GH_RUNNER_DIR="/root/actions-runner"
 echo "Creating runner directory: ${GH_RUNNER_DIR}"
 mkdir -p "${GH_RUNNER_DIR}"
 cd "${GH_RUNNER_DIR}"
@@ -64,67 +56,9 @@ fi
 echo "Extracting runner package..."
 tar xzf ./actions-runner-linux-x64.tar.gz
 
-# Set ownership to runner user
-echo "Setting ownership to runner user..."
-chown -R runner:runner "${GH_RUNNER_DIR}"
-
-# Get registration token
-echo "Obtaining registration token..."
-REGISTRATION_TOKEN=$(curl -s -X POST \
-  -H "Authorization: token {{ gh_token }}" \
-  -H "Accept: application/vnd.github.v3+json" \
-  "https://api.github.com/repos/{{ org_name }}/{{ repo_name }}/actions/runners/registration-token" | jq -r '.token')
-
-if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "null" ]; then
-  echo "Error: Failed to obtain registration token"
-  echo "Response from GitHub API was empty or null"
-  exit 1
-fi
-
-echo "Registration token obtained successfully"
-
-# Configure the runner (as runner user)
-GH_RUNNER_LABEL="{{ runner_label }}"
-
-echo "Configuring runner..."
-echo "  Repository: {{ org_name }}/{{ repo_name }}"
-echo "  Runner label: ${GH_RUNNER_LABEL}"
-
-su - runner -c "cd ${GH_RUNNER_DIR} && ./config.sh --url 'https://github.com/{{ org_name }}/{{ repo_name }}' \
-  --token '${REGISTRATION_TOKEN}' \
-  --name '${GH_RUNNER_LABEL}' \
-  --labels '${GH_RUNNER_LABEL}' \
-  --unattended \
-  --replace"
-
-if [ $? -ne 0 ]; then
-  echo "Error: Runner configuration failed"
-  exit 1
-fi
-
-echo "Runner configured successfully"
-
-# Install and start the runner service (as root)
-echo "Installing runner service..."
-cd "${GH_RUNNER_DIR}"
-./svc.sh install runner
-
-echo "Starting runner service..."
-./svc.sh start
-
-# Verify service is running
-sleep 2
-SERVICE_STATUS=$(./svc.sh status || echo "failed")
-echo "Service status: ${SERVICE_STATUS}"
-
 echo ""
 echo "========================================="
-echo "GitHub Actions Runner Setup Complete"
-echo "Completed at: $(date)"
+echo "Machine Preparation Complete"
+echo "Ready for runner registration via SSH"
 echo "========================================="
-echo ""
-echo "Runner Information:"
-echo "  Label: ${GH_RUNNER_LABEL}"
-echo "  Directory: ${GH_RUNNER_DIR}"
-echo "  Log file: ${LOG_FILE}"
 echo ""

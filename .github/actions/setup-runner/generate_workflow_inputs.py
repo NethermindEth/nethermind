@@ -73,24 +73,10 @@ def generate_workflow_inputs():
     github_username = get_env_var("GITHUB_USERNAME")
     custom_runner_name = get_env_var("CUSTOM_RUNNER_NAME")
     custom_runner_type = get_env_var("CUSTOM_RUNNER_TYPE")
-    gh_runner_label = get_env_var("GH_RUNNER_LABEL")
     tags = get_env_var("TAGS", required=False, default="")
     allowed_ips = get_env_var("ALLOWED_IPS", required=False, default="")
     ssh_keys = get_env_var("SSH_KEYS", required=False, default="")
     timeout = get_env_var("TIMEOUT", required=False, default="24")
-
-    # GitHub credentials for runner registration
-    gh_token = get_env_var("GH_TOKEN")
-    org_name = get_env_var("ORG_NAME")
-    repo_name = get_env_var("REPO_NAME")
-
-    # Prepare template context
-    template_context = {
-        "gh_token": gh_token,
-        "org_name": org_name,
-        "repo_name": repo_name,
-        "runner_label": gh_runner_label,
-    }
 
     # Find template file
     script_dir = Path(__file__).parent
@@ -100,9 +86,9 @@ def generate_workflow_inputs():
         print(f"Error: Template file not found: {template_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Render the setup script
+    # Render the setup script (template has no variables, but we use Jinja2 for consistency)
     print(f"Rendering setup script from template: {template_path}", file=sys.stderr)
-    setup_script = render_setup_script(template_path, template_context)
+    setup_script = render_setup_script(template_path, {})
 
     # Encode the setup script
     print("Encoding setup script...", file=sys.stderr)

@@ -8,6 +8,9 @@ inputs:
     description: "The token to use for runner registration (optional, defaults to gh-token)"
     required: false
     default: ""
+  ssh-private-key:
+    description: "SSH private key for accessing the runner machine"
+    required: true
   gh-username:
     description: "GitHub username that manages this runner"
     required: true
@@ -84,14 +87,10 @@ runs:
         GITHUB_USERNAME: ${{ inputs.gh-username }}
         CUSTOM_RUNNER_NAME: ${{ inputs.runner-name }}
         CUSTOM_RUNNER_TYPE: ${{ inputs.runner-type }}
-        GH_RUNNER_LABEL: ${{ env.GH_RUNNER_LABEL }}
         TAGS: ${{ inputs.tags }}
         ALLOWED_IPS: ${{ inputs.allowed-ips }}
         SSH_KEYS: ${{ inputs.ssh-keys }}
         TIMEOUT: ${{ inputs.timeout }}
-        GH_TOKEN: ${{ inputs.gh-runner-token != '' && inputs.gh-runner-token || inputs.gh-token }}
-        ORG_NAME: ${{ github.repository_owner }}
-        REPO_NAME: ${{ github.event.repository.name }}
         OUTPUT_FILE: workflow-inputs.json
       shell: bash
       run: |
@@ -183,6 +182,19 @@ runs:
         echo "Machine IP: $MACHINE_IP"
         echo "machine_ip=$MACHINE_IP" >> $GITHUB_OUTPUT
 
+    - name: Configure runner via SSH
+      env:
+        MACHINE_IP: ${{ steps.extract-details.outputs.machine_ip }}
+        GH_TOKEN: ${{ inputs.gh-runner-token != '' && inputs.gh-runner-token || inputs.gh-token }}
+        GH_RUNNER_LABEL: ${{ env.GH_RUNNER_LABEL }}
+        ORG_NAME: ${{ github.repository_owner }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+      shell: bash
+      run: |
+        chmod +x ${{ github.action_path }}/runner-configure.sh
+        ${{ github.action_path }}/runner-configure.sh
+
     - name: Wait for runner setup to complete
       shell: bash
       run: |
@@ -196,7 +208,7 @@ runs:
       run: |
         echo "### Self-Hosted Runner Created" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Runner Name**: ${{ steps.extract-details.outputs.runner_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Runner Name**: ${{ steps.wait-workflow.outputs.runner_name }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Base Tag**: ${{ env.BASE_TAG }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Machine IP**: ${{ steps.extract-details.outputs.machine_ip }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Timeout**: ${{ inputs.timeout }} hours" >> $GITHUB_STEP_SUMMARY
