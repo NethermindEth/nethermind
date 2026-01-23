@@ -39,8 +39,8 @@ public class PersistenceManagerTests
         _config = new FlatDbConfig
         {
             CompactSize = 16,
-            PruningBoundary = 64,
-            MaxPruningBoundary = 256
+            MinReorgDepth = 64,
+            MaxReorgDepth = 256
         };
 
         _resourcePool = new ResourcePool(_config);

@@ -22,8 +22,8 @@ namespace Nethermind.State.Flat;
 public class PersistenceManager : IAsyncDisposable
 {
     private readonly ILogger _logger;
-    private readonly int _minimumPruningBoundary;
-    private readonly int _forcedPruningBoundary;
+    private readonly int _minReorgDepth;
+    private readonly int _maxReorgDepth;
     private readonly int _compactSize;
     private readonly IFinalizedStateProvider _finalizedStateProvider;
     private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
@@ -53,8 +53,8 @@ public class PersistenceManager : IAsyncDisposable
         _persistence = persistence;
         _snapshotRepository = snapshotRepository;
         _logger = logManager.GetClassLogger();
-        _forcedPruningBoundary = configuration.MaxPruningBoundary;
-        _minimumPruningBoundary = configuration.PruningBoundary;
+        _maxReorgDepth = configuration.MaxReorgDepth;
+        _minReorgDepth = configuration.MinReorgDepth;
         _compactSize = configuration.CompactSize;
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(exitSource.Token);
@@ -232,7 +232,7 @@ public class PersistenceManager : IAsyncDisposable
         long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
         long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
         long afterPersistStateDepth = inMemoryStateDepth - _compactSize;
-        if (afterPersistStateDepth < _minimumPruningBoundary)
+        if (afterPersistStateDepth < _minReorgDepth)
         {
             // Keep some state in memory
             return null;
@@ -244,7 +244,7 @@ public class PersistenceManager : IAsyncDisposable
         if (afterPersistPersistedBlockNumber > finalizedBlockNumber)
         {
             // Unfinalized
-            if (inMemoryStateDepth <= _forcedPruningBoundary)
+            if (inMemoryStateDepth <= _maxReorgDepth)
             {
                 return null;
             }

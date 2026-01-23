@@ -13,8 +13,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
-    [ConfigItem(Description = "Pruning boundary", DefaultValue = "128")]
-    int PruningBoundary { get; set; }
+    [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
+    int MinReorgDepth { get; set; }
 
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     int CompactSize { get; set; }
@@ -43,8 +43,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1000000000")]
     long BlockCacheSizeBudget { get; set; }
 
-    [ConfigItem(Description = "Max pruning boundary", DefaultValue = "1024")]
-    int MaxPruningBoundary { get; set; }
+    [ConfigItem(Description = "Max reorg depth", DefaultValue = "1024")]
+    int MaxReorgDepth { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
