@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
-    private const int MaxGatherAttempts = 16;
+    private const int MaxGatherAttempts = 1000;
 
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
@@ -252,7 +252,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             if (attempt != 0)
             {
-                Thread.Yield();
+                int delayMs = Math.Min(1 << attempt, 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
+                Thread.Sleep(delayMs);
             }
 
             IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();

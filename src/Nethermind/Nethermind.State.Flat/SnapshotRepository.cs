@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat;
 
 public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 {
-    private const int MaxLeaseAttempt = 10_000;
+    private const int MaxLeaseAttempt = 1000;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
 
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
@@ -97,7 +97,15 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             if (entry.TryAcquire()) return true;
             attempt++;
-            sw.SpinOnce();
+            if (attempt <= 100)
+            {
+                sw.SpinOnce();
+            }
+            else
+            {
+                int delayMs = Math.Min(1 << (attempt - 100), 100);  // Exponential after spin threshold
+                Thread.Sleep(delayMs);
+            }
             if (attempt > MaxLeaseAttempt) throw new InvalidOperationException($"Unable to acquire lease on compacted state {stateId}");
         }
         return false;
@@ -111,7 +119,15 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             if (entry.TryAcquire()) return true;
             attempt++;
-            sw.SpinOnce();
+            if (attempt <= 100)
+            {
+                sw.SpinOnce();
+            }
+            else
+            {
+                int delayMs = Math.Min(1 << (attempt - 100), 100);  // Exponential after spin threshold
+                Thread.Sleep(delayMs);
+            }
             if (attempt > MaxLeaseAttempt) throw new InvalidOperationException($"Unable to acquire lease on state {stateId}");
         }
         return false;
