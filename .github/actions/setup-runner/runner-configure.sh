@@ -61,27 +61,22 @@ if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "null" ]; then
   exit 1
 fi
 
+# Mask the registration token to prevent it from appearing in logs
+echo "::add-mask::${REGISTRATION_TOKEN}"
+
 echo "Registration token obtained successfully"
 
 # Configure runner via SSH
-# The token is passed via stdin to avoid it appearing in process listings
 echo "Configuring GitHub Actions runner on remote machine at ${MACHINE_IP}..."
 
-# Pass all sensitive data via stdin and the script via bash -c
-# This avoids exposing tokens in process listings or logs
-{
-  echo "${REGISTRATION_TOKEN}"
-  echo "${ORG_NAME}"
-  echo "${REPO_NAME}"
-  echo "${GH_RUNNER_LABEL}"
-} | ssh ${SSH_OPTS} root@${MACHINE_IP} bash -c '
+# Execute runner configuration remotely
+ssh ${SSH_OPTS} root@${MACHINE_IP} \
+  RUNNER_TOKEN="${REGISTRATION_TOKEN}" \
+  ORG_NAME="${ORG_NAME}" \
+  REPO_NAME="${REPO_NAME}" \
+  GH_RUNNER_LABEL="${GH_RUNNER_LABEL}" \
+  bash << 'ENDSSH'
   set -e
-
-  # Read all inputs from stdin (never stored on disk or visible in process list)
-  read -r RUNNER_TOKEN
-  read -r ORG_NAME
-  read -r REPO_NAME
-  read -r GH_RUNNER_LABEL
 
   cd /root/actions-runner
   export RUNNER_ALLOW_RUNASROOT="1"
@@ -110,7 +105,7 @@ echo "Configuring GitHub Actions runner on remote machine at ${MACHINE_IP}..."
   ./svc.sh status
 
   echo "Runner service started successfully"
-'
+ENDSSH
 
 EXIT_CODE=$?
 
