@@ -69,7 +69,7 @@ jobs:
           runner-name: "gas-benchmark"
           runner-type: g6-standard-2
           timeout: "5"
-          setup-wait-time: "60"
+          setup-wait-time: "120"
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
   gas-benchmark:
