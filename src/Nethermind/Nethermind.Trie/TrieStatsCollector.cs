@@ -13,11 +13,11 @@ namespace Nethermind.Trie
     public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>
     {
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
-        private readonly IKeyValueStore _codeKeyValueStore;
+        protected readonly IKeyValueStore _codeKeyValueStore;
 
-        private readonly ILogger _logger;
-        private readonly VisitorProgressTracker _progressTracker;
-        private readonly CancellationToken _cancellationToken;
+        protected readonly ILogger _logger;
+        protected readonly VisitorProgressTracker _progressTracker;
+        protected readonly CancellationToken _cancellationToken;
 
         // Combine both `TreePathContextWithStorage` and `OldStyleTrieVisitContext`
         public struct Context : INodeContext<Context>
@@ -61,15 +61,20 @@ namespace Nethermind.Trie
         public bool ExpectAccounts { get; }
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default, bool expectAccounts = true)
+            : this(codeKeyValueStore, logManager, "Trie Verification", cancellationToken, expectAccounts)
+        {
+        }
+
+        protected TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, string progressTrackerName, CancellationToken cancellationToken, bool expectAccounts)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
             ExpectAccounts = expectAccounts;
             _cancellationToken = cancellationToken;
-            _progressTracker = new VisitorProgressTracker("Trie Verification", logManager);
+            _progressTracker = new VisitorProgressTracker(progressTrackerName, logManager);
         }
 
-        public TrieStats Stats { get; } = new();
+        public virtual TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
         public void VisitTree(in Context nodeContext, in ValueHash256 rootHash)
@@ -131,7 +136,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public void VisitLeaf(in Context nodeContext, TrieNode node)
+        public virtual void VisitLeaf(in Context nodeContext, TrieNode node)
         {
             if (nodeContext.IsStorage)
             {
@@ -177,7 +182,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, Stats._codeLevels);
         }
 
-        private void IncrementLevel(Context context, bool isLeaf)
+        protected void IncrementLevel(Context context, bool isLeaf)
         {
             long[] levels = context.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(context, levels);
@@ -186,7 +191,7 @@ namespace Nethermind.Trie
             _progressTracker.OnNodeVisited(context.Path, context.IsStorage, isLeaf);
         }
 
-        private static void IncrementLevel(Context context, long[] levels)
+        protected static void IncrementLevel(Context context, long[] levels)
         {
             Interlocked.Increment(ref levels[context.Level]);
         }

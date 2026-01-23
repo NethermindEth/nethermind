@@ -102,12 +102,12 @@ public class FlatWorldStateManager(
         Task.WaitAll([trieToFlatTask, flatToTrieTask]);
 
         // Check both results
-        bool trieToFlatOk = trieVisitor.Stats.MismatchedAccount == 0 && trieVisitor.Stats.MismatchedSlot == 0;
+        bool trieToFlatOk = trieVisitor.MismatchedAccount == 0 && trieVisitor.MismatchedSlot == 0;
         bool flatToTrieOk = flatToTrieVerifier.Stats.MismatchedAccount == 0 && flatToTrieVerifier.Stats.MismatchedSlot == 0;
 
         if (!trieToFlatOk)
         {
-            if (_logger.IsWarn) _logger.Warn($"TrieToFlat: {trieVisitor.Stats.MismatchedAccount} mismatched account and {trieVisitor.Stats.MismatchedSlot} mismatched slot found!");
+            if (_logger.IsWarn) _logger.Warn($"TrieToFlat: {trieVisitor.MismatchedAccount} mismatched account and {trieVisitor.MismatchedSlot} mismatched slot found!");
         }
 
         if (!flatToTrieOk)
