@@ -34,6 +34,7 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        private readonly HashSet<AddressAsKey> _deletedThisBlock = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -450,6 +451,15 @@ namespace Nethermind.State
                     PushRecreateEmpty(address, account, value);
                 }
             }
+            else if (_deletedThisBlock.Contains(address))
+            {
+                _needsStateRootUpdate = true;
+                if (_logger.IsTrace) Trace(address);
+
+                Account account = Account.TotallyEmpty;
+                PushNew(address, account);
+                _deletedThisBlock.Remove(address);
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address)
@@ -575,6 +585,13 @@ namespace Nethermind.State
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
+                            }
+                            else
+                            {
+                                if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
+                                    Out.Log($"s=commit deleted address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
+
+                                _deletedThisBlock.Add(change.Address);
                             }
 
                             break;
@@ -868,6 +885,7 @@ namespace Nethermind.State
                 _blockCodeInsertFilter.Clear();
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
+                _deletedThisBlock.Clear();
             }
             _intraTxCache.ResetAndClear();
             _committedThisRound.Clear();
