@@ -24,7 +24,7 @@ internal class FlatRocksDbConfigAdjuster(
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
         IRocksDbConfig config = rocksDbConfigFactory.GetForDatabase(databaseName, columnName);
-        if (databaseName == nameof(DbNames.Flat) || databaseName.StartsWith(nameof(DbNames.Flat)))
+        if (databaseName == nameof(DbNames.Flat))
         {
             string additionalConfig = "";
             if (flatDbConfig.Layout == FlatLayout.FlatInTrie)
@@ -38,7 +38,7 @@ internal class FlatRocksDbConfigAdjuster(
             }
 
             IntPtr? cacheHandle = null;
-            if (databaseName.EndsWith(nameof(FlatDbColumns.Account)) || columnName == nameof(FlatDbColumns.Account))
+            if (columnName == nameof(FlatDbColumns.Account))
             {
                 ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.3);
                 _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB()):N0} MB of block cache to account");
@@ -47,7 +47,7 @@ internal class FlatRocksDbConfigAdjuster(
                 disposeStack.Push(cacheWrapper);
             }
 
-            if (databaseName.EndsWith(nameof(FlatDbColumns.Storage)) || columnName == nameof(FlatDbColumns.Storage))
+            if (columnName == nameof(FlatDbColumns.Storage))
             {
                 ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.7);
                 _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB()):N0} MB of block cache to storage");

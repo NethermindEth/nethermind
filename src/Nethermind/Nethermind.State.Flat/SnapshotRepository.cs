@@ -36,7 +36,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             list.Dispose();
 
             // Likely persisted a non finalized block.
-            throw new InvalidOperationException( $"Attempted to compile snapshots from {baseBlock} to {targetState} but target is not reachable from baseBlock");
+            throw new InvalidOperationException($"Attempted to compile snapshots from {baseBlock} to {targetState} but target is not reachable from baseBlock");
         }
 
         return list;

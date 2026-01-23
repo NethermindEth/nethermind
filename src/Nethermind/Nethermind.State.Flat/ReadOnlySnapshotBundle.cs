@@ -62,7 +62,7 @@ public sealed class ReadOnlySnapshotBundle(
         }
         else
         {
-            if (recordDetailedMetrics)  Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
         }
 
         return true;

@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
@@ -26,6 +24,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
+        // Just in case
         builder.AddSingleton<MainPruningTrieStoreFactory>(_ => throw new Exception($"{nameof(MainPruningTrieStoreFactory)} disabled."));
         builder.AddSingleton<PruningTrieStateFactory>(_ => throw new Exception($"{nameof(PruningTrieStateFactory)} disabled."));
 
@@ -85,6 +84,20 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             ;
 
-        if (flatDbConfig.ImportFromPruningTrieState) builder.AddStep(typeof(ImportFlatDb));
+        if (flatDbConfig.ImportFromPruningTrieState)
+        {
+            builder.AddStep(typeof(ImportFlatDb));
+        }
+        else
+        {
+            builder
+                .Intercept<ISyncConfig>((syncConfig) =>
+                {
+                    if (syncConfig.FastSync || syncConfig.SnapSync)
+                    {
+                        throw new InvalidOperationException("Fast sync and snaps sync");
+                    }
+                });
+        }
     }
 }
