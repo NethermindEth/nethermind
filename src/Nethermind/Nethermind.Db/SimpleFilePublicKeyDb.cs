@@ -240,7 +240,7 @@ namespace Nethermind.Db
                 bytes = rentedBuffer.AsSpan(0, read + bytes.Length);
                 while (true)
                 {
-                    // Store the original span incase need to undo the key slicing if end of line not found
+                    // Store the original span in case we need to undo the key slicing when the end of line is not found
                     Span<byte> iterationSpan = bytes;
                     int commaIndex = bytes.IndexOf((byte)',');
                     Span<byte> key = default;

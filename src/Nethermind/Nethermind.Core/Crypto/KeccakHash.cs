@@ -422,7 +422,7 @@ namespace Nethermind.Core.Crypto
         private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
         {
             ref byte stateRef = ref MemoryMarshal.GetReference(state);
-            if (Vector512<byte>.IsSupported && input.Length >= Vector512<byte>.Count)
+            if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
             {
                 // Convert to uint for the mod else the Jit does a more complicated signed mod
                 // whereas as uint it just does an And
@@ -441,7 +441,7 @@ namespace Nethermind.Core.Crypto
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
-            if (Vector256<byte>.IsSupported && input.Length >= Vector256<byte>.Count)
+            if (Vector256.IsHardwareAccelerated && input.Length >= Vector256<byte>.Count)
             {
                 // Convert to uint for the mod else the Jit does a more complicated signed mod
                 // whereas as uint it just does an And
@@ -460,7 +460,7 @@ namespace Nethermind.Core.Crypto
                 stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
 
-            if (Vector128<byte>.IsSupported && input.Length >= Vector128<byte>.Count)
+            if (Vector128.IsHardwareAccelerated && input.Length >= Vector128<byte>.Count)
             {
                 int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector128<byte>.Count);
                 ref byte inputRef = ref MemoryMarshal.GetReference(input);

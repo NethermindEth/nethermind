@@ -111,7 +111,7 @@ public class ContractBasedValidatorTests
     }
 
     [Test]
-    public void throws_ArgumentNullException_on_empty_validSealearStrategy()
+    public void throws_ArgumentNullException_on_empty_validSealerStrategy()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
         act.Should().Throw<ArgumentNullException>();

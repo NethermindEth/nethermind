@@ -8,21 +8,23 @@ namespace Nethermind.Logging
 {
     public class SimpleConsoleLogManager(LogLevel logLevel = LogLevel.Trace, string dateFormat = "yyyy-MM-dd HH-mm-ss.ffff|") : ILogManager
     {
+        private readonly SimpleConsoleLogger _logger = new(logLevel, dateFormat);
+
         public static ILogManager Instance { get; } = new SimpleConsoleLogManager();
 
         public ILogger GetClassLogger<T>()
         {
-            return new(new SimpleConsoleLogger(logLevel, dateFormat));
+            return new(_logger);
         }
 
         public ILogger GetClassLogger([CallerFilePath] string filePath = "")
         {
-            return new(new SimpleConsoleLogger(logLevel, dateFormat));
+            return new(_logger);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return new(new SimpleConsoleLogger(logLevel, dateFormat));
+            return new(_logger);
         }
     }
 }

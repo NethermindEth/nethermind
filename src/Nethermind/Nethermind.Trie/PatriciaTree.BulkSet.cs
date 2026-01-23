@@ -27,7 +27,7 @@ public partial class PatriciaTree
         DoNotParallelize = 2
     }
 
-    public readonly struct BulkSetEntry(ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
+    public readonly struct BulkSetEntry(in ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
     {
         public readonly ValueHash256 Path = path;
         public readonly byte[] Value = value;
@@ -261,6 +261,7 @@ public partial class PatriciaTree
         return node;
     }
 
+    [SkipLocalsInit]
     private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
@@ -273,8 +274,7 @@ public partial class PatriciaTree
 
     private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
     {
-        byte[] shortenedKey = new byte[existingNode.Key.Length - 1];
-        Array.Copy(existingNode.Key, 1, shortenedKey, 0, existingNode.Key.Length - 1);
+        ReadOnlySpan<byte> shortenedKey = existingNode.Key.AsSpan(1, existingNode.Key.Length - 1);
 
         int branchIdx = existingNode.Key[0];
 
@@ -339,7 +339,7 @@ public partial class PatriciaTree
         Span<int> indexes)
     {
         // You know, I originally used another buffer to keep track of the entries per nibble. then ChatGPT gave me this.
-        // I dont know what is worst, that ChatGPT beat me to it, or that it is simpler.
+        // I don't know what is worse, that ChatGPT beat me to it, or that it is simpler.
 
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)
@@ -451,6 +451,7 @@ public partial class PatriciaTree
         return usedMask;
     }
 
+    [SkipLocalsInit]
     internal static int HexarySearchAlreadySortedLarge(
         Span<BulkSetEntry> entries,
         int pathIndex,

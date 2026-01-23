@@ -62,14 +62,6 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
     public override void SetNonce(Address address, in UInt256 nonce)
         => _innerWorldState.SetNonce(address, nonce);
 
-    public override void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
-    {
-        long start = Stopwatch.GetTimestamp();
-        _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
-        if (commitRoots)
-            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-    }
-
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();

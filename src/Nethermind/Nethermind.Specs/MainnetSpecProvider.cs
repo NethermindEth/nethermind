@@ -32,7 +32,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong BPO2BlockTimestamp = 0x695db057;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
-    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
         {
             { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,
@@ -67,13 +67,14 @@ public class MainnetSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId { get; } = Core.BlockchainIds.Mainnet;
+    public ulong NetworkId => Core.BlockchainIds.Mainnet;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => DaoBlockNumberConst;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
-    public ulong TimestampFork { get; } = ShanghaiBlockTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("58750000000000000000000");
+    public ulong TimestampFork => ShanghaiBlockTimestamp;
+    // 58750000000000000000000
+    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(15566869308787654656ul, 3184ul);
     public IReleaseSpec GenesisSpec => Frontier.Instance;
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);

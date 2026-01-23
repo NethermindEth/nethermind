@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
@@ -111,7 +110,7 @@ public partial class BlockTree
 
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (header is not null)
             {
                 if (findBeacon && blockInfo.IsBeaconHeader)
@@ -139,7 +138,7 @@ public partial class BlockTree
 
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (block is not null)
             {
                 if (findBeacon && blockInfo.IsBeaconBody)
@@ -373,7 +372,7 @@ public partial class BlockTree
         byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
         if (pivotFromDb is null)
         {
-            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
@@ -383,12 +382,12 @@ public partial class BlockTree
 
         if (updatedPivotBlockHash.IsZero)
         {
-            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
         SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
-        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updator
+        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updater
 
         if (Logger.IsInfo) Logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
     }

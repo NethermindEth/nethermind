@@ -61,7 +61,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
-        IWorldState worldState = _worldStateManager.GlobalWorldState;
+        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -843,19 +843,6 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
 
-        // just the keys for debugging
-        byte[] span = new byte[32];
-        new UInt256(0).ToBigEndian(span);
-        _ = Keccak.Compute(span);
-
-        // just the keys for debugging
-        new UInt256(1).ToBigEndian(span);
-        _ = Keccak.Compute(span);
-
-        // just the keys for debugging
-        new UInt256(2).ToBigEndian(span);
-        _ = Keccak.Compute(span);
-
         foreach (AccountProof accountProof in callResultWithProof.Accounts)
         {
             // this is here for diagnostics - so you can read what happens in the test
@@ -884,7 +871,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
 
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
-        IWorldState stateProvider = _worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());

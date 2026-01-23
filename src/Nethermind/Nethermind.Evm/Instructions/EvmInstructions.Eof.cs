@@ -9,10 +9,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
-
-using static Nethermind.Evm.VirtualMachine;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
@@ -60,17 +60,20 @@ internal static partial class EvmInstructions
     /// Retrieves the length of the return data buffer and pushes it onto the stack.
     /// Deducts the base gas cost from the available gas.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
+    /// <typeparam name="TTracingInst">Tracing flag type.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the operand stack.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas counter.</param>
+    /// <param name="gas">Reference to the gas state.</param>
     /// <param name="programCounter">Reference to the current program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataSize<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct base gas cost for this instruction.
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
 
         // Push the length of the return data buffer (as a 32-bit unsigned integer) onto the stack.
         stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
@@ -92,7 +95,8 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the current program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> representing success or the type of failure.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Pop the required parameters: destination memory offset, source offset in return data, and number of bytes to copy.
@@ -104,12 +108,12 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
         // For legacy (non-EOF) code, ensure that the copy does not exceed the available return data.
-        if (vm.EvmState.Env.CodeInfo.Version == 0 &&
+        if (vm.VmState.Env.CodeInfo.Version == 0 &&
             (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length))
         {
             goto AccessViolation;
@@ -119,12 +123,12 @@ internal static partial class EvmInstructions
         if (!size.IsZero)
         {
             // Update memory cost for expanding memory to accommodate the destination slice.
-            if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in destOffset, size))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, vm.VmState))
                 return EvmExceptionType.OutOfGas;
 
             // Get the source slice; if the requested range exceeds the buffer length, it is zero-padded.
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
-            vm.EvmState.Memory.Save(in destOffset, in slice);
+            if (!vm.VmState.Memory.TrySave(in destOffset, in slice)) goto OutOfGas;
 
             // Report the memory change if tracing is active.
             if (TTracingInst.IsActive)
@@ -153,16 +157,17 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> representing success or an error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         // Ensure the instruction is only valid for non-legacy (EOF) code.
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
         // Deduct gas required for data loading.
-        if (!EvmCalculations.UpdateGas(GasCostOf.DataLoad, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataLoad))
             goto OutOfGas;
 
         // Pop the offset from the stack.
@@ -184,14 +189,15 @@ internal static partial class EvmInstructions
     /// Advances the program counter accordingly.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataLoadN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataLoadN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.DataLoadN, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataLoadN))
             goto OutOfGas;
 
         // Read a 16-bit immediate operand from the code.
@@ -215,14 +221,15 @@ internal static partial class EvmInstructions
     /// Pushes the size of the code's data section onto the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataSize<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.DataSize, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataSize))
             goto OutOfGas;
 
         stack.PushUInt32<TTracingInst>((uint)codeInfo.DataSection.Length);
@@ -240,10 +247,11 @@ internal static partial class EvmInstructions
     /// The source offset, destination memory offset, and number of bytes are specified on the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
@@ -256,7 +264,7 @@ internal static partial class EvmInstructions
         }
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
-        if (!EvmCalculations.UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataCopy + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas))
             || outOfGas)
         {
             goto OutOfGas;
@@ -265,11 +273,11 @@ internal static partial class EvmInstructions
         if (!size.IsZero)
         {
             // Update memory cost for the destination region.
-            if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memOffset, size))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in memOffset, size, vm.VmState))
                 goto OutOfGas;
             // Retrieve the slice from the data section with zero padding if necessary.
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
-            vm.EvmState.Memory.Save(in memOffset, dataSectionSlice);
+            if (!vm.VmState.Memory.TrySave(in memOffset, in dataSectionSlice)) goto OutOfGas;
 
             if (TTracingInst.IsActive)
             {
@@ -292,13 +300,14 @@ internal static partial class EvmInstructions
     /// Reads a two-byte signed offset from the code section and adjusts the program counter accordingly.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRelativeJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRelativeJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.RJump, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.RJump))
             goto OutOfGas;
 
         // Read a signed 16-bit offset and adjust the program counter.
@@ -318,13 +327,14 @@ internal static partial class EvmInstructions
     /// Pops a condition value; if non-zero, jumps by the signed offset embedded in the code.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRelativeJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRelativeJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.RJumpi, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.RJumpi))
             goto OutOfGas;
 
         // Pop the condition word.
@@ -352,13 +362,14 @@ internal static partial class EvmInstructions
     /// Uses the top-of-stack value as an index into a list of jump offsets, then jumps accordingly.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpTable(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpTable<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.RJumpv, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.RJumpv))
             goto OutOfGas;
 
         // Pop the table index from the stack.
@@ -392,15 +403,16 @@ internal static partial class EvmInstructions
     /// Sets up the return state and verifies stack and call depth constraints before transferring control.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCallFunction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo iCodeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo iCodeInfo = vm.VmState.Env.CodeInfo;
         if (iCodeInfo.Version == 0)
             goto BadInstruction;
 
         EofCodeInfo codeInfo = (EofCodeInfo)iCodeInfo;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.Callf, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Callf))
             goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
@@ -416,11 +428,11 @@ internal static partial class EvmInstructions
         }
 
         // Ensure there is room on the return stack.
-        if (vm.EvmState.ReturnStackHead == Eof1.RETURN_STACK_MAX_HEIGHT)
+        if (vm.VmState.ReturnStackHead == Eof1.RETURN_STACK_MAX_HEIGHT)
             goto InvalidSubroutineEntry;
 
         // Push current state onto the return stack.
-        vm.EvmState.ReturnStack[vm.EvmState.ReturnStackHead++] = new EvmState.ReturnState
+        vm.VmState.ReturnStack[vm.VmState.ReturnStackHead++] = new ReturnState
         {
             Index = vm.SectionIndex,
             Height = stack.Head - inputCount,
@@ -447,17 +459,18 @@ internal static partial class EvmInstructions
     /// Returns from a subroutine call by restoring the state from the return stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnFunction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.Retf, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Retf))
             goto OutOfGas;
 
         // Pop the return state from the return stack.
-        EvmState.ReturnState stackFrame = vm.EvmState.ReturnStack[--vm.EvmState.ReturnStackHead];
+        ReturnState stackFrame = vm.VmState.ReturnStack[--vm.VmState.ReturnStackHead];
         vm.SectionIndex = stackFrame.Index;
         programCounter = stackFrame.Offset;
 
@@ -474,15 +487,16 @@ internal static partial class EvmInstructions
     /// Verifies that the target section does not cause a stack overflow.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpFunction(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpFunction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo iCodeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo iCodeInfo = vm.VmState.Env.CodeInfo;
         if (iCodeInfo.Version == 0)
             goto BadInstruction;
 
         EofCodeInfo codeInfo = (EofCodeInfo)iCodeInfo;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.Jumpf, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Jumpf))
             goto OutOfGas;
 
         // Read the target section index from the code.
@@ -512,14 +526,15 @@ internal static partial class EvmInstructions
     /// The immediate value (n) specifies that the (n+1)th element from the top is duplicated.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Dupn))
             goto OutOfGas;
 
         // Read the immediate operand.
@@ -542,14 +557,15 @@ internal static partial class EvmInstructions
     /// Swaps the top-of-stack with the (n+1)th element.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Swapn))
             goto OutOfGas;
 
         // Immediate operand determines the swap index.
@@ -571,14 +587,15 @@ internal static partial class EvmInstructions
     /// The high nibble and low nibble of the operand specify the two swap distances.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Swapn))
             goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = codeInfo.CodeSection.Span;
@@ -608,18 +625,19 @@ internal static partial class EvmInstructions
     /// A tracing flag type to conditionally report events.
     /// </typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCreate<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCreate<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         Metrics.IncrementCreates();
         vm.ReturnData = null;
 
         IReleaseSpec spec = vm.Spec;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.VmState.Env;
         if (env.CodeInfo.Version == 0)
             goto BadInstruction;
 
-        if (vm.EvmState.IsStatic)
+        if (vm.VmState.IsStatic)
             goto StaticCallViolation;
 
         // Cast the current code info to EOF-specific container type.
@@ -627,7 +645,7 @@ internal static partial class EvmInstructions
         ExecutionType currentContext = ExecutionType.EOFCREATE;
 
         // 1. Deduct the creation gas cost.
-        if (!EvmCalculations.UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.TxCreate))
             goto OutOfGas;
 
         ReadOnlySpan<byte> codeSection = container.CodeSection.Span;
@@ -644,11 +662,11 @@ internal static partial class EvmInstructions
         }
 
         // 4. Charge for memory expansion for the input data.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataSize))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataSize, vm.VmState))
             goto OutOfGas;
 
         // 5. Load the init code (EOF subContainer) from the container using the given index.
-        ReadOnlySpan<byte> initContainer = container.ContainerSection.Span[(Range)container.ContainerSectionOffset(initContainerIndex).Value];
+        ReadOnlyMemory<byte> initContainer = container.ContainerSection[(Range)container.ContainerSectionOffset(initContainerIndex)!.Value];
         // EIP-3860: Check that the init code size does not exceed the maximum allowed.
         if (spec.IsEip3860Enabled)
         {
@@ -659,7 +677,7 @@ internal static partial class EvmInstructions
         // 6. Deduct gas for keccak256 hashing of the init code.
         long numberOfWordsInInitCode = EvmCalculations.Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
         long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
-        if (outOfGas || !EvmCalculations.UpdateGas(hashCost, ref gasAvailable))
+        if (outOfGas || !TGasPolicy.UpdateGas(ref gas, hashCost))
             goto OutOfGas;
 
         IWorldState state = vm.WorldState;
@@ -674,8 +692,9 @@ internal static partial class EvmInstructions
         }
 
         // 9. Determine gas available for the new contract execution, applying the 63/64 rule if enabled.
+        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, callGas))
             goto OutOfGas;
 
         // 10. Increment the nonce of the sender account.
@@ -690,15 +709,15 @@ internal static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // 11. Calculate the new contract address.
-        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer);
+        Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initContainer.Span);
         if (spec.UseHotAndColdStorage)
         {
             // Warm up the target address for subsequent storage accesses.
-            vm.EvmState.AccessTracker.WarmUp(contractAddress);
+            vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
         if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(gasAvailable);
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // Take a snapshot before modifying state for the new contract.
         Snapshot snapshot = state.TakeSnapshot();
@@ -723,13 +742,14 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Create new code info for the init code.
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer, spec, ValidationStrategy.ExtractHeader);
 
         // 8. Prepare the callData from the caller’s memory slice.
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize);
+        if (!vm.VmState.Memory.TryLoad(dataOffset, dataSize, out ReadOnlyMemory<byte> callData))
+            goto OutOfGas;
 
         // Set up the execution environment for the new contract.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -739,15 +759,15 @@ internal static partial class EvmInstructions
             value: in value,
             inputData: in callData);
 
-        vm.ReturnData = EvmState.RentFrame(
-            gasAvailable: callGas,
+        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: currentContext,
-            isStatic: vm.EvmState.IsStatic,
+            isStatic: vm.VmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            env: in callEnv,
-            stateForAccessLists: in vm.EvmState.AccessTracker,
+            env: callEnv,
+            stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
         return EvmExceptionType.None;
@@ -765,17 +785,18 @@ internal static partial class EvmInstructions
     /// Extracts the deployment code from a specified container section and prepares the return data.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnCode(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnCode<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // This instruction is only valid in create contexts.
-        if (!vm.EvmState.ExecutionType.IsAnyCreateEof())
+        if (!vm.VmState.ExecutionType.IsAnyCreateEof())
             goto BadInstruction;
 
-        if (!EvmCalculations.UpdateGas(GasCostOf.ReturnCode, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.ReturnCode))
             goto OutOfGas;
 
         IReleaseSpec spec = vm.Spec;
-        EofCodeInfo codeInfo = (EofCodeInfo)vm.EvmState.Env.CodeInfo;
+        EofCodeInfo codeInfo = (EofCodeInfo)vm.VmState.Env.CodeInfo;
 
         // Read the container section index from the code.
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
@@ -787,7 +808,7 @@ internal static partial class EvmInstructions
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
 
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, b))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, b, vm.VmState))
             goto OutOfGas;
 
         int projectedNewSize = (int)b + deployCodeInfo.DataSection.Length;
@@ -798,7 +819,9 @@ internal static partial class EvmInstructions
         }
 
         // Load the memory slice as the return data buffer.
-        vm.ReturnDataBuffer = vm.EvmState.Memory.Load(a, b);
+        if (!vm.VmState.Memory.TryLoad(a, b, out vm.ReturnDataBuffer))
+            goto OutOfGas;
+
         vm.ReturnData = deployCodeInfo;
 
         return EvmExceptionType.None;
@@ -815,15 +838,16 @@ internal static partial class EvmInstructions
     /// This instruction is only valid when EOF is enabled.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
+        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             goto BadInstruction;
 
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         if (!stack.PopUInt256(out UInt256 offset))
             goto StackUnderflow;
@@ -851,7 +875,8 @@ internal static partial class EvmInstructions
     /// A tracing flag type used to report VM state changes during the call.
     /// </typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCall<TOpEofCall, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCall<TGasPolicy, TOpEofCall, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEofCall : struct, IOpEofCall
         where TTracingInst : struct, IFlag
     {
@@ -861,7 +886,7 @@ internal static partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
 
         // This instruction is only available for EOF-enabled contracts.
@@ -899,10 +924,10 @@ internal static partial class EvmInstructions
         }
 
         // 3. For non-static calls, ensure that a non-zero transfer value is not used in a static context.
-        if (vm.EvmState.IsStatic && !transferValue.IsZero)
+        if (vm.VmState.IsStatic && !transferValue.IsZero)
             goto StaticCallViolation;
         // 4. Charge additional gas if a value is transferred in a standard call.
-        if (typeof(TOpEofCall) == typeof(OpEofCall) && !transferValue.IsZero && !EvmCalculations.UpdateGas(GasCostOf.CallValue, ref gasAvailable))
+        if (typeof(TOpEofCall) == typeof(OpEofCall) && !transferValue.IsZero && !TGasPolicy.UpdateGas(ref gas, GasCostOf.CallValue))
             goto OutOfGas;
 
         // 5. Validate that the targetBytes represent a proper 20-byte address (high 12 bytes must be zero).
@@ -917,22 +942,25 @@ internal static partial class EvmInstructions
             : codeSource;
 
         // 6. Update memory cost for the call data.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, in dataLength))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, in dataLength, vm.VmState))
             goto OutOfGas;
         // 7. Account access gas: ensure target is warm or charge extra gas for cold access.
-        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource))
-            goto OutOfGas;
+        bool _ = vm.TxExecutionContext.CodeInfoRepository
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // 8. If the target does not exist or is considered a "dead" account when value is transferred,
         // charge for account creation.
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))
         {
-            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
                 goto OutOfGas;
         }
 
         // 9. Compute the gas available to the callee after reserving a minimum.
+        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
         long callGas = gasAvailable - Math.Max(gasAvailable / 64, MIN_RETAINED_GAS);
 
         // 10. Check that the call gas is sufficient, the caller has enough balance, and the call depth is within limits.
@@ -948,7 +976,7 @@ internal static partial class EvmInstructions
             ITxTracer txTracer = vm.TxTracer;
             if (TTracingInst.IsActive)
             {
-                ReadOnlyMemory<byte> memoryTrace = vm.EvmState.Memory.Inspect(in dataOffset, 32);
+                ReadOnlyMemory<byte> memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
                 txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
                 txTracer.ReportOperationRemainingGas(gasAvailable);
                 txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
@@ -972,10 +1000,11 @@ internal static partial class EvmInstructions
         }
 
         // 12. Deduct gas for the call and prepare the call data.
-        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, callGas) ||
+            !vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+        {
             goto OutOfGas;
-
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
+        }
 
         // Snapshot the state before the call.
         Snapshot snapshot = state.TakeSnapshot();
@@ -983,7 +1012,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Set up the new execution environment for the call.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: targetCodeInfo,
             executingAccount: target,
             caller: caller,
@@ -993,15 +1022,15 @@ internal static partial class EvmInstructions
             value: in callValue,
             inputData: in callData);
 
-        vm.ReturnData = EvmState.RentFrame(
-            gasAvailable: callGas,
+        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: TOpEofCall.ExecutionType,
-            isStatic: TOpEofCall.IsStatic || vm.EvmState.IsStatic,
+            isStatic: TOpEofCall.IsStatic || vm.VmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            env: in callEnv,
-            stateForAccessLists: in vm.EvmState.AccessTracker,
+            env: callEnv,
+            stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
         return EvmExceptionType.None;

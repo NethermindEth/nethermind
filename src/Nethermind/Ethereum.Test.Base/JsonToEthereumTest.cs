@@ -86,7 +86,7 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayloadV3, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayloadV4, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -99,7 +99,7 @@ namespace Ethereum.Test.Base
                 string[]? blobVersionedHashes = engineNewPayload.Params.Length > 1 ? engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
                 string? parentBeaconBlockRoot = engineNewPayload.Params.Length > 2 ? engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions) : null;
                 string[]? validationError = engineNewPayload.Params.Length > 3 ? engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                yield return (new ExecutionPayloadV3()
+                yield return (new ExecutionPayloadV4()
                 {
                     BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
                     BlockHash = new(executionPayload.BlockHash),
@@ -156,7 +156,12 @@ namespace Ethereum.Test.Base
                 transaction.AccessList = null;
 
             if (transactionJson.MaxFeePerGas is not null)
+            {
                 transaction.Type = TxType.EIP1559;
+                // For EIP-1559+ transactions, GasPrice is aliased to MaxPriorityFeePerGas.
+                // Use maxPriorityFeePerGas from JSON, falling back to maxFeePerGas per go-ethereum behavior.
+                transaction.GasPrice = transactionJson.MaxPriorityFeePerGas ?? transactionJson.MaxFeePerGas.Value;
+            }
 
             if (transaction.BlobVersionedHashes?.Length > 0)
                 transaction.Type = TxType.Blob;
@@ -273,8 +278,6 @@ namespace Ethereum.Test.Base
                         CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot,
                         CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot,
                         CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas,
-                        ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed,
-                        ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas,
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),

@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core.Specs;
@@ -37,7 +33,7 @@ public static class SubscriptionFactoryExtensions
     public static void RegisterLogsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IReceiptMonitor receiptMonitor,
-        IFilterStore? filterStore,
+        FilterStore? filterStore,
         IBlockTree? blockTree,
         ILogManager? logManager
         )
@@ -110,7 +106,7 @@ public static class SubscriptionFactoryExtensions
         ILogManager? logManager,
         ISpecProvider specProvider,
         IReceiptMonitor receiptMonitor,
-        IFilterStore? filterStore,
+        FilterStore? filterStore,
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo,
         IPeerPool? peerPool,
@@ -131,7 +127,7 @@ public static class SubscriptionFactoryExtensions
         ILogManager? logManager,
         ISpecProvider specProvider,
         IReceiptMonitor receiptMonitor,
-        IFilterStore? filterStore,
+        FilterStore? filterStore,
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo
         )

@@ -65,12 +65,12 @@ namespace Nethermind.Crypto
 
         public override int Position
         {
-            get => throw new NotSupportedException("Cannot read form Keccak");
-            set => throw new NotSupportedException("Cannot read form Keccak");
+            get => throw new NotSupportedException("Cannot read from Keccak");
+            set => throw new NotSupportedException("Cannot read from Keccak");
         }
 
-        public override int Length => throw new NotSupportedException("Cannot read form Keccak");
+        public override int Length => throw new NotSupportedException("Cannot read from Keccak");
 
-        protected override string Description => "|KeccakRlpSTream|description missing|";
+        protected override string Description => "|KeccakRlpStream|description missing|";
     }
 }

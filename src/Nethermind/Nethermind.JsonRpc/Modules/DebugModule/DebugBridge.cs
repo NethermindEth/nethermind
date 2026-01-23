@@ -196,9 +196,9 @@ public class DebugBridge : IDebugBridge
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
-    public SyncReportSymmary GetCurrentSyncStage()
+    public SyncReportSummary GetCurrentSyncStage()
     {
-        return new SyncReportSymmary
+        return new SyncReportSummary
         {
             CurrentStage = _syncModeSelector.Current.ToString()
         };

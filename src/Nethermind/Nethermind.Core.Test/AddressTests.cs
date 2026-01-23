@@ -183,6 +183,8 @@ public class AddressTests
     [TestCase(Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, false)]
     [TestCase("2" + Address.SystemUserHex, true)]
+    [TestCase("0x00" + Address.SystemUserHex, true)]
+    [TestCase("0x00fffffffffffffffffffffffffffffffffffffffe", true)]
     public void Parse_variable_length(string addressHex, bool allowOverflow)
     {
         var result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);

@@ -249,7 +249,7 @@ namespace Nethermind.Store.Test
                 stateRoot = provider.StateRoot;
             }
 
-            var stats = stateReader.CollectStats(stateRoot, new MemDb(), Logger);
+            var stats = stateReader.CollectStats(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject, new MemDb(), Logger);
             stats.AccountCount.Should().Be(1);
         }
 
@@ -382,7 +382,7 @@ namespace Nethermind.Store.Test
             }
 
             TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-            reader.RunTreeVisitor(visitor, stateRoot);
+            reader.RunTreeVisitor(visitor, Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject);
         }
 
         [Test]
@@ -399,7 +399,7 @@ namespace Nethermind.Store.Test
                 stateRoot = provider.StateRoot;
             }
 
-            string state = reader.DumpState(stateRoot);
+            string state = reader.DumpState(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject);
             state.Should().NotBeEmpty();
         }
     }
