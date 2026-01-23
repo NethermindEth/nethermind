@@ -255,6 +255,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            vm.AddTransferLog(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 
