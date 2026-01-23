@@ -377,4 +377,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
+
+    /// <inheritdoc />
+    public ResultWrapper<bool> taikoDebug_clearTxPoolForReorg()
+    {
+        txPool.ResetTxPoolState();
+        return ResultWrapper<bool>.Success(true);
+    }
 }
