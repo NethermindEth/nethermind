@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -19,15 +20,16 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-[TestFixture]
-public class FlatToTrieVerifierTests
+[TestFixture(FlatLayout.PreimageFlat)]
+[TestFixture(FlatLayout.Flat)]
+public class FlatToTrieVerifierTests(FlatLayout layout)
 {
     private MemDb _trieDb = null!;
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
     private ILogManager _logManager = null!;
     private TestMemColumnsDb<FlatDbColumns> _columnsDb = null!;
-    private PreimageRocksdbPersistence _persistence = null!;
+    private IPersistence _persistence = null!;
 
     [SetUp]
     public void SetUp()
@@ -37,9 +39,10 @@ public class FlatToTrieVerifierTests
         _stateTree = new StateTree(_trieStore, LimboLogs.Instance);
         _logManager = LimboLogs.Instance;
 
-        // Create persistence with in-memory columns DB
         _columnsDb = new TestMemColumnsDb<FlatDbColumns>();
-        _persistence = new PreimageRocksdbPersistence(_columnsDb);
+        _persistence = layout == FlatLayout.PreimageFlat
+            ? new PreimageRocksdbPersistence(_columnsDb)
+            : new RocksdbPersistence(_columnsDb);
     }
 
     [TearDown]
@@ -72,30 +75,65 @@ public class FlatToTrieVerifierTests
         }
     }
 
-    private void DeleteAccountFromFlat(Address address)
-    {
-        // Access the underlying TestMemDb for Account column
-        var accountDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Account);
-
-        // Build the preimage key - persistence only uses first 20 bytes (address bytes)
-        ValueHash256 fakeHash = ValueKeccak.Zero;
-        address.Bytes.CopyTo(fakeHash.BytesAsSpan);
-
-        // Use only first 20 bytes to match the persistence layer's key format
-        accountDb.Remove(fakeHash.BytesAsSpan[..20]);
-    }
-
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
     {
         var accountDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Account);
-
-        // Build the preimage key - persistence only uses first 20 bytes (address bytes)
-        ValueHash256 fakeHash = ValueKeccak.Zero;
-        address.Bytes.CopyTo(fakeHash.BytesAsSpan);
+        ValueHash256 addrKey = layout == FlatLayout.PreimageFlat
+            ? CreatePreimageAddressKey(address)
+            : ValueKeccak.Compute(address.Bytes);
 
         using var stream = AccountDecoder.Slim.EncodeToNewNettyStream(corruptedAccount);
-        // Use only first 20 bytes to match the persistence layer's key format
-        accountDb.Set(fakeHash.BytesAsSpan[..20], stream.AsSpan().ToArray());
+        accountDb.Set(addrKey.BytesAsSpan[..20], stream.AsSpan().ToArray());
+    }
+
+    private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
+    {
+        var storageDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Storage);
+
+        ValueHash256 addrHash;
+        ValueHash256 slotHash;
+
+        if (layout == FlatLayout.PreimageFlat)
+        {
+            addrHash = CreatePreimageAddressKey(address);
+            slotHash = ValueKeccak.Zero;
+            slot.ToBigEndian(slotHash.BytesAsSpan);
+        }
+        else
+        {
+            addrHash = ValueKeccak.Compute(address.Bytes);
+            Span<byte> slotBytes = stackalloc byte[32];
+            slot.ToBigEndian(slotBytes);
+            slotHash = ValueKeccak.Compute(slotBytes);
+        }
+
+        byte[] storageKey = new byte[52];
+        addrHash.Bytes[..4].CopyTo(storageKey.AsSpan(0, 4));
+        slotHash.Bytes.CopyTo(storageKey.AsSpan(4, 32));
+        addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan(36, 16));
+
+        storageDb.Set(storageKey, value.AsSpan().WithoutLeadingZeros().ToArray());
+    }
+
+    private static ValueHash256 CreatePreimageAddressKey(Address address)
+    {
+        ValueHash256 fakeHash = ValueKeccak.Zero;
+        address.Bytes.CopyTo(fakeHash.BytesAsSpan);
+        return fakeHash;
+    }
+
+    private StorageTree CreateStorageTree(Address address, (UInt256 slot, byte[] value)[] slots)
+    {
+        Hash256 addressHash = Keccak.Compute(address.Bytes);
+        IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(addressHash);
+        StorageTree storageTree = new StorageTree(storageTrieStore, _logManager);
+
+        foreach (var (slot, value) in slots)
+        {
+            storageTree.Set(slot, value);
+        }
+        storageTree.Commit();
+        return storageTree;
     }
 
     [Test]
@@ -232,104 +270,6 @@ public class FlatToTrieVerifierTests
         Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
     }
 
-
-    [Test]
-    public void Verify_NonPreimageMode_SkipsStorageVerification()
-    {
-        // This test verifies behavior when IsPreimageMode is false.
-        // Since PreimageRocksdbPersistence always returns true for IsPreimageMode,
-        // we verify the expected behavior: storage IS checked in preimage mode.
-        Address address = TestItem.AddressA;
-        Account account = new Account(1, 100);
-
-        // Add account to trie
-        _stateTree.Set(address, account);
-        _stateTree.Commit();
-        Hash256 stateRoot = _stateTree.RootHash;
-
-        // Add to flat via persistence
-        var toState = new StateId(1, stateRoot);
-        WriteAccountToFlat(address, account, toState);
-
-        using var reader = _persistence.CreateReader();
-
-        // Verify that the reader is in preimage mode
-        Assert.That(reader.IsPreimageMode, Is.True);
-
-        var verifier = new FlatToTrieVerifier(
-            reader,
-            _trieStore,
-            stateRoot,
-            _logManager,
-            CancellationToken.None);
-
-        // Act
-        verifier.Verify();
-
-        // Assert - account matches
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void Verify_CancellationRequested_ThrowsOperationCanceled()
-    {
-        // Arrange
-        var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        Address address = TestItem.AddressA;
-        Account account = new Account(1, 100);
-
-        // Add to flat
-        var toState = new StateId(1, Keccak.EmptyTreeHash);
-        WriteAccountToFlat(address, account, toState);
-
-        using var reader = _persistence.CreateReader();
-        var verifier = new FlatToTrieVerifier(
-            reader,
-            _trieStore,
-            Keccak.EmptyTreeHash,
-            _logManager,
-            cts.Token);
-
-        // Act & Assert
-        Assert.Throws<OperationCanceledException>(() => verifier.Verify());
-    }
-
-    [Test]
-    public void Verify_AccountWithContract_MatchesCorrectly()
-    {
-        // Arrange
-        Address address = TestItem.AddressA;
-        Hash256 codeHash = Keccak.Compute(new byte[] { 1, 2, 3 });
-        Hash256 storageRoot = Keccak.EmptyTreeHash;
-        Account account = new Account(1, 100, storageRoot, codeHash);
-
-        _stateTree.Set(address, account);
-        _stateTree.Commit();
-        Hash256 stateRoot = _stateTree.RootHash;
-
-        // Add to flat via persistence
-        var toState = new StateId(1, stateRoot);
-        WriteAccountToFlat(address, account, toState);
-
-        using var reader = _persistence.CreateReader();
-        var verifier = new FlatToTrieVerifier(
-            reader,
-            _trieStore,
-            stateRoot,
-            _logManager,
-            CancellationToken.None);
-
-        // Act
-        verifier.Verify();
-
-        // Assert
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-    }
-
     [TestCase(2, 1, Description = "2 accounts, 1 mismatched")]
     [TestCase(5, 2, Description = "5 accounts, 2 mismatched")]
     public void Verify_PartialMismatch_ReportsCorrectCounts(int totalAccounts, int mismatchedCount)
@@ -431,42 +371,39 @@ public class FlatToTrieVerifierTests
     }
 
     [Test]
-    public void Verify_DeletedAccount_ReportsFewerAccountsInFlat()
+    public void Verify_Storage_MatchesAndMismatches()
     {
-        // Arrange
+        // Account A: 2 matching storage slots
         Address addressA = TestItem.AddressA;
+        StorageTree storageA = CreateStorageTree(addressA, [((UInt256)1, [0x11]), ((UInt256)2, [0x22])]);
+        Account accountA = new Account(1, 100, storageA.RootHash, Keccak.Compute([1]));
+
+        // Account B: 1 mismatched storage slot
         Address addressB = TestItem.AddressB;
+        StorageTree storageB = CreateStorageTree(addressB, [((UInt256)10, [0xAA])]);
+        Account accountB = new Account(2, 200, storageB.RootHash, Keccak.Compute([2]));
 
-        Account accountA = new Account(1, 100);
-        Account accountB = new Account(2, 200);
-
-        // Add both accounts to trie
         _stateTree.Set(addressA, accountA);
         _stateTree.Set(addressB, accountB);
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        // Add both to flat, then delete one
         var toState = new StateId(1, stateRoot);
-        WriteAccountsToFlat(new[]
-        {
-            (addressA, accountA),
-            (addressB, accountB)
-        }, toState);
-        DeleteAccountFromFlat(addressB);
+        WriteAccountsToFlat([(addressA, accountA), (addressB, accountB)], toState);
+
+        // Account A storage matches
+        WriteStorageDirectToDb(addressA, 1, [0x11]);
+        WriteStorageDirectToDb(addressA, 2, [0x22]);
+        // Account B storage mismatches
+        WriteStorageDirectToDb(addressB, 10, [0xFF]);
 
         using var reader = _persistence.CreateReader();
-        var verifier = new FlatToTrieVerifier(
-            reader,
-            _trieStore,
-            stateRoot,
-            _logManager,
-            CancellationToken.None);
-
-        // Act
+        var verifier = new FlatToTrieVerifier(reader, _trieStore, stateRoot, _logManager, CancellationToken.None);
         verifier.Verify();
 
-        // Assert - flat has only 1 account now
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(2));
+        Assert.That(verifier.Stats.SlotCount, Is.EqualTo(3));
+        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+        Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
     }
 }
