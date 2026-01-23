@@ -88,14 +88,17 @@ public class RewardTests
 
         // === Second part of the test: signing hash in a different epoch still counts ===
 
+        // Place signingTx2 in block 3E + 16 (different epoch than the signed block)
+        await chain.AddBlocks(15);
+
+        signer2685 = chain.Signer.Key!;
+        owner2 = signer2685.Address;
         Transaction signingTx2 = BuildSigningTx(
             spec,
             header2685.Number,
             header2685.Hash!,
             signer2685);
 
-        // Place signingTx2 in block 3E + 16 (different epoch than the signed block)
-        await chain.AddBlocks(15);
         await chain.AddBlock(signingTx2);
 
         // Add blocks up until 4E and check rewards
