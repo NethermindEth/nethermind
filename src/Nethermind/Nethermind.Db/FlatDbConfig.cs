@@ -16,7 +16,7 @@ public class FlatDbConfig : IFlatDbConfig
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public int CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
-    public int MaxReorgDepth { get; set; } = 1024;
+    public int MaxReorgDepth { get; set; } = 256;
     public int MidCompactSize { get; set; } = 4;
     public int MinReorgDepth { get; set; } = 128;
     public int TrieWarmerWorkerCount { get; set; } = -1;
