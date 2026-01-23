@@ -149,7 +149,6 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         TrieNode? node;
-        long sw = Stopwatch.GetTimestamp();
 
         if (_changedStateNodes.TryGetValue(path, out node))
         {
@@ -173,11 +172,10 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
-        // TrieWarmer only touch `_cachedResource`
+        // TrieWarmer only touch `_transientResource`
         GuardDispose();
 
         TrieNode? node;
-        long sw = Stopwatch.GetTimestamp();
 
         if (_transientResource.TryGetStateNode(path, hash, out node))
         {

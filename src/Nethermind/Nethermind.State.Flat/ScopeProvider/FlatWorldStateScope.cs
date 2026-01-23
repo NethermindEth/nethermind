@@ -39,7 +39,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
-    private readonly string _isPrewarmerLabel;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -55,7 +54,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _snapshotBundle = snapshotBundle;
         _codeDb = codeDb;
         _flatDbManager = flatDbManager;
-        _isPrewarmerLabel = (_warmer is NoopTrieWarmer).ToString();
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new StateTree(
