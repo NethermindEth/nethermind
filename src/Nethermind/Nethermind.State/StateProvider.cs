@@ -700,9 +700,15 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
+            if (Out.IsTargetBlock)
+                Out.Log($"flushToTree start _blockChanges.Count={_blockChanges.Count}");
+
             foreach (AddressAsKey key in _blockChanges.Keys)
             {
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                if (Out.IsTargetBlock)
+                    Out.Log($"flushToTree addr={key} before={change.Before != null} after={change.After != null} equal={change.Before == change.After}");
+
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
@@ -714,6 +720,9 @@ namespace Nethermind.State
                     skipped++;
                 }
             }
+
+            if (Out.IsTargetBlock)
+                Out.Log($"flushToTree done writes={writes} skipped={skipped}");
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);
@@ -744,6 +753,9 @@ namespace Nethermind.State
 
         internal void SetState(Address address, Account? account)
         {
+            if (Out.IsTargetBlock)
+                Out.Log($"setState addr={address} account={account != null} storageRoot={account?.StorageRoot}");
+
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
             _needsStateRootUpdate = true;
