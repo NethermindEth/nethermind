@@ -65,6 +65,11 @@ public class BlockForRpc
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
 
+            if (spec.IsEip7843Enabled)
+            {
+                SlotNumber = block.SlotNumber;
+            }
+
             // Set TD only if network is not merged
             if (specProvider.MergeBlockNumber is null)
             {
@@ -151,6 +156,9 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BlockAccessList? BlockAccessList { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? SlotNumber { get; set; }
 
     private static object[] GetTransactionHashes(Transaction[] transactions)
     {
