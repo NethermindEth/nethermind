@@ -207,7 +207,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract A: self-destructs to inheritor only when called with zero value.
-        // When called with value, it just accepts the ETH without selfdestructing again.
+        // When called with value, it just accepts the ETH without self-destructing again.
         Address inheritorA = TestItem.AddressD;
         byte[] contractACode = Prepare.EvmCode
             .CALLVALUE()        // Get call value
@@ -235,7 +235,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         byte[] contractBCode = Prepare.EvmCode
             .Create(initCodeA, contractABalance)        // Create Contract A with initial balance
             .Call(contractAAddress, 100000)             // Call Contract A (triggers selfdestruct)
-            .CallWithValue(contractAAddress, 100000, ethToSend) // Send ETH to selfdestructed contract
+            .CallWithValue(contractAAddress, 100000, ethToSend) // Send ETH to self-destructed contract
             .STOP()
             .Done;
         byte[] initCodeB = Prepare.EvmCode
