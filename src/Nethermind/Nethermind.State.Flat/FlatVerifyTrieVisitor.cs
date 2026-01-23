@@ -18,6 +18,8 @@ namespace Nethermind.State.Flat;
 public class FlatVerifyTrieVisitor : TrieStatsCollector
 {
     private readonly IPersistence.IPersistenceReader _persistenceReader;
+    private readonly ILogger _logger;
+
     private long _mismatchedAccount;
     private long _mismatchedSlot;
 
@@ -29,6 +31,7 @@ public class FlatVerifyTrieVisitor : TrieStatsCollector
         : base(codeKeyValueStore, logManager, "Trie->Flat Verify", cancellationToken, expectAccounts: true)
     {
         _persistenceReader = persistenceReader;
+        _logger = logManager.GetClassLogger<FlatVerifyTrieVisitor>();
     }
 
     public long MismatchedAccount => _mismatchedAccount;

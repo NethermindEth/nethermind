@@ -10,7 +10,4 @@
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <None Remove="Flat\Persistence\flatdictionary.bin" />
-  </ItemGroup>
 </Project>

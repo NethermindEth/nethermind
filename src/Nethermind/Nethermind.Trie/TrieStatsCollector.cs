@@ -13,11 +13,11 @@ namespace Nethermind.Trie
     public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>
     {
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
-        protected readonly IKeyValueStore _codeKeyValueStore;
+        private readonly IKeyValueStore _codeKeyValueStore;
 
-        protected readonly ILogger _logger;
-        protected readonly VisitorProgressTracker _progressTracker;
-        protected readonly CancellationToken _cancellationToken;
+        private readonly ILogger _logger;
+        private readonly VisitorProgressTracker _progressTracker;
+        private readonly CancellationToken _cancellationToken;
 
         // Combine both `TreePathContextWithStorage` and `OldStyleTrieVisitContext`
         public struct Context : INodeContext<Context>
@@ -182,7 +182,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, Stats._codeLevels);
         }
 
-        protected void IncrementLevel(Context context, bool isLeaf)
+        private void IncrementLevel(Context context, bool isLeaf)
         {
             long[] levels = context.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(context, levels);
@@ -191,7 +191,7 @@ namespace Nethermind.Trie
             _progressTracker.OnNodeVisited(context.Path, context.IsStorage, isLeaf);
         }
 
-        protected static void IncrementLevel(Context context, long[] levels)
+        private static void IncrementLevel(Context context, long[] levels)
         {
             Interlocked.Increment(ref levels[context.Level]);
         }
