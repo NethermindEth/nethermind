@@ -103,53 +103,31 @@ public interface IDbConfig : IConfig
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
-    ulong FlatDbWriteBufferSize { get; set; }
-    ulong FlatDbWriteBufferNumber { get; set; }
     bool? FlatDbVerifyChecksum { get; set; }
-    bool FlatDbEnableFileWarmer { get; set; }
     string FlatDbRocksDbOptions { get; set; }
     string? FlatDbAdditionalRocksDbOptions { get; set; }
 
     string? FlatMetadataDbRocksDbOptions { get; set; }
-    ulong? FlatMetadataDbRowCacheSize { get; set; }
     string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
 
-    bool? FlatAccountDbVerifyChecksum { get; set; }
-    bool FlatAccountDbEnableFileWarmer { get; set; }
-    ulong FlatAccountDbWriteBufferSize { get; set; }
-    ulong FlatAccountDbRowCacheSize { get; set; }
-    ulong FlatAccountDbWriteBufferNumber { get; set; }
     string? FlatAccountDbRocksDbOptions { get; set; }
     string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
-    bool? FlatStorageDbVerifyChecksum { get; set; }
-    bool FlatStorageDbEnableFileWarmer { get; set; }
-    ulong FlatStorageDbRowCacheSize { get; set; }
-    ulong FlatStorageDbWriteBufferSize { get; set; }
-    ulong FlatStorageDbWriteBufferNumber { get; set; }
     string? FlatStorageDbRocksDbOptions { get; set; }
     string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
 
-    ulong FlatStateNodesDbWriteBufferSize { get; set; }
-    ulong FlatStateNodesDbWriteBufferNumber { get; set; }
     string? FlatStateNodesDbRocksDbOptions { get; set; }
     string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
 
-    ulong FlatStateTopNodesDbWriteBufferSize { get; set; }
-    ulong FlatStateTopNodesDbWriteBufferNumber { get; set; }
     string? FlatStateTopNodesDbRocksDbOptions { get; set; }
     string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
-    ulong FlatStorageNodesDbWriteBufferSize { get; set; }
-    ulong FlatStorageNodesDbWriteBufferNumber { get; set; }
     string? FlatStorageNodesDbRocksDbOptions { get; set; }
     string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
-    ulong FlatStorageTopNodesDbWriteBufferSize { get; set; }
-    ulong FlatStorageTopNodesNodesDbWriteBufferNumber { get; set; }
-    string? FlatStorageTopNodesNodesDbRocksDbOptions { get; set; }
-    string? FlatStorageTopNodesNodesDbAdditionalRocksDbOptions { get; set; }
-    ulong PreimageDbWriteBufferSize { get; set; }
+    string? FlatFallbackNodesNodesDbRocksDbOptions { get; set; }
+    string? FlatFallbackNodesNodesDbAdditionalRocksDbOptions { get; set; }
+
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 }
