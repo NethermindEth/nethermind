@@ -66,7 +66,6 @@ public class EthStatsStep(
         const int reconnectionInterval = 5000;
         const string api = "no";
         const string client = "0.1.1";
-        const bool canUpdateHistory = false;
         string node = ProductInfo.ClientId;
         int port = networkConfig.P2PPort;
         string network = specProvider!.NetworkId.ToString();
@@ -87,7 +86,7 @@ public class EthStatsStep(
             api,
             client,
             ethStatsConfig.Contact!,
-            canUpdateHistory,
+            false,
             ethStatsConfig.Secret!,
             ethStatsClient,
             sender,
