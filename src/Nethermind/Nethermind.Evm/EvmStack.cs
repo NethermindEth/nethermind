@@ -495,9 +495,24 @@ public ref struct EvmStack
     }
 
     public Address? PopAddress()
-        => Head-- == 0
-            ? null
-            : new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+    {
+        if (Head-- == 0)
+        {
+            return null;
+        }
+
+        // Stack stores address in low 20 bytes, little-endian.
+        ReadOnlySpan<byte> word = _bytes.Slice(Head * WordSize, WordSize);
+
+        byte[] addressBytes = new byte[AddressSize];
+        for (int i = 0; i < AddressSize; i++)
+        {
+            // Convert back to big-endian representation expected by Address.
+            addressBytes[i] = word[AddressSize - 1 - i];
+        }
+
+        return new Address(addressBytes);
+    }
 
     public bool PopAddress(out Address address)
     {
@@ -507,7 +522,17 @@ public ref struct EvmStack
             return false;
         }
 
-        address = new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
+        // Stack stores address in low 20 bytes, little-endian.
+        ReadOnlySpan<byte> word = _bytes.Slice(Head * WordSize, WordSize);
+
+        byte[] addressBytes = new byte[AddressSize];
+        for (int i = 0; i < AddressSize; i++)
+        {
+            // Convert back to big-endian representation expected by Address.
+            addressBytes[i] = word[AddressSize - 1 - i];
+        }
+
+        address = new Address(addressBytes);
         return true;
     }
 
