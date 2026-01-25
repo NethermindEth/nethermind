@@ -12,6 +12,8 @@
 		"accountStartNonce": "0x0",
 		"maximumExtraDataSize": "0x20",
 		"minGasLimit": "0x1388",
+		"maxCodeSize": "0x6000",
+		"maxCodeSizeTransition": "0x0",
 		"networkID" : "0x63",
 		"eip140Transition": "0x0",
 		"eip145Transition": "0x0",
