@@ -47,8 +47,9 @@ namespace Nethermind.Consensus.Processing
 
         /// <summary>
         /// Threshold in milliseconds for slow block logging (default: 1000ms).
+        /// Set to 0 to log all blocks.
         /// </summary>
-        private const long SlowBlockThresholdMs = 1000;
+        private readonly long _slowBlockThresholdMs;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -101,13 +102,14 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null)
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = 1000)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
             _logger = logger;
             _slowBlockLogger = slowBlockLogger ?? logger;
+            _slowBlockThresholdMs = slowBlockThresholdMs;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -283,7 +285,7 @@ namespace Nethermind.Consensus.Processing
 
             // Log slow blocks in JSON format for cross-client performance analysis
             long processingMs = data.ProcessingMicroseconds / 1000;
-            if (processingMs > SlowBlockThresholdMs)
+            if (processingMs >= _slowBlockThresholdMs)
             {
                 LogSlowBlock(block, data, processingMs, mgasPerSec);
             }
