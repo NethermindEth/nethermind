@@ -48,8 +48,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         using Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
-        if (!Directory.Exists(testsDirectoryName))
-            Directory.CreateDirectory(testsDirectoryName);
+        Directory.CreateDirectory(testsDirectoryName);
 
         TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
