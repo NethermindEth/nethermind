@@ -234,7 +234,7 @@ public class XdcDirectTrieCopyTest : TestWithLevelDbFix
 
         public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
         {
-            if (account.HasCode && account.CodeHash != Keccak.OfAnEmptyString)
+            if (account.HasCode)
                 CodeHashes.Add(account.CodeHash.ToCommitment());
         }
     }
@@ -316,8 +316,8 @@ public class XdcDirectTrieCopyTest : TestWithLevelDbFix
 
     private sealed class TargetContext : IDisposable
     {
-        public MemDb StateDb { get; }
-        public MemDb CodeDb { get; }
+        public IDb StateDb { get; }
+        public IDb CodeDb { get; }
         public NodeStorage NodeStorage { get; }
         public IScopedTrieStore TrieStore { get; }
 

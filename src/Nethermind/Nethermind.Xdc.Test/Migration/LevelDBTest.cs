@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using LevelDB;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test.Migration;
@@ -16,11 +14,14 @@ public class LevelDBTest: TestWithLevelDbFix
     [TestCase(@"D:\Nethermind\xdc\chaindata")]
     public void EnumerateKeys(string dbPath)
     {
+        var fileName = $"keys-{Guid.NewGuid():N}.txt";
+        using var file = new StreamWriter(fileName);
         var options = new Options { CreateIfMissing = false };
         using var db = new DB(options, dbPath);
+        TestContext.Out.WriteLine(fileName);
         foreach (var (key, value) in db)
         {
-            TestContext.Out.WriteLine($"{Convert.ToHexString(key)}: {Convert.ToHexString(value)}");
+            file.WriteLine($"{Convert.ToHexString(key)}: {Convert.ToHexString(value)}");
             Assert.That(db.Get(key), Is.EqualTo(value));
         }
     }
