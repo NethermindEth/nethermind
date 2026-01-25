@@ -192,7 +192,7 @@ internal static class ArrayPoolListCore<T>
             int start = index + 1;
             if (start < count)
             {
-                array.AsMemory(start, count - index - 1).CopyTo(array.AsMemory(index));
+                array.AsMemory(start, count - start).CopyTo(array.AsMemory(index));
             }
 
             count--;
