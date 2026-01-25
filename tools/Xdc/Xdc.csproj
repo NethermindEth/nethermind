@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Trie\Nethermind.Trie.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Xdc\Nethermind.Xdc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LevelDB.Standard" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="leveldb-snappy.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
