@@ -83,7 +83,7 @@ public class BranchProcessor(
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
 
             if (Out.IsTargetBlock)
-                Out.Log($"spec provider={specProvider.GetType().Name} spec={spec.GetType().Name} blockNumber={suggestedBlock.Header.Number} eip3860={spec.IsEip3860Enabled}");
+                Out.Log($"spec provider={specProvider.GetType().Name} spec={spec.GetType().Name} blockNumber={suggestedBlock.Header.Number} eip3860={spec.IsEip3860Enabled} eip4844={spec.IsEip4844Enabled}");
 
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
