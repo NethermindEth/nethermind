@@ -180,18 +180,26 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { SlotNumber: not null } => 4,
-            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
-            { Withdrawals: not null } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
+            { SlotNumber: not null } => PayloadAttributesVersions.Amsterdam,
+            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => PayloadAttributesVersions.Cancun,
+            { Withdrawals: not null } => PayloadAttributesVersions.Shanghai,
+            _ => PayloadAttributesVersions.Paris
         };
 
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
-            { IsEip7843Enabled: true } => 4,
-            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
-            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
+            { IsEip7843Enabled: true } => PayloadAttributesVersions.Amsterdam,
+            { IsEip4844Enabled: true } => PayloadAttributesVersions.Cancun,
+            { WithdrawalsEnabled: true } => PayloadAttributesVersions.Shanghai,
+            _ => PayloadAttributesVersions.Paris
         };
+}
+
+public static class PayloadAttributesVersions
+{
+    public const int Paris = 1;
+    public const int Shanghai = 2;
+    public const int Cancun = 3;
+    public const int Amsterdam = 4;
 }
