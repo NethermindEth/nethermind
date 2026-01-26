@@ -308,7 +308,7 @@ public sealed class BlockCachePreWarmer(
                         worldState.WarmUp(tx.AccessList); // eip-2930
                         if (state.WarmupStorageKeys && tx.AccessList is not null)
                         {
-                            WarmupStorageKeysFromAccessList(worldState, tx.AccessList);
+                            WarmupStorageKeysFromAccessList(worldState, tx.AccessList, state.Spec, state.RepeatedRecipients);
                         }
                     }
 
@@ -379,7 +379,7 @@ public sealed class BlockCachePreWarmer(
                         worldState.WarmUp(tx.AccessList); // eip-2930
                         if (state.WarmupStorageKeys && tx.AccessList is not null)
                         {
-                            WarmupStorageKeysFromAccessList(worldState, tx.AccessList);
+                            WarmupStorageKeysFromAccessList(worldState, tx.AccessList, state.Spec, state.RepeatedRecipients);
                         }
                     }
 
@@ -476,10 +476,25 @@ public sealed class BlockCachePreWarmer(
         return !worldState.IsContract(recipient);
     }
 
-    internal static void WarmupStorageKeysFromAccessList(IWorldState worldState, AccessList accessList)
+    internal static void WarmupStorageKeysFromAccessList(IWorldState worldState, AccessList accessList, IReleaseSpec spec, HashSet<Address>? repeatedRecipients)
     {
         foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
         {
+            if (spec.IsPrecompile(address))
+            {
+                continue;
+            }
+
+            if (repeatedRecipients is not null && !repeatedRecipients.Contains(address))
+            {
+                continue;
+            }
+
+            if (!worldState.IsContract(address))
+            {
+                continue;
+            }
+
             foreach (UInt256 key in storageKeys)
             {
                 try

@@ -116,7 +116,8 @@ public class ReadOnlyTxProcessingScopeTests
             .AddStorage(new UInt256(3))
             .Build();
 
-        Action action = () => BlockCachePreWarmer.WarmupStorageKeysFromAccessList(worldState, accessList);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(new ForkActivation(0));
+        Action action = () => BlockCachePreWarmer.WarmupStorageKeysFromAccessList(worldState, accessList, spec, repeatedRecipients: null);
         action.Should().NotThrow();
     }
 
