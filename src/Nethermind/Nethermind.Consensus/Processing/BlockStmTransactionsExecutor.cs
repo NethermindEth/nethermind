@@ -81,8 +81,13 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
             return Fallback();
         }
 
+        if (!TryGetBaseStateRoot(out Hash256 baseStateRoot))
+        {
+            return Fallback();
+        }
+
         BlockHeader baseHeader = block.Header.Clone();
-        baseHeader.StateRoot = _stateProvider.StateRoot;
+        baseHeader.StateRoot = baseStateRoot;
         baseHeader.GasUsed = 0;
 
         int txCount = block.Transactions.Length;
@@ -171,6 +176,29 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         }
 
         return maxConcurrency;
+    }
+
+    private bool TryGetBaseStateRoot(out Hash256 stateRoot)
+    {
+        try
+        {
+            stateRoot = _stateProvider.StateRoot;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            try
+            {
+                _stateProvider.RecalculateStateRoot();
+                stateRoot = _stateProvider.StateRoot;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                stateRoot = default;
+                return false;
+            }
+        }
     }
 
     private StmExecutionResult ExecuteTransaction(Block block, BlockHeader baseHeader, int index, ProcessingOptions processingOptions)
