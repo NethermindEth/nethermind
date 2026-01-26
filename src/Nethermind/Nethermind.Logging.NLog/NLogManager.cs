@@ -56,10 +56,7 @@ namespace Nethermind.Logging.NLog
         private static string SetupLogDirectory(string logDirectory)
         {
             logDirectory = (string.IsNullOrEmpty(logDirectory) ? DefaultFolder : logDirectory).GetApplicationResourcePath();
-            if (!Directory.Exists(logDirectory))
-            {
-                Directory.CreateDirectory(logDirectory);
-            }
+            Directory.CreateDirectory(logDirectory);
 
             return logDirectory;
         }
