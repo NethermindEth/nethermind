@@ -8,13 +8,13 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 internal class XdcReorgModuleTests
 {
     [Test]
     public async Task TestNormalReorgWhenNotInvolveCommittedBlock()
     {
-        var blockChain = await XdcTestBlockchain.Create();
+        using var blockChain = await XdcTestBlockchain.Create();
         var startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(3);
         // Simulate timeout to make block rounds non-consecutive preventing finalization
@@ -33,7 +33,7 @@ internal class XdcReorgModuleTests
     [Test]
     public async Task BuildAValidForkOnFinalizedBlockAndAssertForkBecomesCanonical()
     {
-        var blockChain = await XdcTestBlockchain.Create(3);
+        using var blockChain = await XdcTestBlockchain.Create(3);
         var startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(10);
 
@@ -73,7 +73,7 @@ internal class XdcReorgModuleTests
     [TestCase(901)]
     public async Task TestShouldNotReorgCommittedBlock(int number)
     {
-        var blockChain = await XdcTestBlockchain.Create();
+        using var blockChain = await XdcTestBlockchain.Create();
         var startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(number);
         var finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;

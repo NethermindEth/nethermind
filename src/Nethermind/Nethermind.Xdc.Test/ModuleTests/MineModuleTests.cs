@@ -21,21 +21,14 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 internal class MineModuleTests
 {
-    public async Task<(XdcTestBlockchain, XdcBlockTree)> Setup()
-    {
-        var blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
-        var tree = (XdcBlockTree)blockchain.BlockTree;
-
-        return (blockchain, tree);
-    }
-
     [Test]
     public async Task TestUpdateMultipleMasterNodes()
     {
-        var (blockchain, tree) = await Setup();
+        using var blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        var tree = (XdcBlockTree)blockchain.BlockTree;
 
         // this test is basically an emulation because our block producer test setup does not support saving snapshots yet
         // add blocks until the next gap block
@@ -72,7 +65,8 @@ internal class MineModuleTests
     [Test]
     public async Task TestShouldMineOncePerRound()
     {
-        var (xdcBlockchain, tree) = await Setup();
+        using var xdcBlockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        var tree = (XdcBlockTree)xdcBlockchain.BlockTree;
 
         var _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
 
@@ -108,7 +102,8 @@ internal class MineModuleTests
     [Test]
     public async Task TestUpdateMasterNodes()
     {
-        var (blockchain, tree) = await Setup();
+        using var blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        var tree = (XdcBlockTree)blockchain.BlockTree;
 
         blockchain.ChangeReleaseSpec((spec) =>
         {

@@ -22,6 +22,7 @@ using ISigner = Nethermind.Consensus.ISigner;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
+[NonParallelizable]
 internal class HeaderVerificationTests
 {
     private XdcTestBlockchain xdcTestBlockchain;
@@ -36,6 +37,12 @@ internal class HeaderVerificationTests
         xdcHeaderValidator = xdcTestBlockchain.Container.Resolve<IHeaderValidator>();
         xdcSigner = xdcTestBlockchain.Container.Resolve<ISigner>();
         extraConsensusDataDecoder = new();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        xdcTestBlockchain?.Dispose();
     }
 
     [Test]
