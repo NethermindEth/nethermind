@@ -164,24 +164,39 @@ public sealed class BlockCachePreWarmer(
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            var senderGroups = GroupTransactionsBySender(block);
+            AccessList? accessListUnion = null;
+            if (blockState.Spec.UseTxAccessLists)
+            {
+                accessListUnion = BuildAccessListUnion(block.Transactions);
+                if (accessListUnion is not null && !accessListUnion.IsEmpty)
+                {
+                    WarmupAccessListUnion(blockState, accessListUnion);
+                }
+                else
+                {
+                    accessListUnion = null;
+                }
+            }
+
+            // Group transactions by recipient (fallback to sender for contract creation) to improve cache locality
+            // and ensure sequential execution within each group.
+            var transactionGroups = GroupTransactionsByRecipient(block);
+            bool accessListUnionApplied = accessListUnion is not null;
 
             try
             {
                 // Convert to array for parallel iteration
-                ArrayPoolList<(int Index, Transaction Tx)>[]? groupArray = senderGroups.Values.ToArray();
+                ArrayPoolList<(int Index, Transaction Tx)>[]? groupArray = transactionGroups.Values.ToArray();
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
                     0,
                     groupArray.Length,
                     parallelOptions,
-                    (blockState, groupArray),
+                    (blockState, groupArray, accessListUnionApplied),
                     static (groupIndex, tupleState) =>
                     {
-                        (BlockStateSource? blockState, ArrayPoolList<(int Index, Transaction Tx)>[]? groups) = tupleState;
+                        (BlockStateSource? blockState, ArrayPoolList<(int Index, Transaction Tx)>[]? groups, bool accessListUnionApplied) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
                         // Get thread-local processing state for this sender's transactions
@@ -195,7 +210,7 @@ public sealed class BlockCachePreWarmer(
                             // Sequential within the same sender-state changes propagate correctly
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, accessListUnionApplied);
                             }
                         }
                         finally
@@ -208,7 +223,7 @@ public sealed class BlockCachePreWarmer(
             }
             finally
             {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
+                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in transactionGroups)
                     kvp.Value.Dispose();
             }
         }
@@ -242,11 +257,33 @@ public sealed class BlockCachePreWarmer(
         return groups;
     }
 
+    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsByRecipient(Block block)
+    {
+        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            Transaction tx = block.Transactions[i];
+            Address? recipient = tx.To;
+            Address groupKey = recipient ?? tx.SenderAddress!;
+
+            if (!groups.TryGetValue(groupKey, out ArrayPoolList<(int, Transaction)> list))
+            {
+                list = new(4);
+                groups[groupKey] = list;
+            }
+            list.Add((i, tx));
+        }
+
+        return groups;
+    }
+
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockStateSource blockState)
+        BlockStateSource blockState,
+        bool accessListUnionApplied)
     {
         try
         {
@@ -258,7 +295,7 @@ public sealed class BlockCachePreWarmer(
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
-            if (blockState.Spec.UseTxAccessLists)
+            if (blockState.Spec.UseTxAccessLists && !accessListUnionApplied)
             {
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
@@ -277,6 +314,74 @@ public sealed class BlockCachePreWarmer(
             if (blockState.PreWarmer._logger.IsDebug)
                 blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
         }
+    }
+
+    private void WarmupAccessListUnion(BlockStateSource blockState, AccessList accessList)
+    {
+        IReadOnlyTxProcessorSource env = _envPool.Get();
+        try
+        {
+            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+            scope.WorldState.WarmUp(accessList);
+        }
+        catch (MissingTrieNodeException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming access list union", ex);
+        }
+        finally
+        {
+            _envPool.Return(env);
+        }
+    }
+
+    private static AccessList? BuildAccessListUnion(ReadOnlySpan<Transaction> transactions)
+    {
+        Dictionary<Address, HashSet<UInt256>>? merged = null;
+
+        foreach (Transaction tx in transactions)
+        {
+            AccessList? accessList = tx.AccessList;
+            if (accessList is null || accessList.IsEmpty)
+            {
+                continue;
+            }
+
+            merged ??= new Dictionary<Address, HashSet<UInt256>>();
+
+            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+            {
+                if (!merged.TryGetValue(address, out HashSet<UInt256>? keys))
+                {
+                    keys = new HashSet<UInt256>();
+                    merged[address] = keys;
+                }
+
+                foreach (UInt256 key in storageKeys)
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        if (merged is null || merged.Count == 0)
+        {
+            return null;
+        }
+
+        AccessList.Builder builder = new();
+        foreach ((Address address, HashSet<UInt256> keys) in merged)
+        {
+            builder.AddAddress(address);
+            foreach (UInt256 key in keys)
+            {
+                builder.AddStorage(key);
+            }
+        }
+
+        return builder.Build();
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
