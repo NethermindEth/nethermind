@@ -230,6 +230,10 @@ namespace Nethermind.Monitoring.Metrics
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
+
+                // Set DetailedMetricsEnabled if the property exists on the type
+                type.GetProperty("DetailedMetricsEnabled", BindingFlags.Public | BindingFlags.Static)
+                    ?.SetValue(null, _enableDetailedMetric);
             }
         }
 

@@ -118,7 +118,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Commit(long blockNumber)
         {
             IMetricObserver metricObserver = Db.Metrics.PrewarmerGetTime;
-            bool measureMetric = !ReferenceEquals(metricObserver, NoopMetricObserver.Instance);
+            bool measureMetric = Db.Metrics.DetailedMetricsEnabled;
             long sw = measureMetric ? Stopwatch.GetTimestamp() : 0;
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
@@ -186,7 +186,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _logger = logger;
             _dirtyAccounts = new(estimatedAccountCount);
             _metricObserver = Db.Metrics.PrewarmerGetTime;
-            _startTimestamp = !ReferenceEquals(_metricObserver, NoopMetricObserver.Instance) ? Stopwatch.GetTimestamp() : 0;
+            _startTimestamp = Db.Metrics.DetailedMetricsEnabled ? Stopwatch.GetTimestamp() : 0;
         }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;

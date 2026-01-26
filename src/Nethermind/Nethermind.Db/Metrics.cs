@@ -17,6 +17,8 @@ namespace Nethermind.Db
 {
     public static class Metrics
     {
+        public static bool DetailedMetricsEnabled { get; set; }
+
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
