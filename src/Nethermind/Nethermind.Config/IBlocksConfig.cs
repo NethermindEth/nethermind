@@ -43,6 +43,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 
+    [ConfigItem(Description = "Enable experimental parallel execution for blocks that contain only independent EOA transfers.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool ParallelEoaTransfersOnBlockProcessing { get; set; }
+
+    [ConfigItem(Description = "Max concurrency for parallel EOA transfer execution. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
+    int ParallelEoaTransfersConcurrency { get; set; }
+
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 

@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -18,13 +20,17 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -172,5 +178,332 @@ public class BlockProcessorTests
         txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_match_sequential_state_root()
+    {
+        BlocksConfig parallelConfig = new()
+        {
+            ParallelEoaTransfersOnBlockProcessing = true,
+            ParallelEoaTransfersConcurrency = 2
+        };
+        BlocksConfig sequentialConfig = new()
+        {
+            ParallelEoaTransfersOnBlockProcessing = false
+        };
+
+        using IContainer parallelContainer = BuildContainer(parallelConfig, Berlin.Instance);
+        using IContainer sequentialContainer = BuildContainer(sequentialConfig, Berlin.Instance);
+
+        (Address senderA, Address senderB, Address recipientC, Address recipientD) = (TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD);
+        BlockHeader parallelBase = InitializeState(parallelContainer,
+            (senderA, 10_000.Ether()),
+            (senderB, 10_000.Ether()),
+            (recipientC, 0.Ether()),
+            (recipientD, 0.Ether()));
+
+        BlockHeader sequentialBase = InitializeState(sequentialContainer,
+            (senderA, 10_000.Ether()),
+            (senderB, 10_000.Ether()),
+            (recipientC, 0.Ether()),
+            (recipientD, 0.Ether()));
+
+        Transaction tx1 = BuildSimpleTransfer(TestItem.PrivateKeyA, recipientC, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, recipientD, 0);
+
+        Block parallelBlock = BuildSimpleBlock(parallelBase, tx1, tx2);
+        Block sequentialBlock = BuildSimpleBlock(sequentialBase, tx1, tx2);
+
+        (Block processedParallel, TxReceipt[] receiptsParallel) = ProcessBlock(parallelContainer, parallelBase, parallelBlock);
+        (Block processedSequential, TxReceipt[] receiptsSequential) = ProcessBlock(sequentialContainer, sequentialBase, sequentialBlock);
+
+        processedSequential.StateRoot.Should().NotBeNull();
+        processedParallel.StateRoot.Should().Be(processedSequential.StateRoot!);
+        receiptsParallel.Length.Should().Be(receiptsSequential.Length);
+        receiptsParallel[0].GasUsed.Should().Be(receiptsSequential[0].GasUsed);
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_for_contract_creation()
+    {
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out var specProvider);
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0)
+            .WithGasLimit(21_000)
+            .WithGasPrice(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .To(null)
+            .TestObject;
+
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        Block block = Build.A.Block.WithTransactions(tx, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+        specProvider.Received().GetSpec(Arg.Any<ForkActivation>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_for_contract_recipient()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.IsContract(TestItem.AddressB).Returns(true);
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _, worldState: worldState);
+
+        Transaction tx = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        Block block = Build.A.Block.WithTransactions(tx, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_for_precompile_recipient()
+    {
+        Transaction tx = BuildSimpleTransfer(TestItem.PrivateKeyA, Address.FromNumber(1), 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _, releaseSpec: Berlin.Instance);
+
+        Block block = Build.A.Block.WithTransactions(tx, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_for_system_transaction()
+    {
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _);
+
+        Transaction tx = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        tx.IsOPSystemTransaction = true;
+
+        Block block = Build.A.Block.WithTransactions(tx, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_for_duplicate_sender()
+    {
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _);
+
+        Transaction tx1 = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressC, 1);
+        Block block = Build.A.Block.WithTransactions(tx1, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_for_duplicate_recipient()
+    {
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _);
+
+        Transaction tx1 = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressB, 0);
+        Block block = Build.A.Block.WithTransactions(tx1, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_on_sender_recipient_overlap()
+    {
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _);
+
+        Transaction tx1 = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        tx2.SenderAddress = TestItem.AddressB;
+
+        Block block = Build.A.Block.WithTransactions(tx1, tx2).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_when_beneficiary_overlaps_sender()
+    {
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _);
+
+        Transaction tx = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        BlockHeader header = Build.A.BlockHeader.WithBeneficiary(tx.SenderAddress!).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(tx, tx2).TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public void Parallel_eoa_transfers_skip_when_fee_collector_overlaps_sender()
+    {
+        OverridableReleaseSpec spec = new(Osaka.Instance)
+        {
+            FeeCollector = TestItem.AddressA
+        };
+
+        ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out _, releaseSpec: spec);
+
+        Transaction tx = BuildSimpleTransfer(TestItem.PrivateKeyA, TestItem.AddressB, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+        Block block = Build.A.Block.WithTransactions(tx, tx2).TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+
+        adapter.Received(2).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        shareableSource.DidNotReceive().Build(Arg.Any<BlockHeader>());
+    }
+
+    private static ParallelEoaTransferTransactionsExecutor BuildExecutorForUnitTests(
+        out ITransactionProcessorAdapter adapter,
+        out IShareableTxProcessorSource shareableSource,
+        out ISpecProvider specProvider,
+        IWorldState? worldState = null,
+        IReleaseSpec? releaseSpec = null)
+    {
+        adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
+
+        if (worldState is null)
+        {
+            worldState = Substitute.For<IWorldState>();
+            worldState.IsContract(Arg.Any<Address>()).Returns(false);
+        }
+
+        shareableSource = Substitute.For<IShareableTxProcessorSource>();
+        specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec ?? Osaka.Instance);
+
+        IBlocksConfig blocksConfig = new BlocksConfig
+        {
+            ParallelEoaTransfersOnBlockProcessing = true
+        };
+
+        return new ParallelEoaTransferTransactionsExecutor(
+            adapter,
+            worldState,
+            shareableSource,
+            specProvider,
+            blocksConfig,
+            LimboLogs.Instance);
+    }
+
+    private static IContainer BuildContainer(IBlocksConfig blocksConfig, IReleaseSpec? specOverride = null)
+    {
+        IConfigProvider configProvider = new ConfigProvider(blocksConfig);
+        ContainerBuilder builder = new();
+        builder.AddModule(new TestNethermindModule(configProvider));
+        if (specOverride is not null)
+        {
+            builder.AddSingleton<ISpecProvider>(_ => new TestSpecProvider(specOverride));
+        }
+        return builder.Build();
+    }
+
+    private static BlockHeader InitializeState(IContainer container, params (Address address, UInt256 balance)[] accounts)
+    {
+        IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+        IWorldState worldState = context.WorldState;
+        IReleaseSpec spec = container.Resolve<ISpecProvider>().GenesisSpec;
+
+        Hash256 stateRoot;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            foreach ((Address address, UInt256 balance) in accounts)
+            {
+                worldState.CreateAccount(address, balance);
+            }
+
+            worldState.Commit(spec);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
+
+        return Build.A.BlockHeader
+            .WithNumber(0)
+            .WithStateRoot(stateRoot)
+            .WithBaseFee(0)
+            .TestObject;
+    }
+
+    private static (Block Block, TxReceipt[] Receipts) ProcessBlock(IContainer container, BlockHeader baseHeader, Block block)
+    {
+        IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+        IBlockProcessor blockProcessor = context.BlockProcessor;
+        IWorldState worldState = context.WorldState;
+        IReleaseSpec spec = container.Resolve<ISpecProvider>().GetSpec(block.Header);
+
+        using (worldState.BeginScope(baseHeader))
+        {
+            return blockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+        }
+    }
+
+    private static Transaction BuildSimpleTransfer(PrivateKey senderKey, Address recipient, ulong nonce)
+    {
+        return Build.A.Transaction
+            .WithNonce(nonce)
+            .WithGasLimit(21_000)
+            .WithGasPrice(0)
+            .WithValue(1.Ether())
+            .To(recipient)
+            .SignedAndResolved(senderKey)
+            .TestObject;
+    }
+
+    private static Block BuildSimpleBlock(BlockHeader parent, params Transaction[] transactions)
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithParent(parent)
+            .WithBeneficiary(TestItem.AddressE)
+            .WithBaseFee(0)
+            .TestObject;
+
+        return Build.A.Block.WithHeader(header).WithTransactions(transactions).TestObject;
     }
 }

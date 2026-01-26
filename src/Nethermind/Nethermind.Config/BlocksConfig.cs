@@ -61,6 +61,10 @@ namespace Nethermind.Config
 
         public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
 
+        public bool ParallelEoaTransfersOnBlockProcessing { get; set; } = false;
+
+        public int ParallelEoaTransfersConcurrency { get; set; } = 0;
+
         public int PreWarmStateConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
