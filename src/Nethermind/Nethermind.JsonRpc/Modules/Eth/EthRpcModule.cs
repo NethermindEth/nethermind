@@ -386,21 +386,18 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee, ulong? blockTimestamp) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        TransactionLookupResult transactionResult = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        Transaction? transaction = transactionResult.Transaction;
         if (transaction is null)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
+        TransactionConverterExtraData extraData = transactionResult.ExtraData with { ChainId = _specProvider.ChainId };
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            transaction: transaction,
-            blockHash: receipt?.BlockHash,
-            blockNumber: receipt?.BlockNumber,
-            txIndex: receipt?.Index,
-            blockTimestamp: blockTimestamp,
-            baseFee: baseFee,
-            chainId: _specProvider.ChainId);
+            tx: transaction,
+            extraData: extraData);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }

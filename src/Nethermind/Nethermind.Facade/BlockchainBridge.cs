@@ -22,6 +22,7 @@ using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Eth;
 using Nethermind.State;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
@@ -109,12 +110,27 @@ namespace Nethermind.Facade
             return (null, 0, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee, ulong? blockTimestamp) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
-            TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
-                ? (txReceipt, tx, block.BaseFeePerGas, block.Timestamp)
-                : checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
-                    ? (null, transaction, null, null)
-                    : (null, null, null, null);
+        public TransactionLookupResult GetTransaction(Hash256 txHash, bool checkTxnPool = true)
+        {
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _))
+            {
+                TransactionConverterExtraData extraData = new()
+                {
+                    BlockHash = block.Hash,
+                    BlockNumber = block.Number,
+                    BlockTimestamp = block.Timestamp,
+                    TxIndex = txReceipt?.Index,
+                    BaseFee = block.BaseFeePerGas,
+                    Receipt = txReceipt
+                };
+
+                return new TransactionLookupResult(tx, extraData);
+            }
+
+            return checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
+                ? new TransactionLookupResult(transaction, default)
+                : default;
+        }
 
         public TxReceipt? GetReceipt(Hash256 txHash)
         {

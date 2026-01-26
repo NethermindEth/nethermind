@@ -13,7 +13,7 @@ public interface IFromTransaction<out T> : ITxTyped where T : TransactionForRpc
     static abstract T FromTransaction(Transaction tx, TransactionConverterExtraData extraData);
 }
 
-public readonly struct TransactionConverterExtraData
+public readonly record struct TransactionConverterExtraData
 {
     public ulong? ChainId { get; init; }
     public Hash256? BlockHash { get; init; }
@@ -21,5 +21,5 @@ public readonly struct TransactionConverterExtraData
     public ulong? BlockTimestamp { get; init; }
     public int? TxIndex { get; init; }
     public UInt256? BaseFee { get; init; }
-    public TxReceipt Receipt { get; init; }
+    public TxReceipt? Receipt { get; init; }
 }
