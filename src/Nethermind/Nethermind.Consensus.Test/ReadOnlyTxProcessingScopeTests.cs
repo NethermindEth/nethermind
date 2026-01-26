@@ -78,7 +78,7 @@ public class ReadOnlyTxProcessingScopeTests
     [Test]
     public void CanSkipEvmWarmup_returns_false_for_contract_call_or_initcode()
     {
-        Address recipient = Address.FromNumber(4);
+        Address recipient = Address.FromNumber(1234);
         IWorldState worldState = Substitute.For<IWorldState>();
         worldState.IsContract(recipient).Returns(true);
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(new ForkActivation(0));
@@ -91,7 +91,7 @@ public class ReadOnlyTxProcessingScopeTests
 
         Transaction withData = new()
         {
-            To = Address.FromNumber(5),
+            To = Address.FromNumber(1235),
             Data = new byte[] { 0x01 }
         };
 
