@@ -457,7 +457,8 @@ namespace Nethermind.State
                 if (_logger.IsTrace) Trace(address);
 
                 Account account = Account.TotallyEmpty;
-                PushNew(address, account);
+                StackList<int> stack = SetupCache(address);
+                PushRecreateEmpty(address, account, stack);
                 _deletedThisBlock.Remove(address);
             }
 
