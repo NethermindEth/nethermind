@@ -131,11 +131,9 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
             var addresses = serverAddressesFeature?.Addresses;
             if (addresses != null && !addresses.IsReadOnly && addresses.Count == 0)
             {
-                var urls = _config[WebHostDefaults.ServerUrlsKey];//?? _config[DeprecatedServerUrlsKey];
+                var urls = _config[WebHostDefaults.ServerUrlsKey];
                 if (!string.IsNullOrEmpty(urls))
                 {
-                    //serverAddressesFeature!.PreferHostingUrls = WebHostUtilities.ParseBool(_config[WebHostDefaults.PreferHostingUrlsKey]);
-
                     foreach (var value in urls.Split(';', StringSplitOptions.RemoveEmptyEntries))
                     {
                         addresses.Add(value);
