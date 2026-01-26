@@ -148,6 +148,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 long startTime = Stopwatch.GetTimestamp();
                 ReadResult readResult = await reader.ReadAsync(timeoutSource.Token);
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
+                bool advanced = false;
 
                 try
                 {
@@ -167,6 +168,9 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                                 result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
                                 shouldExit = true;
                             }
+                            
+                            reader.AdvanceTo(buffer.Start, buffer.End);
+                            advanced = true;
                         }
                         catch (BadHttpRequestException e)
                         {
@@ -195,7 +199,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 }
                 finally
                 {
-                    reader.AdvanceTo(buffer.Start, buffer.End);
+                    if (!advanced)
+                    {
+                        reader.AdvanceTo(buffer.Start, buffer.End);
+                    }
                 }
             }
         }
@@ -208,15 +215,13 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, bool isFinalBlock, ref JsonReaderState readerState, [NotNullWhen(true)] out JsonDocument? jsonDocument)
     {
         Utf8JsonReader jsonReader = new(buffer, isFinalBlock, readerState);
-        if (!JsonDocument.TryParseValue(ref jsonReader, out jsonDocument))
-        {
-            readerState = jsonReader.CurrentState; // Preserve state for resumption when more data arrives
-            return false;
-        }
-
+        bool parsed = JsonDocument.TryParseValue(ref jsonReader, out jsonDocument);
         buffer = buffer.Slice(jsonReader.BytesConsumed);
-        readerState = new(_jsonReaderOptions); // Reset state for the next document
-        return true;
+        readerState = parsed
+            ? new(_jsonReaderOptions) // Reset state for the next document
+            : jsonReader.CurrentState; // Preserve state for resumption when more data arrives
+
+        return parsed;
     }
 
     private async Task<JsonRpcResult?> ProcessJsonDocument(JsonDocument jsonDocument, JsonRpcContext context, long startTime)
