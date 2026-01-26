@@ -225,6 +225,95 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Block_stm_matches_sequential_state_root()
+    {
+        BlocksConfig stmConfig = new()
+        {
+            BlockStmOnBlockProcessing = true,
+            BlockStmConcurrency = 2,
+            ParallelEoaTransfersOnBlockProcessing = false
+        };
+        BlocksConfig sequentialConfig = new()
+        {
+            BlockStmOnBlockProcessing = false,
+            ParallelEoaTransfersOnBlockProcessing = false
+        };
+
+        using IContainer stmContainer = BuildContainer(stmConfig, Berlin.Instance);
+        using IContainer sequentialContainer = BuildContainer(sequentialConfig, Berlin.Instance);
+
+        (Address senderA, Address senderB, Address recipientC, Address recipientD) = (TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD);
+        BlockHeader stmBase = InitializeState(stmContainer,
+            (senderA, 10_000.Ether()),
+            (senderB, 10_000.Ether()),
+            (recipientC, 0.Ether()),
+            (recipientD, 0.Ether()));
+
+        BlockHeader sequentialBase = InitializeState(sequentialContainer,
+            (senderA, 10_000.Ether()),
+            (senderB, 10_000.Ether()),
+            (recipientC, 0.Ether()),
+            (recipientD, 0.Ether()));
+
+        Transaction tx1 = BuildSimpleTransfer(TestItem.PrivateKeyA, recipientC, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyB, recipientD, 0);
+
+        Block stmBlock = BuildSimpleBlock(stmBase, tx1, tx2);
+        Block sequentialBlock = BuildSimpleBlock(sequentialBase, tx1, tx2);
+
+        (Block processedStm, TxReceipt[] receiptsStm) = ProcessBlock(stmContainer, stmBase, stmBlock);
+        (Block processedSequential, TxReceipt[] receiptsSequential) = ProcessBlock(sequentialContainer, sequentialBase, sequentialBlock);
+
+        processedSequential.StateRoot.Should().NotBeNull();
+        processedStm.StateRoot.Should().Be(processedSequential.StateRoot!);
+        receiptsStm.Length.Should().Be(receiptsSequential.Length);
+        receiptsStm[0].GasUsed.Should().Be(receiptsSequential[0].GasUsed);
+    }
+
+    [Test]
+    public void Block_stm_conflicts_fall_back_to_sequential()
+    {
+        BlocksConfig stmConfig = new()
+        {
+            BlockStmOnBlockProcessing = true,
+            BlockStmConcurrency = 2,
+            ParallelEoaTransfersOnBlockProcessing = false
+        };
+        BlocksConfig sequentialConfig = new()
+        {
+            BlockStmOnBlockProcessing = false,
+            ParallelEoaTransfersOnBlockProcessing = false
+        };
+
+        using IContainer stmContainer = BuildContainer(stmConfig, Berlin.Instance);
+        using IContainer sequentialContainer = BuildContainer(sequentialConfig, Berlin.Instance);
+
+        (Address senderA, Address recipientC, Address recipientD) = (TestItem.AddressA, TestItem.AddressC, TestItem.AddressD);
+        BlockHeader stmBase = InitializeState(stmContainer,
+            (senderA, 10_000.Ether()),
+            (recipientC, 0.Ether()),
+            (recipientD, 0.Ether()));
+
+        BlockHeader sequentialBase = InitializeState(sequentialContainer,
+            (senderA, 10_000.Ether()),
+            (recipientC, 0.Ether()),
+            (recipientD, 0.Ether()));
+
+        Transaction tx1 = BuildSimpleTransfer(TestItem.PrivateKeyA, recipientC, 0);
+        Transaction tx2 = BuildSimpleTransfer(TestItem.PrivateKeyA, recipientD, 1);
+
+        Block stmBlock = BuildSimpleBlock(stmBase, tx1, tx2);
+        Block sequentialBlock = BuildSimpleBlock(sequentialBase, tx1, tx2);
+
+        (Block processedStm, TxReceipt[] receiptsStm) = ProcessBlock(stmContainer, stmBase, stmBlock);
+        (Block processedSequential, TxReceipt[] receiptsSequential) = ProcessBlock(sequentialContainer, sequentialBase, sequentialBlock);
+
+        processedSequential.StateRoot.Should().NotBeNull();
+        processedStm.StateRoot.Should().Be(processedSequential.StateRoot!);
+        receiptsStm.Length.Should().Be(receiptsSequential.Length);
+    }
+
+    [Test]
     public void Parallel_eoa_transfers_skip_for_contract_creation()
     {
         ParallelEoaTransferTransactionsExecutor executor = BuildExecutorForUnitTests(out var adapter, out var shareableSource, out var specProvider);

@@ -123,7 +123,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {
         protected override void Load(ContainerBuilder builder) => builder
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, ParallelEoaTransferTransactionsExecutor>()
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockStmTransactionsExecutor>()
             .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
     }
 }
