@@ -36,18 +36,7 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
 
-        public void Dispose()
-        {
-            if (!_measureMetric)
-            {
-                baseScope.Dispose();
-                return;
-            }
-
-            long sw = Stopwatch.GetTimestamp();
-            baseScope.Dispose();
-            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("dispose", populatePreBlockCache));
-        }
+        public void Dispose() => baseScope.Dispose();
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -62,16 +51,45 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            return baseScope.StartWriteBatch(estimatedAccountNum);
+            if (!_measureMetric)
+            {
+                return baseScope.StartWriteBatch(estimatedAccountNum);
+            }
+
+            long sw = Stopwatch.GetTimestamp();
+            return new WriteBatchLifetimeMeasurer(
+                baseScope.StartWriteBatch(estimatedAccountNum),
+                _metricObserver,
+                sw,
+                populatePreBlockCache);
         }
 
-        public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
+        public void Commit(long blockNumber)
+        {
+            if (!_measureMetric)
+            {
+                baseScope.Commit(blockNumber);
+                return;
+            }
+
+            long sw = Stopwatch.GetTimestamp();
+            baseScope.Commit(blockNumber);
+            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("commit", populatePreBlockCache));
+        }
 
         public Hash256 RootHash => baseScope.RootHash;
 
         public void UpdateRootHash()
         {
+            if (!_measureMetric)
+            {
+                baseScope.UpdateRootHash();
+                return;
+            }
+
+            long sw = Stopwatch.GetTimestamp();
             baseScope.UpdateRootHash();
+            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("update_root_hash", populatePreBlockCache));
         }
 
         public Account? Get(Address address)
@@ -184,5 +202,24 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in ValueHash256 hash) =>
             // Not a critical path. so we just forward for simplicity
             baseStorageTree.Get(in hash);
+    }
+
+    private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool populatePreBlockCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose()
+        {
+            baseWriteBatch.Dispose();
+            metricObserver.Observe(Stopwatch.GetTimestamp() - startTime, new PrewarmerGetTimeLabel("write_batch_lifetime", populatePreBlockCache));
+        }
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add => baseWriteBatch.OnAccountUpdated += value;
+            remove => baseWriteBatch.OnAccountUpdated -= value;
+        }
+
+        public void Set(Address key, Account? account) => baseWriteBatch.Set(key, account);
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
     }
 }
