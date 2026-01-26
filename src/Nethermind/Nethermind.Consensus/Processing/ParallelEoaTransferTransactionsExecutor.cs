@@ -132,7 +132,8 @@ public class ParallelEoaTransferTransactionsExecutor : IBlockProcessor.IBlockTra
         }
 
         using IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(plan.BaseHeader);
-        TransactionResult result = scope.TransactionProcessor.Execute(workingTx, block.Header, NullTxTracer.Instance);
+        BlockHeader txHeader = plan.BaseHeader.Clone();
+        TransactionResult result = scope.TransactionProcessor.Execute(workingTx, txHeader, NullTxTracer.Instance);
 
         Address sender = plan.Senders[index];
         Address recipient = plan.Recipients[index];
@@ -198,6 +199,12 @@ public class ParallelEoaTransferTransactionsExecutor : IBlockProcessor.IBlockTra
             Address sender = plan.Senders[i];
             Address recipient = plan.Recipients[i];
 
+            Transaction originalTx = block.Transactions[i];
+            if (originalTx.GasLimit > block.Header.GasLimit - block.Header.GasUsed)
+            {
+                ThrowInvalidTransactionException(TransactionResult.BlockGasLimitExceeded, block.Header, originalTx, i);
+            }
+
             UInt256 baseSenderBalance = plan.SenderBalances[i];
             UInt256 senderBalance = result.SenderBalance;
             if (senderBalance > baseSenderBalance)
@@ -231,7 +238,6 @@ public class ParallelEoaTransferTransactionsExecutor : IBlockProcessor.IBlockTra
 
             _stateProvider.SetNonce(sender, result.SenderNonce);
 
-            Transaction originalTx = block.Transactions[i];
             if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && originalTx.SenderAddress != Address.SystemUser)
             {
                 originalTx.Nonce = plan.SenderNonces[i];

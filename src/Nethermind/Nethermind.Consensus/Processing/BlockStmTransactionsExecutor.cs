@@ -216,7 +216,8 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
         using IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(baseHeader);
         StmTxTracer tracer = new();
-        TransactionResult result = scope.TransactionProcessor.Execute(workingTx, block.Header, tracer);
+        BlockHeader txHeader = baseHeader.Clone();
+        TransactionResult result = scope.TransactionProcessor.Execute(workingTx, txHeader, tracer);
 
         return new StmExecutionResult(index, originalTx, result, tracer, baseNonce);
     }
@@ -322,12 +323,16 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
         foreach (ref readonly StmExecutionResult result in results)
         {
+            Transaction tx = result.OriginalTx;
+            if (tx.GasLimit > block.Header.GasLimit - block.Header.GasUsed)
+            {
+                ThrowInvalidTransactionException(TransactionResult.BlockGasLimitExceeded, block.Header, tx, result.Index);
+            }
+
             if (!result.Trace.ApplyStateChanges(_stateProvider, spec, additivePlan))
             {
                 return false;
             }
-
-            Transaction tx = result.OriginalTx;
 
             if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && tx.SenderAddress != Address.SystemUser && result.BaseNonce is not null)
             {
