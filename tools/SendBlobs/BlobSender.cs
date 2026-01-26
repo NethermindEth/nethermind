@@ -370,6 +370,7 @@ internal class BlobSender
         }
 
         bool isNodeSynced = await RpcHelper.IsNodeSyncedAsync(_rpcClient);
+
         if (isNodeSynced)
         {
             return true;
