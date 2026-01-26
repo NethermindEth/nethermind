@@ -66,18 +66,8 @@ internal class BlobSender
     {
         List<(Signer, ulong)> signers = [];
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
-
-        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        waitForInclusion = await EnsureWaitForInclusionAllowedAsync(waitForInclusion);
+        ulong chainId = await GetChainIdAsync();
 
         foreach (PrivateKey privateKey in privateKeys)
         {
@@ -217,19 +207,9 @@ internal class BlobSender
         }
         data = normalized.ToArray();
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
-
-        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
-
+        waitForInclusion = await EnsureWaitForInclusionAllowedAsync(waitForInclusion);
+        ulong chainId = await GetChainIdAsync();
+        
 
         string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
         if (nonceString is null)
@@ -383,5 +363,26 @@ internal class BlobSender
             retryCount--;
             if (retryCount == 0) break;
         }
+    }
+    
+    private async Task<ulong> GetChainIdAsync()
+    {
+        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
+        return HexConvert.ToUInt64(chainIdString);
+    }
+
+    private async Task<bool> EnsureWaitForInclusionAllowedAsync(bool waitForInclusion)
+    {
+        if (!waitForInclusion) return false;
+
+        // eth_syncing returns `false` when the node is synced; otherwise it returns an object.
+        bool nodeIsSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
+        if (!nodeIsSynced)
+        {
+            Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
+            return false;
+        }
+
+        return true;
     }
 }
