@@ -2,13 +2,12 @@
 
 ## Run using docker
 
-```
+```sh
 docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1
 docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5x6 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1 --maxfeeperblobgas 10000 --feemultiplier 4
 ```
 
 ## Usage
-
 
 The tool can help with:
 
@@ -18,12 +17,12 @@ The tool can help with:
 
 Use "SendBlobs [command] --help" for more information about supported commands.
 
-The default fork for now is Prague, which means blob will be sent with V0 proofs. Use `--fork Osaka` option to change it to V1. The default behavior may change post Osaka.
+The default fork for now is Osaka, which means blobs will be sent with V1 proofs. Use `--fork Prague` option to change it to V0. The default behavior may change post Osaka.
 
 ## Build
 
 ```sh
-apt install libsnappy-dev dotnet-sdk-9.0 -y
+apt install libsnappy-dev dotnet-sdk-10.0 -y
 cd ./nethermind/tools/SendBlobs
 dotnet publish --sc -o .
 ./SendBlobs
@@ -100,7 +99,7 @@ Syntax:
              ^  how it's broken (optional, tx is correct by default) or write true
 ```
 
-Use `--wait` to wait for each transaction to be included in a block before posting the next
+Use `--wait` to wait for each transaction to be included in a block before posting the next one
 
 ## Debug
 

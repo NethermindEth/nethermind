@@ -67,7 +67,13 @@ internal static class SetupCli
             HelpName = "fee"
         };
         Option<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
-        Option<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
+        Option<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount, Osaka by default" };
+        Option<int?> seedOption = new("--seed")
+        {
+            Description = "Seed for randomness used to generate blob content",
+            HelpName = "seed",
+            DefaultValueFactory = r => null
+        };
 
         command.Add(rpcUrlOption);
         command.Add(blobTxOption);
@@ -80,6 +86,7 @@ internal static class SetupCli
         command.Add(maxPriorityFeeGasOption);
         command.Add(waitOption);
         command.Add(forkOption);
+        command.Add(seedOption);
         command.SetAction((parseResult, cancellationToken) =>
         {
             PrivateKey[] privateKeys;
@@ -106,7 +113,7 @@ internal static class SetupCli
             }
 
             string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
+            IReleaseSpec spec = fork is null ? Osaka.Instance : SpecNameParser.Parse(fork);
 
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
             ulong? maxFeePerBlobGas = parseResult.GetValue(maxFeePerBlobGasOption) ??
@@ -121,7 +128,8 @@ internal static class SetupCli
                 parseResult.GetValue(feeMultiplierOption),
                 maxPriorityFee.HasValue ? (UInt256?)maxPriorityFee.Value : null,
                 parseResult.GetValue(waitOption),
-                spec);
+                spec,
+                parseResult.GetValue(seedOption));
         });
     }
 

@@ -18,6 +18,7 @@ using Nethermind.JsonRpc.Client;
 using CkzgLib;
 
 namespace SendBlobs;
+
 internal class BlobSender
 {
     private static readonly TxDecoder txDecoder = TxDecoder.Instance;
@@ -62,19 +63,12 @@ internal class BlobSender
         ulong feeMultiplier,
         UInt256? maxPriorityFeeGasArgs,
         bool waitForInclusion,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        int? seed)
     {
         List<(Signer, ulong)> signers = [];
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await RpcHelper.IsNodeSyncedAsync(_rpcClient);
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
+        waitForInclusion = await EnsureWaitForInclusionAsync(waitForInclusion);
 
         ulong chainId = await RpcHelper.GetChainIdAsync(_rpcClient);
 
@@ -90,7 +84,7 @@ internal class BlobSender
             signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce.Value));
         }
 
-        Random random = new();
+        Random random = seed is null ? new() : new(seed.Value);
 
         int signerIndex = -1;
 
@@ -215,15 +209,7 @@ internal class BlobSender
         }
         data = normalized.ToArray();
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await RpcHelper.IsNodeSyncedAsync(_rpcClient);
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
+        waitForInclusion = await EnsureWaitForInclusionAsync(waitForInclusion);
 
         ulong chainId = await RpcHelper.GetChainIdAsync(_rpcClient);
 
@@ -374,5 +360,23 @@ internal class BlobSender
             retryCount--;
             if (retryCount == 0) break;
         }
+    }
+
+    private async Task<bool> EnsureWaitForInclusionAsync(bool waitForInclusion)
+    {
+        if (!waitForInclusion)
+        {
+            return false;
+        }
+
+        bool isNodeSynced = await RpcHelper.IsNodeSyncedAsync(_rpcClient);
+        if (isNodeSynced)
+        {
+            return true;
+        }
+
+        Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
+
+        return false;
     }
 }
