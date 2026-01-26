@@ -26,6 +26,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private readonly ITransactionProcessorAdapter _transactionProcessor;
     private readonly ParallelEoaTransferTransactionsExecutor _fallback;
     private readonly IShareableTxProcessorSource _txProcessorSource;
     private readonly IWorldState _stateProvider;
@@ -51,6 +52,7 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         ArgumentNullException.ThrowIfNull(logManager);
 
         _fallback = new ParallelEoaTransferTransactionsExecutor(transactionProcessor, stateProvider, txProcessorSource, specProvider, blocksConfig, logManager, transactionProcessedEventHandler);
+        _transactionProcessor = transactionProcessor;
         _txProcessorSource = txProcessorSource;
         _stateProvider = stateProvider;
         _specProvider = specProvider;
@@ -61,6 +63,7 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
+        _transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
         _fallback.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -81,41 +84,6 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
             return Fallback();
         }
 
-        if (!TryGetBaseStateRoot(out Hash256 baseStateRoot))
-        {
-            return Fallback();
-        }
-
-        BlockHeader baseHeader = block.Header.Clone();
-        baseHeader.StateRoot = baseStateRoot;
-        baseHeader.GasUsed = 0;
-
-        int txCount = block.Transactions.Length;
-        StmExecutionResult[] results = new StmExecutionResult[txCount];
-
-        ParallelOptions options = new()
-        {
-            CancellationToken = token,
-            MaxDegreeOfParallelism = GetMaxConcurrency()
-        };
-
-        try
-        {
-            Parallel.For(0, txCount, options, i =>
-            {
-                results[i] = ExecuteTransaction(block, baseHeader, i, processingOptions);
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Block-STM execution failed, falling back to sequential. {ex}");
-            return Fallback();
-        }
-
         Address? beneficiary = block.Header.GasBeneficiary;
         if (beneficiary is null)
         {
@@ -123,27 +91,156 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         }
 
         Address? feeCollector = spec.FeeCollector;
+        int txCount = block.Transactions.Length;
+        int maxConcurrency = GetMaxConcurrency();
+        int windowSize = GetWindowSize(maxConcurrency);
 
-        if (!TryPrepareAdditiveAccounts(results, beneficiary, feeCollector, out AdditiveAccountPlan additivePlan))
-        {
-            return Fallback();
-        }
+        block.Header.GasUsed = 0;
 
-        if (!IsConflictFree(results, additivePlan))
+        int index = 0;
+        while (index < txCount)
         {
-            return Fallback();
-        }
+            token.ThrowIfCancellationRequested();
 
-        int invalidIndex = FindFirstInvalid(results);
-        if (invalidIndex >= 0)
-        {
-            ThrowInvalidTransactionException(results[invalidIndex].Result, block.Header, block.Transactions[invalidIndex], invalidIndex);
-        }
+            int windowEnd = Math.Min(index + windowSize, txCount);
+            int windowLength = windowEnd - index;
+            if (windowLength == 0) break;
 
-        if (!TryApplyResults(block, spec, results, receiptsTracer, processingOptions, additivePlan))
-        {
-            if (_logger.IsDebug) _logger.Debug("Block-STM produced unexpected deltas, falling back to sequential.");
-            return Fallback();
+            if (!TryGetBaseStateRoot(out Hash256 baseStateRoot))
+            {
+                return ProcessRemainingSequential(block, index, receiptsTracer, processingOptions);
+            }
+
+            BlockHeader baseHeader = block.Header.Clone();
+            baseHeader.StateRoot = baseStateRoot;
+            baseHeader.GasUsed = 0;
+
+            StmExecutionResult[] results = new StmExecutionResult[windowLength];
+
+            ParallelOptions options = new()
+            {
+                CancellationToken = token,
+                MaxDegreeOfParallelism = Math.Min(maxConcurrency, windowLength)
+            };
+
+            try
+            {
+                Parallel.For(0, windowLength, options, i =>
+                {
+                    results[i] = ExecuteTransaction(block, baseHeader, index + i, processingOptions);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block-STM window execution failed, falling back to sequential. {ex}");
+                return ProcessRemainingSequential(block, index, receiptsTracer, processingOptions);
+            }
+
+            AdditiveAccountPlan additivePlan = new(beneficiary, feeCollector);
+            HashSet<AddressAsKey> writeAccounts = [];
+            HashSet<StorageCell> writeStorage = [];
+
+            for (int offset = 0; offset < windowLength; offset++)
+            {
+                int txIndex = index + offset;
+                Transaction tx = block.Transactions[txIndex];
+
+                if (tx.GasLimit > block.Header.GasLimit - block.Header.GasUsed)
+                {
+                    ThrowInvalidTransactionException(TransactionResult.BlockGasLimitExceeded, block.Header, tx, txIndex);
+                }
+
+                StmExecutionResult result = results[offset];
+                bool applyTrace = result.Result;
+                HashSet<AddressAsKey>? txWrites = null;
+
+                if (applyTrace)
+                {
+                    if (Overlaps(result.Trace.ReadAccounts, writeAccounts) || Overlaps(result.Trace.ReadStorage, writeStorage))
+                    {
+                        applyTrace = false;
+                    }
+                    else if (Overlaps(result.Trace.WriteStorage, writeStorage))
+                    {
+                        applyTrace = false;
+                    }
+                    else if (!result.Trace.TryGetWriteAccounts(additivePlan, out HashSet<AddressAsKey> writes))
+                    {
+                        applyTrace = false;
+                    }
+                    else if (Overlaps(writes, writeAccounts))
+                    {
+                        applyTrace = false;
+                    }
+                    else
+                    {
+                        txWrites = writes;
+                        if (!additivePlan.TryAccumulate(result))
+                        {
+                            additivePlan.Apply(_stateProvider, spec);
+                            return ProcessRemainingSequential(block, txIndex, receiptsTracer, processingOptions);
+                        }
+
+                        if (!result.Trace.ApplyStateChanges(_stateProvider, spec, additivePlan))
+                        {
+                            applyTrace = false;
+                        }
+                    }
+                }
+
+                if (applyTrace)
+                {
+                    if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && tx.SenderAddress != Address.SystemUser && result.BaseNonce is not null)
+                    {
+                        tx.Nonce = result.BaseNonce.Value;
+                    }
+
+                    tx.SpentGas = result.Trace.SpentGas;
+                    block.Header.GasUsed += result.Trace.SpentGas;
+
+                    receiptsTracer.StartNewTxTrace(tx);
+                    if (result.Trace.Success)
+                    {
+                        receiptsTracer.MarkAsSuccess(result.Trace.Recipient, result.Trace.GasConsumed, Array.Empty<byte>(), result.Trace.Logs);
+                    }
+                    else
+                    {
+                        receiptsTracer.MarkAsFailed(result.Trace.Recipient, result.Trace.GasConsumed, Array.Empty<byte>(), result.Trace.Error);
+                    }
+                    receiptsTracer.EndTxTrace();
+
+                    _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(txIndex, tx, block.Header, receiptsTracer.TxReceipts[txIndex]));
+
+                    if (txWrites is not null)
+                    {
+                        writeAccounts.UnionWith(txWrites);
+                    }
+                    writeStorage.UnionWith(result.Trace.WriteStorage);
+                }
+                else
+                {
+                    TransactionResult seqResult = ExecuteSequentialTransaction(block, tx, txIndex, receiptsTracer, processingOptions, out StmTxTracer seqTrace);
+                    AdditiveAccountPlan additiveCheck = additivePlan;
+                    if (!additiveCheck.TryAccumulate(new StmExecutionResult(txIndex, tx, seqResult, seqTrace, null)))
+                    {
+                        additivePlan.Apply(_stateProvider, spec);
+                        return ProcessRemainingSequential(block, txIndex + 1, receiptsTracer, processingOptions);
+                    }
+
+                    if (seqTrace.TryGetWriteAccounts(additivePlan, out HashSet<AddressAsKey> seqWrites))
+                    {
+                        writeAccounts.UnionWith(seqWrites);
+                    }
+                    writeStorage.UnionWith(seqTrace.WriteStorage);
+                }
+            }
+
+            additivePlan.Apply(_stateProvider, spec);
+            index = windowEnd;
         }
 
         return receiptsTracer.TxReceipts.ToArray();
@@ -176,6 +273,17 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         }
 
         return maxConcurrency;
+    }
+
+    private int GetWindowSize(int maxConcurrency)
+    {
+        int windowSize = _blocksConfig.BlockStmWindowSize;
+        if (windowSize <= 0)
+        {
+            windowSize = Math.Max(Environment.ProcessorCount, 1) * 10;
+        }
+
+        return Math.Max(windowSize, 1);
     }
 
     private bool TryGetBaseStateRoot(out Hash256 stateRoot)
@@ -358,6 +466,64 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
         additivePlan.Apply(_stateProvider, spec);
         return true;
+    }
+
+    private TransactionResult ExecuteSequentialTransaction(
+        Block block,
+        Transaction tx,
+        int index,
+        BlockReceiptsTracer receiptsTracer,
+        ProcessingOptions processingOptions,
+        out StmTxTracer stmTracer)
+    {
+        stmTracer = new StmTxTracer();
+
+        if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && tx.SenderAddress != Address.SystemUser)
+        {
+            tx.Nonce = _stateProvider.GetNonce(tx.SenderAddress!);
+        }
+
+        receiptsTracer.StartNewTxTrace(tx);
+        CompositeTxTracer tracer = new(receiptsTracer, stmTracer);
+        TransactionResult result = _transactionProcessor.Execute(tx, tracer);
+        receiptsTracer.EndTxTrace();
+
+        if (!result)
+        {
+            ThrowInvalidTransactionException(result, block.Header, tx, index);
+        }
+
+        _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, tx, block.Header, receiptsTracer.TxReceipts[index]));
+        return result;
+    }
+
+    private TxReceipt[] ProcessRemainingSequential(
+        Block block,
+        int startIndex,
+        BlockReceiptsTracer receiptsTracer,
+        ProcessingOptions processingOptions)
+    {
+        for (int i = startIndex; i < block.Transactions.Length; i++)
+        {
+            Transaction currentTx = block.Transactions[i];
+            if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser)
+            {
+                currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress!);
+            }
+
+            receiptsTracer.StartNewTxTrace(currentTx);
+            TransactionResult result = _transactionProcessor.Execute(currentTx, receiptsTracer);
+            receiptsTracer.EndTxTrace();
+
+            if (!result)
+            {
+                ThrowInvalidTransactionException(result, block.Header, currentTx, i);
+            }
+
+            _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(i, currentTx, block.Header, receiptsTracer.TxReceipts[i]));
+        }
+
+        return receiptsTracer.TxReceipts.ToArray();
     }
 
     [DoesNotReturn, StackTraceHidden]

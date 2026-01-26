@@ -49,11 +49,14 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Max concurrency for parallel EOA transfer execution. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int ParallelEoaTransfersConcurrency { get; set; }
 
-    [ConfigItem(Description = "Enable experimental Block-STM style parallel execution with conservative conflict detection.", DefaultValue = "False", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Enable experimental Block-STM style parallel execution with conservative conflict detection.", DefaultValue = "True", HiddenFromDocs = true)]
     bool BlockStmOnBlockProcessing { get; set; }
 
     [ConfigItem(Description = "Max concurrency for Block-STM execution. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int BlockStmConcurrency { get; set; }
+
+    [ConfigItem(Description = "Window size for Block-STM speculative execution. Default is 10x logical processor count when set to 0.", DefaultValue = "0", HiddenFromDocs = true)]
+    int BlockStmWindowSize { get; set; }
 
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }

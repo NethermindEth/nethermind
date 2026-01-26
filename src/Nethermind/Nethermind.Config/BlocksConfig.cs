@@ -65,9 +65,11 @@ namespace Nethermind.Config
 
         public int ParallelEoaTransfersConcurrency { get; set; } = 0;
 
-        public bool BlockStmOnBlockProcessing { get; set; } = false;
+        public bool BlockStmOnBlockProcessing { get; set; } = true;
 
         public int BlockStmConcurrency { get; set; } = 0;
+
+        public int BlockStmWindowSize { get; set; } = 0;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
