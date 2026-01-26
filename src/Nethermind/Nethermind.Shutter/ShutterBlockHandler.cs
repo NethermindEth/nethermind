@@ -185,7 +185,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         }
         else if (_logger.IsDebug)
         {
-            _logger.Warn($"Shutter block handler not running, outdated block {head.Number}");
+            _logger.Debug($"Shutter block handler not running, outdated block {head.Number}");
         }
     }
 
