@@ -215,26 +215,40 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
                 if (applyTrace)
                 {
-                    if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && tx.SenderAddress != Address.SystemUser && result.BaseNonce is not null)
+                    UInt256 originalNonce = tx.Nonce;
+                    bool overrideNonce = processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState)
+                        && tx.SenderAddress != Address.SystemUser
+                        && result.BaseNonce is not null;
+                    if (overrideNonce)
                     {
                         tx.Nonce = result.BaseNonce.Value;
                     }
 
-                    tx.SpentGas = result.Trace.SpentGas;
-                    block.Header.GasUsed += result.Trace.SpentGas;
-
-                    receiptsTracer.StartNewTxTrace(tx);
-                    if (result.Trace.Success)
+                    try
                     {
-                        receiptsTracer.MarkAsSuccess(result.Trace.Recipient, result.Trace.GasConsumed, Array.Empty<byte>(), result.Trace.Logs);
-                    }
-                    else
-                    {
-                        receiptsTracer.MarkAsFailed(result.Trace.Recipient, result.Trace.GasConsumed, Array.Empty<byte>(), result.Trace.Error);
-                    }
-                    receiptsTracer.EndTxTrace();
+                        tx.SpentGas = result.Trace.SpentGas;
+                        block.Header.GasUsed += result.Trace.SpentGas;
 
-                    _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(txIndex, tx, block.Header, receiptsTracer.TxReceipts[txIndex]));
+                        receiptsTracer.StartNewTxTrace(tx);
+                        if (result.Trace.Success)
+                        {
+                            receiptsTracer.MarkAsSuccess(result.Trace.Recipient, result.Trace.GasConsumed, Array.Empty<byte>(), result.Trace.Logs);
+                        }
+                        else
+                        {
+                            receiptsTracer.MarkAsFailed(result.Trace.Recipient, result.Trace.GasConsumed, Array.Empty<byte>(), result.Trace.Error);
+                        }
+                        receiptsTracer.EndTxTrace();
+
+                        _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(txIndex, tx, block.Header, receiptsTracer.TxReceipts[txIndex]));
+                    }
+                    finally
+                    {
+                        if (overrideNonce)
+                        {
+                            tx.Nonce = originalNonce;
+                        }
+                    }
 
                     if (txWrites is not null)
                     {
@@ -566,15 +580,28 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
     {
         stmTracer = new StmTxTracer();
 
-        if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && tx.SenderAddress != Address.SystemUser)
+        UInt256 originalNonce = tx.Nonce;
+        bool overrideNonce = processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && tx.SenderAddress != Address.SystemUser;
+        if (overrideNonce)
         {
             tx.Nonce = _stateProvider.GetNonce(tx.SenderAddress!);
         }
 
-        receiptsTracer.StartNewTxTrace(tx);
-        CompositeTxTracer tracer = new(receiptsTracer, stmTracer);
-        TransactionResult result = _transactionProcessor.Execute(tx, tracer);
-        receiptsTracer.EndTxTrace();
+        TransactionResult result;
+        try
+        {
+            receiptsTracer.StartNewTxTrace(tx);
+            CompositeTxTracer tracer = new(receiptsTracer, stmTracer);
+            result = _transactionProcessor.Execute(tx, tracer);
+            receiptsTracer.EndTxTrace();
+        }
+        finally
+        {
+            if (overrideNonce)
+            {
+                tx.Nonce = originalNonce;
+            }
+        }
 
         if (!result)
         {
@@ -594,14 +621,27 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         for (int i = startIndex; i < block.Transactions.Length; i++)
         {
             Transaction currentTx = block.Transactions[i];
-            if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser)
+            UInt256 originalNonce = currentTx.Nonce;
+            bool overrideNonce = processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser;
+            if (overrideNonce)
             {
                 currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress!);
             }
 
-            receiptsTracer.StartNewTxTrace(currentTx);
-            TransactionResult result = _transactionProcessor.Execute(currentTx, receiptsTracer);
-            receiptsTracer.EndTxTrace();
+            TransactionResult result;
+            try
+            {
+                receiptsTracer.StartNewTxTrace(currentTx);
+                result = _transactionProcessor.Execute(currentTx, receiptsTracer);
+                receiptsTracer.EndTxTrace();
+            }
+            finally
+            {
+                if (overrideNonce)
+                {
+                    currentTx.Nonce = originalNonce;
+                }
+            }
 
             if (!result)
             {
