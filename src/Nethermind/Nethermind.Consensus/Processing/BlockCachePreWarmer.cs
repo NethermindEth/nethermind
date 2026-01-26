@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -36,7 +37,6 @@ public sealed class BlockCachePreWarmer(
     private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
-    private BlockStateSource? _currentBlockState = null;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -57,7 +57,6 @@ public sealed class BlockCachePreWarmer(
     {
         if (preBlockCaches is not null)
         {
-            _currentBlockState = new(this, suggestedBlock, parent, spec);
             CacheType result = preBlockCaches.ClearCaches();
             result |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
             nodeStorageCache.Enabled = true;
@@ -68,13 +67,14 @@ public sealed class BlockCachePreWarmer(
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
+                BlockStateSource blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-                // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(_currentBlockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+                // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
+                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
             }
         }
 
@@ -151,7 +151,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming withdrawal", ex);
+            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming withdrawal", ex);
         }
     }
 
@@ -166,22 +166,22 @@ public sealed class BlockCachePreWarmer(
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            var senderGroups = GroupTransactionsBySender(block);
+            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
 
             try
             {
                 // Convert to array for parallel iteration
-                ArrayPoolList<(int Index, Transaction Tx)>[]? groupArray = senderGroups.Values.ToArray();
+                ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
                     0,
-                    groupArray.Length,
+                    groupArray.Count,
                     parallelOptions,
-                    (blockState, groupArray),
+                    (blockState, groupArray, parallelOptions.CancellationToken),
                     static (groupIndex, tupleState) =>
                     {
-                        (BlockStateSource? blockState, ArrayPoolList<(int Index, Transaction Tx)>[]? groups) = tupleState;
+                        (BlockStateSource? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
                         // Get thread-local processing state for this sender's transactions
@@ -195,6 +195,7 @@ public sealed class BlockCachePreWarmer(
                             // Sequential within the same sender-state changes propagate correctly
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
+                                if (token.IsCancellationRequested) return tupleState;
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
                             }
                         }
@@ -399,7 +400,7 @@ public sealed class BlockCachePreWarmer(
         public readonly Block Block = block;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
+        private AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
         {
             Env = env;
             Scope = scope;
