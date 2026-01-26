@@ -29,8 +29,8 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     [JsonConstructor]
     public BlobTransactionForRpc() { }
 
-    public BlobTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null, ulong? chainId = null)
-        : base(transaction, txIndex, blockHash, blockNumber, baseFee, chainId)
+    public BlobTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? blockTimestamp = null, UInt256? baseFee = null, ulong? chainId = null)
+        : base(transaction, txIndex, blockHash, blockNumber, blockTimestamp, baseFee, chainId)
     {
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
@@ -47,5 +47,5 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     }
 
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee, chainId: extraData.ChainId);
+        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, baseFee: extraData.BaseFee, chainId: extraData.ChainId);
 }

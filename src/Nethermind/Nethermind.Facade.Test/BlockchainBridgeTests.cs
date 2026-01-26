@@ -67,14 +67,14 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null, null));
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null, null));
     }
 
     [Test]
@@ -100,7 +100,7 @@ public class BlockchainBridgeTests
             _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
         }
         _receiptStorage.Get(block).Returns(receipts);
-        var expectation = (receipts[index], Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject, UInt256.Zero);
+        var expectation = (receipts[index], Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject, UInt256.Zero, block.Timestamp);
         var result = _blockchainBridge.GetTransaction(transactions[index].Hash!);
         result.Should().BeEquivalentTo(expectation);
     }

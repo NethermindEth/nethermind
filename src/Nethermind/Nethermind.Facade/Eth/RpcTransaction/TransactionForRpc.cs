@@ -44,17 +44,21 @@ public abstract class TransactionForRpc
     public long? BlockNumber { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public ulong? BlockTimestamp { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? blockTimestamp = null)
     {
         Hash = transaction.Hash;
         TransactionIndex = txIndex;
         BlockHash = blockHash;
         BlockNumber = blockNumber;
+        BlockTimestamp = blockTimestamp;
     }
 
     public virtual Transaction ToTransaction()
@@ -178,13 +182,14 @@ public abstract class TransactionForRpc
         }
     }
 
-    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null, ulong? chainId = null) =>
+    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, ulong? blockTimestamp = null, UInt256? baseFee = null, ulong? chainId = null) =>
         TransactionJsonConverter.FromTransaction(transaction, new()
         {
             ChainId = chainId,
             TxIndex = txIndex,
             BlockHash = blockHash,
             BlockNumber = blockNumber,
+            BlockTimestamp = blockTimestamp,
             BaseFee = baseFee
         });
 

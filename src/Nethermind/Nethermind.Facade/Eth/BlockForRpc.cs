@@ -167,7 +167,14 @@ public class BlockForRpc
         TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
         for (var i = 0; i < transactions.Length; i++)
         {
-            txs[i] = TransactionForRpc.FromTransaction(transactions[i], block.Hash, block.Number, i, block.BaseFeePerGas, chainId);
+            txs[i] = TransactionForRpc.FromTransaction(
+                transaction: transactions[i],
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: i,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                chainId: chainId);
         }
         return txs;
     }

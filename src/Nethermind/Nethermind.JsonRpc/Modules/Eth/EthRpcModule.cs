@@ -386,14 +386,21 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee, ulong? blockTimestamp) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee, _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transaction,
+            blockHash: receipt?.BlockHash,
+            blockNumber: receipt?.BlockNumber,
+            txIndex: receipt?.Index,
+            blockTimestamp: blockTimestamp,
+            baseFee: baseFee,
+            chainId: _specProvider.ChainId);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
@@ -459,7 +466,14 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas, _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transaction,
+            blockHash: block.Hash,
+            blockNumber: block.Number,
+            txIndex: (int)positionIndex,
+            blockTimestamp: block.Timestamp,
+            baseFee: block.BaseFeePerGas,
+            chainId: _specProvider.ChainId);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
@@ -569,10 +583,8 @@ public partial class EthRpcModule(
                 timeout.Dispose();
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
-            else
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, timeout));
-            }
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, timeout));
         }
         catch (ResourceNotFoundException exception)
         {

@@ -18,6 +18,7 @@ public readonly struct TransactionConverterExtraData
     public ulong? ChainId { get; init; }
     public Hash256? BlockHash { get; init; }
     public long? BlockNumber { get; init; }
+    public ulong? BlockTimestamp { get; init; }
     public int? TxIndex { get; init; }
     public UInt256? BaseFee { get; init; }
     public TxReceipt Receipt { get; init; }
