@@ -66,7 +66,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
-        private readonly TracedAccessWorldState? _tracedAccessWorldState;
+        private readonly ParallelWorldState? _parallelWorldState;
 
         [Flags]
         protected enum ExecutionOptions
@@ -90,6 +90,11 @@ namespace Nethermind.Evm.TransactionProcessing
             /// Skip potential fail checks
             /// </summary>
             SkipValidation = 4,
+
+            /// <summary>
+            /// Marker option used by state pre-warmer
+            /// </summary>
+            Warmup = 8,
 
             /// <summary>
             /// Skip potential fail checks and commit state after execution
@@ -122,7 +127,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            _tracedAccessWorldState = worldState as TracedAccessWorldState;
+            _parallelWorldState = worldState as ParallelWorldState;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -157,7 +162,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -224,8 +229,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.SpentGas = spentGas.SpentGas;
             tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+
+            //only main thread updates transaction
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -300,9 +308,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
 
-                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled && IncludeAccountRead(res))
+                    if (_parallelWorldState is not null && _parallelWorldState.Enabled && IncludeAccountRead(res))
                     {
-                        _tracedAccessWorldState.AddAccountRead(authority);
+                        _parallelWorldState.AddAccountRead(authority);
                     }
                 }
                 else
@@ -963,9 +971,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long blockGas = spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGasLong) : 0;
             spentGas = Math.Max(spentGas, floorGasLong);
 
-            // If noValidation we didn't charge for gas, so do not refund
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
+            UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
+            PayRefund(tx, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas, blockGas);
         }

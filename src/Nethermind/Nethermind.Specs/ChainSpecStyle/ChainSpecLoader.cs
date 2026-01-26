@@ -200,6 +200,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
 
             Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
+            Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -350,6 +351,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
         bool consolidationRequestsEnabled = chainSpecJson.Params.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7251TransitionTimestamp;
         bool blockAccessListsEnabled = chainSpecJson.Params.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7928TransitionTimestamp;
+        bool slotNumberEnabled = chainSpecJson.Params.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7843TransitionTimestamp;
 
         if (withdrawalsEnabled)
         {
@@ -383,6 +385,11 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (blockAccessListsEnabled)
         {
             genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+
+        if (slotNumberEnabled)
+        {
+            genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber;
         }
 
         genesisHeader.AuRaStep = step;

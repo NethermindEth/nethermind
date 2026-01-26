@@ -26,7 +26,8 @@
   "ignoreRegExpList": [
     "/0x[0-9a-fA-F]+/g",
     "/\"[0-9a-fA-F]{64}\"/g",
-    "/https?:\\/\\/\\S+/g"
+    "/https?:\\/\\/\\S+/g",
+    "/--[a-z]+-[a-z]+/gi"
   ],
   "words": [
     "accesslist",
@@ -605,6 +606,7 @@
     "skiplastn",
     "slnx",
     "sload",
+    "slotnum",
     "smod",
     "somelabel",
     "spaceneth",
