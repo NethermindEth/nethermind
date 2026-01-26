@@ -1610,7 +1610,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void BlockCommitSet_IsSealed_after_Seal_with_null_root()
         {
-            // This test verifies the fix for networks like Mordor that have an empty genesis state.
+            // This test verifies the fix for networks that have an empty genesis state.
             // When the state trie is empty, the root is null, but the commit set should still be sealed.
             BlockCommitSet commitSet = new(0);
 
@@ -1625,11 +1625,11 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Consecutive_block_commits_work_when_first_has_null_root()
         {
-            // This test simulates the Mordor scenario where the genesis block has an empty state (no allocations).
+            // This test simulates a scenario where the genesis block has an empty state (no allocations).
             // Block 0 commits with null root, then block 1 should be able to commit without assertion failure.
             using TrieStore fullTrieStore = CreateTrieStore();
 
-            // Block 0: empty state (like Mordor genesis with no allocations)
+            // Block 0: empty state (genesis with no allocations)
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
 
             // Block 1: should not throw or assert, even though previous block had null root
