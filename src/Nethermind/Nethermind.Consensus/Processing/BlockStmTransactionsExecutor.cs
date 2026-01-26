@@ -161,6 +161,10 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
                 if (applyTrace)
                 {
+                    if (!IsTraceSafeToApply(result.Trace))
+                    {
+                        applyTrace = false;
+                    }
                     if (Overlaps(result.Trace.ReadAccounts, writeAccounts) || Overlaps(result.Trace.ReadStorage, writeStorage))
                     {
                         applyTrace = false;
@@ -432,6 +436,24 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         }
 
         return false;
+    }
+
+    private static bool IsTraceSafeToApply(StmTxTracer trace)
+    {
+        if (trace.WriteStorage.Count != 0 || trace.SelfDestructs.Count != 0)
+        {
+            return false;
+        }
+
+        foreach (AccountChange change in trace.AccountChanges.Values)
+        {
+            if (change.CodeBefore is not null || change.CodeAfter is not null)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static int FindFirstInvalid(ReadOnlySpan<StmExecutionResult> results)
