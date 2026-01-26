@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -991,6 +992,77 @@ public class TrieNodeTests
             TreePath emptyPathParallel = TreePath.Empty;
             restoredNode.GetChild(NullTrieNodeResolver.Instance, ref emptyPathParallel, index % 3);
         });
+    }
+
+    [Test]
+    public void Do_Not_MarkUnpersistedChildAsPersisted()
+    {
+        InMemoryScopedTrieStore inMemoryScopedTrieStore = new InMemoryScopedTrieStore();
+
+        PatriciaTree tree = new PatriciaTree(inMemoryScopedTrieStore, LimboLogs.Instance);
+        tree.Set(Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        tree.Set(Bytes.FromHexString("0000000000000000010000000000000000000000000000000000000000000000"), [1]);
+        tree.Set(Bytes.FromHexString("0000000000000000011000000000000000000000000000000000000000000000"), [1]);
+        tree.Commit();
+
+        TreePath path = TreePath.FromHexString("00000000000000000");
+        TrieNode parentExtension = inMemoryScopedTrieStore.FindCachedOrUnknown(path, Keccak.EmptyTreeHash);
+        parentExtension.IsPersisted = true;
+
+        // Mark child as persisted
+        TrieNode child = parentExtension.GetChild(inMemoryScopedTrieStore, ref path, 1);
+        child.IsPersisted = true;
+
+        // Trigger unresolve
+        parentExtension.GetChild(inMemoryScopedTrieStore, ref path, 1);
+
+        // Unmark persisted
+        child.IsPersisted = false;
+
+        // Should stay unpersisted
+        child = parentExtension.GetChild(inMemoryScopedTrieStore, ref path, 1);
+        Assert.That(child.IsPersisted, Is.False);
+    }
+
+    private class InMemoryScopedTrieStore : IScopedTrieStore
+    {
+        private readonly ConcurrentDictionary<TreePath, TrieNode> _nodes = new ConcurrentDictionary<TreePath, TrieNode>();
+
+        private TrieNode GetOrAddNode(in TreePath path, TrieNode node)
+        {
+            return _nodes.GetOrAdd(path, node);
+        }
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            return _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
+        }
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
+        {
+            throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
+        }
+
+        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => false;
+
+        private class Committer(InMemoryScopedTrieStore trieStore) : ICommitter
+        {
+            public void Dispose()
+            {
+            }
+
+            public TrieNode CommitNode(ref TreePath path, TrieNode node)
+            {
+                return trieStore.GetOrAddNode(path, node);
+            }
+        }
     }
 
     private class Context
