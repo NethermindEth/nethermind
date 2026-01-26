@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -29,12 +32,18 @@ public sealed class BlockCachePreWarmer(
     int concurrency,
     NodeStorageCache nodeStorageCache,
     PreBlockCaches preBlockCaches,
-    ILogManager logManager
+    ILogManager logManager,
+    bool groupBySender = false,
+    bool validateSenderNonce = false,
+    bool fastPathSimpleTransfers = false
 ) : IBlockCachePreWarmer
 {
     private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private readonly bool _groupBySender = groupBySender;
+    private readonly bool _validateSenderNonce = validateSenderNonce;
+    private readonly bool _fastPathSimpleTransfers = fastPathSimpleTransfers;
     private BlockStateSource? _currentBlockState = null;
 
     public BlockCachePreWarmer(
@@ -48,7 +57,10 @@ public sealed class BlockCachePreWarmer(
         blocksConfig.PreWarmStateConcurrency,
         nodeStorageCache,
         preBlockCaches,
-        logManager)
+        logManager,
+        blocksConfig.PreWarmStateGroupBySender,
+        blocksConfig.PreWarmStateValidateSenderNonce,
+        blocksConfig.PreWarmStateFastPathSimpleTransfers)
     {
     }
 
@@ -166,64 +178,34 @@ public sealed class BlockCachePreWarmer(
         try
         {
             Block block = blockState.Block;
-            ParallelUnbalancedWork.For(
-                0,
-                block.Transactions.Length,
-                parallelOptions,
-                blockState.InitThreadState,
-            static (i, state) =>
+            SenderWarmupPlan senderPlan = default;
+            bool useSenderPlan = _groupBySender || _validateSenderNonce;
+            if (useSenderPlan)
             {
-                Transaction? tx = null;
-                try
+                senderPlan = BuildSenderWarmupPlan(block.Transactions, _groupBySender);
+                blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers);
+            }
+            else
+            {
+                blockState.ApplyWarmupPlan(default, _validateSenderNonce, _fastPathSimpleTransfers);
+            }
+
+            try
+            {
+                if (_groupBySender && senderPlan.SenderGroups is not null)
                 {
-                    // If the transaction has already been processed or being processed, exit early
-                    if (state.LastExecutedTransaction >= i)
-                    {
-                        return state;
-                    }
-
-                    tx = state.Block.Transactions[i];
-
-                    Address senderAddress = tx.SenderAddress!;
-                    IWorldState worldState = state.Scope.WorldState;
-                    if (!worldState.AccountExists(senderAddress))
-                    {
-                        worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                    }
-
-                    UInt256 nonceDelta = UInt256.Zero;
-                    for (int prev = 0; prev < i; prev++)
-                    {
-                        if (senderAddress == state.Block.Transactions[prev].SenderAddress)
-                        {
-                            nonceDelta++;
-                        }
-                    }
-
-                    if (!nonceDelta.IsZero)
-                    {
-                        worldState.IncrementNonce(senderAddress, nonceDelta);
-                    }
-
-                    if (state.Spec.UseTxAccessLists)
-                    {
-                        worldState.WarmUp(tx.AccessList); // eip-2930
-                    }
-                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
-                    if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
+                    WarmupTransactionsBySender(blockState, senderPlan.SenderGroups, parallelOptions);
                 }
-                catch (Exception ex) when (ex is EvmException or OverflowException)
+                else
                 {
-                    // Ignore, regular tx processing exceptions
+                    WarmupTransactionsParallel(blockState, parallelOptions);
                 }
-                catch (Exception ex)
-                {
-                    if (state.Logger.IsDebug) state.Logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
-                }
-
-                return state;
-            },
-            BlockStateSource.FinallyAction);
+            }
+            finally
+            {
+                blockState.ClearWarmupPlan();
+                senderPlan.Dispose();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -233,6 +215,283 @@ public sealed class BlockCachePreWarmer(
         {
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming withdrawal", ex);
         }
+    }
+
+    private void WarmupTransactionsParallel(BlockStateSource blockState, ParallelOptions parallelOptions)
+    {
+        Block block = blockState.Block;
+        ParallelUnbalancedWork.For(
+            0,
+            block.Transactions.Length,
+            parallelOptions,
+            blockState.InitThreadState,
+        static (i, state) =>
+        {
+            Transaction? tx = null;
+            try
+            {
+                // If the transaction has already been processed or being processed, exit early
+                if (state.LastExecutedTransaction >= i)
+                {
+                    return state;
+                }
+
+                tx = state.Block.Transactions[i];
+
+                Address senderAddress = tx.SenderAddress!;
+                IWorldState worldState = state.Scope.WorldState;
+                if (!worldState.AccountExists(senderAddress))
+                {
+                    worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                }
+
+                int senderOffset = GetSenderOffset(state, i, senderAddress);
+                if (state.UseSenderOffsets)
+                {
+                    if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
+                    {
+                        return state;
+                    }
+                }
+                else
+                {
+                    if (senderOffset != 0)
+                    {
+                        worldState.IncrementNonce(senderAddress, new UInt256((ulong)senderOffset));
+                    }
+                }
+
+                if (state.Spec.UseTxAccessLists)
+                {
+                    worldState.WarmUp(tx.AccessList); // eip-2930
+                }
+
+                if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
+                {
+                    return state;
+                }
+
+                TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
+            }
+            catch (Exception ex) when (ex is EvmException or OverflowException)
+            {
+                // Ignore, regular tx processing exceptions
+            }
+            catch (Exception ex)
+            {
+                if (state.Logger.IsDebug) state.Logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
+            }
+
+            return state;
+        },
+        BlockStateSource.FinallyAction);
+    }
+
+    private void WarmupTransactionsBySender(BlockStateSource blockState, ArrayPoolList<ArrayPoolList<int>> senderGroups, ParallelOptions parallelOptions)
+    {
+        ParallelUnbalancedWork.For(
+            0,
+            senderGroups.Count,
+            parallelOptions,
+            blockState.InitThreadState,
+        (groupIndex, state) =>
+        {
+            ArrayPoolList<int> group = senderGroups[groupIndex];
+            Transaction? tx = null;
+            try
+            {
+                for (int index = 0; index < group.Count; index++)
+                {
+                    int txIndex = group[index];
+                    if (state.LastExecutedTransaction >= txIndex)
+                    {
+                        continue;
+                    }
+
+                    tx = state.Block.Transactions[txIndex];
+                    Address senderAddress = tx.SenderAddress!;
+                    IWorldState worldState = state.Scope.WorldState;
+                    if (!worldState.AccountExists(senderAddress))
+                    {
+                        worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                    }
+
+                    int senderOffset = GetSenderOffset(state, txIndex, senderAddress);
+                    if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
+                    {
+                        continue;
+                    }
+
+                    if (state.Spec.UseTxAccessLists)
+                    {
+                        worldState.WarmUp(tx.AccessList); // eip-2930
+                    }
+
+                    if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
+                    {
+                        continue;
+                    }
+
+                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                    if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+                }
+            }
+            catch (Exception ex) when (ex is EvmException or OverflowException)
+            {
+                // Ignore, regular tx processing exceptions
+            }
+            catch (Exception ex)
+            {
+                if (state.Logger.IsDebug) state.Logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
+            }
+
+            return state;
+        },
+        BlockStateSource.FinallyAction);
+    }
+
+    private static bool TryApplySenderNonce(BlockState state, Address senderAddress, int senderOffset, Transaction tx)
+    {
+        IWorldState worldState = state.Scope.WorldState;
+        UInt256 expectedNonce;
+        if (state.UseSenderOffsets)
+        {
+            UInt256 baseNonce = state.GetSenderBaseNonce(senderAddress);
+            expectedNonce = baseNonce + new UInt256((ulong)senderOffset);
+            if (state.ValidateSenderNonce && expectedNonce != tx.Nonce)
+            {
+                return false;
+            }
+
+            worldState.SetNonce(senderAddress, expectedNonce);
+            return true;
+        }
+
+        if (senderOffset != 0)
+        {
+            worldState.IncrementNonce(senderAddress, new UInt256((ulong)senderOffset));
+        }
+
+        return true;
+    }
+
+    private static int GetSenderOffset(BlockState state, int txIndex, Address senderAddress)
+    {
+        if (state.UseSenderOffsets && txIndex < state.SenderOffsetsCount && state.SenderOffsets is not null)
+        {
+            return state.SenderOffsets[txIndex];
+        }
+
+        int senderOffset = 0;
+        for (int prev = 0; prev < txIndex; prev++)
+        {
+            if (senderAddress == state.Block.Transactions[prev].SenderAddress)
+            {
+                senderOffset++;
+            }
+        }
+
+        return senderOffset;
+    }
+
+    internal static bool CanSkipEvmWarmup(Transaction tx, IWorldState worldState, IReleaseSpec spec)
+    {
+        if (tx.IsContractCreation || tx.DataLength != 0)
+        {
+            return false;
+        }
+
+        Address? recipient = tx.To;
+        if (recipient is null)
+        {
+            return false;
+        }
+
+        if (spec.IsPrecompile(recipient))
+        {
+            return true;
+        }
+
+        return !worldState.IsContract(recipient);
+    }
+
+    internal static SenderWarmupPlan BuildSenderWarmupPlan(ReadOnlySpan<Transaction> transactions, bool includeGroups)
+    {
+        int txCount = transactions.Length;
+        if (txCount == 0)
+        {
+            return default;
+        }
+
+        int[] offsets = ArrayPool<int>.Shared.Rent(txCount);
+        Dictionary<Address, SenderAccumulator> senders = new(txCount);
+        ArrayPoolList<ArrayPoolList<int>>? groups = includeGroups ? new ArrayPoolList<ArrayPoolList<int>>(Math.Min(txCount, 1024)) : null;
+
+        for (int i = 0; i < txCount; i++)
+        {
+            Address sender = transactions[i].SenderAddress!;
+            ref SenderAccumulator acc = ref CollectionsMarshal.GetValueRefOrAddDefault(senders, sender, out bool exists);
+            if (!exists)
+            {
+                int groupIndex = groups is null ? -1 : groups.Count;
+                acc = new SenderAccumulator(0, groupIndex);
+                if (groups is not null)
+                {
+                    groups.Add(new ArrayPoolList<int>(capacity: 4));
+                }
+            }
+
+            offsets[i] = acc.Count;
+            acc.Count++;
+
+            if (groups is not null)
+            {
+                groups[acc.GroupIndex].Add(i);
+            }
+        }
+
+        return new SenderWarmupPlan(offsets, txCount, groups);
+    }
+
+    internal readonly struct SenderWarmupPlan : IDisposable
+    {
+        private readonly int[]? _offsets;
+        private readonly int _transactionCount;
+        public readonly ArrayPoolList<ArrayPoolList<int>>? SenderGroups;
+
+        public SenderWarmupPlan(int[] offsets, int transactionCount, ArrayPoolList<ArrayPoolList<int>>? senderGroups)
+        {
+            _offsets = offsets;
+            _transactionCount = transactionCount;
+            SenderGroups = senderGroups;
+        }
+
+        public int[]? OffsetsArray => _offsets;
+        public int TransactionCount => _transactionCount;
+
+        public void Dispose()
+        {
+            if (_offsets is not null)
+            {
+                ArrayPool<int>.Shared.Return(_offsets, clearArray: false);
+            }
+
+            if (SenderGroups is not null)
+            {
+                foreach (ArrayPoolList<int> group in SenderGroups.AsSpan())
+                {
+                    group.Dispose();
+                }
+                SenderGroups.Dispose();
+            }
+        }
+    }
+
+    private struct SenderAccumulator(int count, int groupIndex)
+    {
+        public int Count = count;
+        public int GroupIndex = groupIndex;
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
@@ -392,6 +651,10 @@ public sealed class BlockCachePreWarmer(
         public readonly BlockHeader Parent = parent;
         public readonly IReleaseSpec Spec = spec;
         public volatile int LastExecutedTransaction = 0;
+        public int[]? SenderOffsets;
+        public int SenderOffsetsCount;
+        public bool ValidateSenderNonce;
+        public bool FastPathSimpleTransfers;
 
         public BlockState InitThreadState()
         {
@@ -404,6 +667,22 @@ public sealed class BlockCachePreWarmer(
         {
             Interlocked.Increment(ref LastExecutedTransaction);
         }
+
+        public void ApplyWarmupPlan(SenderWarmupPlan plan, bool validateSenderNonce, bool fastPathSimpleTransfers)
+        {
+            SenderOffsets = plan.OffsetsArray;
+            SenderOffsetsCount = plan.TransactionCount;
+            ValidateSenderNonce = validateSenderNonce;
+            FastPathSimpleTransfers = fastPathSimpleTransfers;
+        }
+
+        public void ClearWarmupPlan()
+        {
+            SenderOffsets = null;
+            SenderOffsetsCount = 0;
+            ValidateSenderNonce = false;
+            FastPathSimpleTransfers = false;
+        }
     }
 
     private readonly struct BlockState
@@ -411,11 +690,17 @@ public sealed class BlockCachePreWarmer(
         private readonly BlockStateSource Src;
         public readonly IReadOnlyTxProcessorSource Env;
         public readonly IReadOnlyTxProcessingScope Scope;
+        private readonly Dictionary<Address, UInt256>? _senderBaseNonces;
 
         public ref readonly ILogger Logger => ref Src.PreWarmer._logger;
         public IReleaseSpec Spec => Src.Spec;
         public Block Block => Src.Block;
         public int LastExecutedTransaction => Src.LastExecutedTransaction;
+        public int[]? SenderOffsets => Src.SenderOffsets;
+        public int SenderOffsetsCount => Src.SenderOffsetsCount;
+        public bool ValidateSenderNonce => Src.ValidateSenderNonce;
+        public bool FastPathSimpleTransfers => Src.FastPathSimpleTransfers;
+        public bool UseSenderOffsets => Src.SenderOffsets is not null;
 
         public BlockState(BlockStateSource src)
         {
@@ -423,12 +708,29 @@ public sealed class BlockCachePreWarmer(
             Env = src.PreWarmer._envPool.Get();
             Scope = Env.Build(src.Parent);
             Scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(Block.Header, Spec));
+            _senderBaseNonces = Src.SenderOffsets is not null ? new Dictionary<Address, UInt256>() : null;
         }
 
         public void Dispose()
         {
             Scope.Dispose();
             Src.PreWarmer._envPool.Return(Env);
+        }
+
+        public UInt256 GetSenderBaseNonce(Address senderAddress)
+        {
+            if (_senderBaseNonces is null)
+            {
+                return Scope.WorldState.GetNonce(senderAddress);
+            }
+
+            if (!_senderBaseNonces.TryGetValue(senderAddress, out UInt256 nonce))
+            {
+                nonce = Scope.WorldState.GetNonce(senderAddress);
+                _senderBaseNonces.Add(senderAddress, nonce);
+            }
+
+            return nonce;
         }
     }
 }

@@ -46,6 +46,15 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "Enable sender-grouped transaction pre-warm to improve cache locality.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmStateGroupBySender { get; set; }
+
+    [ConfigItem(Description = "Validate sender nonce ordering during pre-warm and skip warmup for mismatches.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmStateValidateSenderNonce { get; set; }
+
+    [ConfigItem(Description = "Skip EVM warmup for simple value transfers to EOAs/precompiles.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmStateFastPathSimpleTransfers { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
