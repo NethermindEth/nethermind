@@ -368,6 +368,6 @@ namespace Nethermind.Blockchain.Test
     {
         // we cannot mock ref methods
         // ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
-        UInt256 IWorldState.GetBalance(Address address) => UInt256.MaxValue;
+        ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
     }
 }

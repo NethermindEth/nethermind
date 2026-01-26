@@ -772,7 +772,8 @@ public partial class EthRpcModule(
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-        return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart));
+        IReleaseSpec spec = _specProvider.GetSpec(receipt.BlockNumber, blockTimestamp);
+        return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart, spec.IsEip7778Enabled));
     }
 
     public virtual ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)

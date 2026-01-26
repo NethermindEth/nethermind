@@ -124,5 +124,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Bloom = new Bloom(TestObjectInternal.Logs);
             return this;
         }
+
+        public ReceiptBuilder WithGasSpent(long? gasSpent)
+        {
+            TestObjectInternal.GasSpent = gasSpent;
+            return this;
+        }
     }
 }

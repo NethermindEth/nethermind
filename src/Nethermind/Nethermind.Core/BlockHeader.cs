@@ -28,7 +28,8 @@ public class BlockHeader
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
         Hash256? parentBeaconBlockRoot = null,
-        Hash256? requestsHash = null)
+        Hash256? requestsHash = null,
+        ulong? slotNumber = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -42,6 +43,7 @@ public class BlockHeader
         RequestsHash = requestsHash;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
+        SlotNumber = slotNumber;
     }
 
     public virtual long GenesisBlockNumber => 0;
@@ -76,6 +78,7 @@ public class BlockHeader
     public Hash256? BlockAccessListHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
+    public ulong? SlotNumber { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
@@ -126,6 +129,10 @@ public class BlockHeader
         if (BlockAccessListHash is not null)
         {
             builder.AppendLine($"{indent}BlockAccessListHash: {BlockAccessListHash}");
+        }
+        if (SlotNumber is not null)
+        {
+            builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
         }
 
         return builder.ToString();

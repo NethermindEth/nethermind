@@ -377,6 +377,12 @@ public class TestBlockchain : IDisposable
                 genesisBlockBuilder.WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp);
             }
 
+            // todo: needed?
+            // if (specProvider.GenesisSpec.IsEip7843Enabled)
+            // {
+            //     genesisBlockBuilder.WithSlotNumber(0);
+            // }
+
             Block genesisBlock = genesisBlockBuilder.TestObject;
 
             foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)

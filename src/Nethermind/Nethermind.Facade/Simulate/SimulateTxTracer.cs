@@ -78,7 +78,7 @@ public sealed class SimulateTxTracer : TxTracer
         _logs.Add(log);
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         TraceResult = new SimulateCallResult
         {
@@ -100,7 +100,7 @@ public sealed class SimulateTxTracer : TxTracer
         };
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         TraceResult = new SimulateCallResult
         {

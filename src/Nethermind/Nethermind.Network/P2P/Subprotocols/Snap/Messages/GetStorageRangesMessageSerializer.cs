@@ -34,14 +34,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             GetStorageRangeMessage message = new();
             rlpStream.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
+            message.RequestId = rlpStream.DecodePositiveLong();
 
             message.StorageRange = new();
             message.StorageRange.RootHash = rlpStream.DecodeKeccak();
             message.StorageRange.Accounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
             message.StorageRange.StartingHash = rlpStream.DecodeKeccak();
             message.StorageRange.LimitHash = rlpStream.DecodeKeccak();
-            message.ResponseBytes = rlpStream.DecodeLong();
+            message.ResponseBytes = rlpStream.DecodePositiveLong();
 
             return message;
         }

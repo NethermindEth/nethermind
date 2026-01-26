@@ -667,4 +667,35 @@ public class BlockchainBridgeTests
 
         testFactory.Received().Create();
     }
+
+    [Test]
+    public void Simulate_adapter_uses_block_gas_used_for_budget()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 100_000,
+            BlockGasLeft = 80_000,
+            Validate = true,
+            TxsWithExplicitGas = new[] { true }
+        };
+
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(ci =>
+            {
+                Transaction tx = ci.Arg<Transaction>();
+                tx.SpentGas = 10_000;
+                tx.BlockGasUsed = 50_000;
+                return TransactionResult.Ok;
+            });
+
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+            .WithGasLimit(60_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        adapter.Execute(transaction, Substitute.For<ITxTracer>());
+
+        simulateRequestState.TotalGasLeft.Should().Be(50_000);
+        simulateRequestState.BlockGasLeft.Should().Be(30_000);
+    }
 }

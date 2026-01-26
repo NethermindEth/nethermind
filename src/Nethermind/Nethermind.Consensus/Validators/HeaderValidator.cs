@@ -94,7 +94,8 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
-                   && ValidateRequestsHash(header, spec, ref error);
+                   && ValidateRequestsHash(header, spec, ref error)
+                   && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -381,5 +382,38 @@ namespace Nethermind.Consensus.Validators
         {
             return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         }
+
+        protected virtual bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7843Enabled)
+            {
+                if (header.SlotNumber is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
+                    error = BlockErrorMessages.MissingSlotNumber;
+                    return false;
+                }
+
+                // how to validate at fork boundary?
+                if (parent.SlotNumber is not null && header.SlotNumber != parent.SlotNumber + 1)
+                {
+                    error = BlockErrorMessages.InvalidSlotNumber;
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.Hash}) - slot number does not increment parent");
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.SlotNumber is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
+                    error = BlockErrorMessages.SlotNumberNotEnabled;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
     }
 }

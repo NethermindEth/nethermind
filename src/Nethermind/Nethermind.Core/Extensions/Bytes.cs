@@ -380,6 +380,10 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long ToPositiveLong(this byte[] bytes)
+            => ((ReadOnlySpan<byte>)bytes).ToPositiveLong();
+
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
         {
             return ToUnsignedBigInteger(bytes.AsSpan());

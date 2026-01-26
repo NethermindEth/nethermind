@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -68,8 +69,8 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public ArrayPoolList<AddressAsKey>? GetAccountChanges()
         => _innerWorldState.GetAccountChanges();
 
-    public virtual UInt256 GetBalance(Address address)
-        => _innerWorldState.GetBalance(address);
+    public virtual ref readonly UInt256 GetBalance(Address address)
+        => ref _innerWorldState.GetBalance(address);
 
     public virtual byte[]? GetCode(Address address)
         => _innerWorldState.GetCode(address);
@@ -77,8 +78,8 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public byte[]? GetCode(in ValueHash256 codeHash)
         => _innerWorldState.GetCode(codeHash);
 
-    public virtual ValueHash256 GetCodeHash(Address address)
-        => _innerWorldState.GetCodeHash(address);
+    public virtual ref readonly ValueHash256 GetCodeHash(Address address)
+        => ref _innerWorldState.GetCodeHash(address);
 
     public byte[] GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);

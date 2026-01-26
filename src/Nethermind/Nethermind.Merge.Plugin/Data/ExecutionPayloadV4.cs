@@ -68,4 +68,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// </summary>
     [JsonRequired]
     public sealed override byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ulong? SlotNumber { get; set; }
 }
