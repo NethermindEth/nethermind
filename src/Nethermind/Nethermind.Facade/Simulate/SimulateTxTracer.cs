@@ -18,33 +18,30 @@ namespace Nethermind.Facade.Simulate;
 
 public sealed class SimulateTxTracer : TxTracer
 {
-    private static readonly Hash256 TransferSignature =
-        new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
-
-    private static readonly AbiSignature AbiTransferSignature = new("", AbiType.UInt256);
-
-    private static readonly Address Erc20Sender = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
-    private readonly bool _isTracingTransfers;
 
-    public SimulateTxTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
-        ulong currentBlockTimestamp, ulong txIndex)
+    public SimulateTxTracer(
+        bool isTracingTransfers,
+        Transaction tx,
+        ulong currentBlockNumber,
+        Hash256 currentBlockHash,
+        ulong currentBlockTimestamp,
+        ulong txIndex)
     {
-        // Note: Tx hash will be mutated as tx is modified while processing block
+        // Note: Tx hash will be mutated as tx is modified while processing the block
         _tx = tx;
         _currentBlockNumber = currentBlockNumber;
         _currentBlockHash = currentBlockHash;
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
-        _isTracingTransfers = isTracingTransfers;
         IsTracingReceipt = true;
         IsTracingLogs = true;
-        IsTracingActions = true;
+        IsTracingActions = isTracingTransfers;
         _logs = new();
     }
 
@@ -52,13 +49,11 @@ public sealed class SimulateTxTracer : TxTracer
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        if (!_isTracingTransfers) return;
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         if (callType == ExecutionType.DELEGATECALL) return;
         if (value > UInt256.Zero)
         {
-            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, value);
-            _logs.Add(new LogEntry(Erc20Sender, data, [TransferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]));
+            _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
         }
     }
 
@@ -67,8 +62,7 @@ public sealed class SimulateTxTracer : TxTracer
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (balance > UInt256.Zero)
         {
-            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, balance);
-            _logs.Add(new LogEntry(Erc20Sender, data, [TransferSignature, address.ToHash().ToHash256(), refundAddress.ToHash().ToHash256()]));
+            _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
         }
     }
 

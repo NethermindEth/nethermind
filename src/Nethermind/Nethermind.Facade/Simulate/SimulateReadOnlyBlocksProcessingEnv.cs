@@ -34,7 +34,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
         blockTreeOverlay.ResetMainChain();
-        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock, null);
+        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
             worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
         );

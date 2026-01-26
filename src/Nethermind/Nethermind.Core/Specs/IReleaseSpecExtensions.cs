@@ -66,5 +66,6 @@ public static class IReleaseSpecExtensions
         public bool IsPrecompile(Address address) => spec.Precompiles.Contains(address);
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
+        public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
     }
 }
