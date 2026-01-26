@@ -143,6 +143,7 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
             AdditiveAccountPlan additivePlan = new(beneficiary, feeCollector);
             HashSet<AddressAsKey> writeAccounts = [];
             HashSet<StorageCell> writeStorage = [];
+            HashSet<AddressAsKey> destructedAccounts = [];
 
             for (int offset = 0; offset < windowLength; offset++)
             {
@@ -164,7 +165,15 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
                     {
                         applyTrace = false;
                     }
+                    else if (OverlapsStorageAddress(result.Trace.ReadStorage, destructedAccounts))
+                    {
+                        applyTrace = false;
+                    }
                     else if (Overlaps(result.Trace.WriteStorage, writeStorage))
+                    {
+                        applyTrace = false;
+                    }
+                    else if (OverlapsStorageAddress(result.Trace.WriteStorage, destructedAccounts))
                     {
                         applyTrace = false;
                     }
@@ -173,6 +182,14 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
                         applyTrace = false;
                     }
                     else if (Overlaps(writes, writeAccounts))
+                    {
+                        applyTrace = false;
+                    }
+                    else if (OverlapsStorageAddress(writeStorage, result.Trace.SelfDestructs))
+                    {
+                        applyTrace = false;
+                    }
+                    else if (Overlaps(result.Trace.SelfDestructs, destructedAccounts))
                     {
                         applyTrace = false;
                     }
@@ -220,22 +237,17 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
                         writeAccounts.UnionWith(txWrites);
                     }
                     writeStorage.UnionWith(result.Trace.WriteStorage);
+                    destructedAccounts.UnionWith(result.Trace.SelfDestructs);
                 }
                 else
                 {
                     TransactionResult seqResult = ExecuteSequentialTransaction(block, tx, txIndex, receiptsTracer, processingOptions, out StmTxTracer seqTrace);
-                    AdditiveAccountPlan additiveCheck = additivePlan;
-                    if (!additiveCheck.TryAccumulate(new StmExecutionResult(txIndex, tx, seqResult, seqTrace, null)))
-                    {
-                        additivePlan.Apply(_stateProvider, spec);
-                        return ProcessRemainingSequential(block, txIndex + 1, receiptsTracer, processingOptions);
-                    }
-
                     if (seqTrace.TryGetWriteAccounts(additivePlan, out HashSet<AddressAsKey> seqWrites))
                     {
                         writeAccounts.UnionWith(seqWrites);
                     }
                     writeStorage.UnionWith(seqTrace.WriteStorage);
+                    destructedAccounts.UnionWith(seqTrace.SelfDestructs);
                 }
             }
 
@@ -409,6 +421,19 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         return false;
     }
 
+    private static bool OverlapsStorageAddress(HashSet<StorageCell> storageCells, HashSet<AddressAsKey> accounts)
+    {
+        foreach (StorageCell cell in storageCells)
+        {
+            if (accounts.Contains(cell.Address))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static int FindFirstInvalid(ReadOnlySpan<StmExecutionResult> results)
     {
         for (int i = 0; i < results.Length; i++)
@@ -548,6 +573,7 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         public HashSet<AddressAsKey> ReadAccounts { get; } = [];
         public HashSet<StorageCell> ReadStorage { get; } = [];
         public HashSet<StorageCell> WriteStorage { get; } = [];
+        public HashSet<AddressAsKey> SelfDestructs { get; } = [];
         public Dictionary<AddressAsKey, AccountChange> AccountChanges { get; } = [];
         public Dictionary<StorageCell, StorageChange> StorageChanges { get; } = [];
 
@@ -566,6 +592,7 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         public override void ReportStorageRead(in StorageCell storageCell)
         {
             ReadStorage.Add(storageCell);
+            ReadAccounts.Add(storageCell.Address);
         }
 
         public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -605,6 +632,11 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         {
         }
 
+        public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            SelfDestructs.Add(address);
+        }
+
         public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             Recipient = recipient;
@@ -624,8 +656,18 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
         public bool TryGetWriteAccounts(in AdditiveAccountPlan additivePlan, out HashSet<AddressAsKey> writes)
         {
-            writes = new HashSet<AddressAsKey>(AccountChanges.Count);
+            writes = new HashSet<AddressAsKey>(AccountChanges.Count + SelfDestructs.Count);
             foreach ((AddressAsKey address, AccountChange change) in AccountChanges)
+            {
+                if (additivePlan.ShouldSkipAccount(address))
+                {
+                    continue;
+                }
+
+                writes.Add(address);
+            }
+
+            foreach (AddressAsKey address in SelfDestructs)
             {
                 if (additivePlan.ShouldSkipAccount(address))
                 {
@@ -662,6 +704,18 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
                 stateProvider.CreateAccountIfNotExists(cell.Address, UInt256.Zero);
                 stateProvider.Set(cell, change.After ?? Array.Empty<byte>());
+            }
+
+            foreach (AddressAsKey address in SelfDestructs)
+            {
+                if (additivePlan.ShouldSkipAccount(address))
+                {
+                    continue;
+                }
+
+                Address account = address;
+                stateProvider.ClearStorage(account);
+                stateProvider.DeleteAccount(account);
             }
 
             return true;
@@ -770,6 +824,16 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         public bool TryAccumulate(in StmExecutionResult result)
         {
             StmTxTracer trace = result.Trace;
+
+            if (trace.SelfDestructs.Contains(_beneficiary))
+            {
+                return false;
+            }
+
+            if (_feeCollector is not null && trace.SelfDestructs.Contains(_feeCollector))
+            {
+                return false;
+            }
 
             if (_allowBeneficiary && !TryAccumulateAdditive(trace, _beneficiary, ref _beneficiaryDelta))
             {
