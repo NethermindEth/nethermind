@@ -36,7 +36,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     private readonly ISurgeConfig _surgeConfig;
 
     private DateTime _lastGasPriceCalculation = DateTime.MinValue;
-    private ulong _averageGasUsage;
+    private ulong _cachedAverageGasUsage;
     private ulong _inboxRingBufferSize;
     private bool _isInboxRingBufferFull;
 
@@ -50,6 +50,12 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         _l1RpcClient = l1RpcClient;
         _surgeConfig = surgeConfig;
+
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"[{ClassName}] Initialized with L1 endpoint: {surgeConfig.L1EthApiEndpoint}, " +
+                         $"TaikoInbox: {surgeConfig.TaikoInboxAddress}, MinGasPrice: {minGasPrice}");
+        }
     }
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
@@ -65,6 +71,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         Hash256 headBlockHash = headBlock.Hash!;
         bool forceRefresh = ForceRefreshGasPrice();
+        ulong averageGasUsage = _cachedAverageGasUsage;
 
         // Check if the cached price exists.
         if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
@@ -80,7 +87,8 @@ public class SurgeGasPriceOracle : GasPriceOracle
         {
             // Since the head block has changed, we need to re-compute the average gas usage and
             // update the inbox ring buffer full status
-            _averageGasUsage = GetAverageGasUsagePerBlock();
+            _cachedAverageGasUsage = GetAverageGasUsagePerBlock();
+            averageGasUsage = _cachedAverageGasUsage;
 
             if (!_isInboxRingBufferFull)
             {
@@ -117,10 +125,10 @@ public class SurgeGasPriceOracle : GasPriceOracle
         UInt256 submissionCostPerBlock = submissionCostPerBatch / _surgeConfig.BlocksPerBatch;
 
         // Reduce the average gas usage to prevent upward trend
-        _averageGasUsage = _averageGasUsage * (ulong)_surgeConfig.AverageGasUsagePercentage / 100;
+        averageGasUsage = averageGasUsage * (ulong)_surgeConfig.AverageGasUsagePercentage / 100;
 
         UInt256 gasPriceEstimate = submissionCostPerBlock /
-                                   Math.Max(_averageGasUsage, _surgeConfig.L2BlockGasTarget);
+                                   Math.Max(averageGasUsage, _surgeConfig.L2BlockGasTarget);
 
         // Adjust the gas price estimate with the config values.
         UInt256 adjustedGasPriceEstimate;
@@ -142,7 +150,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         {
             _logger.Debug($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
                           $"TWAP L1 Base Fee: {twapL1BaseFee}, TWAP Blob Base Fee: {twapBlobBaseFee}, " +
-                          $"Submission Cost Per Block: {submissionCostPerBlock}, Average Gas Usage: {_averageGasUsage}, " +
+                          $"Submission Cost Per Block: {submissionCostPerBlock}, Average Gas Usage: {averageGasUsage}, " +
                           $"Adjusted with boost base fee percentage of {_surgeConfig.BoostBaseFeePercentage}% " +
                           $"and sharing percentage of {_surgeConfig.SharingPercentage}%");
         }
