@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Producers
 
         public IBlockProducerEnv Create()
         {
-            IWorldStateScopeProvider worldState = new TracedAccessWorldStateScopeProvider(worldStateManager.CreateResettableWorldState());
+            IWorldStateScopeProvider worldState = new ParallelWorldStateScopeProvider(worldStateManager.CreateResettableWorldState());
             ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
                 ConfigureBuilder(builder)
                     .AddScoped(worldState));
