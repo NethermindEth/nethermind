@@ -218,7 +218,10 @@ namespace Nethermind.State
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-            => SubtractFromBalance(address, balanceChange, spec, out _);
+        {
+            DebugGuardInScope();
+            _stateProvider.SubtractFromBalance(address, balanceChange, spec, out _);
+        }
         public void IncrementNonce(Address address, UInt256 delta)
             => IncrementNonce(address, delta, out _);
         public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
@@ -273,10 +276,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public UInt256 GetBalance(Address address)
+        public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
-            return _stateProvider.GetBalance(address);
+            return ref _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)
@@ -298,10 +301,10 @@ namespace Nethermind.State
             return _stateProvider.GetCode(in codeHash);
         }
 
-        public ValueHash256 GetCodeHash(Address address)
+        public ref readonly ValueHash256 GetCodeHash(Address address)
         {
             DebugGuardInScope();
-            return _stateProvider.GetCodeHash(address);
+            return ref _stateProvider.GetCodeHash(address);
         }
 
         ValueHash256 IAccountStateProvider.GetCodeHash(Address address)

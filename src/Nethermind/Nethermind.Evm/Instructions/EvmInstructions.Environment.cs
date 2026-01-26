@@ -589,7 +589,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.SelfBalance);
 
         // Get balance for currently executing account.
-        UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
+        ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;

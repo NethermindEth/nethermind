@@ -107,16 +107,16 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _innerWorldState.Set(storageCell, newValue);
     }
 
-    public override UInt256 GetBalance(Address address)
+    public override ref readonly UInt256 GetBalance(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.GetBalance(address);
+        return ref _innerWorldState.GetBalance(address);
     }
 
-    public override ValueHash256 GetCodeHash(Address address)
+    public override ref readonly ValueHash256 GetCodeHash(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.GetCodeHash(address);
+        return ref _innerWorldState.GetCodeHash(address);
     }
 
     public override byte[]? GetCode(Address address)
