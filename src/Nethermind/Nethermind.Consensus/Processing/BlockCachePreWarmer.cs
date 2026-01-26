@@ -40,6 +40,7 @@ public sealed class BlockCachePreWarmer(
 {
     private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
+    private readonly ObjectPool<Dictionary<Address, SenderAccumulator>> _senderAccumulatorPool = new DefaultObjectPool<Dictionary<Address, SenderAccumulator>>(new SenderAccumulatorPoolPolicy(), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
     private readonly bool _groupBySender = groupBySender;
     private readonly bool _validateSenderNonce = validateSenderNonce;
@@ -179,8 +180,14 @@ public sealed class BlockCachePreWarmer(
         {
             Block block = blockState.Block;
             SenderWarmupPlan senderPlan = default;
-            senderPlan = BuildSenderWarmupPlan(block.Transactions, _groupBySender);
-            blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers);
+            senderPlan = BuildSenderWarmupPlanPooled(block.Transactions, _groupBySender);
+            ArrayPoolList<Address>? missingSenders = null;
+            if (senderPlan.UniqueSenders is not null && senderPlan.UniqueSenders.Count != 0)
+            {
+                missingSenders = BuildMissingSenders(senderPlan.UniqueSenders, blockState.Parent);
+            }
+
+            blockState.ApplyWarmupPlan(senderPlan, missingSenders, _validateSenderNonce, _fastPathSimpleTransfers);
 
             try
             {
@@ -232,10 +239,6 @@ public sealed class BlockCachePreWarmer(
 
                 Address senderAddress = tx.SenderAddress!;
                 IWorldState worldState = state.Scope.WorldState;
-                if (!worldState.AccountExists(senderAddress))
-                {
-                    worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                }
 
                 int senderOffset = state.SenderOffsets![i];
                 if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
@@ -294,10 +297,6 @@ public sealed class BlockCachePreWarmer(
                     tx = state.Block.Transactions[txIndex];
                     Address senderAddress = tx.SenderAddress!;
                     IWorldState worldState = state.Scope.WorldState;
-                    if (!worldState.AccountExists(senderAddress))
-                    {
-                        worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                    }
 
                     int senderOffset = state.SenderOffsets![txIndex];
                     if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
@@ -369,7 +368,45 @@ public sealed class BlockCachePreWarmer(
         return !worldState.IsContract(recipient);
     }
 
-    internal static SenderWarmupPlan BuildSenderWarmupPlan(ReadOnlySpan<Transaction> transactions, bool includeGroups)
+    private ArrayPoolList<Address>? BuildMissingSenders(ArrayPoolList<Address> uniqueSenders, BlockHeader parent)
+    {
+        IReadOnlyTxProcessorSource env = _envPool.Get();
+        ArrayPoolList<Address>? missing = null;
+        try
+        {
+            using IReadOnlyTxProcessingScope scope = env.Build(parent);
+            foreach (Address sender in uniqueSenders.AsSpan())
+            {
+                try
+                {
+                    if (!scope.WorldState.AccountExists(sender))
+                    {
+                        missing ??= new ArrayPoolList<Address>(uniqueSenders.Count);
+                        missing.Add(sender);
+                    }
+                }
+                catch (MissingTrieNodeException)
+                {
+                    missing ??= new ArrayPoolList<Address>(uniqueSenders.Count);
+                    missing.Add(sender);
+                }
+            }
+        }
+        finally
+        {
+            _envPool.Return(env);
+        }
+
+        return missing;
+    }
+
+    private SenderWarmupPlan BuildSenderWarmupPlanPooled(ReadOnlySpan<Transaction> transactions, bool includeGroups) =>
+        BuildSenderWarmupPlanCore(transactions, includeGroups, _senderAccumulatorPool);
+
+    internal static SenderWarmupPlan BuildSenderWarmupPlan(ReadOnlySpan<Transaction> transactions, bool includeGroups) =>
+        BuildSenderWarmupPlanCore(transactions, includeGroups, senderAccumulatorPool: null);
+
+    private static SenderWarmupPlan BuildSenderWarmupPlanCore(ReadOnlySpan<Transaction> transactions, bool includeGroups, ObjectPool<Dictionary<Address, SenderAccumulator>>? senderAccumulatorPool)
     {
         int txCount = transactions.Length;
         if (txCount == 0)
@@ -378,8 +415,9 @@ public sealed class BlockCachePreWarmer(
         }
 
         int[] offsets = ArrayPool<int>.Shared.Rent(txCount);
-        Dictionary<Address, SenderAccumulator> senders = new(txCount);
+        Dictionary<Address, SenderAccumulator> senders = senderAccumulatorPool?.Get() ?? new Dictionary<Address, SenderAccumulator>(txCount);
         ArrayPoolList<ArrayPoolList<int>>? groups = includeGroups ? new ArrayPoolList<ArrayPoolList<int>>(Math.Min(txCount, 1024)) : null;
+        ArrayPoolList<Address> uniqueSenders = new(txCount);
 
         for (int i = 0; i < txCount; i++)
         {
@@ -389,6 +427,7 @@ public sealed class BlockCachePreWarmer(
             {
                 int groupIndex = groups is null ? -1 : groups.Count;
                 acc = new SenderAccumulator(0, groupIndex);
+                uniqueSenders.Add(sender);
                 if (groups is not null)
                 {
                     groups.Add(new ArrayPoolList<int>(capacity: 4));
@@ -404,18 +443,21 @@ public sealed class BlockCachePreWarmer(
             }
         }
 
-        return new SenderWarmupPlan(offsets, groups);
+        senderAccumulatorPool?.Return(senders);
+        return new SenderWarmupPlan(offsets, groups, uniqueSenders);
     }
 
     internal readonly struct SenderWarmupPlan : IDisposable
     {
         private readonly int[]? _offsets;
         public readonly ArrayPoolList<ArrayPoolList<int>>? SenderGroups;
+        public readonly ArrayPoolList<Address>? UniqueSenders;
 
-        public SenderWarmupPlan(int[] offsets, ArrayPoolList<ArrayPoolList<int>>? senderGroups)
+        public SenderWarmupPlan(int[] offsets, ArrayPoolList<ArrayPoolList<int>>? senderGroups, ArrayPoolList<Address>? uniqueSenders)
         {
             _offsets = offsets;
             SenderGroups = senderGroups;
+            UniqueSenders = uniqueSenders;
         }
 
         public int[]? OffsetsArray => _offsets;
@@ -435,6 +477,8 @@ public sealed class BlockCachePreWarmer(
                 }
                 SenderGroups.Dispose();
             }
+
+            UniqueSenders?.Dispose();
         }
     }
 
@@ -442,6 +486,22 @@ public sealed class BlockCachePreWarmer(
     {
         public int Count = count;
         public int GroupIndex = groupIndex;
+    }
+
+    private sealed class SenderAccumulatorPoolPolicy : IPooledObjectPolicy<Dictionary<Address, SenderAccumulator>>
+    {
+        public Dictionary<Address, SenderAccumulator> Create() => new();
+
+        public bool Return(Dictionary<Address, SenderAccumulator> obj)
+        {
+            int count = obj.Count;
+            obj.Clear();
+            if (count > 4096)
+            {
+                obj.TrimExcess();
+            }
+            return true;
+        }
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
@@ -604,6 +664,7 @@ public sealed class BlockCachePreWarmer(
         public int[]? SenderOffsets;
         public bool ValidateSenderNonce;
         public bool FastPathSimpleTransfers;
+        public ArrayPoolList<Address>? MissingSenders;
 
         public BlockState InitThreadState()
         {
@@ -617,11 +678,12 @@ public sealed class BlockCachePreWarmer(
             Interlocked.Increment(ref LastExecutedTransaction);
         }
 
-        public void ApplyWarmupPlan(SenderWarmupPlan plan, bool validateSenderNonce, bool fastPathSimpleTransfers)
+        public void ApplyWarmupPlan(SenderWarmupPlan plan, ArrayPoolList<Address>? missingSenders, bool validateSenderNonce, bool fastPathSimpleTransfers)
         {
             SenderOffsets = plan.OffsetsArray;
             ValidateSenderNonce = validateSenderNonce;
             FastPathSimpleTransfers = fastPathSimpleTransfers;
+            MissingSenders = missingSenders;
         }
 
         public void ClearWarmupPlan()
@@ -629,6 +691,8 @@ public sealed class BlockCachePreWarmer(
             SenderOffsets = null;
             ValidateSenderNonce = false;
             FastPathSimpleTransfers = false;
+            MissingSenders?.Dispose();
+            MissingSenders = null;
         }
     }
 
@@ -646,6 +710,7 @@ public sealed class BlockCachePreWarmer(
         public int[]? SenderOffsets => Src.SenderOffsets;
         public bool ValidateSenderNonce => Src.ValidateSenderNonce;
         public bool FastPathSimpleTransfers => Src.FastPathSimpleTransfers;
+        public ArrayPoolList<Address>? MissingSenders => Src.MissingSenders;
 
         public BlockState(BlockStateSource src)
         {
@@ -654,6 +719,16 @@ public sealed class BlockCachePreWarmer(
             Scope = Env.Build(src.Parent);
             Scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(Block.Header, Spec));
             _senderBaseNonces = Src.SenderOffsets is not null ? new Dictionary<Address, UInt256>() : null;
+            WarmupMissingSenders();
+        }
+
+        private void WarmupMissingSenders()
+        {
+            if (Src.MissingSenders is null) return;
+            foreach (Address sender in Src.MissingSenders.AsSpan())
+            {
+                Scope.WorldState.CreateAccountIfNotExists(sender, UInt256.Zero);
+            }
         }
 
         public void Dispose()
