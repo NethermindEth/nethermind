@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
@@ -127,8 +128,22 @@ public class ReadOnlyTxProcessingScopeTests
         worldState.IsContract(recipient).Returns(true);
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(new ForkActivation(0));
 
-        BlockCachePreWarmer.WarmupCodeForRecipient(worldState, recipient, spec);
+        HashSet<Address> repeated = new() { recipient };
+        BlockCachePreWarmer.WarmupCodeForRecipient(worldState, recipient, spec, repeated);
 
         worldState.Received(1).GetCode(recipient);
+    }
+
+    [Test]
+    public void WarmupCodeForRecipient_skips_non_repeated_recipient()
+    {
+        Address recipient = Address.FromNumber(1237);
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.IsContract(recipient).Returns(true);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(new ForkActivation(0));
+
+        BlockCachePreWarmer.WarmupCodeForRecipient(worldState, recipient, spec, repeatedRecipients: new HashSet<Address>());
+
+        worldState.DidNotReceive().GetCode(recipient);
     }
 }

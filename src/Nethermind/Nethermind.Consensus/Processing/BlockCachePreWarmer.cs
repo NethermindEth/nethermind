@@ -191,15 +191,18 @@ public sealed class BlockCachePreWarmer(
         {
             Block block = blockState.Block;
             SenderWarmupPlan senderPlan = default;
+            HashSet<Address>? repeatedRecipients = null;
             bool useSenderPlan = _groupBySender || _validateSenderNonce;
             if (useSenderPlan)
             {
                 senderPlan = BuildSenderWarmupPlan(block.Transactions, _groupBySender);
-                blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers, _warmupStorageKeys, _warmupCode);
+                repeatedRecipients = _warmupCode ? BuildRepeatedRecipients(block.Transactions) : null;
+                blockState.ApplyWarmupPlan(senderPlan, repeatedRecipients, _validateSenderNonce, _fastPathSimpleTransfers, _warmupStorageKeys, _warmupCode);
             }
             else
             {
-                blockState.ApplyWarmupPlan(default, _validateSenderNonce, _fastPathSimpleTransfers, _warmupStorageKeys, _warmupCode);
+                repeatedRecipients = _warmupCode ? BuildRepeatedRecipients(block.Transactions) : null;
+                blockState.ApplyWarmupPlan(default, repeatedRecipients, _validateSenderNonce, _fastPathSimpleTransfers, _warmupStorageKeys, _warmupCode);
             }
 
             try
@@ -311,7 +314,7 @@ public sealed class BlockCachePreWarmer(
 
                     if (state.WarmupCode)
                     {
-                        WarmupCodeForRecipient(worldState, tx.To, state.Spec);
+                        WarmupCodeForRecipient(worldState, tx.To, state.Spec, state.RepeatedRecipients);
                     }
 
                     if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
@@ -382,7 +385,7 @@ public sealed class BlockCachePreWarmer(
 
                     if (state.WarmupCode)
                     {
-                        WarmupCodeForRecipient(worldState, tx.To, state.Spec);
+                        WarmupCodeForRecipient(worldState, tx.To, state.Spec, state.RepeatedRecipients);
                     }
 
                     if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
@@ -490,9 +493,14 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    internal static void WarmupCodeForRecipient(IWorldState worldState, Address? recipient, IReleaseSpec spec)
+    internal static void WarmupCodeForRecipient(IWorldState worldState, Address? recipient, IReleaseSpec spec, HashSet<Address>? repeatedRecipients)
     {
         if (recipient is null || spec.IsPrecompile(recipient))
+        {
+            return;
+        }
+
+        if (repeatedRecipients is not null && !repeatedRecipients.Contains(recipient))
         {
             return;
         }
@@ -501,6 +509,33 @@ public sealed class BlockCachePreWarmer(
         {
             worldState.GetCode(recipient);
         }
+    }
+
+    internal static HashSet<Address>? BuildRepeatedRecipients(ReadOnlySpan<Transaction> transactions)
+    {
+        if (transactions.IsEmpty)
+        {
+            return null;
+        }
+
+        HashSet<Address> seen = new(transactions.Length);
+        HashSet<Address> repeated = new();
+
+        foreach (Transaction tx in transactions)
+        {
+            Address? recipient = tx.To;
+            if (recipient is null)
+            {
+                continue;
+            }
+
+            if (!seen.Add(recipient))
+            {
+                repeated.Add(recipient);
+            }
+        }
+
+        return repeated.Count == 0 ? null : repeated;
     }
 
     internal static SenderWarmupPlan BuildSenderWarmupPlan(ReadOnlySpan<Transaction> transactions, bool includeGroups)
@@ -744,6 +779,7 @@ public sealed class BlockCachePreWarmer(
         public bool FastPathSimpleTransfers;
         public bool WarmupStorageKeys;
         public bool WarmupCode;
+        public HashSet<Address>? RepeatedRecipients;
 
         public BlockState InitThreadState()
         {
@@ -757,7 +793,7 @@ public sealed class BlockCachePreWarmer(
             Interlocked.Increment(ref LastExecutedTransaction);
         }
 
-        public void ApplyWarmupPlan(SenderWarmupPlan plan, bool validateSenderNonce, bool fastPathSimpleTransfers, bool warmupStorageKeys, bool warmupCode)
+        public void ApplyWarmupPlan(SenderWarmupPlan plan, HashSet<Address>? repeatedRecipients, bool validateSenderNonce, bool fastPathSimpleTransfers, bool warmupStorageKeys, bool warmupCode)
         {
             SenderOffsets = plan.OffsetsArray;
             SenderOffsetsCount = plan.TransactionCount;
@@ -765,6 +801,7 @@ public sealed class BlockCachePreWarmer(
             FastPathSimpleTransfers = fastPathSimpleTransfers;
             WarmupStorageKeys = warmupStorageKeys;
             WarmupCode = warmupCode;
+            RepeatedRecipients = repeatedRecipients;
         }
 
         public void ClearWarmupPlan()
@@ -775,6 +812,7 @@ public sealed class BlockCachePreWarmer(
             FastPathSimpleTransfers = false;
             WarmupStorageKeys = false;
             WarmupCode = false;
+            RepeatedRecipients = null;
         }
     }
 
@@ -795,6 +833,7 @@ public sealed class BlockCachePreWarmer(
         public bool FastPathSimpleTransfers => Src.FastPathSimpleTransfers;
         public bool WarmupStorageKeys => Src.WarmupStorageKeys;
         public bool WarmupCode => Src.WarmupCode;
+        public HashSet<Address>? RepeatedRecipients => Src.RepeatedRecipients;
         public bool UseSenderOffsets => Src.SenderOffsets is not null;
 
         public BlockState(BlockStateSource src)
