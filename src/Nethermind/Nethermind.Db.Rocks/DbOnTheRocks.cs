@@ -71,6 +71,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly List<OptionsHandle> _doNotGcOptions = [];
 
     private readonly IRocksDbConfig _perTableDbConfig;
+    internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -1971,6 +1972,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf)
     {
         ReadOptions readOptions = new ReadOptions();
+        readOptions.SetVerifyChecksums(VerifyChecksum);
 
         IntPtr iterateLowerBound = IntPtr.Zero;
         IntPtr iterateUpperBound = IntPtr.Zero;
@@ -1996,6 +1998,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return new RocksDbSnapshot(this, () =>
         {
             ReadOptions readOptions = new ReadOptions();
+            readOptions.SetVerifyChecksums(VerifyChecksum);
             readOptions.SetSnapshot(snapshot);
             return readOptions;
         }, null, snapshot);
