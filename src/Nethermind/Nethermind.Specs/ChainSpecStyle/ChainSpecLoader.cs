@@ -200,6 +200,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
 
             Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
+
+            Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
         };
 

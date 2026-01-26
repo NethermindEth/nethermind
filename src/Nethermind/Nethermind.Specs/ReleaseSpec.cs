@@ -112,6 +112,7 @@ public class ReleaseSpec : IReleaseSpec
     [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
     public bool IsEofEnabled { get; set; }
+    public bool IsEip8024Enabled { get; set; }
     public bool IsEip6110Enabled { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
     public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }

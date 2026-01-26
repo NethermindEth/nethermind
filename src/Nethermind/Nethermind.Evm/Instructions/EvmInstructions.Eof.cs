@@ -524,9 +524,10 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Duplicates a stack item based on an immediate operand.
     /// The immediate value (n) specifies that the (n+1)th element from the top is duplicated.
+    /// For EOF code only.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -555,9 +556,10 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Swaps two stack items. The immediate operand specifies the swap distance.
     /// Swaps the top-of-stack with the (n+1)th element.
+    /// For EOF code only.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -585,9 +587,10 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Exchanges two stack items using a combined immediate operand.
     /// The high nibble and low nibble of the operand specify the two swap distances.
+    /// For EOF code only.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
