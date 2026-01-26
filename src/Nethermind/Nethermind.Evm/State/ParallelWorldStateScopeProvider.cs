@@ -7,9 +7,9 @@ namespace Nethermind.Evm.State;
 
 /// <summary>
 /// A decorator for <see cref="IWorldStateScopeProvider"/> that enables block access list tracing
-/// when <see cref="TracedAccessWorldState"/> is used.
+/// when <see cref="ParallelWorldState"/> is used.
 /// </summary>
-public class TracedAccessWorldStateScopeProvider(IWorldStateScopeProvider innerProvider) : IWorldStateScopeProvider
+public class ParallelWorldStateScopeProvider(IWorldStateScopeProvider innerProvider) : IWorldStateScopeProvider
 {
     public bool HasRoot(BlockHeader? baseBlock) => innerProvider.HasRoot(baseBlock);
 

@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
+public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
     public bool Enabled { get; set; } = false;
     public BlockAccessList BlockAccessList = new();

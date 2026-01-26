@@ -66,7 +66,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
-        private readonly TracedAccessWorldState? _tracedAccessWorldState;
+        private readonly ParallelWorldState? _parallelWorldState;
 
         [Flags]
         protected enum ExecutionOptions
@@ -122,7 +122,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            _tracedAccessWorldState = worldState as TracedAccessWorldState;
+            _parallelWorldState = worldState as ParallelWorldState;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -299,9 +299,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
 
-                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled && IncludeAccountRead(res))
+                    if (_parallelWorldState is not null && _parallelWorldState.Enabled && IncludeAccountRead(res))
                     {
-                        _tracedAccessWorldState.AddAccountRead(authority);
+                        _parallelWorldState.AddAccountRead(authority);
                     }
                 }
                 else
