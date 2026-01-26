@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules
         private Dictionary<string, Pool> _pools = new();
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
         private FrozenDictionary<string, Pool>? _frozenPools = null;
+        private FrozenDictionary<string, ResolvedMethodInfo>? _frozenRestMethods = null;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -100,6 +101,7 @@ namespace Nethermind.JsonRpc.Modules
                     });
                 _frozenPools = null;
                 _frozenMethods = null;
+                _frozenRestMethods = null;
 
                 _modules.Add(moduleType);
 
@@ -131,6 +133,37 @@ namespace Nethermind.JsonRpc.Modules
         {
             _frozenPools ??= _pools.ToFrozenDictionary(StringComparer.Ordinal);
             _frozenMethods ??= _methods.ToFrozenDictionary(StringComparer.Ordinal);
+        }
+
+        public IReadOnlyDictionary<string, ResolvedMethodInfo> GetRestMethodsByPath()
+        {
+            EnsureFrozenCollection();
+            _frozenRestMethods ??= BuildRestMethods();
+            return _frozenRestMethods;
+        }
+
+        private FrozenDictionary<string, ResolvedMethodInfo> BuildRestMethods()
+        {
+            Dictionary<string, ResolvedMethodInfo> restMethods = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach ((string name, ResolvedMethodInfo methodInfo) in _frozenMethods!)
+            {
+                RestMethodAttribute? restAttribute = methodInfo.MethodInfo.GetCustomAttribute<RestMethodAttribute>();
+                if (restAttribute is null)
+                {
+                    continue;
+                }
+
+                if (!restMethods.TryAdd(restAttribute.Path, methodInfo))
+                {
+                    if (_logger.IsWarn)
+                    {
+                        _logger.Warn($"Duplicate REST path '{restAttribute.Path}' detected for method '{name}'. Keeping the first registered method.");
+                    }
+                }
+            }
+
+            return restMethods.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         }
 
         public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)

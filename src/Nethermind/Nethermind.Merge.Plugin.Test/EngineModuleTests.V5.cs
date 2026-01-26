@@ -52,7 +52,7 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
+        ResultWrapper<ICollection<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
 
         if (requestSize > 128)
         {
@@ -75,7 +75,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
+        ResultWrapper<ICollection<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2([]);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
@@ -99,13 +99,13 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<ICollection<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
         result.Data.Should().NotBeNull();
         result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
+        result.Data!.Select(static b => b!.Proofs!.Length).Should().HaveCount(numberOfBlobs);
         result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
     }
 
@@ -127,7 +127,7 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<ICollection<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeNull();
@@ -162,7 +162,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<ICollection<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
         if (multiplier > 1)
         {
             result.Result.Should().Be(Result.Success);
@@ -174,7 +174,7 @@ public partial class EngineModuleTests
 
             result.Data.Should().NotBeNull();
             result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-            result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
+            result.Data!.Select(static b => b!.Proofs!.Length).Should().HaveCount(numberOfBlobs);
             result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
         }
     }
@@ -208,7 +208,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<ICollection<NullableBlobAndProofV2>> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().NotBeNull();
@@ -224,8 +224,8 @@ public partial class EngineModuleTests
             if (shouldBeFound)
             {
                 result.Data!.ElementAt(i).Should().NotBeNull();
-                result.Data!.ElementAt(i)!.Blob.Should().BeEquivalentTo(wrapper.Blobs[foundIndex]);
-                result.Data!.ElementAt(i)!.Proofs.Should().BeEquivalentTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128));
+                result.Data!.ElementAt(i)!.BlobAndProofV2!.Blob.Should().BeEquivalentTo(wrapper.Blobs[foundIndex]);
+                result.Data!.ElementAt(i)!.BlobAndProofV2!.Proofs.Should().BeEquivalentTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128));
                 foundIndex++;
             }
             else

@@ -385,7 +385,8 @@ public partial class EngineModuleTests
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, ICollection<BlobAndProofV2>?>>(),
+                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, ICollection<NullableBlobAndProofV2>>>(),
                  Substitute.For<IEngineRequestsTracker>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
@@ -420,7 +421,7 @@ public partial class EngineModuleTests
                     txBlobVersionedHashes[txHashIndex][1] = hashByte;
                     txHashIndex++;
                 }
-                transactions[txIndex] = Build.A.Transaction.WithNonce((ulong)txIndex)
+                transactions[txIndex] = Build.A.Transaction.WithNonce(txIndex)
                     .WithType(TxType.Blob)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(TestItem.AddressB)

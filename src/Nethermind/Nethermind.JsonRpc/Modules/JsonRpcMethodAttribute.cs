@@ -22,4 +22,32 @@ namespace Nethermind.JsonRpc.Modules
 
         public string? ExampleResponse { get; set; }
     }
+
+    public abstract class RestMethodAttribute(string path) : Attribute
+    {
+        public string Path { get; set; } = path;
+
+        public string Description { get; set; }
+
+        public string? EdgeCaseHint { get; set; }
+
+        public bool IsImplemented { get; set; } = true;
+
+        public bool IsSharable { get; set; } = true;
+
+        public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
+
+        public string? ResponseDescription { get; set; }
+
+        public string? ExampleResponse { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public class GetAttribute(string path) : RestMethodAttribute(path) { }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public class PostAttribute(string path) : RestMethodAttribute(path) { }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public class PutAttribute(string path) : RestMethodAttribute(path) { }
 }

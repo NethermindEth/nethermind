@@ -12,14 +12,15 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV5Result?> _getPayloadHandlerV5;
-    private readonly IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> _getBlobsHandlerV2;
+    private readonly IAsyncHandler<GetBlobsHandlerV2Request, ICollection<BlobAndProofV2>?> _getBlobsHandlerV2;
+    private readonly IAsyncHandler<GetBlobsHandlerV2Request, ICollection<NullableBlobAndProofV2>> _getBlobsHandlerV3;
 
     public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(byte[] payloadId)
         => _getPayloadHandlerV5.HandleAsync(payloadId);
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes)
-         => _getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes));
+    public Task<ResultWrapper<ICollection<BlobAndProofV2>?>> engine_getBlobsV2(byte[][] versionedHashes)
+         => _getBlobsHandlerV2.HandleAsync(new(versionedHashes));
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes)
-         => _getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes, true));
+    public Task<ResultWrapper<ICollection<NullableBlobAndProofV2>>> engine_getBlobsV3(byte[][] versionedHashes)
+         => _getBlobsHandlerV3.HandleAsync(new(versionedHashes, true));
 }
