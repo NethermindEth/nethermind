@@ -396,7 +396,7 @@ public partial class EthRpcModule(
         RecoverTxSenderIfNeeded(transaction);
         TransactionConverterExtraData extraData = transactionResult.ExtraData with { ChainId = _specProvider.ChainId };
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            tx: transaction,
+            transaction: transaction,
             extraData: extraData);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);

@@ -195,7 +195,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         RecoverTxSenderIfNeeded(transaction);
         TransactionConverterExtraData extraData = transactionResult.ExtraData with { ChainId = _specProvider.ChainId };
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            tx: transaction,
+            transaction: transaction,
             extraData: extraData);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {

@@ -182,6 +182,9 @@ public abstract class TransactionForRpc
         }
     }
 
+    public static TransactionForRpc FromTransaction(Transaction transaction, TransactionConverterExtraData extraData) =>
+        TransactionJsonConverter.FromTransaction(transaction, extraData);
+
     public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, ulong? blockTimestamp = null, UInt256? baseFee = null, ulong? chainId = null) =>
         TransactionJsonConverter.FromTransaction(transaction, new()
         {

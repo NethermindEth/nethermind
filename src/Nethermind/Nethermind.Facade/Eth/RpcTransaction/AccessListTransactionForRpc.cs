@@ -46,5 +46,5 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     }
 
     public new static AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, chainId: extraData.ChainId);
+            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, chainId: extraData.ChainId);
 }

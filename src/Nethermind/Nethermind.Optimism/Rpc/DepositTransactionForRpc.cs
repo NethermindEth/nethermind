@@ -91,6 +91,6 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
 
     public override bool ShouldSetBaseFee() => false;
 
-    public static DepositTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+    public new static DepositTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, receipt: extraData.Receipt as OptimismTxReceipt);
 }
