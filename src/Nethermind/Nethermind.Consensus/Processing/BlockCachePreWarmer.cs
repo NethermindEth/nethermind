@@ -179,16 +179,8 @@ public sealed class BlockCachePreWarmer(
         {
             Block block = blockState.Block;
             SenderWarmupPlan senderPlan = default;
-            bool useSenderPlan = _groupBySender || _validateSenderNonce;
-            if (useSenderPlan)
-            {
-                senderPlan = BuildSenderWarmupPlan(block.Transactions, _groupBySender);
-                blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers);
-            }
-            else
-            {
-                blockState.ApplyWarmupPlan(default, _validateSenderNonce, _fastPathSimpleTransfers);
-            }
+            senderPlan = BuildSenderWarmupPlan(block.Transactions, _groupBySender);
+            blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers);
 
             try
             {
@@ -245,20 +237,10 @@ public sealed class BlockCachePreWarmer(
                     worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
                 }
 
-                int senderOffset = GetSenderOffset(state, i, senderAddress);
-                if (state.UseSenderOffsets)
+                int senderOffset = state.SenderOffsets![i];
+                if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
                 {
-                    if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
-                    {
-                        return state;
-                    }
-                }
-                else
-                {
-                    if (senderOffset != 0)
-                    {
-                        worldState.IncrementNonce(senderAddress, new UInt256((ulong)senderOffset));
-                    }
+                    return state;
                 }
 
                 if (state.Spec.UseTxAccessLists)
@@ -317,7 +299,7 @@ public sealed class BlockCachePreWarmer(
                         worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
                     }
 
-                    int senderOffset = GetSenderOffset(state, txIndex, senderAddress);
+                    int senderOffset = state.SenderOffsets![txIndex];
                     if (!TryApplySenderNonce(state, senderAddress, senderOffset, tx))
                     {
                         continue;
@@ -355,44 +337,15 @@ public sealed class BlockCachePreWarmer(
     {
         IWorldState worldState = state.Scope.WorldState;
         UInt256 expectedNonce;
-        if (state.UseSenderOffsets)
+        UInt256 baseNonce = state.GetSenderBaseNonce(senderAddress);
+        expectedNonce = baseNonce + new UInt256((ulong)senderOffset);
+        if (state.ValidateSenderNonce && expectedNonce != tx.Nonce)
         {
-            UInt256 baseNonce = state.GetSenderBaseNonce(senderAddress);
-            expectedNonce = baseNonce + new UInt256((ulong)senderOffset);
-            if (state.ValidateSenderNonce && expectedNonce != tx.Nonce)
-            {
-                return false;
-            }
-
-            worldState.SetNonce(senderAddress, expectedNonce);
-            return true;
+            return false;
         }
 
-        if (senderOffset != 0)
-        {
-            worldState.IncrementNonce(senderAddress, new UInt256((ulong)senderOffset));
-        }
-
+        worldState.SetNonce(senderAddress, expectedNonce);
         return true;
-    }
-
-    private static int GetSenderOffset(BlockState state, int txIndex, Address senderAddress)
-    {
-        if (state.UseSenderOffsets && txIndex < state.SenderOffsetsCount && state.SenderOffsets is not null)
-        {
-            return state.SenderOffsets[txIndex];
-        }
-
-        int senderOffset = 0;
-        for (int prev = 0; prev < txIndex; prev++)
-        {
-            if (senderAddress == state.Block.Transactions[prev].SenderAddress)
-            {
-                senderOffset++;
-            }
-        }
-
-        return senderOffset;
     }
 
     internal static bool CanSkipEvmWarmup(Transaction tx, IWorldState worldState, IReleaseSpec spec)
@@ -451,24 +404,21 @@ public sealed class BlockCachePreWarmer(
             }
         }
 
-        return new SenderWarmupPlan(offsets, txCount, groups);
+        return new SenderWarmupPlan(offsets, groups);
     }
 
     internal readonly struct SenderWarmupPlan : IDisposable
     {
         private readonly int[]? _offsets;
-        private readonly int _transactionCount;
         public readonly ArrayPoolList<ArrayPoolList<int>>? SenderGroups;
 
-        public SenderWarmupPlan(int[] offsets, int transactionCount, ArrayPoolList<ArrayPoolList<int>>? senderGroups)
+        public SenderWarmupPlan(int[] offsets, ArrayPoolList<ArrayPoolList<int>>? senderGroups)
         {
             _offsets = offsets;
-            _transactionCount = transactionCount;
             SenderGroups = senderGroups;
         }
 
         public int[]? OffsetsArray => _offsets;
-        public int TransactionCount => _transactionCount;
 
         public void Dispose()
         {
@@ -652,7 +602,6 @@ public sealed class BlockCachePreWarmer(
         public readonly IReleaseSpec Spec = spec;
         public volatile int LastExecutedTransaction = 0;
         public int[]? SenderOffsets;
-        public int SenderOffsetsCount;
         public bool ValidateSenderNonce;
         public bool FastPathSimpleTransfers;
 
@@ -671,7 +620,6 @@ public sealed class BlockCachePreWarmer(
         public void ApplyWarmupPlan(SenderWarmupPlan plan, bool validateSenderNonce, bool fastPathSimpleTransfers)
         {
             SenderOffsets = plan.OffsetsArray;
-            SenderOffsetsCount = plan.TransactionCount;
             ValidateSenderNonce = validateSenderNonce;
             FastPathSimpleTransfers = fastPathSimpleTransfers;
         }
@@ -679,7 +627,6 @@ public sealed class BlockCachePreWarmer(
         public void ClearWarmupPlan()
         {
             SenderOffsets = null;
-            SenderOffsetsCount = 0;
             ValidateSenderNonce = false;
             FastPathSimpleTransfers = false;
         }
@@ -697,10 +644,8 @@ public sealed class BlockCachePreWarmer(
         public Block Block => Src.Block;
         public int LastExecutedTransaction => Src.LastExecutedTransaction;
         public int[]? SenderOffsets => Src.SenderOffsets;
-        public int SenderOffsetsCount => Src.SenderOffsetsCount;
         public bool ValidateSenderNonce => Src.ValidateSenderNonce;
         public bool FastPathSimpleTransfers => Src.FastPathSimpleTransfers;
-        public bool UseSenderOffsets => Src.SenderOffsets is not null;
 
         public BlockState(BlockStateSource src)
         {
