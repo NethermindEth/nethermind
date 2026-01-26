@@ -129,7 +129,14 @@ public class ShutterBlockHandler : IShutterBlockHandler
         {
             waitTask.Value.CancellationRegistration.Dispose();
             waitTask.Value.TimeoutCancellationRegistration.Dispose();
-        }));
+        lock (_syncObject)
+        {
+            _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
+            {
+                waitTask.Value.CancellationRegistration.Dispose();
+                waitTask.Value.TimeoutCancellationRegistration.Dispose();
+            }));
+        }
     }
 
     private void CancelWaitForBlock(ulong slot, ulong taskId, bool timeout)
