@@ -29,6 +29,7 @@ namespace Nethermind.Monitoring.Metrics
 {
     public partial class MetricsController : IMetricsController
     {
+        public const string DetailedMetricFlagName = "DetailedMetricsEnabled";
         private readonly int _intervalMilliseconds;
         private static bool _staticLabelsInitialized;
 
@@ -232,7 +233,7 @@ namespace Nethermind.Monitoring.Metrics
                 _metricUpdaters[type] = metricUpdaters.ToArray();
 
                 // Set DetailedMetricsEnabled if the property exists on the type
-                type.GetProperty("DetailedMetricsEnabled", BindingFlags.Public | BindingFlags.Static)
+                type.GetProperty(DetailedMetricFlagName, BindingFlags.Public | BindingFlags.Static)
                     ?.SetValue(null, _enableDetailedMetric);
             }
         }

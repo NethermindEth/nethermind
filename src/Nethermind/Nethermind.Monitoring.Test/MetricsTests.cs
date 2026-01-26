@@ -202,6 +202,7 @@ public class MetricsTests
                 PropertyInfo[] properties = metricsType.GetProperties(BindingFlags.Static | BindingFlags.Public);
                 foreach (PropertyInfo property in properties)
                 {
+                    if (property.Name == MetricsController.DetailedMetricFlagName) continue;
                     try
                     {
                         verifier(property);
