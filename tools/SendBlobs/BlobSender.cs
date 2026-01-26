@@ -51,7 +51,7 @@ internal class BlobSender
     // 7 = max fee per blob gas = max value
     // 9 = 1st proof removed
     // 10 = 1st commitment removed
-    // 11 = max fee per blob gas = max value / blobgasperblob + 1
+    // 11 = max fee per blob gas = max value / blobGasPerBlob + 1
     // 14 = 100 blobs
     // 15 = 1000 blobs
     public async Task SendRandomBlobs(
@@ -96,7 +96,7 @@ internal class BlobSender
 
         int signerIndex = -1;
 
-        ulong excessBlobs = (ulong)blobTxCounts.Sum(btxc => btxc.blobCount) / 2;
+        ulong excessBlobs = (ulong)blobTxCounts.Sum(bc => bc.blobCount) / 2;
 
         foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         {
@@ -204,9 +204,18 @@ internal class BlobSender
         bool waitForInclusion,
         IReleaseSpec spec)
     {
-        data = data
-            .Select((s, i) => i % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32), s]))
-            .SelectMany(b => b).ToArray();
+        int capacity = data.Length + data.Length / 32; // at most one extra byte per 32-byte chunk
+        List<byte> normalized = new(capacity);
+        for (int i = 0; i < data.Length; i++)
+        {
+            byte value = data[i];
+            if (i % 32 == 0 && value >= 0x73)
+            {
+                normalized.Add(32);
+            }
+            normalized.Add(value);
+        }
+        data = normalized.ToArray();
 
         if (waitForInclusion)
         {

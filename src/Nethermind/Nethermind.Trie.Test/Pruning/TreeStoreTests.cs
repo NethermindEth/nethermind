@@ -1222,6 +1222,55 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.CachedNodesCount.Should().Be(36);
         }
 
+        [Test]
+        public void Can_Prune_StorageTreeRoot()
+        {
+            if (_scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
+
+            MemDb memDb = new();
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
+                shouldPrune: false,
+                deleteObsoleteKeys: true
+            );
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 4,
+                    PrunePersistedNodePortion = 1.0,
+                    DirtyNodeShardBit = 4,
+                    MaxBufferedCommitCount = 0,
+                    TrackPastKeys = true
+                });
+
+            StateTree ptree = new StateTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            void WriteRandomData(int seed)
+            {
+                Hash256 address = Keccak.Compute(seed.ToBigEndianByteArray());
+                StorageTree storageTree = new StorageTree(fullTrieStore.GetTrieStore(address), LimboLogs.Instance);
+                storageTree.Set(Keccak.Compute((seed * 2).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                storageTree.Commit();
+
+                ptree.Set(address, new Account(0, 0, storageTree.RootHash, Keccak.OfAnEmptyString));
+                ptree.Commit();
+            }
+
+            for (int i = 0; i < 16; i++)
+            {
+                using (fullTrieStore.BeginBlockCommit(i))
+                {
+                    WriteRandomData(i);
+                }
+                fullTrieStore.PersistAndPruneDirtyCache();
+                fullTrieStore.PrunePersistedNodes();
+            }
+            fullTrieStore.CachedNodesCount.Should().Be(19);
+        }
+
         [TestCase(27, 1000, 31, 7)]
         [TestCase(27, 1000, 2, 2)]
         public void Will_HaveConsistentState_AfterPrune(int possibleSeed, int totalBlock, int snapshotInterval, int prunePersistedInterval)
@@ -1556,6 +1605,41 @@ namespace Nethermind.Trie.Test.Pruning
                     VerifyAllTrieExceptGenesis();
                 }
             }
+        }
+
+        [Test]
+        public void BlockCommitSet_IsSealed_after_Seal_with_null_root()
+        {
+            // This test verifies the fix for networks that have an empty genesis state.
+            // When the state trie is empty, the root is null, but the commit set should still be sealed.
+            BlockCommitSet commitSet = new(0);
+
+            commitSet.IsSealed.Should().BeFalse();
+
+            commitSet.Seal(null);
+
+            commitSet.IsSealed.Should().BeTrue();
+            commitSet.StateRoot.Should().Be(Keccak.EmptyTreeHash);
+        }
+
+        [Test]
+        public void Consecutive_block_commits_work_when_first_has_null_root()
+        {
+            // This test simulates a scenario where the genesis block has an empty state (no allocations).
+            // Block 0 commits with null root, then block 1 should be able to commit without assertion failure.
+            using TrieStore fullTrieStore = CreateTrieStore();
+
+            // Block 0: empty state (genesis with no allocations)
+            using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
+
+            // Block 1: should not throw or assert, even though previous block had null root
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
+            Action commitBlock1 = () =>
+            {
+                using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(1, trieNode)) { }
+            };
+
+            commitBlock1.Should().NotThrow();
         }
     }
 }

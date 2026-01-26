@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 

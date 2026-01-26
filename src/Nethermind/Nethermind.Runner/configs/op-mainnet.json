@@ -12,11 +12,11 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": 10000000000,
+    "FastSyncCatchUpHeightDelta": "10000000000",
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063,
-    "PivotNumber": 145930000,
-    "PivotHash": "0x49b2334bc8fe69aaa9c1efdf5d32521e8eb55f770d57c22876bc5569cf929a25"
+    "PivotNumber": 146840000,
+    "PivotHash": "0xca3c06f1ae1bd277dbe7f51d3996519cff42383d65f2f77c7d28f7c574471a37"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
