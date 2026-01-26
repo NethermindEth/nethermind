@@ -77,7 +77,7 @@ public class PruningTrieStateFactory(
                 logManager);
 
         IWorldStateManager stateManager = new WorldStateManager(
-            new TracedAccessWorldStateScopeProvider(scopeProvider),
+            new ParallelWorldStateScopeProvider(scopeProvider),
             trieStore,
             dbProvider,
             logManager,
