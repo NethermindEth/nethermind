@@ -213,7 +213,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming withdrawal", ex);
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
         }
     }
 
