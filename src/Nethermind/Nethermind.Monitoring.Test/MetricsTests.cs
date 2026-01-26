@@ -50,6 +50,9 @@ public class MetricsTests
         [System.ComponentModel.Description("A test description")]
         [DetailedMetric]
         public static long DetailedMetric { get; set; }
+
+        [DetailedMetricOnFlag]
+        public static bool DetailedMetricsEnabled { get; set; }
     }
 
     public enum SomeEnum
@@ -131,6 +134,7 @@ public class MetricsTests
         Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
         string metricName = "TestMetrics.DetailedMetric";
         Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
+        Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
     }
 
     [Test]
