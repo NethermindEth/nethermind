@@ -572,6 +572,134 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// EIP-8024: DUPN instruction for (non-EOF) code.
+    /// Duplicates a stack item based on an immediate operand with extended encoding.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
+            goto BadInstruction;
+
+        return stack.Dup<TTracingInst>(depth);
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
+    /// <summary>
+    /// EIP-8024: SWAPN instruction for (non-EOF) code.
+    /// Swaps top of stack with the Nth element, where N is decoded from the immediate.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
+            goto BadInstruction;
+
+        return stack.Swap<TTracingInst>(depth);
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
+    /// <summary>
+    /// EIP-8024: EXCHANGE instruction for (non-EOF) code.
+    /// Exchanges stack items at positions n and m from the top.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        if (!TryDecodePair(vm, ref programCounter, out int n, out int m))
+            goto BadInstruction;
+
+        if (!stack.Exchange<TTracingInst>(n, m))
+            goto StackUnderflow;
+
+        return EvmExceptionType.None;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryDecodeSingle<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int depth)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+        {
+            depth = 0;
+            return false;
+        }
+
+        byte imm = code[programCounter];
+        int mask = (90 - imm) >> 31;
+        depth = imm + 17 + (mask & -37);
+
+        if ((uint)(imm - 0x5B) <= 0x24)
+            return false;
+
+        programCounter++;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads and decodes an immediate for EIP-8024 EXCHANGE instruction.
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Disallowed range: 0x50-0x7f (80-127) to avoid PUSH opcode patterns.
+    /// Returns stack indices ready for direct use with stack.Exchange.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryDecodePair<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int n, out int m)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+        {
+            n = m = 0;
+            return false;
+        }
+
+        byte imm = code[programCounter];
+
+        // k = imm if imm <= 79, imm - 48 if imm >= 128
+        int k = imm - (~((imm - 0x80) >> 31) & 48);
+        int q = k >> 4;
+        int r = k & 0x0F;
+
+        // mask = -1 if q < r, 0 otherwise
+        int mask = (q - r) >> 31;
+
+        // EIP-8024 base mapping (0-based stack): if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
+        // Add +1 for 1-indexed stack positions used by Exchange: if (q < r) final_n=q+2, final_m=r+2; else final_n=r+2, final_m=31-q
+        n = ((q & mask) | (r & ~mask)) + 2;
+        m = ((r & mask) | ((29 - q) & ~mask)) + 2;
+
+        if ((uint)(imm - 0x50) <= 0x2F)
+            return false;
+
+        programCounter++;
+        return true;
+    }
+
+    /// <summary>
     /// Executes a LOG operation which records a log entry with topics and data.
     /// Pops data offset and length, then pops a fixed number of topics from the stack.
     /// Validates memory expansion and deducts gas accordingly.

@@ -35,7 +35,7 @@ public partial class BlockProcessor
     : IBlockProcessor
 {
     private readonly ILogger _logger;
-    private readonly TracedAccessWorldState? _tracedAccessWorldState;
+    private readonly ParallelWorldState? _parallelWorldState;
     protected readonly WorldStateMetricsDecorator _stateProvider;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private readonly ISpecProvider _specProvider;
@@ -80,7 +80,7 @@ public partial class BlockProcessor
         _executionRequestsProcessor = executionRequestsProcessor;
 
         _logger = _logManager.GetClassLogger();
-        _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
+        _parallelWorldState = stateProvider as ParallelWorldState;
         _stateProvider = new(stateProvider);
     }
 
@@ -131,10 +131,10 @@ public partial class BlockProcessor
 
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        if (_tracedAccessWorldState is not null)
+        if (_parallelWorldState is not null)
         {
-            _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
-            _tracedAccessWorldState.BlockAccessList.ResetBlockAccessIndex();
+            _parallelWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
+            _parallelWorldState.BlockAccessList.ResetBlockAccessIndex();
         }
 
         StoreBeaconRoot(block, spec);
@@ -179,7 +179,7 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
+        if (_parallelWorldState is not null && spec.BlockLevelAccessListsEnabled)
         {
             if (block.IsGenesis)
             {
@@ -187,8 +187,8 @@ public partial class BlockProcessor
             }
             else
             {
-                block.GeneratedBlockAccessList = _tracedAccessWorldState.BlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
+                block.GeneratedBlockAccessList = _parallelWorldState.BlockAccessList;
+                block.EncodedBlockAccessList = Rlp.Encode(_parallelWorldState.BlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }

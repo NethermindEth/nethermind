@@ -247,19 +247,13 @@ namespace Nethermind.State
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
             => SubtractFromBalance(address, balanceChange, releaseSpec, out _);
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
-        {
-            _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, true, out oldBalance);
-        }
+            => SetNewBalance(address, balanceChange, releaseSpec, true, out oldBalance);
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
             => AddToBalance(address, balanceChange, releaseSpec, out _);
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
-        {
-            _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, false, out oldBalance);
-        }
+            => SetNewBalance(address, balanceChange, releaseSpec, false, out oldBalance);
 
         public void IncrementNonce(Address address, UInt256 delta)
             => IncrementNonce(address, delta, out _);
@@ -490,11 +484,11 @@ namespace Nethermind.State
             }
         }
 
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
-            => AddToBalanceAndCreateIfNotExists(address, balance, spec, out _);
+        // public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        //     => AddToBalanceAndCreateIfNotExists(address, balance, spec, out _);
 
-        public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
-            => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
+        // public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
+        //     => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {

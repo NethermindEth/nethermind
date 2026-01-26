@@ -321,6 +321,11 @@ namespace Nethermind.Core.Specs
         bool IsEofEnabled { get; }
 
         /// <summary>
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE for legacy (non-EOF) code
+        /// </summary>
+        bool IsEip8024Enabled { get; }
+
+        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
@@ -451,10 +456,16 @@ namespace Nethermind.Core.Specs
         /// EIP-7928: Block-Level Access Lists
         /// </summary>
         public bool IsEip7928Enabled { get; }
+        bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
         /// EIP-7708: ETH transfers emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }
+
+        /// <summary>
+        /// EIP-7843: SLOTNUM opcode
+        /// </summary>
+        public bool IsEip7843Enabled { get; }
     }
 }

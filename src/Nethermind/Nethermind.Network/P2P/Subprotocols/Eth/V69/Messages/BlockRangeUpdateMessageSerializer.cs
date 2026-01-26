@@ -30,8 +30,8 @@ public class BlockRangeUpdateMessageSerializer :
 
         BlockRangeUpdateMessage statusMessage = new()
         {
-            EarliestBlock = rlpStream.DecodeLong(),
-            LatestBlock = rlpStream.DecodeLong(),
+            EarliestBlock = rlpStream.DecodePositiveLong(),
+            LatestBlock = rlpStream.DecodePositiveLong(),
             LatestBlockHash = rlpStream.DecodeKeccak() ?? Hash256.Zero
         };
 

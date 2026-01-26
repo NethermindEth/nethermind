@@ -104,6 +104,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEofEnabled => spec.IsEofEnabled;
+    public virtual bool IsEip8024Enabled => spec.IsEip8024Enabled;
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public virtual bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
     public virtual bool IsEip7594Enabled => spec.IsEip7594Enabled;
@@ -118,4 +119,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsRip7728Enabled => spec.IsRip7728Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
     public virtual bool IsEip7708Enabled => spec.IsEip7708Enabled;
+    public virtual bool IsEip7778Enabled => spec.IsEip7778Enabled;
+    public virtual bool IsEip7843Enabled => spec.IsEip7843Enabled;
 }

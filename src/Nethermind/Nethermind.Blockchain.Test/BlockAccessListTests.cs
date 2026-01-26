@@ -269,10 +269,10 @@ public class BlockAccessListTests()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
 
-        // Get the main world state which should be a TracedAccessWorldState after DI fix
+        // Get the main world state which should be a ParallelWorldState after DI fix
         IWorldState mainWorldState = testBlockchain.MainWorldState;
-        TracedAccessWorldState? tracedWorldState = mainWorldState as TracedAccessWorldState;
-        Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be TracedAccessWorldState");
+        ParallelWorldState? tracedWorldState = mainWorldState as ParallelWorldState;
+        Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be ParallelWorldState");
 
         // Begin scope and initialize state
         using IDisposable _ = mainWorldState.BeginScope(IWorldState.PreGenesis);

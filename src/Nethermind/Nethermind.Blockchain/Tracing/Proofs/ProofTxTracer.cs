@@ -81,13 +81,13 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
         Accounts.Add(address);
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
         Output = output;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
         Output = output;

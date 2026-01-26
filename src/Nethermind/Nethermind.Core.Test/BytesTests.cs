@@ -373,6 +373,83 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [TestCase("0x", 0L)]
+        [TestCase("0x00", 0L)]
+        [TestCase("0x0000", 0L)]
+        [TestCase("0x0000000000000000", 0L)]
+        [TestCase("0x000000000000000000", 0L)] // >8 but all prefix zeros -> still 0
+        [TestCase("0x01", 1L)]
+        [TestCase("0x7f", 127L)]
+        [TestCase("0x80", 128L)]
+        [TestCase("0xff", 255L)]
+        // Leading zeros (any length)
+        [TestCase("0x0001", 1L)]
+        [TestCase("0x0000000000000001", 1L)]
+        [TestCase("0x00000000000000000000000000000001", 1L)]
+        // 2-7 bytes (never overflow long)
+        [TestCase("0x0100", 256L)]
+        [TestCase("0x7fff", 32767L)]
+        [TestCase("0x8000", 32768L)]
+        [TestCase("0xffffff", 16777215L)]
+        [TestCase("0x01000000", 16777216L)]
+        [TestCase("0x7fffffffffff", 140737488355327L)] // 6 bytes
+        [TestCase("0xffffffffffffff", 72057594037927935L)] // 7 bytes
+        // Exactly 8 bytes - valid only if top bit is 0
+        [TestCase("0x0000000000000000", 0L)]
+        [TestCase("0x0000000000000001", 1L)]
+        [TestCase("0x00000000ffffffff", 4294967295L)]
+        [TestCase("0x7fffffffffffffff", long.MaxValue)] // boundary
+        // >8 bytes with zero-prefix then 8-byte tail
+        [TestCase("0x00000000000000007fffffffffffffff", long.MaxValue)]
+        [TestCase("0x000000000000000000000000000000007fffffffffffffff", long.MaxValue)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", 1L)]
+        public void ToPositiveLong_Success(string hex, long expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
+            Assert.That(bytes.AsSpan().ToPositiveLong(), Is.EqualTo(expected));
+            Assert.That(new ReadOnlySpan<byte>(bytes).ToPositiveLong(), Is.EqualTo(expected));
+        }
+
+        [TestCase("0x8000000000000000")] // 8 bytes, top bit set (== 2^63)
+        [TestCase("0xffffffffffffffff")] // 8 bytes, top bit set
+        [TestCase("0x010000000000000000")] // 9 bytes, prefix non-zero (>= 2^64)
+        [TestCase("0x00000000000000008000000000000000")] // >8, prefix zeros but tail top bit set
+        [TestCase("0x0000000000000000ffffffffffffffff")] // >8, prefix zeros but tail top bit set
+        [TestCase("0x000000000000000000000000000000008000000000000000")] // lots of leading zeros then overflow tail
+        public void ToPositiveLong_Overflow(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.Throws<OverflowException>(() => bytes.ToPositiveLong());
+            Assert.Throws<OverflowException>(() => bytes.AsSpan().ToPositiveLong());
+            Assert.Throws<OverflowException>(() => new ReadOnlySpan<byte>(bytes).ToPositiveLong());
+        }
+
+        // "Prefix non-zero but tail small" should still overflow (value has >64 bits)
+        [TestCase("0x010000000000000001")] // prefix 0x01 then tail 1 - still huge
+        [TestCase("0x0001ffffffffffffffff")] // prefix contains non-zero (0x01) before last 8 bytes
+        [TestCase("0x00ff0000000000000001")] // prefix has 0xff, tail 1
+        public void ToPositiveLong_PrefixNonZero_Overflow(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.Throws<OverflowException>(() => bytes.ToPositiveLong());
+        }
+
+        // Some sanity checks for equivalence with BigInteger path on random-ish patterns.
+        // (Not "exhaustive", but good at catching endian mistakes.)
+        [TestCase("0x0123456789abcdef", 0x0123456789abcdefL)]
+        [TestCase("0x000123456789abcdef", 0x0123456789abcdefL)]
+        [TestCase("0x00000000000000000123456789abcdef", 0x0123456789abcdefL)]
+        [TestCase("0x000000000000000000000000000000000000000000000000000123456789abcdef", 0x0123456789abcdefL)]
+        public void ToPositiveLong_EndiannessAndLeadingZeros(string hex, long expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
+        }
+
         public static IEnumerable<TestCaseData> BitwiseTests
         {
             get

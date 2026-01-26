@@ -20,7 +20,7 @@ public class CallOutputTracer : TxTracer
 
     public byte StatusCode { get; set; }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
         GasSpent = gasSpent.SpentGas;
@@ -29,7 +29,7 @@ public class CallOutputTracer : TxTracer
         StatusCode = Evm.StatusCode.Success;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
         GasSpent = gasSpent.SpentGas;
