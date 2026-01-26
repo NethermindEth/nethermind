@@ -131,7 +131,7 @@ namespace Nethermind.Db
 
         [DetailedMetric]
         [Description("Prewarmer get operation times")]
-        [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["part", "is_prewarmer"])]
+        [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.5, Count = 30, LabelNames = ["part", "is_prewarmer"])]
         public static IMetricObserver PrewarmerGetTime { get; set; } = NoopMetricObserver.Instance;
     }
 
