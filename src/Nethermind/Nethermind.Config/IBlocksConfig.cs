@@ -55,6 +55,18 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Skip EVM warmup for simple value transfers to EOAs/precompiles.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmStateFastPathSimpleTransfers { get; set; }
 
+    [ConfigItem(Description = "Repeat pre-warm transaction passes to increase cache coverage.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool PreWarmStateRepeatWarmup { get; set; }
+
+    [ConfigItem(Description = "Maximum number of pre-warm passes per block.", DefaultValue = "3", HiddenFromDocs = true)]
+    int PreWarmStateMaxWarmupPasses { get; set; }
+
+    [ConfigItem(Description = "Warm storage keys from access lists during pre-warm.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool PreWarmStateWarmupStorageKeys { get; set; }
+
+    [ConfigItem(Description = "Warm contract code for recipients during pre-warm.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool PreWarmStateWarmupCode { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

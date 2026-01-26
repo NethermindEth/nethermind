@@ -6,9 +6,12 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
@@ -97,5 +100,35 @@ public class ReadOnlyTxProcessingScopeTests
 
         BlockCachePreWarmer.CanSkipEvmWarmup(contractCall, worldState, spec).Should().BeFalse();
         BlockCachePreWarmer.CanSkipEvmWarmup(withData, worldState, spec).Should().BeFalse();
+    }
+
+    [Test]
+    public void WarmupStorageKeysFromAccessList_reads_all_keys()
+    {
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(Address.FromNumber(10))
+            .AddStorage(new UInt256(1))
+            .AddStorage(new UInt256(2))
+            .AddAddress(Address.FromNumber(11))
+            .AddStorage(new UInt256(3))
+            .Build();
+
+        Action action = () => BlockCachePreWarmer.WarmupStorageKeysFromAccessList(worldState, accessList);
+        action.Should().NotThrow();
+    }
+
+    [Test]
+    public void WarmupCodeForRecipient_reads_contract_code()
+    {
+        Address recipient = Address.FromNumber(1236);
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.IsContract(recipient).Returns(true);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(new ForkActivation(0));
+
+        BlockCachePreWarmer.WarmupCodeForRecipient(worldState, recipient, spec);
+
+        worldState.Received(1).GetCode(recipient);
     }
 }

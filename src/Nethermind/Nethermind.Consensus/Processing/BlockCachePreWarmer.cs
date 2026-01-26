@@ -35,7 +35,11 @@ public sealed class BlockCachePreWarmer(
     ILogManager logManager,
     bool groupBySender = false,
     bool validateSenderNonce = false,
-    bool fastPathSimpleTransfers = false
+    bool fastPathSimpleTransfers = false,
+    bool repeatWarmup = true,
+    int maxWarmupPasses = 3,
+    bool warmupStorageKeys = true,
+    bool warmupCode = true
 ) : IBlockCachePreWarmer
 {
     private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
@@ -44,6 +48,10 @@ public sealed class BlockCachePreWarmer(
     private readonly bool _groupBySender = groupBySender;
     private readonly bool _validateSenderNonce = validateSenderNonce;
     private readonly bool _fastPathSimpleTransfers = fastPathSimpleTransfers;
+    private readonly bool _repeatWarmup = repeatWarmup;
+    private readonly int _maxWarmupPasses = maxWarmupPasses;
+    private readonly bool _warmupStorageKeys = warmupStorageKeys;
+    private readonly bool _warmupCode = warmupCode;
     private BlockStateSource? _currentBlockState = null;
 
     public BlockCachePreWarmer(
@@ -60,7 +68,11 @@ public sealed class BlockCachePreWarmer(
         logManager,
         blocksConfig.PreWarmStateGroupBySender,
         blocksConfig.PreWarmStateValidateSenderNonce,
-        blocksConfig.PreWarmStateFastPathSimpleTransfers)
+        blocksConfig.PreWarmStateFastPathSimpleTransfers,
+        blocksConfig.PreWarmStateRepeatWarmup,
+        blocksConfig.PreWarmStateMaxWarmupPasses,
+        blocksConfig.PreWarmStateWarmupStorageKeys,
+        blocksConfig.PreWarmStateWarmupCode)
     {
     }
 
@@ -183,22 +195,49 @@ public sealed class BlockCachePreWarmer(
             if (useSenderPlan)
             {
                 senderPlan = BuildSenderWarmupPlan(block.Transactions, _groupBySender);
-                blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers);
+                blockState.ApplyWarmupPlan(senderPlan, _validateSenderNonce, _fastPathSimpleTransfers, _warmupStorageKeys, _warmupCode);
             }
             else
             {
-                blockState.ApplyWarmupPlan(default, _validateSenderNonce, _fastPathSimpleTransfers);
+                blockState.ApplyWarmupPlan(default, _validateSenderNonce, _fastPathSimpleTransfers, _warmupStorageKeys, _warmupCode);
             }
 
             try
             {
-                if (_groupBySender && senderPlan.SenderGroups is not null)
+                int maxPasses = _repeatWarmup ? Math.Max(1, _maxWarmupPasses) : 1;
+                int pass = 0;
+                while (pass < maxPasses)
                 {
-                    WarmupTransactionsBySender(blockState, senderPlan.SenderGroups, parallelOptions);
-                }
-                else
-                {
-                    WarmupTransactionsParallel(blockState, parallelOptions);
+                    if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+
+                    int lastExecutedBefore = blockState.LastExecutedTransaction;
+                    if (lastExecutedBefore >= block.Transactions.Length)
+                    {
+                        break;
+                    }
+
+                    if (_groupBySender && senderPlan.SenderGroups is not null)
+                    {
+                        WarmupTransactionsBySender(blockState, senderPlan.SenderGroups, parallelOptions);
+                    }
+                    else
+                    {
+                        WarmupTransactionsParallel(blockState, parallelOptions);
+                    }
+
+                    pass++;
+                    if (!_repeatWarmup) break;
+
+                    int lastExecutedAfter = blockState.LastExecutedTransaction;
+                    if (lastExecutedAfter >= block.Transactions.Length)
+                    {
+                        break;
+                    }
+
+                    if (lastExecutedAfter == lastExecutedBefore)
+                    {
+                        break;
+                    }
                 }
             }
             finally
@@ -261,15 +300,24 @@ public sealed class BlockCachePreWarmer(
                     }
                 }
 
-                if (state.Spec.UseTxAccessLists)
-                {
-                    worldState.WarmUp(tx.AccessList); // eip-2930
-                }
+                    if (state.Spec.UseTxAccessLists)
+                    {
+                        worldState.WarmUp(tx.AccessList); // eip-2930
+                        if (state.WarmupStorageKeys && tx.AccessList is not null)
+                        {
+                            WarmupStorageKeysFromAccessList(worldState, tx.AccessList);
+                        }
+                    }
 
-                if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
-                {
-                    return state;
-                }
+                    if (state.WarmupCode)
+                    {
+                        WarmupCodeForRecipient(worldState, tx.To, state.Spec);
+                    }
+
+                    if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
+                    {
+                        return state;
+                    }
 
                 TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
                 if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
@@ -326,6 +374,15 @@ public sealed class BlockCachePreWarmer(
                     if (state.Spec.UseTxAccessLists)
                     {
                         worldState.WarmUp(tx.AccessList); // eip-2930
+                        if (state.WarmupStorageKeys && tx.AccessList is not null)
+                        {
+                            WarmupStorageKeysFromAccessList(worldState, tx.AccessList);
+                        }
+                    }
+
+                    if (state.WarmupCode)
+                    {
+                        WarmupCodeForRecipient(worldState, tx.To, state.Spec);
                     }
 
                     if (state.FastPathSimpleTransfers && CanSkipEvmWarmup(tx, worldState, state.Spec))
@@ -414,6 +471,36 @@ public sealed class BlockCachePreWarmer(
         }
 
         return !worldState.IsContract(recipient);
+    }
+
+    internal static void WarmupStorageKeysFromAccessList(IWorldState worldState, AccessList accessList)
+    {
+        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+        {
+            foreach (UInt256 key in storageKeys)
+            {
+                try
+                {
+                    worldState.Get(new StorageCell(address, key));
+                }
+                catch (MissingTrieNodeException)
+                {
+                }
+            }
+        }
+    }
+
+    internal static void WarmupCodeForRecipient(IWorldState worldState, Address? recipient, IReleaseSpec spec)
+    {
+        if (recipient is null || spec.IsPrecompile(recipient))
+        {
+            return;
+        }
+
+        if (worldState.IsContract(recipient))
+        {
+            worldState.GetCode(recipient);
+        }
     }
 
     internal static SenderWarmupPlan BuildSenderWarmupPlan(ReadOnlySpan<Transaction> transactions, bool includeGroups)
@@ -655,6 +742,8 @@ public sealed class BlockCachePreWarmer(
         public int SenderOffsetsCount;
         public bool ValidateSenderNonce;
         public bool FastPathSimpleTransfers;
+        public bool WarmupStorageKeys;
+        public bool WarmupCode;
 
         public BlockState InitThreadState()
         {
@@ -668,12 +757,14 @@ public sealed class BlockCachePreWarmer(
             Interlocked.Increment(ref LastExecutedTransaction);
         }
 
-        public void ApplyWarmupPlan(SenderWarmupPlan plan, bool validateSenderNonce, bool fastPathSimpleTransfers)
+        public void ApplyWarmupPlan(SenderWarmupPlan plan, bool validateSenderNonce, bool fastPathSimpleTransfers, bool warmupStorageKeys, bool warmupCode)
         {
             SenderOffsets = plan.OffsetsArray;
             SenderOffsetsCount = plan.TransactionCount;
             ValidateSenderNonce = validateSenderNonce;
             FastPathSimpleTransfers = fastPathSimpleTransfers;
+            WarmupStorageKeys = warmupStorageKeys;
+            WarmupCode = warmupCode;
         }
 
         public void ClearWarmupPlan()
@@ -682,6 +773,8 @@ public sealed class BlockCachePreWarmer(
             SenderOffsetsCount = 0;
             ValidateSenderNonce = false;
             FastPathSimpleTransfers = false;
+            WarmupStorageKeys = false;
+            WarmupCode = false;
         }
     }
 
@@ -700,6 +793,8 @@ public sealed class BlockCachePreWarmer(
         public int SenderOffsetsCount => Src.SenderOffsetsCount;
         public bool ValidateSenderNonce => Src.ValidateSenderNonce;
         public bool FastPathSimpleTransfers => Src.FastPathSimpleTransfers;
+        public bool WarmupStorageKeys => Src.WarmupStorageKeys;
+        public bool WarmupCode => Src.WarmupCode;
         public bool UseSenderOffsets => Src.SenderOffsets is not null;
 
         public BlockState(BlockStateSource src)

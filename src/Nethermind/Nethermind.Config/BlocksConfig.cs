@@ -69,6 +69,14 @@ namespace Nethermind.Config
 
         public bool PreWarmStateFastPathSimpleTransfers { get; set; }
 
+        public bool PreWarmStateRepeatWarmup { get; set; } = true;
+
+        public int PreWarmStateMaxWarmupPasses { get; set; } = 3;
+
+        public bool PreWarmStateWarmupStorageKeys { get; set; } = true;
+
+        public bool PreWarmStateWarmupCode { get; set; } = true;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
