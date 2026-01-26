@@ -13,6 +13,20 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
+internal class PrewarmerGetTimeLabels(bool isPrewarmer)
+{
+    public static PrewarmerGetTimeLabels Prewarmer { get; } = new(true);
+    public static PrewarmerGetTimeLabels NonPrewarmer { get; } = new(false);
+
+    public PrewarmerGetTimeLabel Commit { get; } = new("commit", isPrewarmer);
+    public PrewarmerGetTimeLabel UpdateRootHash { get; } = new("update_root_hash", isPrewarmer);
+    public PrewarmerGetTimeLabel AddressHit { get; } = new("address_hit", isPrewarmer);
+    public PrewarmerGetTimeLabel AddressMiss { get; } = new("address_miss", isPrewarmer);
+    public PrewarmerGetTimeLabel SlotGetHit { get; } = new("slot_get_hit", isPrewarmer);
+    public PrewarmerGetTimeLabel SlotGetMiss { get; } = new("slot_get_miss", isPrewarmer);
+    public PrewarmerGetTimeLabel WriteBatchLifetime { get; } = new("write_batch_lifetime", isPrewarmer);
+}
+
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
@@ -35,6 +49,7 @@ public class PrewarmerScopeProvider(
         ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
+        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
 
         public void Dispose() => baseScope.Dispose();
 
@@ -74,7 +89,7 @@ public class PrewarmerScopeProvider(
 
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
-            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("commit", populatePreBlockCache));
+            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -89,7 +104,7 @@ public class PrewarmerScopeProvider(
 
             long sw = Stopwatch.GetTimestamp();
             baseScope.UpdateRootHash();
-            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("update_root_hash", populatePreBlockCache));
+            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.UpdateRootHash);
         }
 
         public Account? Get(Address address)
@@ -103,12 +118,12 @@ public class PrewarmerScopeProvider(
 
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("address_hit", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     Metrics.IncrementStateTreeCacheHits();
                 }
                 else
                 {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("address_miss", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
             }
@@ -116,14 +131,14 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
                 {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("address_hit", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
                 else
                 {
                     account = GetFromBaseTree(addressAsKey);
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("address_miss", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
             }
@@ -146,6 +161,7 @@ public class PrewarmerScopeProvider(
     {
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
+        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
@@ -161,13 +177,13 @@ public class PrewarmerScopeProvider(
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("slot_get_hit", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                     // Read from Concurrent Cache
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
                 {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("slot_get_miss", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
             }
@@ -175,14 +191,14 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
                 {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("slot_get_hit", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                     baseStorageTree.HintGet(index, value);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
                 {
                     value = LoadFromTreeStorage(storageCell);
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, new PrewarmerGetTimeLabel("slot_get_miss", populatePreBlockCache));
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
             }
@@ -206,10 +222,12 @@ public class PrewarmerScopeProvider(
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool populatePreBlockCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
+        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+
         public void Dispose()
         {
             baseWriteBatch.Dispose();
-            metricObserver.Observe(Stopwatch.GetTimestamp() - startTime, new PrewarmerGetTimeLabel("write_batch_lifetime", populatePreBlockCache));
+            metricObserver.Observe(Stopwatch.GetTimestamp() - startTime, _labels.WriteBatchLifetime);
         }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated

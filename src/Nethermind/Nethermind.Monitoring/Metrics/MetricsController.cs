@@ -224,6 +224,7 @@ namespace Nethermind.Monitoring.Metrics
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
+                    if (member.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null) continue;
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {

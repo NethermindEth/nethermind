@@ -17,6 +17,7 @@ namespace Nethermind.Db
 {
     public static class Metrics
     {
+        [DetailedMetricOnFlag]
         public static bool DetailedMetricsEnabled { get; set; }
 
         [CounterMetric]
@@ -137,6 +138,6 @@ namespace Nethermind.Db
 
     public readonly struct PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
     {
-        public string[] Labels => [part, isPrewarmer ? "true" : "false"];
+        public string[] Labels { get; } = [part, isPrewarmer ? "true" : "false"];
     }
 }

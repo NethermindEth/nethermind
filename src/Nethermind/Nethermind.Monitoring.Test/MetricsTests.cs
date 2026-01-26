@@ -202,14 +202,14 @@ public class MetricsTests
                 PropertyInfo[] properties = metricsType.GetProperties(BindingFlags.Static | BindingFlags.Public);
                 foreach (PropertyInfo property in properties)
                 {
-                    if (property.Name == MetricsController.DetailedMetricFlagName) continue;
+                    if (property.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null) continue;
                     try
                     {
                         verifier(property);
                     }
-                    catch (Exception e)
+                    catch (AssertionException e)
                     {
-                        throw new Exception(property.Name, e);
+                        throw new AssertionException($"{property.Name}: {e.Message}", e);
                     }
                 }
             }
