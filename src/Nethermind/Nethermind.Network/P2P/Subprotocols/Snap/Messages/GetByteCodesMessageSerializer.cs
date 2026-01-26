@@ -22,9 +22,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             GetByteCodesMessage message = new();
             rlpStream.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
+            message.RequestId = rlpStream.DecodePositiveLong();
             message.Hashes = rlpStream.DecodeArrayPoolList(_ => rlpStream.DecodeValueKeccak(out var keccak) ? keccak : default);
-            message.Bytes = rlpStream.DecodeLong();
+            message.Bytes = rlpStream.DecodePositiveLong();
 
             return message;
         }

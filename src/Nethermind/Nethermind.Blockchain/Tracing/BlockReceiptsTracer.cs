@@ -33,9 +33,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
     public bool IsTracingLogs => _currentTxTracer.IsTracingLogs;
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        _txReceipts.Add(BuildReceipt(recipient, gasSpent.SpentGas, StatusCode.Success, logs, stateRoot));
+        _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -49,9 +49,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent.SpentGas, error, stateRoot));
+        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -65,14 +65,14 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    protected TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot)
+    protected TxReceipt BuildFailedReceipt(Address recipient, in GasConsumed gasSpent, string error, Hash256? stateRoot)
     {
         TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, [], stateRoot);
         receipt.Error = error;
         return receipt;
     }
 
-    protected virtual TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    protected virtual TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         Transaction transaction = CurrentTx!;
         TxReceipt txReceipt = new()
@@ -86,7 +86,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
             Index = _currentIndex,
-            GasUsed = spentGas,
+            GasUsed = gasConsumed.EffectiveBlockGas,
+            GasSpent = gasConsumed.SpentGas, // EIP-7778: Gas actually spent (after refunds)
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,

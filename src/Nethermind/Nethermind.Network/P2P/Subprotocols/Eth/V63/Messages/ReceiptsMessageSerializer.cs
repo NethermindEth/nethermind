@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
-            _decodeArrayFunc = ctx => ctx.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? [];
+            _decodeArrayFunc = ctx => ctx.DecodeArray(nestedContext => _decoder.Decode(nestedContext, RlpBehaviors.Eip7778Receipts)) ?? [];
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -61,9 +61,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     if (txReceipt.BlockNumber != lastBlockNumber)
                     {
                         lastBlockNumber = txReceipt.BlockNumber;
-                        behaviors = _specProvider.GetReceiptSpec(lastBlockNumber).IsEip658Enabled
-                                    ? RlpBehaviors.Eip658Receipts
-                                    : RlpBehaviors.None;
+                        IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
+                        behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+                        if (receiptSpec.IsEip7778Enabled)
+                        {
+                            behaviors |= RlpBehaviors.Eip7778Receipts;
+                        }
                     }
 
                     _decoder.Encode(stream, txReceipt, behaviors);
@@ -141,9 +144,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 if (lastBlockNumber != receipt.BlockNumber)
                 {
                     lastBlockNumber = receipt.BlockNumber;
-                    behaviors = _specProvider.GetSpec((ForkActivation)receipt.BlockNumber).IsEip658Enabled
-                                ? RlpBehaviors.Eip658Receipts
-                                : RlpBehaviors.None;
+                    IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
+                    behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+                    if (receiptSpec.IsEip7778Enabled)
+                    {
+                        behaviors |= RlpBehaviors.Eip7778Receipts;
+                    }
                 }
 
                 contentLength += _decoder.GetLength(receipt, behaviors);

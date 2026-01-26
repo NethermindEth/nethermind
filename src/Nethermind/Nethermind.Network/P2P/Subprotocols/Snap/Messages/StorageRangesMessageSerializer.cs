@@ -82,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             stream.ReadSequenceLength();
 
-            message.RequestId = stream.DecodeLong();
+            message.RequestId = stream.DecodePositiveLong();
             message.Slots = stream.DecodeArrayPoolList(_decodeSlotArray);
             message.Proofs = stream.DecodeArrayPoolList(static s => s.DecodeByteArray());
 

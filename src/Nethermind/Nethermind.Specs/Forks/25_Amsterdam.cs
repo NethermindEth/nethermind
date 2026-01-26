@@ -13,6 +13,7 @@ public class Amsterdam : BPO5
     public Amsterdam()
     {
         Name = "Amsterdam";
+        IsEip7778Enabled = true;
         IsEip7928Enabled = true;
         IsEip7843Enabled = true;
         Released = false;

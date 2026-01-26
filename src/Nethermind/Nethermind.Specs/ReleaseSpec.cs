@@ -164,6 +164,7 @@ public class ReleaseSpec : IReleaseSpec
     }
 
     public bool IsEip7928Enabled { get; set; }
+    public bool IsEip7778Enabled { get; set; }
     public bool IsEip7843Enabled { get; set; }
 
     // used only in testing

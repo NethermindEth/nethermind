@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -266,6 +267,101 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult));
 
             AssertMessageReceipt(txReceipt, deserialized);
+        }
+
+        [Test]
+        public void Receipt_message_decoder_reads_gas_spent_when_present()
+        {
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
+            txReceipt.Bloom = new Bloom();
+            txReceipt.GasUsedTotal = 1000;
+            txReceipt.PostTransactionState = TestItem.KeccakH;
+            txReceipt.Logs = [];
+            txReceipt.GasSpent = 123;
+
+            ReceiptMessageDecoder decoder = new();
+            byte[] encoded = decoder.EncodeNew(txReceipt, RlpBehaviors.Eip7778Receipts);
+
+            // Decoding should succeed regardless of flag - GasSpent is read if present
+            TxReceipt decodedWithoutFlag = decoder.Decode(encoded.AsRlpStream(), RlpBehaviors.None);
+            Assert.That(decodedWithoutFlag.GasSpent, Is.EqualTo(txReceipt.GasSpent));
+
+            TxReceipt decodedWithFlag = decoder.Decode(encoded.AsRlpStream(), RlpBehaviors.Eip7778Receipts);
+            Assert.That(decodedWithFlag.GasSpent, Is.EqualTo(txReceipt.GasSpent));
+        }
+
+        [Test]
+        public void Receipt_storage_decoder_requires_eip7778_behavior_for_gas_spent()
+        {
+            TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+            txReceipt.GasSpent = 321;
+
+            ReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7778Receipts);
+
+            // Storage decoder requires flag for backward compatibility with pre-EIP-7778 data
+            TxReceipt? withoutFlag = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            Assert.That(withoutFlag?.GasSpent, Is.Null);
+
+            TxReceipt? withFlag = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7778Receipts);
+            Assert.That(withFlag?.GasSpent, Is.EqualTo(txReceipt.GasSpent));
+        }
+
+        [Test]
+        public void Receipt_message_decoder_rejects_trailing_fields_after_gas_spent()
+        {
+            Bloom bloom = new();
+            long gasUsedTotal = 1;
+            long gasSpent = 2;
+
+            int logsLength = 0;
+            int contentLength = Rlp.LengthOf((byte)1)
+                + Rlp.LengthOf(gasUsedTotal)
+                + Rlp.LengthOf(bloom)
+                + Rlp.LengthOfSequence(logsLength)
+                + Rlp.LengthOf(gasSpent)
+                + Rlp.LengthOf(1);
+
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode((byte)1);
+            stream.Encode(gasUsedTotal);
+            stream.Encode(bloom);
+            stream.StartSequence(logsLength);
+            stream.Encode(gasSpent);
+            stream.Encode(1);
+
+            ReceiptMessageDecoder decoder = new();
+            Assert.Throws<RlpException>(() => decoder.Decode(stream.Data.ToArray().AsRlpStream(), RlpBehaviors.Eip7778Receipts));
+        }
+
+        [Test]
+        public void Receipt_message_decoder_rejects_overflow_gas_spent()
+        {
+            // Test that malicious GasSpent values larger than long.MaxValue are rejected
+            Bloom bloom = new();
+            long gasUsedTotal = 1;
+
+            // Encode a BigInteger value larger than long.MaxValue (9 bytes)
+            byte[] overflowGasSpent = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // 2^64
+
+            int logsLength = 0;
+            int contentLength = Rlp.LengthOf((byte)1)
+                + Rlp.LengthOf(gasUsedTotal)
+                + Rlp.LengthOf(bloom)
+                + Rlp.LengthOfSequence(logsLength)
+                + Rlp.LengthOf(overflowGasSpent);
+
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode((byte)1);
+            stream.Encode(gasUsedTotal);
+            stream.Encode(bloom);
+            stream.StartSequence(logsLength);
+            stream.Encode(overflowGasSpent);
+
+            ReceiptMessageDecoder decoder = new();
+            Assert.Throws<RlpException>(() => decoder.Decode(stream.Data.ToArray().AsRlpStream(), RlpBehaviors.Eip7778Receipts));
         }
 
         private void AssertMessageReceipt(TxReceipt txReceipt, TxReceipt deserialized)

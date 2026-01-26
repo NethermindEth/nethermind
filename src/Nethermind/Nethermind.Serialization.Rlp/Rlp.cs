@@ -1504,6 +1504,18 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            /// <summary>
+            /// Decodes a non-negative long value. Throws if the decoded value is negative.
+            /// Use this for fields that should never be negative (e.g., gas values).
+            /// </summary>
+            public long DecodePositiveLong()
+            {
+                long value = DecodeLong();
+                if (value < 0)
+                    RlpHelpers.ThrowNotPositiveLong();
+                return value;
+            }
+
             public ulong DecodeULong()
             {
                 int prefix = ReadByte();
