@@ -863,12 +863,14 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
+
+        ulong? slotNumber = context.Header.SlotNumber;
         // If the slot number is missing this opcode is invalid.
-        if (!context.Header.SlotNumber.HasValue) goto BadInstruction;
+        if (!slotNumber.HasValue) goto BadInstruction;
 
         // Charge the base gas cost for this opcode.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.PushUInt64<TTracingInst>(context.Header.SlotNumber.Value);
+        stack.PushUInt64<TTracingInst>(slotNumber.Value);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

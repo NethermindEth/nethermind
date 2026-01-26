@@ -74,5 +74,5 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
     /// </summary>
     [JsonRequired]
-    public sealed override ulong[]? SlotNumber { get; set; }
+    public sealed override ulong? SlotNumber { get; set; }
 }
