@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/classic.json",
+    "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+    "BaseDbPath": "nethermind_db/classic",
+    "LogFileName": "classic.log",
+    "MemoryHint": 2048000000,
+    "DiscoveryEnabled": true
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false,
+    "SnapServingEnabled": false
+  },
+  "Receipt": {
+    "TxLookupLimit": 2350000,
+    "CompactReceiptStore": true,
+    "CompactTxIndex": true
+  },
+  "Network": {
+    "DiscoveryDns": "enrtree://AJE62Q4DUX4QMMXEHCSSCSC65TDHZYSMONSD64P3WULVLSF6MRQ3K@all.classic.blockd.info"
+  },
+  "Metrics": {
+    "NodeName": "Ethereum Classic"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 20000,
+    "Host": "127.0.0.1",
+    "Port": 8545,
+    "EnabledModules": ["Eth", "Net", "Web3", "Admin", "Debug"]
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

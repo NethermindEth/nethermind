@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
     <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
+    <ProjectReference Include="..\Nethermind.EthereumClassic\Nethermind.EthereumClassic.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
     <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
@@ -36,6 +37,12 @@
     </Content>
     <Content Include="..\Chains\gnosis.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\gnosis.json</Link>
+    </Content>
+    <Content Include="..\Chains\classic.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\classic.json</Link>
+    </Content>
+    <Content Include="..\Chains\mordor.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\mordor.json</Link>
     </Content>
 
     <Content Include="..\Nethermind.Runner\configs\*.json" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">

@@ -28,6 +28,20 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "ETC Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c classic --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "ETC Mordor": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mordor --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Gnosis": {
       "commandName": "Project",
       "commandLineArgs": "-c gnosis --data-dir .data",

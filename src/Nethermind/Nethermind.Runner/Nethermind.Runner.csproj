@@ -51,6 +51,7 @@
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
+    <ProjectReference Include="..\Nethermind.EthereumClassic\Nethermind.EthereumClassic.csproj" />
     <ProjectReference Include="..\Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
