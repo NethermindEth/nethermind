@@ -41,7 +41,8 @@ public class ChainParametersTests
             "Eip4844FeeCollectorTransitionTimestamp",
             "Eip6110TransitionTimestamp",
             "Eip7692TransitionTimestamp",
-            "Eip7928TransitionTimestamp" // tmp
+            "Eip7928TransitionTimestamp", //todo: remove
+            "Eip7843TransitionTimestamp"
         ];
 
         const ulong testValue = 1ul;
