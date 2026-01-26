@@ -7,7 +7,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Contracts;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -36,32 +35,24 @@ public class XdcStateSyncSnapshotManager
 
     public XdcBlockHeader[] GetGapBlocks(XdcBlockHeader pivotHeader)
     {
-
-        XdcBlockHeader epochSwitchHeader = pivotHeader;
-
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(pivotHeader);
 
+        XdcBlockHeader epochSwitchHeader = pivotHeader;
 
         while (!_epochSwitchManager.IsEpochSwitchAtBlock(epochSwitchHeader))
         {
             epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
         }
 
-        List<long> gapBlockNumbers = new();
-
         long gapBlockNum = epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength - spec.Gap;
 
-        while (gapBlockNum < pivotHeader.Number)
+        int count = (int)((pivotHeader.Number - gapBlockNum) / spec.EpochLength) + 1;
+        XdcBlockHeader[] gapBlockHeaders = new XdcBlockHeader[count];
+
+        for (int i = 0; i < count; i++)
         {
-            gapBlockNumbers.Add(gapBlockNum);
+            gapBlockHeaders[i] = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
             gapBlockNum += spec.EpochLength;
-        }
-
-        XdcBlockHeader[] gapBlockHeaders = new XdcBlockHeader[gapBlockNumbers.Count];
-
-        for (int i = 0; i < gapBlockNumbers.Count; i++)
-        {
-            gapBlockHeaders[i] = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNumbers[i]);
         }
 
         return gapBlockHeaders;

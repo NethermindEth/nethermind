@@ -16,7 +16,7 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal sealed class XdcStateSyncPivot : IStateSyncPivot
+public class XdcStateSyncPivot : IStateSyncPivot
 {
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
