@@ -161,7 +161,7 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
 
                 if (applyTrace)
                 {
-                    if (!IsTraceSafeToApply(result.Trace))
+                    if (!IsTraceSafeToApply(result.Trace, tx, spec, beneficiary, feeCollector))
                     {
                         applyTrace = false;
                     }
@@ -438,15 +438,46 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         return false;
     }
 
-    private static bool IsTraceSafeToApply(StmTxTracer trace)
+    private bool IsTraceSafeToApply(StmTxTracer trace, Transaction tx, IReleaseSpec spec, Address beneficiary, Address? feeCollector)
     {
-        if (trace.WriteStorage.Count != 0 || trace.SelfDestructs.Count != 0)
+        if (tx.IsContractCreation || tx.To is null || tx.SenderAddress is null || tx.DataLength != 0)
         {
             return false;
         }
 
-        foreach (AccountChange change in trace.AccountChanges.Values)
+        Address sender = tx.SenderAddress;
+        Address recipient = tx.To;
+
+        if (spec.IsPrecompile(sender) || spec.IsPrecompile(recipient))
         {
+            return false;
+        }
+
+        if (_stateProvider.IsContract(recipient))
+        {
+            return false;
+        }
+
+        if (trace.ReadStorage.Count != 0 || trace.WriteStorage.Count != 0 || trace.SelfDestructs.Count != 0)
+        {
+            return false;
+        }
+
+        foreach (AddressAsKey address in trace.ReadAccounts)
+        {
+            if (!IsAllowedAccount(address, sender, recipient, beneficiary, feeCollector))
+            {
+                return false;
+            }
+        }
+
+        foreach ((AddressAsKey address, AccountChange change) in trace.AccountChanges)
+        {
+            if (!IsAllowedAccount(address, sender, recipient, beneficiary, feeCollector))
+            {
+                return false;
+            }
+
             if (change.CodeBefore is not null || change.CodeAfter is not null)
             {
                 return false;
@@ -454,6 +485,16 @@ public class BlockStmTransactionsExecutor : IBlockProcessor.IBlockTransactionsEx
         }
 
         return true;
+    }
+
+    private static bool IsAllowedAccount(AddressAsKey address, Address sender, Address recipient, Address beneficiary, Address? feeCollector)
+    {
+        if (address.Equals((AddressAsKey)sender) || address.Equals((AddressAsKey)recipient) || address.Equals((AddressAsKey)beneficiary))
+        {
+            return true;
+        }
+
+        return feeCollector is not null && address.Equals((AddressAsKey)feeCollector);
     }
 
     private static int FindFirstInvalid(ReadOnlySpan<StmExecutionResult> results)
