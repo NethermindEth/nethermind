@@ -67,7 +67,7 @@ public sealed class BlockCachePreWarmer(
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
-                BlockStateSource blockState = new(this, suggestedBlock, parent, spec);
+                BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
@@ -92,7 +92,7 @@ public sealed class BlockCachePreWarmer(
         return cachesCleared;
     }
 
-    private void PreWarmCachesParallel(BlockStateSource blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
         try
         {
@@ -155,7 +155,7 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private void WarmupTransactions(BlockStateSource blockState, ParallelOptions parallelOptions)
+    private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
@@ -181,7 +181,7 @@ public sealed class BlockCachePreWarmer(
                     (blockState, groupArray, parallelOptions.CancellationToken),
                     static (groupIndex, tupleState) =>
                     {
-                        (BlockStateSource? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
+                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
                         // Get thread-local processing state for this sender's transactions
@@ -247,7 +247,7 @@ public sealed class BlockCachePreWarmer(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockStateSource blockState)
+        BlockState blockState)
     {
         try
         {
@@ -266,8 +266,7 @@ public sealed class BlockCachePreWarmer(
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
-            if (blockState.PreWarmer._logger.IsTrace)
-                blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+            if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
@@ -275,8 +274,7 @@ public sealed class BlockCachePreWarmer(
         }
         catch (Exception ex)
         {
-            if (blockState.PreWarmer._logger.IsDebug)
-                blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
+            if (blockState.PreWarmer._logger.IsDebug) blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
         }
     }
 
@@ -430,5 +428,5 @@ public sealed class BlockCachePreWarmer(
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockStateSource(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
 }
