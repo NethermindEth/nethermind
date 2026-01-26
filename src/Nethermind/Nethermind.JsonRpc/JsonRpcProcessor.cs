@@ -168,7 +168,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                                 result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
                                 shouldExit = true;
                             }
-                            
+
                             reader.AdvanceTo(buffer.Start, buffer.End);
                             advanced = true;
                         }
