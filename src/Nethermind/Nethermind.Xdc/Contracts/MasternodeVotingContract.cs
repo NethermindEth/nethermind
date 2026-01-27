@@ -117,7 +117,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
                 Stake = GetCandidateStake(blockHeader, candidate)
             });
         }
-        candidatesAndStake.Sort((x, y) => y.Stake.CompareTo(x.Stake));
+        XdcSort.Slice(candidatesAndStake, (x, y) => x.Stake.CompareTo(y.Stake) >= 0);
 
         Address[] sortedCandidates = new Address[candidatesAndStake.Count];
         for (int i = 0; i < candidatesAndStake.Count; i++)

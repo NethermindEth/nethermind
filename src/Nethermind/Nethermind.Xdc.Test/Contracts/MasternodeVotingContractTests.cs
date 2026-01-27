@@ -27,12 +27,21 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
 namespace Nethermind.Xdc.Test;
 
 internal class MasternodeVotingContractTests
 {
+    [TestCaseSource(nameof(CandidatesWithStake))]
+    public void Slice_DifferentOrderAndStake_SortItemsAsExpected(CandidateStake[] candidatesAndStake, Address[] expectedOrder)
+    {
+        XdcSort.Slice(candidatesAndStake, (x, y) => x.Stake.CompareTo(y.Stake) >= 0);
+
+        candidatesAndStake.Select(x => x.Address).Should().Equal(expectedOrder);
+    }
+
     [Test]
     public void GetCandidatesAndStake_GenesisSetup_CanReadExpectedCandidates()
     {
