@@ -33,7 +33,7 @@ internal class ConsoleExitHandler : IDisposable
         {
             // Thrown when running in Xamarin
         }
-        AppDomain.CurrentDomain.ProcessExit += ProcessExitEventHandlerHandlerCallback;
+        AppDomain.CurrentDomain.ProcessExit += ProcessExitHandlerCallback;
     }
 
     private void Detach()
@@ -47,7 +47,7 @@ internal class ConsoleExitHandler : IDisposable
         {
             // Thrown when running in Xamarin
         }
-        AppDomain.CurrentDomain.ProcessExit -= ProcessExitEventHandlerHandlerCallback;
+        AppDomain.CurrentDomain.ProcessExit -= ProcessExitHandlerCallback;
     }
 
     // the process has exited, so we detach the events
@@ -57,7 +57,7 @@ internal class ConsoleExitHandler : IDisposable
     private void CancelKeyPressHandlerCallback(object? sender, ConsoleCancelEventArgs e) => KillProcessTree();
 
     // the user has closed the console window so we kill the entire process tree
-    private void ProcessExitEventHandlerHandlerCallback(object? sender, EventArgs e) => KillProcessTree();
+    private void ProcessExitHandlerCallback(object? sender, EventArgs e) => KillProcessTree();
 
     internal void KillProcessTree()
     {
