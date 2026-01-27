@@ -11,12 +11,6 @@
     "BlobsSupport": "Disabled"
   },
   "Sync": {
-    "FastSync": true,
-    "NeedToWaitForHeader": false,
-    "PivotNumber": 387871,
-    "PivotHash": "0x7e5eb4c31772bb5f9851b470c2e95d099309faf6e6fc54c658f595c5cf939ad5",
-    "PivotTotalDifficulty": 387872,
-    "VerifyTrieOnStateSyncFinished": true
   },
   "JsonRpc": {
     "Enabled": false

@@ -30,7 +30,7 @@ internal class XdcTransactionProcessor(
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
+        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
         {
             premiumPerGas = 0;
             senderReservedGasPayment = 0;
@@ -71,8 +71,8 @@ internal class XdcTransactionProcessor(
         if (tx.RequiresSpecialHandling(spec))
         {
             return ExecuteSpecialTransaction(tx, tracer, opts);
-        }
 
+        }
         return base.Execute(tx, tracer, opts);
     }
 

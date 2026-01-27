@@ -45,9 +45,48 @@
   "params": {
     "chainId": 63643,
     "homesteadBlock": 0,
-    "eip150Block": 0,
-    "eip155Block": 0,
-    "eip158Block": 0,
+    "eip150Transition": 0,
+    "eip155Transition": 0,
+    "eip158Transition": 0,
+    "eip160Transition": 0,
+
+    "eip145Transition": 0,
+    "eip1014Transition": 0,
+    "eip1052Transition": 0,
+    "eip1234Transition": 0,
+    "eip1283Transition": 0,
+
+    "eip152Transition": 0,
+    "eip1108Transition": 0,
+    "eip1344Transition": 0,
+    "eip1884Transition": 0,
+    "eip2028Transition": 999999999999,
+    "eip2200Transition": 0,
+
+    "eip2565Transition": 0,
+    "eip2718Transition": 0,
+    "eip2930Transition": 0,
+
+    "eip1559Transition": 0,
+    "eip2929Transition": 0,
+    "eip3198Transition": 0,
+    "eip3529Transition": 0,
+    "eip3541Transition": 0,
+    "eip3554Transition": 0,
+
+    "eip4399Transition": 0,
+
+    "eip3651Transition": 0,
+    "eip3855Transition": 0,
+    "eip3860Transition": 0,
+    "eip6049Transition": 0,
+
+    "eip1153Transition": 0,
+    "eip4844Transition": 0,
+    "eip5656Transition": 0,
+    "eip6780Transition": 0,
+    "eip7516Transition": 0,
+
     "byzantiumBlock": 0
   },
   "genesis": {

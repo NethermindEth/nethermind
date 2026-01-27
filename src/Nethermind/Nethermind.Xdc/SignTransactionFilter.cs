@@ -47,7 +47,7 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
 
         if (tx.IsSpecialTransaction((IXdcReleaseSpec)specProvider.GetFinalSpec()))
         {
-            if(tx.IsSignTransaction(spec) && !ValidateSignTransaction(tx, header, spec))
+            if (tx.IsSignTransaction(spec) && !ValidateSignTransaction(tx, header, spec))
             {
                 return AcceptTxResult.Invalid;
             }
