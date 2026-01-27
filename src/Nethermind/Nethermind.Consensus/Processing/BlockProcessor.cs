@@ -179,18 +179,15 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (_parallelWorldState is not null && spec.BlockLevelAccessListsEnabled)
+        if (block.IsGenesis)
         {
-            if (block.IsGenesis)
-            {
-                header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-            }
-            else
-            {
-                block.GeneratedBlockAccessList = _parallelWorldState.BlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_parallelWorldState.BlockAccessList).Bytes;
-                header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-            }
+            header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+        else if (_parallelWorldState is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            block.GeneratedBlockAccessList = _parallelWorldState.BlockAccessList;
+            block.EncodedBlockAccessList = Rlp.Encode(_parallelWorldState.BlockAccessList).Bytes;
+            header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
 
         header.Hash = header.CalculateHash();
