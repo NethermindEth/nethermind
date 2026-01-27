@@ -42,7 +42,7 @@ internal class MasternodeVotingContractTests
             new CandidateStake() { Address = TestItem.AddressB, Stake = 10_000_000},
             new CandidateStake() { Address = TestItem.AddressC, Stake = 10_000_000}
             ];
-        Address[] expectedOrder = [TestItem.AddressC, TestItem.AddressB, TestItem.AddressA ];
+        Address[] expectedOrder = [TestItem.AddressC, TestItem.AddressB, TestItem.AddressA];
 
         yield return new TestCaseData(candidatesAndStake, expectedOrder);
 
@@ -82,7 +82,7 @@ internal class MasternodeVotingContractTests
     {
         XdcSort.Slice(candidatesAndStake, (x, y) => x.Stake.CompareTo(y.Stake) >= 0);
 
-        candidatesAndStake.Select(x=>x.Address).Should().Equal(expectedOrder);
+        candidatesAndStake.Select(x => x.Address).Should().Equal(expectedOrder);
     }
 
     [Test]
