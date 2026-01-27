@@ -656,6 +656,112 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(storageTree.Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
+    [Test]
+    public void TestStorageNodeLookupWithoutSelfDestructFallsThroughToReadOnlyBundle()
+    {
+        // This test verifies the fix for the bug where storage node lookup would exit early
+        // when selfDestructStateIdx == -1 (no self-destruct) and local _snapshots exist but
+        // don't contain the storage node. Before the fix, the condition `i >= currentBundleSelfDestructIdx`
+        // was always true when selfDestructStateIdx == -1, causing early exit.
+
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address addr1 = TestItem.AddressA;
+        Address addr2 = TestItem.AddressB;
+        Hash256 addr1Hash = Keccak.Compute(addr1.Bytes);
+        UInt256 slot1 = 1;
+        byte[] value1 = { 0x01 };
+
+        Account acc1 = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(addr1).Returns(acc1);
+
+        // Add storage slot AND trie node for addr1 to ReadOnlySnapshots
+        ctx.AddSnapshot(content =>
+        {
+            content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
+
+            // Also add a storage trie node for addr1 at root path
+            TrieNode storageNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
+        });
+
+        // Create local commits for addr2 (NOT addr1) - this creates local _snapshots
+        Account acc2 = TestItem.GenerateRandomAccount();
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(addr2, acc2);
+        }
+        scope.Commit(1);
+
+        // Now lookup storage for addr1 - should fall through local _snapshots to ReadOnlySnapshots
+        // Before the fix: would fail because DoTryFindStorageNodeExternal exited early
+        // After the fix: properly falls through and finds storage in ReadOnlySnapshots
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr1);
+        Assert.That(storageTree.Get(slot1), Is.EqualTo(value1));
+    }
+
+    [Test]
+    public void TestSelfDestructInLocalSnapshotsStopsAtExpectedSnapshot()
+    {
+        // This test verifies that when self-destruct is in local _snapshots (SnapshotBundle),
+        // the storage lookup correctly:
+        // 1. Finds storage added AFTER self-destruct (in newer snapshots)
+        // 2. Finds storage added AT the same commit as self-destruct
+        // 3. Returns null for storage that existed BEFORE self-destruct (blocked by self-destruct)
+
+        using TestContext ctx = new TestContext();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address addr = TestItem.AddressA;
+        UInt256 slotBefore = 1;
+        UInt256 slotAtSelfDestruct = 2;
+        UInt256 slotAfter = 3;
+        byte[] valueBefore = { 0x01 };
+        byte[] valueAtSelfDestruct = { 0x02 };
+        byte[] valueAfter = { 0x03 };
+
+        Account acc = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(addr).Returns(acc);
+
+        // Commit 1: Set slot BEFORE self-destruct
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
+            storageBatch.Set(slotBefore, valueBefore);
+            storageBatch.Dispose();
+        }
+        scope.Commit(1);
+
+        // Commit 2: Self-destruct AND set new slot in same commit
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
+            storageBatch.Clear();
+            storageBatch.Set(slotAtSelfDestruct, valueAtSelfDestruct);
+            storageBatch.Dispose();
+        }
+        scope.Commit(2);
+
+        // Commit 3: Set slot AFTER self-destruct
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
+            storageBatch.Set(slotAfter, valueAfter);
+            storageBatch.Dispose();
+        }
+        scope.Commit(3);
+
+        // Verify storage behavior:
+        // - slotBefore should be blocked by self-destruct (return zero)
+        // - slotAtSelfDestruct should be found (set in same commit as self-destruct)
+        // - slotAfter should be found (added after self-destruct)
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
+        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        Assert.That(storageTree.Get(slotAtSelfDestruct), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
+        Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
+    }
+
     #endregion
 
     #region ResetState Tests

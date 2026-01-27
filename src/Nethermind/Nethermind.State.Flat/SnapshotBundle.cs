@@ -275,7 +275,7 @@ public sealed class SnapshotBundle : IDisposable
                     return true;
                 }
 
-                if (i >= currentBundleSelfDestructIdx)
+                if (i <= currentBundleSelfDestructIdx)
                 {
                     Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                     node = null;

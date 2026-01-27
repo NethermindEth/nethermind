@@ -14,7 +14,7 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat.Persistence;
 
 /// <summary>
-/// A decorator for IPersistence that caches readers to reduce allocation overhead.
+/// A decorator for IPersistence that caches readers to reduce the overhead of creating a full rocksdb snapshot.
 /// The cache is periodically cleared to allow database compaction.
 /// </summary>
 public class CachedReaderPersistence : IPersistence, IAsyncDisposable
