@@ -29,6 +29,7 @@ public class GenesisBuilder(
     public Block Build()
     {
         Block genesis = chainSpec.Genesis;
+        genesis.SlotNumber = 0;
         Preallocate(genesis);
 
         foreach (IGenesisPostProcessor postProcessor in postProcessors)
