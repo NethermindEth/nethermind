@@ -65,7 +65,7 @@ public class MetricsIntegrationTests
     private void DeployCode(Address address, byte[] code)
     {
         _stateProvider.CreateAccountIfNotExists(address, 0);
-        _stateProvider.InsertCode(address, code, _specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _stateProvider.InsertCode(address, code, Prague.Instance);
     }
 
     private Block CreatePragueBlock(params Transaction[] txs)

@@ -581,61 +581,19 @@ namespace Nethermind.Consensus.Processing
                 double storageHitRate = CalculateHitRate(storageCacheHits, storageCacheMisses);
                 double codeHitRate = CalculateHitRate(codeCacheHits, codeCacheMisses);
 
-                var slowBlockLog = new
-                {
-                    level = "warn",
-                    msg = "Slow block",
-                    block = new
-                    {
-                        number = block.Number,
-                        hash = block.Hash?.ToString() ?? "0x",
-                        gas_used = block.GasUsed,
-                        tx_count = block.Transactions.Length
-                    },
-                    timing = new
-                    {
-                        execution_ms = Math.Round(executionMs, 3),
-                        state_read_ms = Math.Round(stateReadMs, 3),
-                        state_hash_ms = Math.Round(stateHashMs, 3),
-                        commit_ms = Math.Round(commitMs, 3),
-                        total_ms = Math.Round(totalMs, 3)
-                    },
-                    throughput = new
-                    {
-                        mgas_per_sec = Math.Round(mgasPerSec, 2)
-                    },
-                    state_reads = new
-                    {
-                        accounts = accountReads,
-                        storage_slots = storageReads,
-                        code = codeReads,
-                        code_bytes = codeBytesRead
-                    },
-                    state_writes = new
-                    {
-                        accounts = accountWrites,
-                        accounts_deleted = accountDeleted,
-                        storage_slots = storageWrites,
-                        storage_slots_deleted = storageDeleted,
-                        code = codeWrites,
-                        code_bytes = codeBytesWritten,
-                        eip7702_delegations_set = eip7702DelegationsSet,
-                        eip7702_delegations_cleared = eip7702DelegationsCleared
-                    },
-                    cache = new
-                    {
-                        account = new { hits = accountCacheHits, misses = accountCacheMisses, hit_rate = accountHitRate },
-                        storage = new { hits = storageCacheHits, misses = storageCacheMisses, hit_rate = storageHitRate },
-                        code = new { hits = codeCacheHits, misses = codeCacheMisses, hit_rate = codeHitRate }
-                    },
-                    evm = new
-                    {
-                        sload = sloadOps,
-                        sstore = sstoreOps,
-                        calls = callOps,
-                        creates = createOps
-                    }
-                };
+                var slowBlockLog = new SlowBlockLog(
+                    Level: "warn",
+                    Msg: "Slow block",
+                    Block: new SlowBlockInfo(block.Number, block.Hash?.ToString() ?? "0x", block.GasUsed, block.Transactions.Length),
+                    Timing: new SlowBlockTiming(Math.Round(executionMs, 3), Math.Round(stateReadMs, 3), Math.Round(stateHashMs, 3), Math.Round(commitMs, 3), Math.Round(totalMs, 3)),
+                    Throughput: new SlowBlockThroughput(Math.Round(mgasPerSec, 2)),
+                    StateReads: new SlowBlockStateReads(accountReads, storageReads, codeReads, codeBytesRead),
+                    StateWrites: new SlowBlockStateWrites(accountWrites, accountDeleted, storageWrites, storageDeleted, codeWrites, codeBytesWritten, eip7702DelegationsSet, eip7702DelegationsCleared),
+                    Cache: new SlowBlockCacheStats(
+                        new SlowBlockCacheEntry(accountCacheHits, accountCacheMisses, accountHitRate),
+                        new SlowBlockCacheEntry(storageCacheHits, storageCacheMisses, storageHitRate),
+                        new SlowBlockCacheEntry(codeCacheHits, codeCacheMisses, codeHitRate)),
+                    Evm: new SlowBlockEvm(sloadOps, sstoreOps, callOps, createOps));
 
                 string json = JsonSerializer.Serialize(slowBlockLog, new JsonSerializerOptions
                 {
@@ -761,5 +719,65 @@ namespace Nethermind.Consensus.Processing
             public long StartEip7702DelegationsSet;
             public long StartEip7702DelegationsCleared;
         }
+
+        // Named types for slow block JSON serialization (cross-client standardized format)
+        private record SlowBlockLog(
+            [property: JsonPropertyName("level")] string Level,
+            [property: JsonPropertyName("msg")] string Msg,
+            [property: JsonPropertyName("block")] SlowBlockInfo Block,
+            [property: JsonPropertyName("timing")] SlowBlockTiming Timing,
+            [property: JsonPropertyName("throughput")] SlowBlockThroughput Throughput,
+            [property: JsonPropertyName("state_reads")] SlowBlockStateReads StateReads,
+            [property: JsonPropertyName("state_writes")] SlowBlockStateWrites StateWrites,
+            [property: JsonPropertyName("cache")] SlowBlockCacheStats Cache,
+            [property: JsonPropertyName("evm")] SlowBlockEvm Evm);
+
+        private record SlowBlockInfo(
+            [property: JsonPropertyName("number")] long Number,
+            [property: JsonPropertyName("hash")] string Hash,
+            [property: JsonPropertyName("gas_used")] long GasUsed,
+            [property: JsonPropertyName("tx_count")] int TxCount);
+
+        private record SlowBlockTiming(
+            [property: JsonPropertyName("execution_ms")] double ExecutionMs,
+            [property: JsonPropertyName("state_read_ms")] double StateReadMs,
+            [property: JsonPropertyName("state_hash_ms")] double StateHashMs,
+            [property: JsonPropertyName("commit_ms")] double CommitMs,
+            [property: JsonPropertyName("total_ms")] double TotalMs);
+
+        private record SlowBlockThroughput(
+            [property: JsonPropertyName("mgas_per_sec")] double MgasPerSec);
+
+        private record SlowBlockStateReads(
+            [property: JsonPropertyName("accounts")] long Accounts,
+            [property: JsonPropertyName("storage_slots")] long StorageSlots,
+            [property: JsonPropertyName("code")] long Code,
+            [property: JsonPropertyName("code_bytes")] long CodeBytes);
+
+        private record SlowBlockStateWrites(
+            [property: JsonPropertyName("accounts")] long Accounts,
+            [property: JsonPropertyName("accounts_deleted")] long AccountsDeleted,
+            [property: JsonPropertyName("storage_slots")] long StorageSlots,
+            [property: JsonPropertyName("storage_slots_deleted")] long StorageSlotsDeleted,
+            [property: JsonPropertyName("code")] long Code,
+            [property: JsonPropertyName("code_bytes")] long CodeBytes,
+            [property: JsonPropertyName("eip7702_delegations_set")] long Eip7702DelegationsSet,
+            [property: JsonPropertyName("eip7702_delegations_cleared")] long Eip7702DelegationsCleared);
+
+        private record SlowBlockCacheStats(
+            [property: JsonPropertyName("account")] SlowBlockCacheEntry Account,
+            [property: JsonPropertyName("storage")] SlowBlockCacheEntry Storage,
+            [property: JsonPropertyName("code")] SlowBlockCacheEntry Code);
+
+        private record SlowBlockCacheEntry(
+            [property: JsonPropertyName("hits")] long Hits,
+            [property: JsonPropertyName("misses")] long Misses,
+            [property: JsonPropertyName("hit_rate")] double HitRate);
+
+        private record SlowBlockEvm(
+            [property: JsonPropertyName("sload")] long Sload,
+            [property: JsonPropertyName("sstore")] long Sstore,
+            [property: JsonPropertyName("calls")] long Calls,
+            [property: JsonPropertyName("creates")] long Creates);
     }
 }
