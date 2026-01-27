@@ -36,7 +36,7 @@ public static class OrderedComponentsContainerBuilderExtensions
 
     private static ContainerBuilder EnsureOrderedComponents<T>(this ContainerBuilder builder)
     {
-        string registeredMarker = $"Registerd OrderedComponents For {typeof(T).Name}";
+        string registeredMarker = $"Registered OrderedComponents For {typeof(T).Name}";
         if (!builder.Properties.TryAdd(registeredMarker, null))
         {
             return builder;

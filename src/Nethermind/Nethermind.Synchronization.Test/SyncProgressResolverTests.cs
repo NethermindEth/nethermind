@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new()
             {
                 FastSync = false,
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.Test
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
             blockTree.SyncPivot.Returns((1, Hash256.Zero));
 
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.Test
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = false,
-                PivotNumber = "1",
+                PivotNumber = 1,
             };
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);

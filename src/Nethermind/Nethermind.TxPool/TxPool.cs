@@ -482,6 +482,46 @@ namespace Nethermind.TxPool
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
 
+        /// This is a debug/testing method that clears the entire txpool state.
+        /// Currently only used in the Taiko integration tests after chain reorgs.
+        public void ResetTxPoolState()
+        {
+            _newHeadLock.EnterWriteLock();
+            try
+            {
+                // Clear hash cache and account cache
+                _hashCache.ClearAll();
+                _accountCache.Reset();
+
+                // Also clear all pending transactions
+                // Get snapshot first to avoid modifying collection while iterating
+                Transaction[] pendingTxs = _transactions.GetSnapshot();
+                foreach (Transaction tx in pendingTxs)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+
+                // Clear blob transactions too
+                Transaction[] pendingBlobTxs = _blobTransactions.GetSnapshot();
+                foreach (Transaction tx in pendingBlobTxs)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+
+                // Update metrics after removal
+                Metrics.TransactionCount = _transactions.Count;
+                Metrics.BlobTransactionCount = _blobTransactions.Count;
+
+                // Reset snapshots
+                _transactionSnapshot = null;
+                _blobTransactionSnapshot = null;
+            }
+            finally
+            {
+                _newHeadLock.ExitWriteLock();
+            }
+        }
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
@@ -493,7 +533,6 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
-                _retryCache.Received(tx.Hash!);
                 return AcceptTxResult.Syncing;
             }
 
@@ -577,7 +616,10 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => _retryCache.Announced(txhash, retryHandler);
+        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
+            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
+                AnnounceResult.Delayed :
+                _retryCache.Announced(hash, retryHandler);
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
@@ -861,18 +903,15 @@ namespace Nethermind.TxPool
                 return false;
             }
 
-            if (hasBeenRemoved)
-            {
-                RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+            RemovedPending?.Invoke(this, new TxEventArgs(transaction));
 
-                RemovePendingDelegations(transaction);
-            }
+            RemovePendingDelegations(transaction);
 
             _broadcaster.StopBroadcast(hash);
 
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
-            return hasBeenRemoved;
+            return true;
         }
 
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
@@ -958,13 +997,14 @@ namespace Nethermind.TxPool
             if (_isDisposed) return;
             _isDisposed = true;
             _timer?.Dispose();
-            _cts.Cancel();
+            await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
             _transactions.Removed -= OnRemovedTx;
 
+            await _retryCache.DisposeAsync();
             await _headProcessing;
         }
 

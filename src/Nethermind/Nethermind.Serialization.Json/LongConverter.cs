@@ -79,10 +79,7 @@ namespace Nethermind.Serialization.Json
             throw new JsonException("hex to long");
         }
 
-        public override long Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        internal static long ReadCore(ref Utf8JsonReader reader)
         {
             if (reader.TokenType == JsonTokenType.Number)
             {
@@ -101,6 +98,14 @@ namespace Nethermind.Serialization.Json
             }
 
             throw new JsonException();
+        }
+
+        public override long Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            return ReadCore(ref reader);
         }
 
         [SkipLocalsInit]

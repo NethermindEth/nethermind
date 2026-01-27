@@ -155,7 +155,12 @@ namespace Ethereum.Test.Base
                 transaction.AccessList = null;
 
             if (transactionJson.MaxFeePerGas is not null)
+            {
                 transaction.Type = TxType.EIP1559;
+                // For EIP-1559+ transactions, GasPrice is aliased to MaxPriorityFeePerGas.
+                // Use maxPriorityFeePerGas from JSON, falling back to maxFeePerGas per go-ethereum behavior.
+                transaction.GasPrice = transactionJson.MaxPriorityFeePerGas ?? transactionJson.MaxFeePerGas.Value;
+            }
 
             if (transaction.BlobVersionedHashes?.Length > 0)
                 transaction.Type = TxType.Blob;
@@ -272,8 +277,6 @@ namespace Ethereum.Test.Base
                         CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot,
                         CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot,
                         CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas,
-                        ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed,
-                        ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas,
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),

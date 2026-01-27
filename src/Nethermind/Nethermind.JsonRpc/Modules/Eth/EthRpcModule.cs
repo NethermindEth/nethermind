@@ -67,6 +67,7 @@ public partial class EthRpcModule(
     IForkInfo forkInfo,
     ulong? secondsPerSlot) : IEthRpcModule
 {
+    public const int GetProofStorageKeyLimit = 1000;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -142,9 +143,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Address[] result = _wallet.GetAccounts();
-            Address[] data = result.ToArray();
-            return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
+            return ResultWrapper<IEnumerable<Address>>.Success(_wallet.GetAccounts());
         }
         catch (Exception)
         {
@@ -660,9 +659,15 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] storageKeys,
-        BlockParameter blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
     {
+        if (storageKeys.Count > GetProofStorageKeyLimit)
+        {
+            return ResultWrapper<AccountProof>.Fail(
+                $"storageKeys: {storageKeys.Count} is over the query limit {GetProofStorageKeyLimit}.",
+                ErrorCodes.InvalidParams);
+        }
+
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
@@ -677,7 +682,7 @@ public partial class EthRpcModule(
         }
 
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
-        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!.StateRoot!);
+        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }
 

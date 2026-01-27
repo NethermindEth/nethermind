@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Clique
@@ -17,7 +18,7 @@ namespace Nethermind.Consensus.Clique
         {
             if (blockHeader.ExtraData is null)
             {
-                throw new Exception(string.Empty);
+                throw new BlockchainException("Block header ExtraData cannot be null when extracting signers");
             }
 
             Span<byte> signersData = blockHeader.ExtraData.AsSpan(Clique.ExtraVanityLength, (blockHeader.ExtraData.Length - Clique.ExtraSealLength));

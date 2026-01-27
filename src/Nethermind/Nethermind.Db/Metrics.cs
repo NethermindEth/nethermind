@@ -85,7 +85,7 @@ namespace Nethermind.Db
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites, value);
 
         [GaugeMetric]
-        [Description("Indicator if StadeDb is being pruned.")]
+        [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
         [GaugeMetric]

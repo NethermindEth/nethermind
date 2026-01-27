@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -55,7 +56,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
-            // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
+            // The block added event is not waited by genesis, but it's needed to wait here so that `AddBlock` waits correctly.
             Task newBlockWaiter = chain.BlockTree.WaitForNewBlock(chain.CancellationToken);
             chain.MainProcessingContext.GenesisLoader.Load();
             await newBlockWaiter;
@@ -173,18 +174,27 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
             .AddSingleton<FromXdcContainer>()
-            .AddScoped<IGenesisBuilder, XdcTestGenesisBuilder>()
+            .AddScoped<IGenesisBuilder>(ctx =>
+                new XdcTestGenesisBuilder(
+                    ctx.Resolve<ISpecProvider>(),
+                    ctx.Resolve<IWorldState>(),
+                    ctx.Resolve<IEnumerable<IGenesisPostProcessor>>().ToArray(),
+                    ctx.Resolve<Configuration>(),
+                    MasterNodeCandidates
+                )
+            )
             .AddSingleton<IBlockProducer, TestXdcBlockProducer>()
             .AddSingleton((ctx) => new CandidateContainer(MasterNodeCandidates))
             .AddSingleton<ISigner>(ctx =>
             {
                 var spec = ctx.Resolve<ISpecProvider>();
-                var logmanager = ctx.Resolve<ILogManager>();
+                var logManager = ctx.Resolve<ILogManager>();
                 //Set the first signer to be a non master node to avoid accidental block proposals
-                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logmanager);
+                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logManager);
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
+            .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
@@ -218,6 +228,7 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.LimitPenaltyEpoch = 2;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
+        xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
@@ -263,6 +274,8 @@ public class XdcTestBlockchain : TestBlockchain
         ];
 
         xdcSpec.V2Configs = v2ConfigParams.ToList();
+        xdcSpec.ValidateChainId = false;
+        xdcSpec.Reward = 5000;
         return xdcSpec;
     }
 
@@ -300,9 +313,9 @@ public class XdcTestBlockchain : TestBlockchain
     private class XdcTestGenesisBuilder(
         ISpecProvider specProvider,
         IWorldState state,
-        ISnapshotManager snapshotManager,
         IGenesisPostProcessor[] postProcessors,
-        Configuration testConfiguration
+        Configuration testConfiguration,
+        List<PrivateKey> masterNodeCandidates
     ) : IGenesisBuilder
     {
         public Block Build()
@@ -310,6 +323,11 @@ public class XdcTestBlockchain : TestBlockchain
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+
+            foreach (PrivateKey candidate in masterNodeCandidates)
+            {
+                state.CreateAccount(candidate.Address, testConfiguration.AccountInitialValue);
+            }
 
             IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 
@@ -330,9 +348,13 @@ public class XdcTestBlockchain : TestBlockchain
             state.CommitTree(0);
             genesisBlock.Header.StateRoot = state.StateRoot;
             genesisBlock.Header.Hash = genesisBlock.Header.CalculateHash();
-            snapshotManager.StoreSnapshot(new Types.Snapshot(genesisBlock.Number, genesisBlock.Hash!, finalSpec.GenesisMasterNodes));
             return genesisBlock;
         }
+    }
+
+    private class ZeroRewardCalculator : IRewardCalculator
+    {
+        public BlockReward[] CalculateRewards(Block block) => Array.Empty<BlockReward>();
     }
 
     public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)
@@ -371,16 +393,12 @@ public class XdcTestBlockchain : TestBlockchain
     {
         var b = await AddBlockWithoutCommitQc(transactions);
         CreateAndCommitQC((XdcBlockHeader)b.Header);
-
         return b;
     }
 
     public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
         var b = await base.AddBlockFromParent(parent, transactions);
-
-        CheckIfTimeForSnapshot();
-
         CreateAndCommitQC((XdcBlockHeader)b.Header);
 
         return b;
@@ -389,20 +407,7 @@ public class XdcTestBlockchain : TestBlockchain
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
     {
         await base.AddBlock(txs);
-
-        CheckIfTimeForSnapshot();
-
         return BlockTree.Head!;
-    }
-
-    private void CheckIfTimeForSnapshot()
-    {
-        var head = (XdcBlockHeader)BlockTree.Head!.Header;
-        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
-        if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
-        {
-            SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
-        }
     }
 
     public async Task TriggerAndSimulateBlockProposalAndVoting()

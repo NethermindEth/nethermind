@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
@@ -21,6 +22,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
@@ -61,6 +64,7 @@ namespace Ethereum.Test.Base
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
 
             EofValidator.Logger = _logger;
 
@@ -87,9 +91,29 @@ namespace Ethereum.Test.Base
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             using IDisposable _ = stateProvider.BeginScope(null);
+            IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
-            InitializeTestState(test.Pre, test.CurrentCoinbase, stateProvider, specProvider);
+            InitializeTestState(test.Pre, stateProvider, specProvider);
+
+            // Legacy tests expect coinbase to be created BEFORE transaction execution
+            // (old buggy behavior that was baked into expected state roots).
+            // Modern tests correctly create coinbase only after successful tx.
+            if (test.IsLegacy && test.CurrentCoinbase is not null)
+            {
+                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+                stateProvider.RecalculateStateRoot();
+            }
+
+            if (test.Transaction.ChainId is null)
+            {
+                test.Transaction.ChainId = test.ChainId;
+            }
+
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+            Transaction[] transactions = [test.Transaction];
+            Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? [] : null;
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -105,47 +129,29 @@ namespace Ethereum.Test.Base
                 StateRoot = test.PostHash,
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
-                WithdrawalsRoot = test.CurrentWithdrawalsRoot,
+                WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
                 ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
-                RequestsHash = test.RequestsHash
+                RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
+                TxRoot = TxTrie.CalculateRoot(transactions),
+                ReceiptsRoot = test.PostReceiptsRoot,
             };
+
             header.Hash = header.CalculateHash();
+            Block block = new(header, new BlockBody(transactions, [], withdrawals));
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = test.ChainId;
-            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
-            {
-                BlockHeader parent = new(
-                    parentHash: Keccak.Zero,
-                    unclesHash: Keccak.OfAnEmptySequenceRlp,
-                    beneficiary: test.CurrentCoinbase,
-                    difficulty: test.CurrentDifficulty,
-                    number: test.CurrentNumber - 1,
-                    gasLimit: test.CurrentGasLimit,
-                    timestamp: test.CurrentTimestamp,
-                    extraData: []
-                )
-                {
-                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
-                };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-            }
-
-            ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
             TransactionResult? txResult = null;
-            if (txIsValid)
+
+            if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
             {
                 txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
             else
             {
-                _logger.Info($"Skipping invalid tx with error: {txIsValid.Error}");
+                _logger.Info($"Skipping invalid tx with error: {blockValidationError}");
             }
 
             stopwatch.Stop();
@@ -154,11 +160,29 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.CommitTree(1);
+
+                // '@winsvega added a 0-wei reward to the miner, so we had to add that into the state test execution phase. He needed it for retesteth.'
+                // This must only happen after successful transaction execution, not when tx fails validation.
+                // For legacy tests, coinbase was already created before tx execution.
+                if (!test.IsLegacy)
+                {
+                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                }
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
             else
             {
-                stateProvider.Reset();
+                // For legacy tests with failed tx, we need to recalculate root since coinbase was created
+                if (test.IsLegacy)
+                {
+                    stateProvider.CommitTree(0);
+                    stateProvider.RecalculateStateRoot();
+                }
+                else
+                {
+                    stateProvider.Reset();
+                }
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
@@ -176,7 +200,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        public static void InitializeTestState(Dictionary<Address, AccountState> preState, Address coinbase, IWorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
@@ -194,13 +218,6 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
-
-            if (!stateProvider.AccountExists(coinbase))
-            {
-                stateProvider.CreateAccount(coinbase, 0);
-                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-                stateProvider.RecalculateStateRoot();
-            }
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)

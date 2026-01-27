@@ -11,7 +11,6 @@ using Microsoft.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -31,6 +30,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
+using Nethermind.Taiko.Config;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -46,7 +46,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -55,7 +55,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
         IRlpStreamDecoder<Transaction> txDecoder,
-        IL1OriginStore l1OriginStore) :
+        IL1OriginStore l1OriginStore,
+        ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
@@ -111,7 +112,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
     {
-        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender();
+        // Fetch all the pending transactions except transactions from the GoldenTouchAccount
+        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender()
+            .Where(txs => !txs.Key.Value.Equals(TaikoBlockValidator.GoldenTouchAccount));
 
         if (localAccounts is not null)
         {
@@ -204,6 +207,14 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                             continue;
                         }
 
+                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
+                        continue;
+                    }
+
+                    // For Surge, filter out any transaction with very high gas limit
+                    if (surgeConfig.MaxGasLimitRatio > 0 && tx.GasLimit > tx.SpentGas * surgeConfig.MaxGasLimitRatio)
+                    {
+                        worldState.Restore(snapshot);
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
@@ -365,5 +376,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         l1OriginStore.WriteL1Origin(blockId, l1Origin);
 
         return ResultWrapper<L1Origin>.Success(l1Origin);
+    }
+
+    /// <inheritdoc />
+    public ResultWrapper<bool> taikoDebug_clearTxPoolForReorg()
+    {
+        txPool.ResetTxPoolState();
+        return ResultWrapper<bool>.Success(true);
     }
 }
