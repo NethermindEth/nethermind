@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -177,7 +176,7 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, bool incrementNonce = false)
         {
             _needsStateRootUpdate = true;
 
@@ -197,7 +196,7 @@ namespace Nethermind.State
             }
 
             bool isZero = balanceChange.IsZero;
-            if (isZero)
+            if (!incrementNonce && isZero)
             {
                 // this also works like this in Geth (they don't follow the spec ¯\_(*~*)_/¯)
                 // however we don't do it because of a consensus issue with Geth, just to avoid
@@ -223,9 +222,21 @@ namespace Nethermind.State
                 ThrowInsufficientBalanceException(address);
             }
 
-            UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
+            UInt256 newBalance;
+            if (isZero)
+            {
+                newBalance = account.Balance;
+            }
+            else if (isSubtracting)
+            {
+                account.Balance.Subtract(in balanceChange, out newBalance);
+            }
+            else
+            {
+                account.Balance.Add(in balanceChange, out newBalance);
+            }
 
-            Account changedAccount = account.WithChangedBalance(newBalance);
+            Account changedAccount = !incrementNonce ? account.WithChangedBalance(newBalance) : account.WithChangedBalanceAndNonce(newBalance, account.Nonce + UInt256.One);
             if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, account, in newBalance);
 
             PushUpdate(address, changedAccount);
@@ -244,12 +255,14 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            SetNewBalance(address, balanceChange, releaseSpec, true);
+            _needsStateRootUpdate = true;
+            SetNewBalance(address, balanceChange, releaseSpec, isSubtracting: true);
         }
 
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool incrementNonce = false)
         {
-            SetNewBalance(address, balanceChange, releaseSpec, false);
+            _needsStateRootUpdate = true;
+            SetNewBalance(address, balanceChange, releaseSpec, isSubtracting: false, incrementNonce);
         }
 
         public void IncrementNonce(Address address, UInt256 delta)
@@ -462,16 +475,16 @@ namespace Nethermind.State
             }
         }
 
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec, bool incrementNonce = false)
         {
             if (AccountExists(address))
             {
-                AddToBalance(address, balance, spec);
+                AddToBalance(address, balance, spec, incrementNonce);
                 return false;
             }
             else
             {
-                CreateAccount(address, balance);
+                CreateAccount(address, balance, in incrementNonce ? ref UInt256.One : ref UInt256.Zero);
                 return true;
             }
         }

@@ -4,66 +4,65 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm;
+
+public static class ExecutionTypeExtensions
 {
-    public static class ExecutionTypeExtensions
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCreateLegacy(this ExecutionType executionType) =>
-            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCreateEof(this ExecutionType executionType) =>
-            executionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE;
-        // did not want to use flags here specifically
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCreate(this ExecutionType executionType) =>
-            IsAnyCreateLegacy(executionType) || IsAnyCreateEof(executionType);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsAnyCreateLegacy(this ExecutionType executionType) =>
+        (executionType & ExecutionType.IsEofCreate) == ExecutionType.IsCreate;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCall(this ExecutionType executionType) =>
-            IsAnyCallLegacy(executionType) || IsAnyCallEof(executionType);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsAnyCreateEof(this ExecutionType executionType) =>
+        (executionType & ExecutionType.IsEofCreate) == ExecutionType.IsEofCreate;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCallLegacy(this ExecutionType executionType) =>
-            executionType is ExecutionType.CALL or ExecutionType.STATICCALL or ExecutionType.DELEGATECALL or ExecutionType.CALLCODE;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsAnyCreate(this ExecutionType executionType) =>
+        (executionType & ExecutionType.IsCreate) != 0;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCallEof(this ExecutionType executionType) =>
-            executionType is ExecutionType.EOFCALL or ExecutionType.EOFSTATICCALL or ExecutionType.EOFDELEGATECALL;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsAnyCallEof(this ExecutionType executionType) =>
+        (executionType & ExecutionType.IsEofCall) == ExecutionType.IsEofCall;
 
-        public static Instruction ToInstruction(this ExecutionType executionType) =>
-            executionType switch
-            {
-                ExecutionType.TRANSACTION => Instruction.CALL,
-                ExecutionType.CALL => Instruction.CALL,
-                ExecutionType.STATICCALL => Instruction.STATICCALL,
-                ExecutionType.CALLCODE => Instruction.CALLCODE,
-                ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
-                ExecutionType.CREATE => Instruction.CREATE,
-                ExecutionType.CREATE2 => Instruction.CREATE2,
-                ExecutionType.EOFCREATE => Instruction.EOFCREATE,
-                ExecutionType.EOFCALL => Instruction.EXTCALL,
-                ExecutionType.EOFSTATICCALL => Instruction.EXTSTATICCALL,
-                ExecutionType.EOFDELEGATECALL => Instruction.EXTDELEGATECALL,
-                _ => throw new NotSupportedException($"Execution type {executionType} is not supported.")
-            };
-    }
-
-    // ReSharper disable InconsistentNaming IdentifierTypo
-    public enum ExecutionType : byte
-    {
-        TRANSACTION,
-        CALL,
-        STATICCALL,
-        DELEGATECALL,
-        CALLCODE,
-        CREATE,
-        CREATE2,
-        EOFCREATE,
-        TXCREATE,
-        EOFCALL,
-        EOFSTATICCALL,
-        EOFDELEGATECALL,
-    }
-    // ReSharper restore IdentifierTypo InconsistentNaming
+    public static Instruction ToInstruction(this ExecutionType executionType) =>
+        executionType switch
+        {
+            ExecutionType.TRANSACTION => Instruction.CALL,
+            ExecutionType.CALL => Instruction.CALL,
+            ExecutionType.STATICCALL => Instruction.STATICCALL,
+            ExecutionType.CALLCODE => Instruction.CALLCODE,
+            ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
+            ExecutionType.CREATE => Instruction.CREATE,
+            ExecutionType.CREATE2 => Instruction.CREATE2,
+            ExecutionType.EOFCREATE => Instruction.EOFCREATE,
+            ExecutionType.EOFCALL => Instruction.EXTCALL,
+            ExecutionType.EOFSTATICCALL => Instruction.EXTSTATICCALL,
+            ExecutionType.EOFDELEGATECALL => Instruction.EXTDELEGATECALL,
+            _ => throw new NotSupportedException($"Execution type {executionType} is not supported.")
+        };
 }
+
+// ReSharper disable InconsistentNaming IdentifierTypo
+[Flags]
+public enum ExecutionType : byte
+{
+    TRANSACTION = 0,
+    CALL = 1 | IsCall,
+    STATICCALL = 2 | IsCall,
+    DELEGATECALL = 3 | IsCall,
+    CALLCODE = 4 | IsCall,
+    CREATE = 5 | IsCreate,
+    CREATE2 = 6 | IsCreate,
+    EOFCREATE = 7 | IsCreate | IsEof,
+    TXCREATE = 8 | IsCreate | IsEof,
+    EOFCALL = 9 | IsEof | IsCall,
+    EOFSTATICCALL = 10 | IsEof | IsCall,
+    EOFDELEGATECALL = 11 | IsEof | IsCall,
+
+    IsCreate = 16,
+    IsCall = 32,
+    IsEof = 64,
+    IsEofCall = IsEof | IsCall,
+    IsEofCreate = IsEof | IsCreate
+}
+// ReSharper restore IdentifierTypo InconsistentNaming
