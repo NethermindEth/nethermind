@@ -111,7 +111,7 @@ public class Block
 
     public ulong? ExcessBlobGas => Header.ExcessBlobGas; // do not add setter here
 
-    public ulong? SlotNumber { get; set; } // do not add setter here
+    public ulong? SlotNumber => Header.SlotNumber; // do not add setter here
 
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 
