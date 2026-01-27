@@ -23,6 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
+[NonParallelizable]
 public class RewardTests
 {
     // Test ported from XDC reward_test :

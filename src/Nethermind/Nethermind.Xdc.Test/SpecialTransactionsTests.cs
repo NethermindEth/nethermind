@@ -19,10 +19,12 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using NSubstitute;
@@ -114,8 +116,7 @@ internal class SpecialTransactionsTests
         Transaction[] pendingTxs = blockChain.TxPool.GetPendingTransactions();
 
         var spec = (XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec();
-        var specialTxs = pendingTxs.Where(r => r.To == spec.BlockSignerContract
-                                            || r.To == spec.RandomizeSMCBinary);
+        var specialTxs = pendingTxs.Where(r => r.To == spec.BlockSignerContract);
 
         Assert.That(specialTxs, Is.Not.Empty);
 
@@ -468,7 +469,6 @@ internal class SpecialTransactionsTests
         blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
         var nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
-
         Transaction validNonceTx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
         // damage the data field in the tx
@@ -502,17 +502,10 @@ internal class SpecialTransactionsTests
             spec.EpochLength = epochLength;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
-
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
-
-
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
         blockChain.MainWorldState.BeginScope(head);
-
-        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
         UInt256 tooHighBlockNumber = (UInt256)head.Number + 1;
         Transaction txTooHigh = SignTransactionManager.CreateTxSign(
@@ -540,17 +533,10 @@ internal class SpecialTransactionsTests
             spec.EpochLength = epochLength;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
-
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
-
-
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
         blockChain.MainWorldState.BeginScope(head);
-
-        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
         long lowerBound = head.Number - (spec.EpochLength * 2);
         UInt256 tooLowBlockNumber = (UInt256)lowerBound;
@@ -733,5 +719,50 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndBlockTrace();
 
         Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(addresses.Length));
+    }
+
+    [Test]
+    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted()
+    {
+        var chain = await XdcTestBlockchain.Create();
+        var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        var rc = new XdcRewardCalculator(
+            chain.EpochSwitchManager,
+            chain.SpecProvider,
+            chain.BlockTree,
+            masternodeVotingContract
+        );
+        var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
+        IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
+        var epochLength = spec.EpochLength;
+
+        // Add blocks up to epochLength (E) + 15 and create a signing tx that will be inserted in the next block
+        await chain.AddBlocks(epochLength + 15 - 3);
+        var header915 = chain.BlockTree.Head!.Header as XdcBlockHeader;
+        Assert.That(header915, Is.Not.Null);
+        PrivateKey signer915 = chain.Signer.Key!;
+        Address owner = signer915.Address;
+        masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signer915.Address).Returns(owner);
+
+        // Ensure signer has 0 balance BEFORE the block that includes the SignTx is committed
+        using (var _ = chain.MainWorldState.BeginScope(header915!))
+        {
+            chain.MainWorldState.CreateAccountIfNotExists(chain.Signer.Address, UInt256.Zero);
+            chain.MainWorldState.Commit((IReleaseSpec)spec, NullStateTracer.Instance);
+        }
+
+        var signTxManager = chain.Container.Resolve<ISignTransactionManager>();
+        await signTxManager.SubmitTransactionSign(head, spec);
+
+        await chain.AddBlockMayHaveExtraTx();
+
+        var block = (XdcBlockHeader)chain.BlockTree.Head!.Header;
+
+        // Get receipts of the block after (i.e., the block that included the SignTx)
+        var receipts = chain.ReceiptStorage.Get(block.Hash!);
+        Assert.That(receipts, Is.Not.Null);
+        Assert.That(receipts, Is.Not.Empty);
+
+        receipts.Any(r => r.Recipient == spec.BlockSignerContract).Should().BeTrue();
     }
 }
