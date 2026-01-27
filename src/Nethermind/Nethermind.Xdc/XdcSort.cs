@@ -112,20 +112,20 @@ public static class XdcSort
         }
     }
 
-    private static void DoPivot_func<T>(LessSwap<T> data, int lo, int hi, out int midlo, out int midhi)
+    private static void DoPivot_func<T>(LessSwap<T> data, int low, int high, out int midlow, out int midhigh)
     {
-        int m = (int)((uint)(lo + hi) >> 1);
-        if (hi - lo > 40)
+        int m = (int)((uint)(low + high) >> 1);
+        if (high - low > 40)
         {
-            int s = (hi - lo) / 8;
-            MedianOfThree_func(data, lo, lo + s, lo + 2 * s);
+            int s = (high - low) / 8;
+            MedianOfThree_func(data, low, low + s, low + 2 * s);
             MedianOfThree_func(data, m, m - s, m + s);
-            MedianOfThree_func(data, hi - 1, hi - 1 - s, hi - 1 - 2 * s);
+            MedianOfThree_func(data, high - 1, high - 1 - s, high - 1 - 2 * s);
         }
-        MedianOfThree_func(data, lo, m, hi - 1);
-        int pivot = lo;
-        int a = lo + 1;
-        int c = hi - 1;
+        MedianOfThree_func(data, low, m, high - 1);
+        int pivot = low;
+        int a = low + 1;
+        int c = high - 1;
         while (a < c && data.Less(data.Data[a], data.Data[pivot]))
         {
             a++;
@@ -149,13 +149,13 @@ public static class XdcSort
             b++;
             c--;
         }
-        bool protect = hi - c < 5;
-        if (!protect && hi - c < (hi - lo) / 4)
+        bool protect = high - c < 5;
+        if (!protect && high - c < (high - low) / 4)
         {
             int dups = 0;
-            if (!data.Less(data.Data[pivot], data.Data[hi - 1]))
+            if (!data.Less(data.Data[pivot], data.Data[high - 1]))
             {
-                data.Swap(c, hi - 1);
+                data.Swap(c, high - 1);
                 c++;
                 dups++;
             }
@@ -194,8 +194,8 @@ public static class XdcSort
             }
         }
         data.Swap(pivot, b - 1);
-        midlo = b - 1;
-        midhi = c;
+        midlow = b - 1;
+        midhigh = c;
     }
 
     private static void InsertionSort_func<T>(LessSwap<T> data, int a, int b)
@@ -209,17 +209,17 @@ public static class XdcSort
         }
     }
 
-    private static void SiftDown_func<T>(LessSwap<T> data, int lo, int hi, int first)
+    private static void SiftDown_func<T>(LessSwap<T> data, int low, int high, int first)
     {
-        int root = lo;
+        int root = low;
         while (true)
         {
             int child = 2 * root + 1;
-            if (child >= hi)
+            if (child >= high)
             {
                 break;
             }
-            if (child + 1 < hi && data.Less(data.Data[first + child], data.Data[first + child + 1]))
+            if (child + 1 < high && data.Less(data.Data[first + child], data.Data[first + child + 1]))
             {
                 child++;
             }
