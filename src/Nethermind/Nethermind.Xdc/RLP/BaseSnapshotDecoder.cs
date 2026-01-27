@@ -11,18 +11,16 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Snapshot
 {
-    protected override T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemNull())
             return null;
 
         decoderContext.ReadSequenceLength();
-
         long number = decoderContext.DecodeLong();
         Hash256 hash256 = decoderContext.DecodeKeccak();
         Address[] candidates = DecodeAddressArray(ref decoderContext);
-
-        return CreateSnapshot(number, hash256, candidates);
+        return createSnapshot(number, hash256, candidates);
     }
     public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
     {
@@ -56,7 +54,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    protected override T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected TResult DecodeBase<TResult>(RlpStream rlpStream, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -67,7 +65,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
         Hash256 hash256 = rlpStream.DecodeKeccak();
         Address[] candidate = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
 
-        return CreateSnapshot(number, hash256, candidate);
+        return createSnapshot(number, hash256, candidate);
     }
 
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -78,9 +76,12 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
             return;
         }
 
-        var contentLength = GetLength(item, rlpBehaviors);
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        EncodeContent(stream, item, rlpBehaviors);
+    }
 
-        stream.StartSequence(contentLength);
+    protected virtual void EncodeContent(RlpStream stream, T item, RlpBehaviors rlpBehaviors)
+    {
         stream.Encode(item.BlockNumber);
         stream.Encode(item.HeaderHash);
 
@@ -115,5 +116,4 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
         length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.NextEpochCandidates?.Length ?? 0);
         return length;
     }
-    protected abstract T CreateSnapshot(long number, Hash256 hash, Address[] candidates);
 }
