@@ -51,7 +51,7 @@ namespace Nethermind.State
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             // Track storage write for execution metrics
-            EvmMetrics.IncrementStorageWrites();
+            EvmMetrics.ThreadExecutionMetrics.StorageWrites++;
             PushUpdate(in storageCell, newValue);
         }
 

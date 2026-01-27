@@ -355,9 +355,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         long start = Stopwatch.GetTimestamp();
         // Track storage read for execution metrics
-        EvmMetrics.IncrementStorageReads();
+        EvmMetrics.ThreadExecutionMetrics.StorageReads++;
         ReadOnlySpan<byte> result = GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
-        EvmMetrics.AddStateReadTime(Stopwatch.GetElapsedTime(start).Ticks);
+        EvmMetrics.ThreadExecutionMetrics.StateReadTimeTicks += Stopwatch.GetElapsedTime(start).Ticks;
         return result;
     }
 

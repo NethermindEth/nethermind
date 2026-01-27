@@ -78,8 +78,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             }
 
             // Track code read and bytes for execution metrics
-            Metrics.IncrementCodeReads();
-            Metrics.IncrementCodeBytesRead(code.Length);
+            Metrics.ThreadExecutionMetrics.CodeReads++;
+            Metrics.ThreadExecutionMetrics.CodeBytesRead += code.Length;
 
             cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, cachedCodeInfo);
@@ -115,7 +115,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (codeSource == Address.Zero)
         {
             _worldState.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
-            Metrics.IncrementEip7702DelegationsCleared();
+            Metrics.ThreadExecutionMetrics.Eip7702DelegationsCleared++;
             return;
         }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
@@ -128,7 +128,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
-        Metrics.IncrementEip7702DelegationsSet();
+        Metrics.ThreadExecutionMetrics.Eip7702DelegationsSet++;
     }
 
     /// <summary>

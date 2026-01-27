@@ -52,7 +52,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
         StateMerkleizationTime += elapsed.TotalMilliseconds;
         // Pipe to cross-client execution metrics
-        EvmMetrics.AddStateHashTime(elapsed.Ticks);
+        EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
     }
 
     public Hash256 StateRoot => innerState.StateRoot;
@@ -96,11 +96,11 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         if (commitRoots)
         {
             StateMerkleizationTime += elapsed.TotalMilliseconds;
-            EvmMetrics.AddStateHashTime(elapsed.Ticks);
+            EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
         }
         else
         {
-            EvmMetrics.AddCommitTime(elapsed.Ticks);
+            EvmMetrics.ThreadExecutionMetrics.CommitTimeTicks += elapsed.Ticks;
         }
     }
 
@@ -112,11 +112,11 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         if (commitRoots)
         {
             StateMerkleizationTime += elapsed.TotalMilliseconds;
-            EvmMetrics.AddStateHashTime(elapsed.Ticks);
+            EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
         }
         else
         {
-            EvmMetrics.AddCommitTime(elapsed.Ticks);
+            EvmMetrics.ThreadExecutionMetrics.CommitTimeTicks += elapsed.Ticks;
         }
     }
 
@@ -126,7 +126,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         innerState.CommitTree(blockNumber);
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
         StateMerkleizationTime += elapsed.TotalMilliseconds;
-        EvmMetrics.AddStateHashTime(elapsed.Ticks);
+        EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
     }
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
