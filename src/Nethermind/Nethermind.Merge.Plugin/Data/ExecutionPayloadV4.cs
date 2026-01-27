@@ -21,6 +21,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     {
         TExecutionPayload executionPayload = ExecutionPayload.Create<TExecutionPayload>(block);
         executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList!.Value).Bytes);
+        executionPayload.SlotNumber = block.SlotNumber;
         return executionPayload;
     }
 
