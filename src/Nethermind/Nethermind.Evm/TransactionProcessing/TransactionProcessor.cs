@@ -91,6 +91,11 @@ namespace Nethermind.Evm.TransactionProcessing
             SkipValidation = 4,
 
             /// <summary>
+            /// Marker option used by state pre-warmer
+            /// </summary>
+            Warmup = 8,
+
+            /// <summary>
             /// Skip potential fail checks and commit state after execution
             /// </summary>
             SkipValidationAndCommit = Commit | SkipValidation,
@@ -155,7 +160,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
