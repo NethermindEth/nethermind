@@ -187,6 +187,10 @@ namespace Nethermind.Consensus.Validators
             else if (parent.Hash != header.ParentHash)
             {
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
+                Console.WriteLine($"parent: {parent}");
+                parent.SlotNumber = 0;
+                parent.CalculateHash();
+                Console.WriteLine($"alt: {parent}");
                 return false;
             }
 
