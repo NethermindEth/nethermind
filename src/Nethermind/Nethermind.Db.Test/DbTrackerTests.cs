@@ -13,6 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -29,6 +31,8 @@ public class DbTrackerTests
     {
         using IContainer container = new ContainerBuilder()
             .AddSingleton<DbMonitoringModule.DbTracker>()
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<HyperClockCacheWrapper>()
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(NoopMonitoringService.Instance)
@@ -105,6 +109,7 @@ public class DbTrackerTests
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new DbModule(new InitConfig(), new ReceiptConfig(), new SyncConfig()))
             .AddModule(new DbMonitoringModule())
+            .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService)
@@ -140,7 +145,7 @@ public class DbTrackerTests
     {
         private IDbMeta.DbMetric _metric = metric;
 
-        public override IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+        public override IDbMeta.DbMetric GatherMetric()
         {
             return _metric;
         }
