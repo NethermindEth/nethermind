@@ -41,7 +41,7 @@ public class XdcSubnetBlockHeader : XdcBlockHeader
         set { _nextValidatorsAddress = value; }
     }
 
-    public new ValueHash256 CalculateHash()
+    public override ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new KeccakRlpStream();
         _headerDecoder.Encode(rlpStream, this);
