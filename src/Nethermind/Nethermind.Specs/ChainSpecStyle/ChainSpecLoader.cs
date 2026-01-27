@@ -392,7 +392,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         if (slotNumberEnabled)
         {
-            genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber;
+            genesisHeader.SlotNumber = 0;
         }
 
         genesisHeader.AuRaStep = step;

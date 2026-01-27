@@ -189,7 +189,7 @@ namespace Nethermind.Consensus.Validators
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
                 Console.WriteLine($"parent: {parent}");
                 parent.SlotNumber = 0;
-                parent.CalculateHash();
+                parent.Hash = parent.CalculateHash();
                 Console.WriteLine($"alt: {parent}");
                 return false;
             }
