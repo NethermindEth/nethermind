@@ -395,10 +395,10 @@ namespace Nethermind.Consensus.Validators
                 }
 
                 // how to validate at fork boundary?
-                if (parent.SlotNumber is not null && header.SlotNumber != parent.SlotNumber + 1)
+                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber != parent.SlotNumber + 1)
                 {
                     error = BlockErrorMessages.InvalidSlotNumber;
-                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.Hash}) - slot number does not increment parent");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number does not increment parent ({parent.SlotNumber})");
                     return false;
                 }
             }

@@ -170,4 +170,7 @@ public static class BlockErrorMessages
 
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block body cannot have block level access list.";
+
+    public static string SlotNumberMismatch(ulong? expected, ulong? actual) =>
+        $"SlotNumberMismatch: Slot number in header does not match calculated. Expected {expected}, got {actual}";
 }

@@ -54,6 +54,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
         block.BlockAccessList = blockAccessList;
         block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes);
+        block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
     }

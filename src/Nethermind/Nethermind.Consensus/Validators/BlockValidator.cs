@@ -250,6 +250,12 @@ public class BlockValidator(
             suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
+        if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
+            error ??= BlockErrorMessages.SlotNumberMismatch(suggestedBlock.Header.SlotNumber, processedBlock.Header.SlotNumber);
+        }
+
         if (receipts.Length != processedBlock.Transactions.Length)
         {
             if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
