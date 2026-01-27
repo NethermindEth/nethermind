@@ -50,11 +50,13 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         _l1RpcClient = l1RpcClient;
         _surgeConfig = surgeConfig;
+        _cachedAverageGasUsage = surgeConfig.L2BlockGasTarget;
 
         if (_logger.IsInfo)
         {
             _logger.Info($"[{ClassName}] Initialized with L1 endpoint: {surgeConfig.L1EthApiEndpoint}, " +
-                         $"TaikoInbox: {surgeConfig.TaikoInboxAddress}, MinGasPrice: {minGasPrice}");
+                         $"TaikoInbox: {surgeConfig.TaikoInboxAddress}, L2BlockGasTarget: {surgeConfig.L2BlockGasTarget}, " +
+                         $"MinGasPrice: {minGasPrice}");
         }
     }
 
@@ -209,7 +211,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
             currentBlockNumber--;
         }
 
-        ulong average = count > 0 ? totalGasUsed / (ulong)count : _surgeConfig.L2BlockGasTarget;
+        ulong average = totalGasUsed > 0 ? totalGasUsed / (ulong)count : _surgeConfig.L2BlockGasTarget;
 
         if (_logger.IsTrace)
         {
