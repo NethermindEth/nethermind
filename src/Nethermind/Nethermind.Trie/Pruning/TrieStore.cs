@@ -598,7 +598,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             await Task.Delay(pruneDelayMs);
         }
 
-        using (var _ = _pruningLock.EnterScope())
+        using (_pruningLock.EnterScope())
         {
             // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
             GCScheduler.Instance.SkipNextGC();
