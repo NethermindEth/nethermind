@@ -86,7 +86,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         );
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
+    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
@@ -98,7 +98,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new FakeHashWriter<BaseFlatPersistence.WriteBatch>(
+        FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new(
             new BaseFlatPersistence.WriteBatch(
                 ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
                 batch.GetColumnBatch(FlatDbColumns.Account),
@@ -107,7 +107,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             )
         );
 
-        BaseTriePersistence.WriteBatch trieWriteBatch = new BaseTriePersistence.WriteBatch(
+        BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
@@ -116,12 +116,13 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             batch.GetColumnBatch(FlatDbColumns.FallbackNodes),
             flags);
 
+        StateId toCopy = to;
         return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
+                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))

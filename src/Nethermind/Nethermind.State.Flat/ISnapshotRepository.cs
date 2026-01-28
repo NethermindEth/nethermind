@@ -13,16 +13,16 @@ public interface ISnapshotRepository
     int SnapshotCount { get; }
     int CompactedSnapshotCount { get; }
 
-    void AddStateId(StateId stateId);
+    void AddStateId(in StateId stateId);
     bool TryAddSnapshot(Snapshot snapshot);
     bool TryAddCompactedSnapshot(Snapshot snapshot);
-    bool TryLeaseState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
-    bool TryLeaseCompactedState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
-    bool RemoveAndReleaseCompactedKnownState(StateId stateId);
-    bool HasState(StateId stateId);
-    SnapshotPooledList AssembleSnapshots(StateId stateId, StateId targetStateId, int estimatedSize);
-    SnapshotPooledList AssembleSnapshotsUntil(StateId stateId, long minBlockNumber, int estimatedSize);
+    bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
+    bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
+    bool RemoveAndReleaseCompactedKnownState(in StateId stateId);
+    bool HasState(in StateId stateId);
+    SnapshotPooledList AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
+    SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
-    void RemoveStatesUntil(StateId currentPersistedStateId);
+    void RemoveStatesUntil(in StateId currentPersistedStateId);
 }

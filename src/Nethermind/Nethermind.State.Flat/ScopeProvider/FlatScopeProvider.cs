@@ -21,17 +21,14 @@ public class FlatScopeProvider(
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
 
-    public bool HasRoot(BlockHeader? baseBlock)
-    {
-        return flatDbManager.HasStateForBlock(new StateId(baseBlock));
-    }
+    public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        StateId currentState = new StateId(baseBlock);
+        StateId currentState = new(baseBlock);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
 
-        FlatWorldStateScope scope = new FlatWorldStateScope(
+        return new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -40,6 +37,5 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             isReadOnly: isReadOnly);
-        return scope;
     }
 }

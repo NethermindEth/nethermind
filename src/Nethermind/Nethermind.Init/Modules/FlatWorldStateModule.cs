@@ -119,18 +119,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
     }
 
     /// <summary>
-    /// Need to stub out or it will register trie store specific module
+    /// Need to stub out, or it will register trie store specific module
     /// </summary>
     private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
-        public ResultWrapper<PruningStatus> admin_prune()
-        {
-            return ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
-        }
+        public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
 
-        public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
-        {
-            return ResultWrapper<string>.Success("disable");
-        }
+        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disable");
     }
 }

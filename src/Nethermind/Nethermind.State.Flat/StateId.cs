@@ -8,13 +8,13 @@ using Nethermind.Crypto;
 
 namespace Nethermind.State.Flat;
 
-public readonly record struct StateId(long BlockNumber, ValueHash256 StateRoot) : IComparable<StateId>
+public readonly record struct StateId(long BlockNumber, in ValueHash256 StateRoot) : IComparable<StateId>
 {
     public StateId(BlockHeader? header) : this(header?.Number ?? -1, header?.StateRoot ?? Keccak.EmptyTreeHash)
     {
     }
 
-    public static StateId PreGenesis = new StateId(-1, Keccak.EmptyTreeHash);
+    public static StateId PreGenesis = new(-1, Keccak.EmptyTreeHash);
 
     public int CompareTo(StateId other)
     {
