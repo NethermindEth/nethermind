@@ -515,6 +515,8 @@
     "preconf",
     "preconfirmation",
     "predeploy",
+    "prefetcher",
+    "prefetchers",
     "prefixedf",
     "prefund",
     "preimage",
