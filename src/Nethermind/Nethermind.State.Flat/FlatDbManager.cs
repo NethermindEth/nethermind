@@ -34,16 +34,16 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     // First it go to here
     private readonly Task _compactorTask;
-    private Channel<StateId> _compactorJobs;
+    private readonly Channel<StateId> _compactorJobs;
 
     // And here in parallel.
     // The node cache is kinda important for performance, so we want it populated as quickly as possible.
     private readonly Task _populateTrieNodeCacheTask;
-    private Channel<TransientResource> _populateTrieNodeCacheJobs;
+    private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
     // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
-    private Channel<StateId> _persistenceJobs;
+    private readonly Channel<StateId> _persistenceJobs;
 
     private readonly int _compactSize;
 
@@ -146,7 +146,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
-    private void PersistIfNeeded(StateId latestSnapshot)
+    private void PersistIfNeeded(in StateId latestSnapshot)
     {
         _persistenceManager.AddToPersistence(latestSnapshot);
 
@@ -218,7 +218,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
@@ -228,7 +228,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             usage: usage);
     }
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
         // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
         // hard to pull of due to the constantly moving chain making invalidation hard.
@@ -236,7 +236,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (baseBlock == StateId.PreGenesis)
         {
-            // Special case for pregenesis. Note: nethermind always try to generate genesis.
+            // Special case for pregenesis. Note: nethermind always tries to generate genesis.
             return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
         }
 
@@ -244,7 +244,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         int attempt = 0;
         while (true)
         {
-            // Fastpath: Share recently created ReadOnlySnapshotBundle
+            // Fastpath: Share a recently created ReadOnlySnapshotBundle
             if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
 
             if (attempt == 1) sw = Stopwatch.GetTimestamp();
@@ -287,7 +287,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (snapshots[0].From != persistenceReader.CurrentState)
                 {
-                    // Cannot assemble snapshot that reach the persisted state snapshot. It could be that the snapshots was removed
+                    // Cannot assemble snapshot that reaches the persisted state snapshot. It could be that the snapshots was removed
                     // concurrently. We will retry.
                     snapshots.Dispose();
                     persistenceReader.Dispose();
@@ -298,9 +298,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new ReadOnlySnapshotBundle(
-                snapshots,
-                persistenceReader, _enableDetailedMetrics);
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -322,8 +320,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
-            if (_logger.IsWarn) _logger.Warn(
-                $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
+            if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
             return;
         }
 
@@ -359,7 +356,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private void ClearReadOnlyBundleCache()
     {
-        using ArrayPoolListRef<StateId> statesToRemove = new ArrayPoolListRef<StateId>();
+        using ArrayPoolListRef<StateId> statesToRemove = new();
         statesToRemove.AddRange(_readonlySnapshotBundleCache.Keys);
 
         foreach (StateId stateId in statesToRemove)
@@ -387,7 +384,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
 
-    public bool HasStateForBlock(StateId stateId)
+    public bool HasStateForBlock(in StateId stateId)
     {
         if (_snapshotRepository.HasState(stateId)) return true;
         if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;

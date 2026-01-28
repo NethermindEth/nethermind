@@ -146,8 +146,5 @@ public ref struct TrieLeafIterator
         _stackDepth--;
     }
 
-    private static void ThrowStackOverflow()
-    {
-        throw new InvalidOperationException("TrieLeafIterator stack overflow - trie depth exceeds maximum");
-    }
+    private static void ThrowStackOverflow() => throw new InvalidOperationException("TrieLeafIterator stack overflow - trie depth exceeds maximum");
 }

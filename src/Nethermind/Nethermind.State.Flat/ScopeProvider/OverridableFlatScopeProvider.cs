@@ -54,7 +54,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
-        foreach (var (_, snapshot) in _snapshots)
+        foreach (Snapshot snapshot in _snapshots.Values)
         {
             snapshot.Dispose();
         }
@@ -64,9 +64,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
     private bool HasStateForBlock(BlockHeader? baseBlock)
     {
-        StateId stateId = new StateId(baseBlock);
-        if (_snapshots.ContainsKey(stateId)) return true;
-        return _flatDbManager.HasStateForBlock(stateId);
+        StateId stateId = new(baseBlock);
+        return _snapshots.ContainsKey(stateId) || _flatDbManager.HasStateForBlock(stateId);
     }
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
@@ -81,9 +80,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
     private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
     {
-        StateId currentState = new StateId(baseBlock);
+        StateId currentState = new(baseBlock);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(0);
+        SnapshotPooledList snapshots = new(0);
         while (_snapshots.TryGetValue(currentState, out Snapshot? snapshot) && snapshot.TryAcquire())
         {
             snapshots.Add(snapshot);
@@ -115,7 +114,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        foreach (var (_, snapshot) in _snapshots)
+        foreach (Snapshot snapshot in _snapshots.Values)
         {
             snapshot.Dispose();
         }
@@ -134,10 +133,10 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
         public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
         {
-            StateId currentState = new StateId(baseBlock);
+            StateId currentState = new(baseBlock);
             SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
 
-            FlatWorldStateScope scope = new FlatWorldStateScope(
+            return new FlatWorldStateScope(
                 currentState,
                 snapshotBundle,
                 codeDb,
@@ -145,8 +144,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 configuration,
                 trieWarmer,
                 logManager);
-
-            return scope;
         }
     }
 
@@ -175,17 +172,17 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             => codeHash == Keccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
 
         public byte[]? GetCode(in ValueHash256 codeHash)
-            => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
+            => codeHash == ValueKeccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
-            StateId stateId = new StateId(baseBlock);
+            StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
 
-            ConcurrencyController concurrency = new ConcurrencyController(1);
+            ConcurrencyController concurrency = new(1);
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
 
-            PatriciaTree patriciaTree = new PatriciaTree(trieStoreAdapter, LimboLogs.Instance);
+            PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
         }
 

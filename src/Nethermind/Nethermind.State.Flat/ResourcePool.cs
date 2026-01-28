@@ -3,8 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
@@ -18,16 +16,16 @@ namespace Nethermind.State.Flat;
 /// <param name="flatConfig"></param>
 public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 {
-    private Dictionary<Usage, ResourcePoolCategory> _categories = new()
+    private readonly Dictionary<Usage, ResourcePoolCategory> _categories = new()
     {
         // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
         { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, 2) },
 
-        // PostMainBlockProcessing is a special usage right after commit of `MainBlockProcessing` which only commit once and never modified.
+        // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
         { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
 
         // Note: prewarmer use readonly processing env
-        // Note: readonly here means its never committed to the flat repo, but within the worldscope itself it may be committed.
+        // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
         { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
 
         // Compacter is the large compacted snapshot. The pool usage is hard to predict during forward sync as the persistence
@@ -44,15 +42,13 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
 
-    public Snapshot CreateSnapshot(StateId from, StateId to, Usage usage)
-    {
-        return new Snapshot(
+    public Snapshot CreateSnapshot(in StateId from, in StateId to, Usage usage) =>
+        new(
             from,
             to,
             content: GetSnapshotContent(usage),
             resourcePool: this,
             usage: usage);
-    }
 
     public enum Usage
     {
@@ -66,13 +62,10 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
     // Using stack for better cpu cache effectiveness
     private class ConcurrentStackPool<T>(int maxCapacity = 16) where T : notnull, IDisposable, IResettable
     {
-        private ConcurrentStack<T> _queue = new();
+        private readonly ConcurrentStack<T> _queue = new();
         public double PooledItemCount => _queue.Count;
 
-        public bool TryGet([NotNullWhen(true)] out T? item)
-        {
-            return _queue.TryPop(out item);
-        }
+        public bool TryGet([NotNullWhen(true)] out T? item) => _queue.TryPop(out item);
 
         public bool Return(T item)
         {
@@ -90,9 +83,9 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
     {
-        private ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        private ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
-        private TransientResource.Size _lastCachedResourceSize = new TransientResource.Size(1024, 1024);
+        private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
+        private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
+        private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 

@@ -18,15 +18,10 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
     public abstract ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         byte[]? value = TryLoadRlp(path, hash, flags);
-        if (value is null)
-        {
-            throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
-        }
-
-        return value;
+        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
     }
 
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");

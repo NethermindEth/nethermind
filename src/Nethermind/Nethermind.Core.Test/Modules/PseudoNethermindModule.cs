@@ -3,7 +3,6 @@
 
 using System;
 using System.Reflection;
-using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -11,7 +10,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
@@ -23,7 +21,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -101,55 +98,5 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
-    }
-
-    /// <summary>
-    /// A LOT of test rely on the fact that trie store will assume state is available as long as the state root is
-    /// empty tree even if the blocknumber is not -1. This does not work with flat. We will ignore it for now.
-    /// </summary>
-    /// <param name="flatDbManager"></param>
-    private class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbManager
-    {
-        public SnapshotBundle GatherSnapshotBundle(StateId baseBlock, ResourcePool.Usage usage)
-        {
-            IgnoreOnInvalidState(baseBlock);
-            return flatDbManager.GatherSnapshotBundle(baseBlock, usage);
-        }
-
-        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(StateId baseBlock)
-        {
-            IgnoreOnInvalidState(baseBlock);
-            return flatDbManager.GatherReadOnlySnapshotBundle(baseBlock);
-        }
-
-        public bool HasStateForBlock(StateId stateId)
-        {
-            IgnoreOnInvalidState(stateId);
-            return flatDbManager.HasStateForBlock(stateId);
-        }
-
-        public void IgnoreOnInvalidState(StateId stateId)
-        {
-            if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != -1 &&
-                !flatDbManager.HasStateForBlock(stateId))
-            {
-                Assert.Ignore("Incompatible test");
-            }
-        }
-
-        public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
-
-        public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) => flatDbManager.AddSnapshot(snapshot, transientResource);
-
-        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-        {
-            add => flatDbManager.ReorgBoundaryReached += value;
-            remove => flatDbManager.ReorgBoundaryReached -= value;
-        }
-    }
-
-    public static void IgnoreIfRunningFlat()
-    {
-        if (TestUseFlat) Assert.Ignore("Does not work in flat");
     }
 }
