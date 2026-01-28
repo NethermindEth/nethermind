@@ -33,11 +33,9 @@ public class FlatTreeSyncStore(IPersistence persistence, ILogManager logManager)
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
     {
-        StateId currentState;
         byte[]? existingData;
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
-            currentState = reader.CurrentState;
             // Check if there's an existing node at this path
             existingData = address is null
                 ? reader.TryLoadStateRlp(path, ReadFlags.None)
@@ -47,8 +45,8 @@ public class FlatTreeSyncStore(IPersistence persistence, ILogManager logManager)
         // Deletion needed if there's existing data at this path
         bool needsDelete = existingData is not null;
 
-        // Same state for from/to = no-op state transition, allows writing without state change
-        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(currentState, currentState, WriteFlags.DisableWAL);
+        // StateId.Sync bypasses from/to validation, allows writing without state continuity
+        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
 
         TrieNode node = new(NodeType.Unknown, data.ToArray(), isDirty: true);
         node.ResolveNode(NullTrieNodeResolver.Instance, path);

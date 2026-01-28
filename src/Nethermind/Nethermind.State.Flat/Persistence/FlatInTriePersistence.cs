@@ -55,7 +55,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
     {
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
         StateId currentState = RocksDbPersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
-        if (currentState != from)
+        if (from != StateId.Sync && currentState != from)
         {
             dbSnap.Dispose();
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
@@ -88,7 +88,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                RocksDbPersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                if (toCopy != StateId.Sync)
+                    RocksDbPersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
