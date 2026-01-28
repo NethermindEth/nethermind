@@ -227,7 +227,7 @@ public class SnapProviderTests
 
         StateTree stree = new StateTree(new TestRawTrieStore(new TestMemDb()), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
-                stree,
+                new PatriciaSnapStateTree(stree),
                 0,
                 new ValueHash256(asReq.Root),
                 new ValueHash256(asReq.StartingHash),

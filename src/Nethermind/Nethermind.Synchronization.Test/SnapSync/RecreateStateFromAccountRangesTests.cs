@@ -319,7 +319,7 @@ public class RecreateStateFromAccountRangesTests
         bool HasMoreChildren(ValueHash256 limitHash)
         {
             (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueHash256> _) =
-                SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
+                SnapProviderHelper.AddAccountRange(new PatriciaSnapStateTree(newTree), 0, rootHash, Keccak.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
             return moreChildrenToRight;
         }
 
@@ -367,7 +367,7 @@ public class RecreateStateFromAccountRangesTests
         bool HasMoreChildren(ValueHash256 limitHash)
         {
             (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueHash256> _) =
-                SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
+                SnapProviderHelper.AddAccountRange(new PatriciaSnapStateTree(newTree), 0, rootHash, Keccak.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
             return moreChildrenToRight;
         }
 

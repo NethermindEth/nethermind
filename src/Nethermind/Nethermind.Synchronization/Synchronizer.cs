@@ -412,6 +412,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<ProgressTracker>()
+            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>();
 
         ConfigureSingletonSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
