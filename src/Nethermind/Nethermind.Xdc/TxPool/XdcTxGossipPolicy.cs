@@ -9,7 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.TxPool;
 
 internal class XdcTxGossipPolicy(ISpecProvider provider) : ITxGossipPolicy
 {

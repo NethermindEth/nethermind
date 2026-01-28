@@ -34,6 +34,7 @@ using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
@@ -213,7 +214,7 @@ public class XdcTestBlockchain : TestBlockchain
 
                 compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider));
 
-                TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
+                Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
                     ctx.Resolve<IChainHeadInfoProvider>(),
                     ctx.Resolve<ITxPoolConfig>(),

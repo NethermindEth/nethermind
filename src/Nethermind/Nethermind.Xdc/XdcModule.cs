@@ -29,6 +29,7 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.State;
 using Nethermind.Logging;
 using Nethermind.Api.Steps;
+using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
 
