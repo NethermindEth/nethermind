@@ -88,7 +88,7 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(
+        TransactionLookupResult lookupResult = new(
             tx,
             new(
                 chainId: 0,
@@ -97,7 +97,13 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
-                receipt: receipt)));
+                receipt: receipt));
+        bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
+            .Returns(callInfo =>
+            {
+                callInfo[1] = lookupResult;
+                return true;
+            });
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
@@ -156,7 +162,7 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(
+        TransactionLookupResult lookupResult = new(
             tx,
             new(
                 chainId: 0,
@@ -165,7 +171,13 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
-                receipt: receipt)));
+                receipt: receipt));
+        bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
+            .Returns(callInfo =>
+            {
+                callInfo[1] = lookupResult;
+                return true;
+            });
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)

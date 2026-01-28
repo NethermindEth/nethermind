@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -10,10 +8,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
-using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
+using Nethermind.Facade.Simulate;
 using Nethermind.Trie;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -26,7 +26,7 @@ namespace Nethermind.Facade
         Address? RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
-        TransactionLookupResult GetTransaction(Hash256 txHash, bool checkTxnPool = true);
+        bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);
         SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);

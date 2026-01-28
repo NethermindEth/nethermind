@@ -47,7 +47,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     [JsonConstructor]
     public DepositTransactionForRpc() { }
 
-    public DepositTransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
+    public DepositTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData)
     {
         OptimismTxReceipt? receipt = extraData.Receipt as OptimismTxReceipt;
@@ -92,6 +92,6 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
 
     public override bool ShouldSetBaseFee() => false;
 
-    public static DepositTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
+    public static DepositTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 }

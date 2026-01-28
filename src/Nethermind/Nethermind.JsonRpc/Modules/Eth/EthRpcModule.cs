@@ -1,15 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -41,6 +32,15 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -386,17 +386,15 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        TransactionLookupResult transactionResult = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-        Transaction? transaction = transactionResult.Transaction;
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
-        RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpcContext extraData = transactionResult.ExtraData;
+        RecoverTxSenderIfNeeded(transactionResult.Value.Transaction);
+        TransactionForRpcContext extraData = transactionResult.Value.ExtraData;
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            transaction: transaction,
+            transaction: transactionResult.Value.Transaction,
             extraData: extraData);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
@@ -404,11 +402,12 @@ public partial class EthRpcModule(
 
     public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
     {
-        Transaction? transaction = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true).Transaction;
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<string?>.Success(null);
         }
+
+        Transaction transaction = transactionResult.Value.Transaction;
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 

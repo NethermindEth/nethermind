@@ -185,15 +185,16 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        TransactionLookupResult transactionResult = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-        Transaction? transaction = transactionResult.Transaction;
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
+        TransactionLookupResult result = transactionResult!.Value;
+        Transaction transaction = result.Transaction!;
+
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpcContext extraData = transactionResult.ExtraData;
+        TransactionForRpcContext extraData = result.ExtraData;
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction: transaction,
             extraData: extraData);

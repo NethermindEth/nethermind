@@ -3,8 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -20,7 +18,7 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     [JsonConstructor]
     public SetCodeTransactionForRpc() { }
 
-    public SetCodeTransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
+    public SetCodeTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData)
     {
         AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
@@ -35,6 +33,6 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
         return tx;
     }
 
-    public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
+    public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 }

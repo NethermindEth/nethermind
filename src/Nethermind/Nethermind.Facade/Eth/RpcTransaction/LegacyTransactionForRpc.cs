@@ -59,7 +59,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     [JsonConstructor]
     public LegacyTransactionForRpc() { }
 
-    public LegacyTransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
+    public LegacyTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData)
     {
         Nonce = transaction.Nonce;
@@ -135,6 +135,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
 
-    public static LegacyTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData) =>
+    public static LegacyTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) =>
         new(tx, extraData);
 }

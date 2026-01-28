@@ -4,7 +4,6 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -26,7 +25,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     [JsonConstructor]
     public EIP1559TransactionForRpc() { }
 
-    public EIP1559TransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
+    public EIP1559TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData)
     {
         MaxFeePerGas = transaction.MaxFeePerGas;
@@ -49,6 +48,6 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     public override bool ShouldSetBaseFee() =>
         base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
 
-    public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
+    public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 }

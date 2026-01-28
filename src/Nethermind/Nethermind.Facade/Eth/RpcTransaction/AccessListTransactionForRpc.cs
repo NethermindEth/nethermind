@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -45,6 +44,6 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         return tx;
     }
 
-    public new static AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
+    public new static AccessListTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 }

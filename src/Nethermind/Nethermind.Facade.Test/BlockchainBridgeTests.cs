@@ -71,14 +71,16 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Transaction.Should().BeNull();
+        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Transaction.Should().BeNull();
+        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Test]
@@ -104,9 +106,9 @@ public class BlockchainBridgeTests
             _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
         }
         _receiptStorage.Get(block).Returns(receipts);
-        TransactionLookupResult result = _blockchainBridge.GetTransaction(transactions[index].Hash!);
-        result.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
-        result.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
+        _blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result).Should().BeTrue();
+        result!.Value.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
+        result.Value.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
             blockNumber: block.Number,

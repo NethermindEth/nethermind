@@ -10,7 +10,7 @@ namespace Nethermind.Facade.Eth;
 
 public interface IFromTransaction<out T> : ITxTyped where T : TransactionForRpc
 {
-    static abstract T FromTransaction(Transaction tx, TransactionForRpcContext extraData);
+    static abstract T FromTransaction(Transaction tx, in TransactionForRpcContext extraData);
 }
 
 public readonly record struct TransactionForRpcContext

@@ -110,7 +110,7 @@ namespace Nethermind.Facade
             return (null, 0, null, 0);
         }
 
-        public TransactionLookupResult GetTransaction(Hash256 txHash, bool checkTxnPool = true)
+        public bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true)
         {
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _))
             {
@@ -123,12 +123,19 @@ namespace Nethermind.Facade
                     baseFee: block.BaseFeePerGas,
                     receipt: txReceipt);
 
-                return new TransactionLookupResult(tx, extraData);
+
+                result = new TransactionLookupResult(tx, extraData);
+                return true;
             }
 
-            return checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
-                ? new TransactionLookupResult(transaction, new(specProvider.ChainId))
-                : default;
+            if (checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+            {
+                result = new TransactionLookupResult(transaction, new(specProvider.ChainId));
+                return true;
+            }
+
+            result = null;
+            return false;
         }
 
         public TxReceipt? GetReceipt(Hash256 txHash)
