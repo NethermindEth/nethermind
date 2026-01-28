@@ -154,6 +154,8 @@ internal class XdcTransactionProcessor(
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
+        bool restore = opts.HasFlag(ExecutionOptions.Restore);
+
         // maybe a better approach would be adding an XdcGasPolicy 
         TransactionResult result;
         bool _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
@@ -163,6 +165,10 @@ internal class XdcTransactionProcessor(
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
             || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
         {
+            if (restore)
+            {
+                WorldState.Reset(resetBlockChanges: false);
+            }
             return result;
         }
 

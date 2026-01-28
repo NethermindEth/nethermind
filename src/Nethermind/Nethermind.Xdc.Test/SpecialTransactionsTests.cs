@@ -89,7 +89,7 @@ internal class SpecialTransactionsTests
 
 
     [Test]
-    public async Task Special_Tx_Is_Dispatched_On_MergeSignRange_Block()
+    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block()
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -128,7 +128,7 @@ internal class SpecialTransactionsTests
     }
 
     [Test]
-    public async Task Special_Tx_Is_Not_Dispatched_Outside_MergeSignRange_Block()
+    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block()
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -593,7 +593,7 @@ internal class SpecialTransactionsTests
     }
 
     [Test]
-    public async Task SignTx_Increments_Nonce_And_Emits_Log()
+    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -614,7 +614,9 @@ internal class SpecialTransactionsTests
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
 
         UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
+        UInt256 initialBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
+
+        Transaction ? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
@@ -631,8 +633,10 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndBlockTrace();
 
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
 
         Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+        Assert.That(finalBalance, Is.EqualTo(initialBalance));
 
         var finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
 
@@ -686,6 +690,7 @@ internal class SpecialTransactionsTests
         foreach (var address in addresses)
         {
             UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+            UInt256 initialBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
 
             Transaction? tx = Build.A.Transaction
                 .WithType(TxType.Legacy)
@@ -703,8 +708,11 @@ internal class SpecialTransactionsTests
             receiptsTracer.EndTxTrace();
 
             UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+            UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
 
             Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
+
+            Assert.That(initialBalance, Is.EqualTo(finalBalance), $"specialTx to {address} does not increment nonce, initialBalance: {initialNonce}, finalBalance: {finalNonce}");
 
             var finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
 
@@ -764,5 +772,141 @@ internal class SpecialTransactionsTests
         Assert.That(receipts, Is.Not.Empty);
 
         receipts.Any(r => r.Recipient == spec.BlockSignerContract).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = blockChain.TxProcessor as XdcTransactionProcessor;
+
+        Block head = (Block)blockChain.BlockTree.Head!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec((XdcBlockHeader)head.Header);
+
+        // Ensure signer has 0 balance BEFORE the block that includes the SignTx is committed
+        using (var _ = blockChain.MainWorldState.BeginScope(head.Header!))
+        {
+            byte[] dummyRuntimeCode = [0x60, 0x00, 0x60, 0x00, 0x01, 0x50, 0x00]; // PUSH1 PUSH1 ADD POP STOP
+            blockChain.MainWorldState.CreateAccountIfNotExists(spec.RandomizeSMCBinary, UInt256.Zero);
+            blockChain.MainWorldState.InsertCode(
+                spec.RandomizeSMCBinary,
+                Keccak.Compute(dummyRuntimeCode),
+                dummyRuntimeCode,
+                spec);
+        }
+
+        blockChain.MainWorldState.BeginScope(head.Header);
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
+
+        UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 initialBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
+
+        var tx = Build.A.Transaction
+            .WithType(TxType.Legacy)
+            .WithSenderAddress(blockChain.Signer.Address)
+            .WithTo(spec.RandomizeSMCBinary)
+            .WithGasPrice(UInt256.Zero)
+            .WithValue(UInt256.Zero)
+            .TestObject;
+
+        await blockChain.Signer.Sign(tx);
+
+        var receiptsTracer = new BlockReceiptsTracer();
+        receiptsTracer.StartNewBlockTrace(head);
+        receiptsTracer.StartNewTxTrace(tx);
+
+        TransactionResult result = transactionProcessor!.Execute(tx, receiptsTracer);
+
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        result.Error.Should().Be(TransactionResult.ErrorType.None);
+
+        UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
+
+        finalNonce.Should().Be(initialNonce + 1);
+        finalBalance.Should().Be(initialBalance); // zero gas price => no balance change
+
+        receiptsTracer.TxReceipts.Length.Should().NotBe(0);
+        var receipt = receiptsTracer.TxReceipts[^1];
+        receipt.GasUsed.Should().BeGreaterThan(0);
+    }
+
+
+    [Test]
+    public async Task RandomizeTx_From_ZeroBalance_Account()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = blockChain.TxProcessor as XdcTransactionProcessor;
+
+        Block head = (Block)blockChain.BlockTree.Head!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec((XdcBlockHeader)head.Header);
+
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
+
+        using (var _ = blockChain.MainWorldState.BeginScope(head.Header!))
+        {
+            blockChain.MainWorldState.CreateAccountIfNotExists(blockChain.Signer.Address, UInt256.Zero);
+            blockChain.MainWorldState.Commit((IReleaseSpec)spec, NullStateTracer.Instance);
+
+            byte[] dummyRuntimeCode = [0x60, 0x00, 0x60, 0x00, 0x01, 0x50, 0x00]; // PUSH1 PUSH1 ADD POP STOP
+            blockChain.MainWorldState.CreateAccountIfNotExists(spec.RandomizeSMCBinary, UInt256.Zero);
+            blockChain.MainWorldState.InsertCode(
+                spec.RandomizeSMCBinary,
+                Keccak.Compute(dummyRuntimeCode),
+                dummyRuntimeCode,
+                spec);
+        }
+
+        blockChain.MainWorldState.BeginScope(head.Header);
+
+        UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 initialBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
+
+        var tx = Build.A.Transaction
+            .WithType(TxType.Legacy)
+            .WithSenderAddress(blockChain.Signer.Address)
+            .WithTo(spec.RandomizeSMCBinary)
+            .WithGasPrice(UInt256.Zero)
+            .WithValue(UInt256.Zero)
+            .TestObject;
+
+        await blockChain.Signer.Sign(tx);
+
+        var receiptsTracer = new BlockReceiptsTracer();
+        receiptsTracer.StartNewBlockTrace(head);
+        receiptsTracer.StartNewTxTrace(tx);
+
+        TransactionResult result = transactionProcessor!.Execute(tx, receiptsTracer);
+
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        result.Error.Should().Be(TransactionResult.ErrorType.None);
+
+        UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
+
+        finalNonce.Should().Be(initialNonce + 1);
+        finalBalance.Should().Be(initialBalance); // zero gas price => no balance change
+
+        receiptsTracer.TxReceipts.Length.Should().NotBe(0);
+        var receipt = receiptsTracer.TxReceipts[^1];
+        receipt.GasUsed.Should().BeGreaterThan(0);
     }
 }
