@@ -19,8 +19,8 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
 
     private readonly AutoResetEvent _autoResetEvent = new(false);
-    private readonly Dictionary<(int depth, int pc), Func<VmState<TGasPolicy>, bool>> _breakPoints = new();
-    private Func<VmState<TGasPolicy>, bool>? _globalBreakCondition;
+    private readonly Dictionary<(int depth, int pc), Func<CallFrame<TGasPolicy>, bool>> _breakPoints = new();
+    private Func<CallFrame<TGasPolicy>, bool>? _globalBreakCondition;
     private readonly object _lock = new();
 
     public DebugTracer(ITxTracer tracer)
@@ -34,7 +34,8 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Starting;
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
     public bool IsStepByStepModeOn { get; set; }
-    public VmState<TGasPolicy>? CurrentState { get; set; }
+    public int CallDepth { get; set; }
+    public CallFrame<TGasPolicy>? CurrentFrame { get; set; }
 
     public bool IsTracingReceipt => InnerTracer.IsTracingReceipt;
 
@@ -66,7 +67,7 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsBreakpointSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
-    public void SetBreakPoint((int depth, int pc) point, Func<VmState<TGasPolicy>, bool> condition = null)
+    public void SetBreakPoint((int depth, int pc) point, Func<CallFrame<TGasPolicy>, bool> condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
         {
@@ -81,12 +82,12 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void SetCondition(Func<VmState<TGasPolicy>, bool>? condition = null)
+    public void SetCondition(Func<CallFrame<TGasPolicy>, bool>? condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }
 
-    public void TryWait(ref VmState<TGasPolicy> vmState, ref int programCounter, ref TGasPolicy gas, ref int stackHead)
+    public void TryWait(ref CallFrame<TGasPolicy> callFrame, ref int programCounter, ref TGasPolicy gas, ref int stackHead)
     {
         if (CurrentPhase is DebugPhase.Aborted)
         {
@@ -95,10 +96,10 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 
         lock (_lock)
         {
-            vmState.ProgramCounter = programCounter;
-            vmState.Gas = gas;
-            vmState.DataStackHead = stackHead;
-            CurrentState = vmState;
+            callFrame.ProgramCounter = programCounter;
+            callFrame.Gas = gas;
+            callFrame.DataStackHead = stackHead;
+            CurrentFrame = callFrame;
         }
 
         if (IsStepByStepModeOn)
@@ -113,9 +114,9 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 
         lock (_lock)
         {
-            stackHead = CurrentState.DataStackHead;
-            gas = CurrentState.Gas;
-            programCounter = CurrentState.ProgramCounter;
+            stackHead = CurrentFrame.DataStackHead;
+            gas = CurrentFrame.Gas;
+            programCounter = CurrentFrame.ProgramCounter;
         }
     }
 
@@ -125,7 +126,7 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
         {
             CurrentPhase = DebugPhase.Starting;
             _breakPoints.Clear();
-            CurrentState = null;
+            CurrentFrame = null;
             InnerTracer = newInnerTracer;
         }
         _autoResetEvent.Reset();
@@ -163,11 +164,11 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void CheckBreakPoint()
     {
-        (int CallDepth, int ProgramCounter) breakpoint = (CurrentState!.Env.CallDepth, CurrentState.ProgramCounter);
+        (int CallDepth, int ProgramCounter) breakpoint = (CallDepth, CurrentFrame!.ProgramCounter);
 
-        if (_breakPoints.TryGetValue(breakpoint, out Func<VmState<TGasPolicy>, bool>? point))
+        if (_breakPoints.TryGetValue(breakpoint, out Func<CallFrame<TGasPolicy>, bool>? point))
         {
-            bool conditionResults = point?.Invoke(CurrentState) ?? true;
+            bool conditionResults = point?.Invoke(CurrentFrame) ?? true;
             if (conditionResults)
             {
                 Block();
@@ -175,7 +176,7 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
         }
         else
         {
-            if (_globalBreakCondition?.Invoke(CurrentState) ?? false)
+            if (_globalBreakCondition?.Invoke(CurrentFrame) ?? false)
             {
                 Block();
             }

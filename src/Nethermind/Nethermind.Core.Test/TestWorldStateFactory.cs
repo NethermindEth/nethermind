@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static WorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
         PruningConfig pruningConfig = new PruningConfig();
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
@@ -30,7 +30,7 @@ public static class TestWorldStateFactory
         return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
     }
 
-    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static (WorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
         if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
         if (logManager is null) logManager = LimboLogs.Instance;

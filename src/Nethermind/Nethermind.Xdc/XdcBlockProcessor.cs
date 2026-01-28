@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Xdc;
 

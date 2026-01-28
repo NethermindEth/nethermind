@@ -33,6 +33,7 @@ public class PrecompileCachedCodeInfoRepository(
             delegationAddress = null;
             return cachedCodeInfo;
         }
+
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
@@ -51,10 +52,14 @@ public class PrecompileCachedCodeInfoRepository(
         baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out CodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
     {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+        return baseCodeInfoRepository.TryGetDelegation(address, spec, out codeInfo, out delegatedAddress);
+    }
+
+    public bool IsDelegated(Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.IsDelegated(address, spec);
     }
 
     private static CodeInfo CreateCachedPrecompile(

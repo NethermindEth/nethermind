@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 
@@ -18,18 +18,31 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
-        protected readonly ILogger _logger;
-        protected readonly List<Change> _changes = new(Resettable.StartCapacity);
-        private readonly List<Change> _keptInCache = new();
+        protected readonly Dictionary<StorageCell, int> _slotIndex = new();
+        protected byte[][] _slotsHot = new byte[Resettable.StartCapacity][];
+        protected SlotMeta[] _slotsMeta = new SlotMeta[Resettable.StartCapacity];
+        protected UndoEntry[] _undoBuffer = new UndoEntry[Resettable.StartCapacity];
+        protected int[] _dirtySlotIndices = new int[Resettable.StartCapacity];
+        protected int[] _frameUndoOffsets = new int[32];
+        protected int[] _frameIds = new int[32];
 
-        // stack of snapshot indexes on changes for start of each transaction
+        protected int _slotCount;
+        protected int _undoCount;
+        protected int _dirtyCount;
+        protected int _dirtyGeneration = 1;
+        protected int _frameCount = 1;
+        protected int _currentFrameId;
+        protected readonly ILogger _logger;
+
+        // stack of snapshot tokens for start of each transaction
         // this is needed for OriginalValues for new transactions
-        protected readonly Stack<int> _transactionChangesSnapshots = new();
+        protected readonly Stack<int> _transactionStartSnapshots = new();
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _frameUndoOffsets[0] = 0;
+            _frameIds[0] = 0;
         }
 
         /// <summary>
@@ -49,7 +62,8 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(in storageCell, newValue);
+            int slotIndex = GetOrCreateSlotIndex(storageCell);
+            MutateSlot(slotIndex, newValue, SlotFlags.None, SlotFlags.None, setDirty: true);
         }
 
         /// <summary>
@@ -59,14 +73,23 @@ namespace Nethermind.State
         /// <returns>Snapshot index</returns>
         public int TakeSnapshot(bool newTransactionStart)
         {
-            int position = _changes.Count - 1;
-            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
-            if (newTransactionStart && position != Resettable.EmptyPosition)
+            int snapshot = _currentFrameId;
+            int nextFrameId = snapshot + 1;
+            EnsureFrameCapacity(_frameCount + 1);
+            _frameUndoOffsets[_frameCount] = _undoCount;
+            _frameIds[_frameCount] = nextFrameId;
+            _frameCount++;
+            _currentFrameId = nextFrameId;
+            if (_logger.IsTrace) Trace(snapshot);
+            if (newTransactionStart && _undoCount > 0)
             {
-                _transactionChangesSnapshots.Push(position);
+                _transactionStartSnapshots.Push(nextFrameId);
             }
 
-            return position;
+            return snapshot;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(int position) => _logger.Trace($"Storage snapshot {position}");
         }
 
         /// <summary>
@@ -76,70 +99,97 @@ namespace Nethermind.State
         /// <exception cref="InvalidOperationException">Throws exception if snapshot is invalid</exception>
         public void Restore(int snapshot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
+            if (_logger.IsTrace) Trace(snapshot);
 
-            int currentPosition = _changes.Count - 1;
-            if (snapshot > currentPosition)
+            if (snapshot > _currentFrameId)
             {
-                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+                ThrowCannotRestore(snapshot, _currentFrameId);
             }
 
-            if (snapshot == currentPosition)
+            int startOffset;
+            int keptFrameCount;
+            if (snapshot < 0)
             {
-                return;
+                // Revert everything including the base frame.
+                startOffset = 0;
+                keptFrameCount = 0;
+                snapshot = 0;
             }
-
-            for (int i = 0; i < currentPosition - snapshot; i++)
+            else
             {
-                Change change = _changes[currentPosition - i];
-                StackList<int> stack = _intraBlockCache[change!.StorageCell];
-                if (stack.Count == 1)
+                keptFrameCount = _frameCount;
+                while (keptFrameCount > 0 && _frameIds[keptFrameCount - 1] > snapshot)
                 {
-                    if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
-                    {
-                        int actualPosition = stack.Pop();
-                        if (actualPosition != currentPosition - i)
-                        {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
-                        }
+                    keptFrameCount--;
+                }
 
-                        _keptInCache.Add(change);
-                        _changes[actualPosition] = default;
-                        continue;
+                if (keptFrameCount == _frameCount)
+                {
+                    if (_undoCount > 0
+                        && keptFrameCount > 0
+                        && _undoCount > _frameUndoOffsets[keptFrameCount - 1])
+                    {
+                        startOffset = _frameUndoOffsets[keptFrameCount - 1];
+                        keptFrameCount--;
+                    }
+                    else
+                    {
+                        return;
                     }
                 }
-
-                int forAssertion = stack.Pop();
-                if (forAssertion != currentPosition - i)
+                else if (keptFrameCount == 0)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    startOffset = 0;
                 }
-
-                _changes[currentPosition - i] = default;
-
-                if (stack.Count == 0)
+                else
                 {
-                    _intraBlockCache.Remove(change.StorageCell);
-                    stack.Return();
+                    startOffset = _frameUndoOffsets[keptFrameCount];
                 }
             }
 
-            CollectionsMarshal.SetCount(_changes, snapshot + 1);
-            currentPosition = _changes.Count - 1;
-            foreach (Change kept in _keptInCache)
+            int undoEnd = _undoCount;
+            for (int frameIndex = _frameCount - 1; frameIndex >= keptFrameCount; frameIndex--)
             {
-                currentPosition++;
-                _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell].Push(currentPosition);
+                int frameStart = _frameUndoOffsets[frameIndex];
+                for (int i = frameStart; i < undoEnd; i++)
+                {
+                    ref readonly UndoEntry undoEntry = ref _undoBuffer[i];
+                    int slotIndex = undoEntry.SlotIndex;
+                    _slotsHot[slotIndex] = undoEntry.PreviousValue;
+                    ref SlotMeta meta = ref _slotsMeta[slotIndex];
+                    meta.OwnerFrameId = undoEntry.PreviousOwnerFrameId;
+                    meta.Flags = undoEntry.PreviousFlags;
+                }
+
+                undoEnd = frameStart;
             }
 
-            _keptInCache.Clear();
+            _undoCount = startOffset;
+            _frameCount = keptFrameCount > 0 ? keptFrameCount : 1;
+            RebuildDirtySlotsAfterRestore();
 
-            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            while (_transactionStartSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
-                _transactionChangesSnapshots.Pop();
+                _transactionStartSnapshots.Pop();
             }
 
+            // Always push a fresh frame after restore (even when no undo entries were
+            // replayed). Trimming frames changes the frame topology; without a new boundary,
+            // subsequent mutations create undo entries scoped to the wrong frame, causing a
+            // later deeper Restore to replay too many entries.
+            int newFrameId = _currentFrameId + 1;
+            EnsureFrameCapacity(_frameCount + 1);
+            _frameUndoOffsets[_frameCount] = startOffset;
+            _frameIds[_frameCount] = newFrameId;
+            _frameCount++;
+            _currentFrameId = newFrameId;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(int snapshot) => _logger.Trace($"Restoring storage snapshot {snapshot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowCannotRestore(int snapshot, int currentPosition)
+                => throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
         }
 
         /// <summary>
@@ -148,14 +198,17 @@ namespace Nethermind.State
         /// <param name="stateTracer">State tracer</param>
         public void Commit(IStorageTracer tracer)
         {
-            if (_changes.Count == 0)
+            if (_slotCount == 0)
             {
-                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
+                if (_logger.IsTrace) Trace();
             }
             else
             {
                 CommitCore(tracer);
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace() => _logger.Trace("No storage changes to commit");
         }
 
         /// <summary>
@@ -172,11 +225,36 @@ namespace Nethermind.State
 
         private void Reset()
         {
-            if (_logger.IsTrace) _logger.Trace("Resetting storage");
+            if (_logger.IsTrace) Trace();
 
-            _changes.Clear();
-            _intraBlockCache.ResetAndClear();
-            _transactionChangesSnapshots.Clear();
+            int previousSlotCount = _slotCount;
+            int previousUndoCount = _undoCount;
+
+            if (previousSlotCount > 0)
+            {
+                Array.Clear(_slotsHot, 0, previousSlotCount);
+                Array.Clear(_slotsMeta, 0, previousSlotCount);
+            }
+
+            if (previousUndoCount > 0)
+            {
+                Array.Clear(_undoBuffer, 0, previousUndoCount);
+            }
+
+            _slotIndex.Clear();
+            _transactionStartSnapshots.Clear();
+
+            _slotCount = 0;
+            _undoCount = 0;
+            _dirtyCount = 0;
+            _dirtyGeneration = 1;
+            _frameCount = 1;
+            _currentFrameId = 0;
+            _frameUndoOffsets[0] = 0;
+            _frameIds[0] = 0;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace() => _logger.Trace("Resetting storage");
         }
 
         /// <summary>
@@ -187,11 +265,11 @@ namespace Nethermind.State
         /// <returns>True if value has been set</returns>
         protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_slotIndex.TryGetValue(storageCell, out int slotIndex))
             {
-                int lastChangeIndex = stack.Peek();
+                bytes = _slotsHot[slotIndex];
+                if (bytes is not null)
                 {
-                    bytes = _changes[lastChangeIndex].Value;
                     return true;
                 }
             }
@@ -207,31 +285,192 @@ namespace Nethermind.State
         /// <returns>Value at location</returns>
         protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
 
-        /// <summary>
-        /// Update the storage cell with provided value
-        /// </summary>
-        /// <param name="cell">Storage location</param>
-        /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        protected int GetOrCreateSlotIndex(in StorageCell storageCell)
         {
-            StackList<int> stack = SetupRegistry(cell);
-            stack.Push(_changes.Count);
-            _changes.Add(new Change(in cell, value, ChangeType.Update));
-        }
-
-        /// <summary>
-        /// Initialize the StackList at the storage cell position if needed
-        /// </summary>
-        /// <param name="cell"></param>
-        protected StackList<int> SetupRegistry(in StorageCell cell)
-        {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
-            if (!exists)
+            if (_slotIndex.TryGetValue(storageCell, out int slotIndex))
             {
-                value = StackList<int>.Rent();
+                return slotIndex;
             }
 
-            return value;
+            slotIndex = _slotCount;
+            EnsureSlotCapacity(slotIndex + 1);
+            _slotCount = slotIndex + 1;
+            _slotIndex[storageCell] = slotIndex;
+            _slotsMeta[slotIndex] = new SlotMeta
+            {
+                Cell = storageCell,
+                Flags = SlotFlags.None,
+                OwnerFrameId = -1,
+                DirtyGeneration = 0,
+            };
+
+            return slotIndex;
+        }
+
+        protected bool TryGetSlotIndex(in StorageCell storageCell, out int slotIndex)
+            => _slotIndex.TryGetValue(storageCell, out slotIndex);
+
+        protected bool TryGetTransactionSnapshot(out int snapshot)
+            => _transactionStartSnapshots.TryPeek(out snapshot);
+
+        protected bool TryGetUndoOffsetForSnapshot(int snapshot, out int offset)
+        {
+            for (int i = _frameCount - 1; i >= 0; i--)
+            {
+                if (_frameIds[i] == snapshot)
+                {
+                    offset = _frameUndoOffsets[i];
+                    return true;
+                }
+            }
+
+            offset = 0;
+            return false;
+        }
+
+        protected byte[]? FindValueBeforeOffset(int slotIndex, int undoStartOffset)
+        {
+            byte[]? previous = null;
+            for (int i = _undoCount - 1; i >= undoStartOffset; i--)
+            {
+                UndoEntry undoEntry = _undoBuffer[i];
+                if (undoEntry.SlotIndex == slotIndex)
+                {
+                    previous = undoEntry.PreviousValue;
+                }
+            }
+
+            return previous;
+        }
+
+        protected void CacheReadSlot(int slotIndex, byte[] value)
+            => MutateSlot(slotIndex, value, SlotFlags.Read, SlotFlags.None, setDirty: false);
+
+        protected void MutateSlot(int slotIndex, byte[] value, SlotFlags setFlags, SlotFlags clearFlags, bool setDirty)
+        {
+            ref SlotMeta meta = ref _slotsMeta[slotIndex];
+
+            if (meta.OwnerFrameId < _currentFrameId)
+            {
+                SaveUndoAndUpdateFrame(slotIndex, ref meta);
+            }
+
+            SlotFlags flags = (meta.Flags | setFlags) & ~clearFlags;
+            if (setDirty)
+            {
+                flags |= SlotFlags.Dirty;
+                if (meta.DirtyGeneration != _dirtyGeneration)
+                {
+                    TrackDirty(slotIndex, ref meta);
+                }
+            }
+
+            meta.Flags = flags;
+            _slotsHot[slotIndex] = value;
+        }
+
+        private void SaveUndoAndUpdateFrame(int slotIndex, ref SlotMeta meta)
+        {
+            EnsureUndoCapacity(_undoCount + 1);
+            _undoBuffer[_undoCount++] = new UndoEntry(slotIndex, meta.OwnerFrameId, meta.Flags, _slotsHot[slotIndex]);
+            meta.OwnerFrameId = _currentFrameId;
+        }
+
+        private void TrackDirty(int slotIndex, ref SlotMeta meta)
+        {
+            EnsureDirtyCapacity(_dirtyCount + 1);
+            meta.DirtyGeneration = _dirtyGeneration;
+            _dirtySlotIndices[_dirtyCount++] = slotIndex;
+        }
+
+        private void RebuildDirtySlotsAfterRestore()
+        {
+            AdvanceDirtyGeneration();
+            _dirtyCount = 0;
+            for (int i = 0; i < _slotCount; i++)
+            {
+                ref SlotMeta meta = ref _slotsMeta[i];
+                if ((meta.Flags & SlotFlags.Dirty) != 0)
+                {
+                    EnsureDirtyCapacity(_dirtyCount + 1);
+                    _dirtySlotIndices[_dirtyCount++] = i;
+                    meta.DirtyGeneration = _dirtyGeneration;
+                }
+                else
+                {
+                    meta.DirtyGeneration = 0;
+                }
+            }
+        }
+
+        private void AdvanceDirtyGeneration()
+        {
+            if (_dirtyGeneration == int.MaxValue)
+            {
+                _dirtyGeneration = 1;
+                for (int i = 0; i < _slotCount; i++)
+                {
+                    _slotsMeta[i].DirtyGeneration = 0;
+                }
+            }
+            else
+            {
+                _dirtyGeneration++;
+            }
+        }
+
+        private void EnsureSlotCapacity(int requiredSize)
+        {
+            if (_slotsHot.Length >= requiredSize) return;
+
+            int newLength = _slotsHot.Length;
+            while (newLength < requiredSize)
+            {
+                newLength <<= 1;
+            }
+
+            Array.Resize(ref _slotsHot, newLength);
+            Array.Resize(ref _slotsMeta, newLength);
+        }
+
+        private void EnsureUndoCapacity(int requiredSize)
+        {
+            if (_undoBuffer.Length >= requiredSize) return;
+
+            int newLength = _undoBuffer.Length;
+            while (newLength < requiredSize)
+            {
+                newLength <<= 1;
+            }
+
+            Array.Resize(ref _undoBuffer, newLength);
+        }
+
+        private void EnsureDirtyCapacity(int requiredSize)
+        {
+            if (_dirtySlotIndices.Length >= requiredSize) return;
+
+            int newLength = _dirtySlotIndices.Length;
+            while (newLength < requiredSize)
+            {
+                newLength <<= 1;
+            }
+
+            Array.Resize(ref _dirtySlotIndices, newLength);
+        }
+
+        private void EnsureFrameCapacity(int requiredSize)
+        {
+            if (_frameUndoOffsets.Length >= requiredSize) return;
+
+            int newLength = _frameUndoOffsets.Length;
+            while (newLength < requiredSize)
+            {
+                newLength <<= 1;
+            }
+
+            Array.Resize(ref _frameUndoOffsets, newLength);
+            Array.Resize(ref _frameIds, newLength);
         }
 
         /// <summary>
@@ -242,35 +481,45 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            for (int i = 0; i < _slotCount; i++)
             {
-                if (cellByAddress.Key.Address == address)
+                if (_slotsHot[i] is not null && _slotsMeta[i].Cell.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    Set(_slotsMeta[i].Cell, StorageTree.ZeroBytes);
                 }
             }
         }
 
-        /// <summary>
-        /// Used for tracking each change to storage
-        /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
+        [Flags]
+        protected enum SlotFlags : byte
         {
-            public readonly StorageCell StorageCell = storageCell;
-            public readonly byte[] Value = value;
-            public readonly ChangeType ChangeType = changeType;
-
-            public bool IsNull => ChangeType == ChangeType.Null;
+            None = 0,
+            Dirty = 1 << 0,
+            Read = 1 << 1,
         }
 
-        /// <summary>
-        /// Type of change to track
-        /// </summary>
-        protected enum ChangeType
+        protected struct SlotMeta
         {
-            Null = 0,
-            JustCache,
-            Update,
+            public StorageCell Cell;
+            public SlotFlags Flags;
+            public int OwnerFrameId;
+            public int DirtyGeneration;
+        }
+
+        protected readonly struct UndoEntry
+        {
+            public readonly int SlotIndex;
+            public readonly int PreviousOwnerFrameId;
+            public readonly SlotFlags PreviousFlags;
+            public readonly byte[]? PreviousValue;
+
+            public UndoEntry(int slotIndex, int previousOwnerFrameId, SlotFlags previousFlags, byte[]? previousValue)
+            {
+                SlotIndex = slotIndex;
+                PreviousOwnerFrameId = previousOwnerFrameId;
+                PreviousFlags = previousFlags;
+                PreviousValue = previousValue;
+            }
         }
     }
 }

@@ -526,7 +526,7 @@ namespace Nethermind.Db.LogIndex
         public string GetDbSize() => _rootDb.GatherMetric().Size.SizeToString(useSi: true, addSpace: true);
 
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
-            GetEnumerator(null, address.Bytes, from, to);
+            GetEnumerator(null, address.ToArray(), from, to);
 
         public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
             GetEnumerator(topicIndex, topic.BytesToArray(), from, to);

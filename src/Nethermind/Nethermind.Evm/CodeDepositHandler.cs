@@ -19,9 +19,9 @@ namespace Nethermind.Evm
             => !CodeIsValid(spec, code, fromVersion);
 
         public static bool CodeIsValid(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion)
-            => spec.IsEofEnabled ? IsValidWithEofRules(spec, code, fromVersion) : IsValidWithLegacyRules(spec, code);
+            => spec.IsEofEnabled ? IsValidWithEofRules(spec, code, fromVersion) : IsValidWithLegacyRules(spec, code.Span);
 
-        public static bool IsValidWithLegacyRules(IReleaseSpec spec, ReadOnlyMemory<byte> code)
+        public static bool IsValidWithLegacyRules(IReleaseSpec spec, ReadOnlySpan<byte> code)
             => !spec.IsEip3541Enabled || !code.StartsWith(InvalidStartingCodeByte);
 
         public static bool IsValidWithEofRules(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion, ValidationStrategy strategy = ValidationStrategy.Validate)
@@ -31,7 +31,7 @@ namespace Nethermind.Evm
             bool valid = codeVersion >= fromVersion
                   && (isCodeEof
                         ? (fromVersion > 0 && EofValidator.IsValidEof(code, strategy, out _))
-                        : (fromVersion == 0 && IsValidWithLegacyRules(spec, code)));
+                        : (fromVersion == 0 && IsValidWithLegacyRules(spec, code.Span)));
             return valid;
         }
     }

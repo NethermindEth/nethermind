@@ -4,12 +4,11 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
-using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
@@ -43,16 +42,12 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath1Param"/> for the specific math operation.</typeparam>
-    /// <param name="_">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
-    /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
-    /// <returns>
-    /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; otherwise,
-    /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
-    /// </returns>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <returns>An <see cref="OpcodeResult"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
@@ -70,10 +65,10 @@ internal static partial class EvmInstructions
         // Write the computed result directly back to the stack slot.
         WriteUnaligned(ref bytesRef, result);
 
-        return EvmExceptionType.None;
-    // Label for error handling when the stack does not have the required element.
+        return new(programCounter);
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -82,6 +77,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(Word value) => Vector256.OnesComplement(value);
     }
 
@@ -92,7 +88,13 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
-        public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Word Operation(Word value)
+        {
+            // Branchless bool→byte via As<bool,byte>, matching OpBitwiseEq pattern
+            bool isZero = value == default;
+            return Vector256.Create(0UL, 0UL, 0UL, (ulong)As<bool, byte>(ref isZero) << 56).AsByte();
+        }
     }
 
     /// <summary>
@@ -103,6 +105,7 @@ internal static partial class EvmInstructions
     {
         public static long GasCost => GasCostOf.Low;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(Word value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
             : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
@@ -113,40 +116,27 @@ internal static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 a))
+        if (!stack.TryPopSmallIndex(out uint a))
             goto StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
 
-        // If the position is out-of-range, push zero.
-        if (a >= BigInt32)
-        {
-            stack.PushZero<TTracingInst>();
-        }
-        else
-        {
-            int adjustedPosition = bytes.Length - 32 + (int)a;
-            if (adjustedPosition < 0)
-            {
-                stack.PushZero<TTracingInst>();
-            }
-            else
-            {
-                // Push the extracted byte.
-                stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
-            }
-        }
+        ref byte bytes = ref stack.PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes))
+            goto StackUnderflow;
 
-        return EvmExceptionType.None;
+        // If the position is in-range, push the byte (common case); otherwise push zero.
+        return new(programCounter, a < EvmStack.WordSize
+            ? stack.PushByte<TTracingInst>(Unsafe.Add(ref bytes, (nuint)a))
+            : stack.PushZero<TTracingInst>());
+
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -154,43 +144,105 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionSignExtend<TGasPolicy>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume(ref gas, GasCostOf.Low);
 
-        // Pop the index to determine which byte to use for sign extension.
-        if (!stack.PopUInt256(out UInt256 a))
+        if (!stack.TryPopSmallIndex(out uint a))
             goto StackUnderflow;
-        if (a >= BigInt32)
+
+        // If a >= 32, the value already fits — no sign extension needed
+        if (a >= EvmStack.WordSize)
         {
-            // If the index is out-of-range, no extension is needed.
             if (!stack.EnsureDepth(1))
                 goto StackUnderflow;
-            return EvmExceptionType.None;
+            return new(programCounter);
         }
 
+        ref byte bytesRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         int position = 31 - (int)a;
 
-        // Peek at the 256-bit word without removing it.
-        Span<byte> bytes = stack.PeekWord256();
-        sbyte sign = (sbyte)bytes[position];
+        // position == 0 means sign byte is the last byte — nothing to fill
+        if (position == 0)
+            return new(programCounter);
 
-        // Extend the sign by replacing higher-order bytes.
-        if (sign >= 0)
+        sbyte sign = (sbyte)Unsafe.Add(ref bytesRef, position);
+
+        // AVX2 has ~1.8ns constant overhead but processes all 32 bytes at once.
+        // For small fills (1-7 bytes), scalar is faster. For large fills (8+ bytes), AVX2 wins.
+        if (Avx2.IsSupported && position >= 8)
         {
-            // Fill with zero bytes.
-            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+            SignExtendAvx2(ref bytesRef, position, sign);
         }
         else
         {
-            // Fill with 0xFF bytes.
-            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+            SignExtendScalar(ref bytesRef, position, sign);
         }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        return new(programCounter);
+
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void SignExtendAvx2(ref byte slot, int position, sbyte sign)
+        {
+            // Load current value
+            Vector256<byte> value = Unsafe.As<byte, Vector256<byte>>(ref slot);
+
+            // Create mask: 0xFF for bytes we want to replace (indices < position)
+            // Use comparison with broadcast position
+            Vector256<byte> indices = Vector256.Create(
+                (byte)0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+            Vector256<byte> posVec = Vector256.Create((byte)position);
+
+            // mask[i] = 0xFF if i < position, else 0x00
+            Vector256<byte> mask = Avx2.CompareGreaterThan(posVec.AsSByte(), indices.AsSByte()).AsByte();
+
+            // Fill value: 0x00 if sign >= 0, 0xFF if sign < 0
+            // Arithmetic right shift of sign by 7 gives 0x00 or 0xFF
+            Vector256<byte> fill = Vector256.Create((byte)(sign >> 7));
+
+            // Blend: keep original where mask is 0, use fill where mask is FF
+            Vector256<byte> result = Avx2.BlendVariable(value, fill, mask);
+
+            Unsafe.As<byte, Vector256<byte>>(ref slot) = result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void SignExtendScalar(ref byte slot, int position, sbyte sign)
+        {
+            byte fill = (byte)(sign >> 7); // 0x00 or 0xFF
+            ulong fillWord = fill == 0 ? 0UL : ulong.MaxValue;
+
+            // Use chunked writes for efficiency: 8-byte, 4-byte, 2-byte, 1-byte
+            int i = 0;
+            while (i + 8 <= position)
+            {
+                WriteUnaligned(ref Unsafe.Add(ref slot, i), fillWord);
+                i += 8;
+            }
+            if (i + 4 <= position)
+            {
+                WriteUnaligned(ref Unsafe.Add(ref slot, i), (uint)fillWord);
+                i += 4;
+            }
+            if (i + 2 <= position)
+            {
+                WriteUnaligned(ref Unsafe.Add(ref slot, i), (ushort)fillWord);
+                i += 2;
+            }
+            if (i < position)
+            {
+                Unsafe.Add(ref slot, i) = fill;
+            }
+        }
     }
 }

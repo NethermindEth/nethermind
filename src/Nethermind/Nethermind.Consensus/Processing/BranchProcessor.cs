@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -29,7 +30,7 @@ public class BranchProcessor(
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    protected readonly IWorldState _stateProvider = stateProvider;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -47,6 +48,7 @@ public class BranchProcessor(
         _stateProvider.CommitTree(block.Number);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
@@ -54,7 +56,7 @@ public class BranchProcessor(
         Block suggestedBlock = suggestedBlocks[0];
 
         IDisposable? worldStateCloser = null;
-        if (stateProvider.IsInScope)
+        if (_stateProvider.IsInScope)
         {
             if (baseBlock is null && suggestedBlock.IsGenesis)
             {
@@ -70,7 +72,7 @@ public class BranchProcessor(
         }
         else
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            worldStateCloser = _stateProvider.BeginScope(baseBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
@@ -146,7 +148,6 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -161,7 +162,7 @@ public class BranchProcessor(
                     BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
+                    worldStateCloser = _stateProvider.BeginScope(previousBranchStateRoot);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;

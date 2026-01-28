@@ -392,6 +392,93 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Depth_is_correct_across_nested_and_sibling_calls_with_pool_reuse()
+    {
+        // Exercises CallFrame pool reuse: sequential sibling calls at the same depth re-rent
+        // the same CallFrame object from the pool, verifying that the tracing env cache
+        // (identity-based on CallFrame reference) correctly rebuilds on frame transitions.
+        //
+        // Call tree:
+        //   tx → outer (depth 1)
+        //     → CALL AddressC (depth 2)
+        //       → CALL AddressD (depth 3) → STOP
+        //       → CALL AddressD (depth 3, sibling — reuses pooled CallFrame) → STOP
+        //     → STOP
+        //     → CALL AddressC (depth 2, sibling — reuses pooled CallFrame)
+        //       → CALL AddressD (depth 3) → STOP
+        //       → CALL AddressD (depth 3, sibling) → STOP
+        //     → STOP
+
+        // AddressD: leaf — just STOPs
+        byte[] codeD = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+        TestState.InsertCode(TestItem.AddressD, codeD, Spec);
+
+        // AddressC: calls D twice (two sibling calls at depth 3)
+        byte[] codeC = Prepare.EvmCode
+            .Call(TestItem.AddressD, 30000)
+            .Op(Instruction.POP) // pop return value
+            .Call(TestItem.AddressD, 30000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.InsertCode(TestItem.AddressC, codeC, Spec);
+
+        // Outer: calls C twice (two sibling calls at depth 2)
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 100000)
+            .Op(Instruction.POP)
+            .Call(TestItem.AddressC, 100000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(200000, code);
+
+        // Verify depths form the expected pattern and every entry has valid depth.
+        int previousDepth = 0;
+        for (int i = 0; i < trace.Entries.Count; i++)
+        {
+            int depth = trace.Entries[i].Depth;
+            Assert.That(depth, Is.GreaterThanOrEqualTo(1), $"entries[{i}] depth >= 1");
+            Assert.That(depth, Is.LessThanOrEqualTo(3), $"entries[{i}] depth <= 3");
+            // Depth can only change by ±1 at frame boundaries
+            Assert.That(depth, Is.InRange(previousDepth - 1, previousDepth + 1).Or.EqualTo(1),
+                $"entries[{i}] depth jump from {previousDepth} to {depth}");
+            previousDepth = depth;
+        }
+
+        // Count transitions to verify the call tree structure
+        int depth2Entries = 0, depth3Entries = 0;
+        int transitionsTo2 = 0, transitionsTo3 = 0;
+        for (int i = 0; i < trace.Entries.Count; i++)
+        {
+            int depth = trace.Entries[i].Depth;
+            if (depth == 2) depth2Entries++;
+            if (depth == 3) depth3Entries++;
+
+            if (i > 0)
+            {
+                int prev = trace.Entries[i - 1].Depth;
+                if (depth == 2 && prev == 1) transitionsTo2++;
+                if (depth == 3 && prev == 2) transitionsTo3++;
+            }
+        }
+
+        // 2 sibling calls to C → 2 transitions from depth 1→2
+        Assert.That(transitionsTo2, Is.EqualTo(2), "transitions 1→2 (calls to C)");
+        // Each C makes 2 calls to D → 4 transitions from depth 2→3
+        Assert.That(transitionsTo3, Is.EqualTo(4), "transitions 2→3 (calls to D)");
+        // D is a leaf (STOP only) so depth-3 entries should be exactly 4 (one STOP per call)
+        Assert.That(depth3Entries, Is.EqualTo(4), "depth-3 entries (D leaf STOPs)");
+    }
+
+    [Test]
     public void Can_trace_extcodesize_optimization()
     {
         // From https://github.com/NethermindEth/nethermind/issues/5717
