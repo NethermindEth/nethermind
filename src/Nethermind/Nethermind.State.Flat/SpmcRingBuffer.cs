@@ -6,10 +6,10 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// AI generated single producer multiple consumer ring buffer. If called by multiple producer, it will hang.
+/// AI generated single producer multiple consumer ring buffer. If called by multiple producers, it will hang.
 /// See <see cref="MpmcRingBuffer{T}"/> for multiple producer variant.
-/// The selection of <see cref="T"/> is important. Is should be ideally a struct of size no more than 64 byte
-/// or 32 byte if possible.
+/// The selection of <see cref="T"/> is important. It should be ideally a struct of size no more than 64 bytes
+/// or 32 bytes if possible.
 /// </summary>
 /// <typeparam name="T"></typeparam>
 public sealed class SpmcRingBuffer<T>

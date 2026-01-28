@@ -213,7 +213,7 @@ public class FlatTrieVerifier
         // PatriciaTree for direct RLP lookup
         PatriciaTree? tree = stateRoot != Keccak.EmptyTreeHash ? new(trieStore, _logManager) : null;
 
-        // Build set of verified trie paths to avoid double-counting in pass 2
+        // Build a set of verified trie paths to avoid double-counting in pass 2
         // Using first 8 bytes as ulong for reliable and efficient HashSet operations
         HashSet<ulong> verifiedTriePaths = [];
 
@@ -276,16 +276,14 @@ public class FlatTrieVerifier
         }
     }
 
-    private static int CompareHashedKeys(in ValueHash256 flatKey, in TreePath triePath, bool hasFlat, bool hasTrie)
-    {
-        if (!hasFlat && !hasTrie) return 0;
-        if (!hasFlat) return 1;
-        if (!hasTrie) return -1;
-
-        ReadOnlySpan<byte> flatBytes = flatKey.Bytes[..FlatKeyLength];
-        ReadOnlySpan<byte> trieBytes = triePath.Path.Bytes[..FlatKeyLength];
-        return Bytes.BytesComparer.Compare(flatBytes, trieBytes);
-    }
+    private static int CompareHashedKeys(in ValueHash256 flatKey, in TreePath triePath, bool hasFlat, bool hasTrie) =>
+        (hasFlat, hasTrie) switch
+        {
+            (false, false) => 0,
+            (false, true) => 1,
+            (true, false) => -1,
+            _ => Bytes.BytesComparer.Compare(flatKey.Bytes[..FlatKeyLength], triePath.Path.Bytes[..FlatKeyLength])
+        };
 
     private void VerifyAccountMatch(
         ReadOnlySpan<byte> flatAccountRlp,
@@ -313,7 +311,7 @@ public class FlatTrieVerifier
         if (trieAccount is not null && trieAccount.StorageRoot != Keccak.EmptyTreeHash)
         {
             Hash256 fullPath = triePath.Path.ToCommitment();
-            StorageVerificationJob job = new StorageVerificationJob(flatKey, fullPath, trieAccount.StorageRoot, isPreimageMode);
+            StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, isPreimageMode);
             storageWriter.WriteAsync(job, cancellationToken).AsTask().Wait(cancellationToken);
         }
     }
@@ -341,7 +339,7 @@ public class FlatTrieVerifier
         if (trieAccount is not null && trieAccount.StorageRoot != Keccak.EmptyTreeHash)
         {
             Hash256 fullPath = trieHash.ToCommitment();
-            StorageVerificationJob job = new StorageVerificationJob(flatKey, fullPath, trieAccount.StorageRoot, true);
+            StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, true);
             storageWriter.WriteAsync(job, cancellationToken).AsTask().Wait(cancellationToken);
         }
     }
@@ -474,25 +472,23 @@ public class FlatTrieVerifier
         }
     }
 
-    private static int CompareStorageKeys(in ValueHash256 flatKey, in TreePath triePath, bool hasFlat, bool hasTrie)
-    {
-        if (!hasFlat && !hasTrie) return 0;
-        if (!hasFlat) return 1;
-        if (!hasTrie) return -1;
-
-        return Bytes.BytesComparer.Compare(flatKey.Bytes, triePath.Path.Bytes);
-    }
+    private static int CompareStorageKeys(in ValueHash256 flatKey, in TreePath triePath, bool hasFlat, bool hasTrie) =>
+        (hasFlat, hasTrie) switch
+        {
+            (false, false) => 0,
+            (false, true) => 1,
+            (true, false) => -1,
+            _ => Bytes.BytesComparer.Compare(flatKey.Bytes, triePath.Path.Bytes)
+        };
 
     private void VerifySlotMatch(ReadOnlySpan<byte> flatValue, TrieNode trieLeaf, in ValueHash256 accountKey, in ValueHash256 slotKey)
     {
         ReadOnlySpan<byte> trieValue = trieLeaf.Value.Span;
         if (trieValue.IsEmpty)
         {
-            if (!IsZeroValue(flatValue))
-            {
-                Interlocked.Increment(ref _mismatchedSlot);
-                if (_logger.IsWarn) _logger.Warn($"Mismatched slot (trie empty). Account: {accountKey}, Slot: {slotKey}");
-            }
+            if (IsZeroValue(flatValue)) return;
+            Interlocked.Increment(ref _mismatchedSlot);
+            if (_logger.IsWarn) _logger.Warn($"Mismatched slot (trie empty). Account: {accountKey}, Slot: {slotKey}");
             return;
         }
 

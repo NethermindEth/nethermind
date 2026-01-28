@@ -531,7 +531,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Marshal.FreeHGlobal(optsPtr);
         }
 
-        if (dbConfig.WriteBufferSize is not null && dbConfig.WriteBufferSize != 0)
+        if (dbConfig.WriteBufferSize > 0)
         {
             _writeBufferSize = dbConfig.WriteBufferSize.Value;
             options.SetWriteBufferSize(dbConfig.WriteBufferSize.Value);
