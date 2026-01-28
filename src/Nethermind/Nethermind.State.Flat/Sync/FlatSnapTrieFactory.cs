@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -11,26 +12,34 @@ namespace Nethermind.State.Flat.Sync;
 
 /// <summary>
 /// ISnapTrieFactory implementation for flat state storage.
-/// Uses IPersistence.IWriteBatch directly for efficient bulk imports during snap sync.
+/// Uses IPersistence to create reader/writeBatch per tree for proper resource management.
 /// </summary>
-public class FlatSnapTrieFactory(IPersistence.IWriteBatch writeBatch, ILogManager logManager) : ISnapTrieFactory
+public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManager) : ISnapTrieFactory
 {
-    private readonly PersistenceTrieStoreAdapter _stateTrieStore = new(writeBatch);
+    public ISnapStateTree CreateStateTree()
+    {
+        var reader = persistence.CreateReader();
+        var writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
+        return new FlatSnapStateTree(reader, writeBatch, logManager);
+    }
 
-    public ISnapStateTree CreateStateTree() =>
-        new FlatSnapStateTree(new StateTree(_stateTrieStore, logManager));
-
-    public ISnapStorageTree CreateStorageTree(in ValueHash256 accountPath) =>
-        new FlatSnapStorageTree(new StorageTree(_stateTrieStore.GetStorageTrieStore(accountPath.ToCommitment()), logManager));
+    public ISnapStorageTree CreateStorageTree(in ValueHash256 accountPath)
+    {
+        var reader = persistence.CreateReader();
+        var writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
+        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), logManager);
+    }
 
     public Hash256? ResolveStorageRoot(byte[] nodeData)
     {
+        using var reader = persistence.CreateReader();
         try
         {
             TreePath emptyTreePath = TreePath.Empty;
             TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
-            node.ResolveNode(_stateTrieStore, emptyTreePath);
-            node.ResolveKey(_stateTrieStore, ref emptyTreePath);
+            var resolver = new PersistenceTrieStoreAdapter(reader, null!);
+            node.ResolveNode(resolver, emptyTreePath);
+            node.ResolveKey(resolver, ref emptyTreePath);
             return node.Keccak;
         }
         catch

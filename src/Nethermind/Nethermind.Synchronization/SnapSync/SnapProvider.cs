@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
-            ISnapStateTree tree = _trieFactory.CreateStateTree();
+            using ISnapStateTree tree = _trieFactory.CreateStateTree();
 
             ValueHash256 effectiveHashLimit = hashLimit ?? ValueKeccak.MaxValue;
 
@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
             PathWithAccount pathWithAccount = request.Accounts[accountIndex];
-            ISnapStorageTree tree = _trieFactory.CreateStorageTree(pathWithAccount.Path);
+            using ISnapStorageTree tree = _trieFactory.CreateStorageTree(pathWithAccount.Path);
 
             (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs);
 
