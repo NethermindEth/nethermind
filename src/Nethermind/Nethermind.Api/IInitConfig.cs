@@ -75,6 +75,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
     string? DataDir { get; set; }
 
+    [ConfigItem(Description = "Disable the transaction gas limit max cap. CONSENSUS BREAKER. FOR TESTING PURPOSES ONLY.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool DisableTxGasLimitCap { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }
 

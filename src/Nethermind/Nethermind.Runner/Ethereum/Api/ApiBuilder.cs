@@ -79,6 +79,12 @@ public class ApiBuilder
             chainSpec.NetworkId = (ulong)_initConfig.NetworkId;
         }
 
+        //CONSENSUS BREAKER. FOR TESTING PURPOSES ONLY.
+        if (_initConfig.DisableTxGasLimitCap)
+        {
+            chainSpec.Parameters.Eip7825TransitionTimestamp = long.MaxValue;
+        }
+
         return chainSpec;
     }
 

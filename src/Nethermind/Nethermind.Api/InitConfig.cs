@@ -32,6 +32,7 @@ namespace Nethermind.Api
         public string RpcDbUrl { get; set; } = string.Empty;
         public long? MemoryHint { get; set; }
         public long? BadBlocksStored { get; set; } = 100;
+        public bool DisableTxGasLimitCap { get; set; } = false;
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
         public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
