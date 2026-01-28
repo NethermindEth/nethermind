@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm
 {
@@ -10,10 +12,12 @@ namespace Nethermind.Evm
         public abstract EvmExceptionType ExceptionType { get; }
     }
 
-    public enum EvmExceptionType
+    public enum EvmExceptionType : sbyte
     {
         Stop = -1,
         None = 0,
+        Return,
+        Revert,
         BadInstruction,
         StackOverflow,
         StackUnderflow,
@@ -29,7 +33,41 @@ namespace Nethermind.Evm
         TransactionCollision,
         NotEnoughBalance,
         Other,
-        Revert,
         InvalidCode,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct OpcodeResult
+    {
+        public readonly ulong Value;
+        public readonly int ProgramCounter
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return (int)(uint)Value;
+            }
+        }
+
+        public readonly EvmExceptionType Exception
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return (EvmExceptionType)(Value >> 32);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public OpcodeResult(int pc, EvmExceptionType ex)
+        {
+            Value = ((ulong)(uint)ex << 32) | (uint)pc;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public OpcodeResult(int pc)
+        {
+            Value = (uint)pc;
+        }
     }
 }

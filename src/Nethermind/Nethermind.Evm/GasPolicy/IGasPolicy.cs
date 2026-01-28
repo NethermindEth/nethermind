@@ -135,6 +135,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         in UInt256 position,
         in UInt256 length, VmState<TSelf> vmState);
 
+    static abstract bool UpdateMemoryCost(ref TSelf gas,
+        in UInt256 position,
+        ulong length, VmState<TSelf> vmState);
+
     /// <summary>
     /// Deducts a specified gas cost from the available gas.
     /// </summary>
@@ -201,6 +205,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="spec">The release specification governing gas costs.</param>
     /// <returns>The intrinsic gas as TGasPolicy.</returns>
     static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec);
+
+    static abstract TSelf CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long tokensInCallData);
 
     /// <summary>
     /// Creates available gas from gas limit minus intrinsic gas, preserving any tracking data.

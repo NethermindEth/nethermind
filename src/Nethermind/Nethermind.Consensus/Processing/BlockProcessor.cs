@@ -85,6 +85,7 @@ public partial class BlockProcessor(
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,

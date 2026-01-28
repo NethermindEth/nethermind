@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -114,11 +115,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Commit(long blockNumber)
         {
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
-
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            // Commit storages with most writes first to minimise waiting
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages
+                .Where(kv => kv.Value.OutstandingWritesEstimate > 0)
+                .OrderByDescending(kv => kv.Value.OutstandingWritesEstimate))
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())
                 {
@@ -126,6 +127,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     {
                         StorageTree st = (StorageTree)ctx;
                         st.Commit();
+                        st.ClearWritesEstimate();
                         blockCommitter.ReturnConcurrencyQuota();
                     }, storage.Value));
                 }
@@ -194,12 +196,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account))
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
+                {
                     account = scope.Get(key);
+                }
 
-                // Account may be null when EIP-161 deletes an empty account that had storage
-                // changes in the same block. Skip the storage root update since the account
-                // will not exist in the state trie.
+                // If account-layer commit explicitly set this account to null (EIP-161 delete),
+                // skip storage root updates even when storage changes were flushed.
                 if (account is null) continue;
                 account = account.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
@@ -264,9 +267,20 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             {
                 storageTree.RootHash = Keccak.EmptyTreeHash;
             }
+            else
+            {
+                if (_wasSetCalled)
+                {
+                    ThrowNotSet();
+                }
+                storageTree.IncrementEstimate();
+            }
 
-            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
             _hasSelfDestruct = true;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNotSet()
+                => throw new InvalidOperationException("Must call clear first in a storage write batch");
         }
 
         public void Dispose()
@@ -279,9 +293,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
+                var span = _bulkWrite.AsSpan();
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(span);
                 storageTree.BulkSet(asRef);
+                storageTree.IncrementEstimate((ulong)span.Length);
 
                 _bulkWrite?.Dispose();
             }

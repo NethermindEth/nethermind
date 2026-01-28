@@ -14,7 +14,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public readonly struct StorageCell : IEquatable<StorageCell>, IHash64bit<StorageCell>
+    public readonly struct StorageCell : IEquatable<StorageCell>, IHash64, IHash64bit<StorageCell>
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
         private readonly AddressAsKey _address;
@@ -25,9 +25,9 @@ namespace Nethermind.Core
         public bool IsHash => _isHash;
         public UInt256 Index => _index;
 
-        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
+        public readonly ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
 
-        private ValueHash256 GetHash()
+        private readonly ValueHash256 GetHash()
         {
             Span<byte> key = stackalloc byte[32];
             Index.ToBigEndian(key);
@@ -48,35 +48,40 @@ namespace Nethermind.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Equals(in StorageCell other)
+        public readonly bool Equals(in StorageCell other)
         {
             if (_isHash != other._isHash)
+            {
                 return false;
+            }
 
             if (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) !=
                 Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)))
+            {
                 return false;
+            }
 
-            // Inline 20-byte Address comparison: avoids the Address.Equals call
-            // that the JIT refuses to inline when called from deep inline chains
-            // (e.g. SeqlockCache.TryGetValue). Address.Bytes is always exactly 20 bytes.
-            Address a = _address.Value;
-            Address b = other._address.Value;
+            Address? a = _address.Value;
+            Address? b = other._address.Value;
             if (ReferenceEquals(a, b))
+            {
                 return true;
+            }
 
-            ref byte ab = ref MemoryMarshal.GetArrayDataReference(a.Bytes);
-            ref byte bb = ref MemoryMarshal.GetArrayDataReference(b.Bytes);
+            if (a is null || b is null)
+            {
+                return false;
+            }
+
+            ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
+            ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
             return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
                 && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, 16));
         }
 
-        public bool Equals(StorageCell other) => Equals(in other);
+        public readonly bool Equals(StorageCell other) => Equals(in other);
 
-        public long GetHashCode64()
-            => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index))) ^ _address.Value.GetHashCode64();
-
-        public override bool Equals(object? obj)
+        public readonly override bool Equals(object? obj)
         {
             if (obj is null)
             {
@@ -86,13 +91,33 @@ namespace Nethermind.Core
             return obj is StorageCell address && Equals(address);
         }
 
-        public override int GetHashCode()
+        public readonly override int GetHashCode()
         {
             int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
-            return hash ^ _address.Value.GetHashCode();
+            return hash ^ (_address.Value?.GetHashCode() ?? 0);
         }
 
-        public override string ToString()
+        /// <summary>
+        /// Returns a 64-bit hash code with good distribution for high-performance caching.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly long GetHashCode64()
+        {
+            // Hash the 32-byte UInt256 Index to 64 bits
+            ref byte indexStart = ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index));
+            long indexHash = SpanExtensions.FastHash64For32Bytes(ref indexStart);
+
+            // Hash the 20-byte Address to 64 bits and combine
+            Address? address = _address.Value;
+            if (address is null)
+            {
+                return indexHash;
+            }
+
+            return indexHash ^ address.GetHashCode64();
+        }
+
+        public readonly override string ToString()
         {
             return $"{_address.Value}.{Index}";
         }
