@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
 
@@ -13,4 +14,5 @@ public interface IMasternodeVotingContract
     Address[] GetCandidates(BlockHeader blockHeader);
     UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(BlockHeader blockHeader, Address candidate);
+    Address GetCandidateOwnerDuringProcessing(BlockHeader blockHeader, Address candidate);
 }
