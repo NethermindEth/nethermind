@@ -5,10 +5,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
@@ -16,7 +19,7 @@ namespace Nethermind.Evm;
 /// State for EVM Calls
 /// </summary>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public class VmState<TGasPolicy> : IDisposable
+public sealed class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
@@ -113,7 +116,7 @@ public class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot)
     {
         VmState<TGasPolicy> state = Rent();
-        state.Initialize(
+        state.InitializeFrame(
             gas,
             outputDestination: 0L,
             outputLength: 0L,
@@ -130,7 +133,7 @@ public class VmState<TGasPolicy> : IDisposable
     /// <summary>
     /// Constructor for a frame <see cref="VmState{TGasPolicy}"/> beneath top level.
     /// </summary>
-    public static VmState<TGasPolicy> RentFrame(
+    public static VmState<TGasPolicy> Rent(
         TGasPolicy gas,
         long outputDestination,
         long outputLength,
@@ -143,7 +146,7 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel = false)
     {
         VmState<TGasPolicy> state = Rent();
-        state.Initialize(
+        state.InitializeFrame(
             gas,
             outputDestination,
             outputLength,
@@ -157,11 +160,12 @@ public class VmState<TGasPolicy> : IDisposable
         return state;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static VmState<TGasPolicy> Rent()
         => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
 
     [SkipLocalsInit]
-    private void Initialize(
+    private void InitializeFrame(
         TGasPolicy gas,
         long outputDestination,
         long outputLength,
@@ -173,15 +177,23 @@ public class VmState<TGasPolicy> : IDisposable
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
     {
-        _env = env;
-        _snapshot = snapshot;
+        if (!_isDisposed)
+        {
+            ThrowIsInUse();
+        }
+        _isDisposed = false;
+
+        // Upper region first (0x78-0x98)
         _accessTracker = stateForAccessLists;
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
-        Gas = gas;
+        _snapshot = snapshot;
+
+        // Lower region sequential (0x18-0x50)
+        _env = env;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -195,13 +207,7 @@ public class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-
-        if (!_isDisposed)
-        {
-            ThrowIsInUse();
-        }
-        _isDisposed = false;
-
+        Gas = gas;
 #if DEBUG
         _creationStackTrace = new StackTrace();
 #endif
@@ -228,6 +234,7 @@ public class VmState<TGasPolicy> : IDisposable
     public ref EvmPooledMemory Memory => ref _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public void Dispose()
     {
         Debug.Assert(!_isDisposed);
@@ -277,18 +284,75 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
-    public void InitializeStacks()
+    public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
         if (DataStack is null)
         {
+            dataStack = AllocateStacks();
+        }
+
+        stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        byte[] AllocateStacks()
+        {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
+            return DataStack;
         }
     }
 
-    public void CommitToParent(VmState<TGasPolicy> parentState)
+    public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
+        byte[] dataStack = DataStack;
+        if (DataStack is null)
+        {
+            dataStack = AllocateStacks();
+        }
+
+        stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        byte[] AllocateStacks()
+        {
+            (DataStack, ReturnStack) = _stackPool.RentStacks();
+            return DataStack;
+        }
+    }
+
+    private static ref byte As32AlignedRef(byte[] array)
+    {
+        nuint offset = GetAlignmentOffset32(array);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), offset);
+    }
+
+    public Memory<byte> MemoryStacks(int count)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        return AsAlignedMemory(DataStack, alignment: EvmStack.WordSize, size: count * EvmStack.WordSize);
+    }
+
+    private static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    {
+        nuint offset = GetAlignmentOffset32(array);
+        return array.AsMemory((int)(uint)offset, size);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe static nuint GetAlignmentOffset32(byte[] array)
+    {
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        Debug.Assert(array is not null);
+        nint addr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+        return (nuint)((-addr) & 31);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void CommitToParent(VmState<TGasPolicy> parentState)
+    {
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
     }
@@ -297,6 +361,7 @@ public class VmState<TGasPolicy> : IDisposable
 /// <summary>
 /// Return state for EVM call stack management.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public struct ReturnState
 {
     public int Index;

@@ -18,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NonBlocking;
 
 namespace Nethermind.State;
 
@@ -116,11 +115,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Commit(long blockNumber)
         {
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
-
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            // Commit storages with most writes first to minimise waiting
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages
+                .Where(kv => kv.Value.OutstandingWritesEstimate > 0)
+                .OrderByDescending(kv => kv.Value.OutstandingWritesEstimate))
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())
                 {
@@ -128,6 +127,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     {
                         StorageTree st = (StorageTree)ctx;
                         st.Commit();
+                        st.ClearWritesEstimate();
                         blockCommitter.ReturnConcurrencyQuota();
                     }, storage.Value));
                 }
@@ -262,9 +262,17 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             }
             else
             {
-                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+                if (_wasSetCalled)
+                {
+                    ThrowNotSet();
+                }
                 _hasSelfDestruct = true;
+                storageTree.IncrementEstimate();
             }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNotSet()
+                => throw new InvalidOperationException("Must call clear first in a storage write batch");
         }
 
         public void Dispose()
@@ -277,9 +285,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
+                var span = _bulkWrite.AsSpan();
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(span);
                 storageTree.BulkSet(asRef);
+                storageTree.IncrementEstimate((ulong)span.Length);
 
                 _bulkWrite?.Dispose();
             }

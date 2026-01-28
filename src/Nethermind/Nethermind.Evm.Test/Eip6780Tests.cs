@@ -38,7 +38,9 @@ namespace Nethermind.Evm.Test
         protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         private byte[] _selfDestructCode;
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
         private Address _contractAddress;
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
         private byte[] _initCode;
         private readonly long _gasLimit = 1000000;
         private readonly EthereumEcdsa _ecdsa = new(1);

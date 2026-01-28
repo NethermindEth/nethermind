@@ -28,7 +28,9 @@ namespace Nethermind.AuRa.Test
         private IAuRaStepCalculator _auRaStepCalculator;
         private ILogManager _logManager;
         private IWallet _wallet;
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
         private Address _address;
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
         private IEthereumEcdsa _ethereumEcdsa;
         private static int _currentStep;
         private IReportingValidator _reportingValidator;
