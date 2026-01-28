@@ -1052,6 +1052,24 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_raise_TxPoolHeadChanged_for_all_subscribers_when_one_throws()
+        {
+            _txPool = CreatePool();
+
+            Block block = Build.A.Block.TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+
+            ManualResetEvent manualResetEvent = new(false);
+            _txPool.TxPoolHeadChanged += (o, e) => throw new InvalidOperationException("Subscriber failure");
+            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
+
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
+            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
+
+            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised for all subscribers");
+        }
+
+        [Test]
         public void should_delete_pending_transactions()
         {
             _txPool = CreatePool();

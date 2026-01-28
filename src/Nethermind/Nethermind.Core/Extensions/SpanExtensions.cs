@@ -23,6 +23,28 @@ namespace Nethermind.Core.Extensions
         private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 
         internal static uint ComputeSeed(int len) => s_instanceRandom + (uint)len;
+        public static uint InstanceRandom => s_instanceRandom;
+
+        /// <summary>
+        /// Computes a very fast, non-cryptographic 32-bit hash of exactly 32 bytes.
+        /// </summary>
+        /// <param name="start">Reference to the first byte of the 32-byte input.</param>
+        /// <returns>A 32-bit hash value.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FastHash32(ref byte start)
+        {
+            Debug.Assert(x64.Aes.IsSupported || Arm.Aes.IsSupported, "FastHash32 requires AES hardware support");
+
+            uint seed = s_instanceRandom + 32;
+            Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+            key ^= Vector128.CreateScalar(seed).AsByte();
+            Vector128<byte> mixed = x64.Aes.IsSupported
+                ? x64.Aes.Encrypt(data, key)
+                : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+            ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
+            return (int)(uint)(compressed ^ (compressed >> 32));
+        }
 
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
         {

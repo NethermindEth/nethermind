@@ -52,7 +52,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
     }
     public XdcSubnetBlockHeaderBuilder WithNextValidators(Address[] nextValidators)
     {
-        XdcTestObjectInternal.NextValidators = nextValidators.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.NextValidators = nextValidators.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
 }
