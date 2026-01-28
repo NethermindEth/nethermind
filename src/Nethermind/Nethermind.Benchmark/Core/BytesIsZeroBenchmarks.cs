@@ -18,8 +18,8 @@ namespace Nethermind.Benchmarks.Core
             Keccak.Zero.BytesToArray(),
             Keccak.EmptyTreeHash.BytesToArray(),
             Keccak.OfAnEmptyString.BytesToArray(),
-            TestItem.AddressA.Bytes,
-            Address.Zero.Bytes,
+            TestItem.AddressA.ToArray(),
+            Address.Zero.ToArray(),
         };
 
         [Params(0, 1, 2, 3, 4)]

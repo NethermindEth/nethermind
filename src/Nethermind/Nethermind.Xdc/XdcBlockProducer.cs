@@ -85,14 +85,14 @@ internal class XdcBlockProducer : BlockProducerBase
 
             for (int i = 0; i < masternodes.Length; i++)
             {
-                Array.Copy(masternodes[i].Bytes, 0, xdcBlockHeader.Validators, i * Address.Size, Address.Size);
+                masternodes[i].Bytes.CopyTo(xdcBlockHeader.Validators.AsSpan(i * Address.Size, Address.Size));
             }
 
             xdcBlockHeader.Penalties = new byte[penalties.Length * Address.Size];
 
             for (int i = 0; i < penalties.Length; i++)
             {
-                Array.Copy(penalties[i].Bytes, 0, xdcBlockHeader.Penalties, i * Address.Size, Address.Size);
+                penalties[i].Bytes.CopyTo(xdcBlockHeader.Penalties.AsSpan(i * Address.Size, Address.Size));
             }
         }
         return xdcBlockHeader;

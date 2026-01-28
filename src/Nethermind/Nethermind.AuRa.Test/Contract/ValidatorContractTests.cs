@@ -27,7 +27,9 @@ namespace Nethermind.AuRa.Test.Contract
     public class ValidatorContractTests
     {
         private Block _block;
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
         private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IWorldState _stateProvider;
