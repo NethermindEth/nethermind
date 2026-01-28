@@ -69,18 +69,6 @@ public class Metrics
     public static long ThreadLocalSStoreOpcode => _sStoreOpcode.ThreadLocalValue;
     public static void IncrementSStoreOpcode() => _sStoreOpcode.Increment();
 
-    [Description("Number of TLOAD opcodes executed.")]
-    public static long TloadOpcode { get; set; }
-
-    [Description("Number of TSTORE opcodes executed.")]
-    public static long TstoreOpcode { get; set; }
-
-    [Description("Number of MCOPY opcodes executed.")]
-    public static long MCopyOpcode { get; set; }
-
-    [Description("Number of EXP opcodes executed.")]
-    public static long ExpOpcode { get; set; }
-
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _emptyCalls.GetTotalValue();

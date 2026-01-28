@@ -65,14 +65,14 @@ internal static partial class EvmInstructions
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gas">Reference to the gas state.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
-    /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <returns>An <see cref="OpcodeResult"/> indicating success or the type of error encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
+    public static OpcodeResult InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
@@ -81,21 +81,24 @@ internal static partial class EvmInstructions
         Metrics.IncrementCreates();
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
+        CallFrame<TGasPolicy> callFrame = vm.CallFrame;
         IReleaseSpec spec = vm.Spec;
-        if (vm.VmState.IsStatic)
+        if (callFrame.IsStatic)
             goto StaticCallViolation;
 
         // Reset the return data buffer as contract creation does not use previous return data.
         vm.ReturnData = null;
-        ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
+        if (!stack.PopUInt256(
+            out UInt256 value,
+            out UInt256 memoryPositionOfInitCode,
+            out UInt256 initCodeLength))
+        {
             goto StackUnderflow;
+        }
 
         Span<byte> salt = default;
         // For CREATE2, an extra salt value is required. Use type check to differentiate.
@@ -125,39 +128,36 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, callFrame))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
-        if (env.CallDepth >= MaxCallDepth)
+        if (vm.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+        if (!callFrame.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
-        UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        UInt256 balance = state.GetBalance(callFrame.ExecutingAccount);
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
+        UInt256 accountNonce = state.GetNonce(callFrame.ExecutingAccount);
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Get remaining gas for the create operation.
@@ -177,13 +177,13 @@ internal static partial class EvmInstructions
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
         Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
-            ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
+            ? ContractAddress.From(callFrame.ExecutingAccount, accountNonce)
+            : ContractAddress.From(callFrame.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
         if (spec.UseHotAndColdStorage)
         {
-            vm.VmState.AccessTracker.WarmUp(contractAddress);
+            vm.TrackingState.WarmUp(contractAddress);
         }
 
         // Special case: if EOF code format is enabled and the init code starts with the EOF marker,
@@ -191,13 +191,12 @@ internal static partial class EvmInstructions
         if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
             TGasPolicy.UpdateGasUp(ref gas, callGas);
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
+        state.IncrementNonce(callFrame.ExecutingAccount);
 
         // Analyze and compile the initialization code.
         CodeInfoFactory.CreateInitCodeInfo(initCode, spec, out CodeInfo? codeInfo, out _);
@@ -205,57 +204,53 @@ internal static partial class EvmInstructions
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        // Check for contract address collision. If the contract already exists and contains code or non-zero state,
-        // then the creation should be aborted.
-        bool accountExists = state.AccountExists(contractAddress);
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        // Single state lookup for contract address - avoids triple call to AccountExists + GetNonce + IsDeadAccount.
+        Account contractAccount = state.GetAccount(contractAddress);
+        // Check for contract address collision (EIP-7610). If the contract already exists and contains
+        // code, non-zero nonce, or storage, then the creation should be aborted.
+        if (contractAccount.HasCode || contractAccount.HasStorage || !contractAccount.Nonce.IsZero)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        // IsEmpty checks code, balance, and nonce but not storage — so accounts with only
+        // orphaned storage still enter this branch and get their storage cleared.
+        if (contractAccount.IsEmpty)
         {
             // Note: Seems to be needed on block 21827914 for some reason
             state.ClearStorage(contractAddress);
         }
 
         // Deduct the transfer value from the executing account's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-
-        // Construct a new execution environment for the contract creation call.
-        // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
-            executingAccount: contractAddress,
-            caller: env.ExecutingAccount,
-            codeSource: null,
-            callDepth: env.CallDepth + 1,
-            transferValue: in value,
-            value: in value,
-            inputData: in _emptyMemory);
+        state.SubtractFromBalance(callFrame.ExecutingAccount, value, spec);
 
         // Rent a new frame to run the initialization code in the new execution environment.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        vm.ReturnData = CallFrame<TGasPolicy>.Rent(
             gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: TOpCreate.ExecutionType,
-            isStatic: vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: accountExists,
-            env: callEnv,
-            stateForAccessLists: in vm.VmState.AccessTracker,
+            isStatic: callFrame.IsStatic,
+            isCreateOnPreExistingAccount: !contractAccount.IsTotallyEmpty,
+            codeInfo: codeInfo,
+            executingAccount: contractAddress,
+            caller: callFrame.ExecutingAccount,
+            codeSource: null,
+            value: in value,
+            inputData: in _emptyMemory,
+            stateForAccessLists: in callFrame.AccessTracker,
+            trackingState: vm.TrackingState,
             snapshot: in snapshot);
-    None:
-        return EvmExceptionType.None;
+
+        return new(programCounter, EvmExceptionType.Return);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new(programCounter, EvmExceptionType.StaticCallViolation);
     }
 }

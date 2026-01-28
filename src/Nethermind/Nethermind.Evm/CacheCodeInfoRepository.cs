@@ -52,8 +52,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
         _inner.GetExecutableCodeHash(address, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
-        _inner.TryGetDelegation(address, spec, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out CodeInfo codeInfo, out Address? delegatedAddress) =>
+        _inner.TryGetDelegation(address, spec, out codeInfo, out delegatedAddress);
+
+    public bool IsDelegated(Address address, IReleaseSpec spec) =>
+        _inner.IsDelegated(address, spec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {

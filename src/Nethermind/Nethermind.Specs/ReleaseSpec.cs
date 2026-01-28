@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
@@ -124,9 +125,13 @@ public class ReleaseSpec : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
     public bool IsRip7728Enabled { get; set; }
-    private FrozenSet<AddressAsKey>? _precompiles;
-    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+
+    private FrozenSet<AddressAsKey> Precompiles { get => field ??= BuildPrecompilesCache(); }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsPrecompile(Address address) => Precompiles.Contains(address);
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
         HashSet<AddressAsKey> cache = new();

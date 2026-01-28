@@ -304,12 +304,14 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     private static readonly PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private static readonly Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
-
     private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
     private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     // for testing purposes, particular chain id does not matter. Maybe make random id so it captures the idea that signature should would irrespective of chain
     private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork);
+
     private static string Run(byte[] input)
     {
         long blocknr = 12965000;

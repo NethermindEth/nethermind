@@ -22,7 +22,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <summary>
     /// Creates a new gas instance from a long value.
     /// This is primarily used for warmup/testing scenarios.
-    /// The main execution flow should pass TGasPolicy directly through EvmState.
+    /// The main execution flow should pass TGasPolicy directly through CallFrame.
     /// </summary>
     /// <param name="value">The initial gas value</param>
     /// <returns>A new gas instance</returns>
@@ -78,7 +78,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGasWithDelegation(ref TSelf gas,
         IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker,
+        AccessTrackingState trackingState,
         bool isTracingAccess,
         Address address,
         Address? delegated,
@@ -97,7 +97,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker,
+        AccessTrackingState trackingState,
         bool isTracingAccess,
         Address address,
         bool chargeForWarm = true);
@@ -117,7 +117,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="spec">The release specification which governs gas metering and storage access rules.</param>
     /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
     static abstract bool ConsumeStorageAccessGas(ref TSelf gas,
-        ref readonly StackAccessTracker accessTracker,
+        AccessTrackingState trackingState,
         bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
@@ -129,11 +129,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="position">The starting position in memory.</param>
     /// <param name="length">The length of the memory region.</param>
-    /// <param name="vmState">The current EVM state.</param>
+    /// <param name="callFrame">The current call frame.</param>
     /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
     static abstract bool UpdateMemoryCost(ref TSelf gas,
         in UInt256 position,
-        in UInt256 length, VmState<TSelf> vmState);
+        in UInt256 length, CallFrame<TSelf> callFrame);
+
+    static abstract bool UpdateMemoryCost(ref TSelf gas,
+        in UInt256 position,
+        ulong length, CallFrame<TSelf> callFrame);
 
     /// <summary>
     /// Deducts a specified gas cost from the available gas.
@@ -201,6 +205,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="spec">The release specification governing gas costs.</param>
     /// <returns>The intrinsic gas as TGasPolicy.</returns>
     static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec);
+
+    static abstract TSelf CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long tokensInCallData);
 
     /// <summary>
     /// Creates available gas from gas limit minus intrinsic gas, preserving any tracking data.

@@ -55,66 +55,79 @@ public class TestBlockchainUtil(
         }
 
         invalidBlockDetector.OnInvalidBlock += OnInvalidBlock;
-
-        bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
-        bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
-
-        _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
-        TaskCompletionSource tcs = new();
-        _previousAddBlock = tcs.Task;
-
-        AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
-        List<Hash256> expectedHashes = txResults.Zip(transactions)
-            .Where((item, _) => item.First == AcceptTxResult.Accepted)
-            .Select((item, _) => item.Second.Hash!)
-            .ToList();
-
-        timestamper.Add(TimeSpan.FromSeconds(config.SlotTime));
-        Block? block;
-        int iteration = 0;
-        while (true)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            block = await blockProducer.BuildBlock(parentHeader: parentToBuildOn, cancellationToken: cancellationToken);
+            bool mayMissTx = (flags & AddBlockFlags.MayMissTx) != 0;
+            bool mayHaveExtraTx = (flags & AddBlockFlags.MayHaveExtraTx) != 0;
 
-            if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock} produced");
+            _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
+            TaskCompletionSource tcs = new();
+            _previousAddBlock = tcs.Task;
 
-            if (block is not null)
+            AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+            List<Hash256> expectedHashes = txResults.Zip(transactions)
+                .Where((item, _) => item.First == AcceptTxResult.Accepted)
+                .Select((item, _) => item.Second.Hash!)
+                .ToList();
+
+            timestamper.Add(TimeSpan.FromSeconds(config.SlotTime));
+            Block? block;
+            int iteration = 0;
+            while (true)
             {
-                HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
+                cancellationToken.ThrowIfCancellationRequested();
+                block = await blockProducer.BuildBlock(parentHeader: parentToBuildOn, cancellationToken: cancellationToken);
 
-                int matchingHashes = expectedHashes.Count((tx) => blockTxs.Contains(tx));
-                bool allExpectedHashAvailable = matchingHashes == expectedHashes.Count;
-                if (!allExpectedHashAvailable && mayMissTx) break;
+                if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock} produced");
 
-                bool hasExtraTx = allExpectedHashAvailable && blockTxs.Count > expectedHashes.Count;
-                if (hasExtraTx && mayHaveExtraTx) break;
+                if (block is not null)
+                {
+                    HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
 
-                bool hasExactlyTheRightTx = expectedHashes.Count == blockTxs.Count;
-                if (hasExactlyTheRightTx) break;
+                    int matchingHashes = expectedHashes.Count((tx) => blockTxs.Contains(tx));
+                    bool allExpectedHashAvailable = matchingHashes == expectedHashes.Count;
+                    if (!allExpectedHashAvailable && mayMissTx) break;
+
+                    bool hasExtraTx = allExpectedHashAvailable && blockTxs.Count > expectedHashes.Count;
+                    if (hasExtraTx && mayHaveExtraTx) break;
+
+                    bool hasExactlyTheRightTx = expectedHashes.Count == blockTxs.Count;
+                    if (hasExactlyTheRightTx) break;
+                }
+
+                await Task.Yield();
+                if (iteration > 3)
+                {
+                    Assert.Fail("Did not produce expected block");
+                }
+
+                if (iteration > 0)
+                {
+                    await Task.Delay(100);
+                }
+                iteration++;
+            }
+            blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+
+            tcs.TrySetResult();
+
+            try
+            {
+                await waitforHead;
+            }
+            catch (InvalidOperationException e) when (invalidBlock is not null)
+            {
+                throw new InvalidOperationException($"Invalid block {invalidBlock} produced while waiting for new head", e);
             }
 
-            await Task.Yield();
-            if (iteration > 3)
-            {
-                Assert.Fail("Did not produce expected block");
-            }
-            else if (iteration > 0)
-            {
-                await Task.Delay(100);
-            }
-            iteration++;
+            await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
+
+            return block;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
-
-        tcs.TrySetResult();
-
-        await waitforHead;
-
-        await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
-
-        invalidBlockDetector.OnInvalidBlock -= OnInvalidBlock;
-        return block;
+        finally
+        {
+            invalidBlockDetector.OnInvalidBlock -= OnInvalidBlock;
+        }
     }
 
     public Task<Block> AddBlock(CancellationToken cancellationToken)

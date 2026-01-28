@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -43,26 +44,24 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
-            codeInfo: new CodeInfo(bytecode),
-            executingAccount: addressOne,
-            caller: addressOne,
-            codeSource: addressOne,
-            callDepth: 0,
-            transferValue: 0,
-            value: 0,
-            inputData: default);
+        CodeInfo codeInfo = new CodeInfo(bytecode);
 
-        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
+        AccessTrackingState trackingState = AccessTrackingState.RentState();
+        vm.TrackingState = trackingState;
+        using (CallFrame<TGasPolicy> callFrame = CallFrame<TGasPolicy>.RentTopLevel(
+            TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION,
+            codeInfo, addressOne, addressOne, addressOne,
+            default, default,
+            default, trackingState, state.TakeSnapshot()))
         {
-            vm.VmState = vmState;
+            vm.CallFrame = callFrame;
             vm._worldState = state;
             vm._codeInfoRepository = codeInfoRepository;
-            vmState.InitializeStacks();
 
-            RunOpCodes<OnFlag>(vm, state, vmState, spec);
-            RunOpCodes<OffFlag>(vm, state, vmState, spec);
+            RunOpCodes<OnFlag>(vm, state, callFrame, spec);
+            RunOpCodes<OffFlag>(vm, state, callFrame, spec);
         }
+        AccessTrackingState.ResetAndReturn(trackingState);
 
         TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
@@ -70,14 +69,16 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         RunTransactions(processor, state, spec);
     }
 
+    private static readonly Address recipient1 = new("0x0000000000000000000000000000000010000000");
+    private static readonly Address recipient2 = new("0x0000000000000000000000000000000000000100");
     private static void RunTransactions(TransactionProcessor<TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
     {
-        const int WarmUpIterations = 40;
+        const int WarmUpIterations = 30;
 
         Address sender = Address.SystemUser;
-        Address recipient = new("0x0000000000000000000000000000000000000100");
 
-        state.CreateAccountIfNotExists(recipient, 100.Ether());
+        state.CreateAccountIfNotExists(recipient1, 100.Ether());
+        state.CreateAccountIfNotExists(recipient2, 100.Ether());
 
         List<byte> bytes = [(byte)Instruction.JUMPDEST];
 
@@ -85,7 +86,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
         byte[] code = bytes.ToArray();
 
-        state.InsertCode(recipient, code, spec);
+        state.InsertCode(recipient1, code, spec);
+        state.InsertCode(recipient2, code, spec);
         state.Commit(spec);
 
         Transaction tx = new()
@@ -93,16 +95,26 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             IsServiceTransaction = true,
             GasLimit = 30_000_000,
             SenderAddress = sender,
-            To = recipient
+            To = recipient1
         };
 
-        for (int i = 0; i < WarmUpIterations; i++)
+        RunTransactions(processor, WarmUpIterations, tx);
+        Thread.Sleep(125);
+        RunTransactions(processor, WarmUpIterations, tx);
+
+        static void RunTransactions(TransactionProcessor<TGasPolicy> processor, int WarmUpIterations, Transaction tx)
         {
-            processor.CallAndRestore(tx, NullTxTracer.Instance);
+            for (int i = 0; i < WarmUpIterations; i++)
+            {
+                tx.To = recipient1;
+                processor.CallAndRestore(tx, NullTxTracer.Instance);
+                tx.To = recipient2;
+                processor.CallAndRestore(tx, NullTxTracer.Instance);
+            }
         }
     }
 
-    static void AddPrecompileCall(List<byte> codeToDeploy)
+    private static void AddPrecompileCall(List<byte> codeToDeploy)
     {
         byte[] x1 = Bytes.FromHexString("089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf");
         byte[] y1 = Bytes.FromHexString("2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36");
@@ -146,7 +158,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, VmState<TGasPolicy> vmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, CallFrame<TGasPolicy> callFrame, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;
@@ -154,7 +166,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         var opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
-        EvmStack stack = new(0, txTracer, vmState.DataStack);
+        callFrame.InitializeStacks(txTracer, callFrame.CodeInfo.CodeSpan, out EvmStack stack);
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 
@@ -170,15 +182,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 stack.PushOne<TTracingInst>();
                 stack.PushOne<TTracingInst>();
 
-                opcodes[i](vm, ref stack, ref gas, ref pc);
-                if (vm.ReturnData is VmState<TGasPolicy> returnState)
+                opcodes[i](vm, ref stack, ref gas, pc);
+                if (vm.ReturnData is CallFrame<TGasPolicy> returnState)
                 {
                     returnState.Dispose();
                     vm.ReturnData = null!;
                 }
 
                 state.Reset(resetBlockChanges: true);
-                stack = new(0, txTracer, vmState.DataStack);
+                stack.Head = 0;
                 gas = TGasPolicy.FromLong(long.MaxValue);
                 pc = 0;
             }

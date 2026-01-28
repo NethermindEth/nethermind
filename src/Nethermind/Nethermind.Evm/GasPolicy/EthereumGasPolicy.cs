@@ -42,7 +42,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker,
+        AccessTrackingState trackingState,
         bool isTracingAccess,
         Address address,
         Address? delegated,
@@ -51,13 +51,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, trackingState, isTracingAccess, address, chargeForWarm);
+        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, trackingState, isTracingAccess, delegated, chargeForWarm));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker,
+        AccessTrackingState trackingState,
         bool isTracingAccess,
         Address address,
         bool chargeForWarm = true)
@@ -68,11 +68,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             if (isTracingAccess)
             {
                 // Ensure that tracing simulates access-list behavior.
-                accessTracker.WarmUp(address);
+                trackingState.WarmUp(address);
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
+            if (!spec.IsPrecompile(address) && trackingState.WarmUp(address))
             {
                 result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
             }
@@ -87,7 +87,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
-        ref readonly StackAccessTracker accessTracker,
+        AccessTrackingState trackingState,
         bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
@@ -99,11 +99,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
         if (isTracingAccess)
         {
-            accessTracker.WarmUp(in storageCell);
+            trackingState.WarmUp(in storageCell);
         }
 
         // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-        if (accessTracker.WarmUp(in storageCell))
+        if (trackingState.WarmUp(in storageCell))
             return UpdateGas(ref gas, GasCostOf.ColdSLoad);
         // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
         if (storageAccessType == StorageAccessType.SLOAD)
@@ -114,9 +114,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
-        in UInt256 length, VmState<EthereumGasPolicy> vmState)
+        in UInt256 length, CallFrame<EthereumGasPolicy> callFrame)
     {
-        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        long memoryCost = callFrame.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, CallFrame<EthereumGasPolicy> callFrame)
+    {
+        long memoryCost = callFrame.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0L)
             return !outOfGas;
         return UpdateGas(ref gas, memoryCost);
@@ -179,13 +190,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
-        long standard = GasCostOf.Transaction
-                        + DataCost(tx, spec, tokensInCallData)
-                        + CreateCost(tx, spec)
-                        + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
-                        + AuthorizationListCost(tx, spec);
+        EthereumGasPolicy standard = CalculateIntrinsicGas(tx, spec, tokensInCallData);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
-        return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
+        return new IntrinsicGas<EthereumGasPolicy>(standard, FromLong(floorCost));
+    }
+
+    public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long tokensInCallData)
+    {
+        long gas = GasCostOf.Transaction
+                   + DataCost(tx, spec, tokensInCallData)
+                   + CreateCost(tx, spec)
+                   + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
+                   + AuthorizationListCost(tx, spec);
+
+        return FromLong(gas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

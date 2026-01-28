@@ -28,6 +28,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
+    Account GetAccount(Address address);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -73,7 +74,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Creates a restartable snapshot.
     /// </summary>
     /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
-    /// <returns>Snapshot index</returns>
+    /// <returns>Snapshot token</returns>
     /// <remarks>
     /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
     /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
@@ -115,7 +116,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool incrementNonce = false);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
@@ -130,7 +131,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetNonce(Address address, in UInt256 nonce);
 
     /* snapshots */
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true, Address? retainInCache = null);
 
     /// <summary>
     /// Persist the underlying changes to the storage at the specified block number. This also recalculate state root.

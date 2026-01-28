@@ -44,7 +44,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
+    protected readonly IWorldState _stateProvider = stateProvider;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
 
     /// <summary>
@@ -87,6 +87,7 @@ public partial class BlockProcessor(
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
@@ -138,7 +139,7 @@ public partial class BlockProcessor(
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             // Get the accounts that have been changed
-            block.AccountChanges = _stateProvider.GetAccountChanges();
+            block.AccountChanges = ((IWorldState)_stateProvider).GetAccountChanges();
         }
 
         if (ShouldComputeStateRoot(header))

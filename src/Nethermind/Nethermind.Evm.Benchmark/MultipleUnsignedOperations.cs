@@ -25,11 +25,11 @@ public class MultipleUnsignedOperations
 {
     private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
     private readonly ITxTracer _txTracer = NullTxTracer.Instance;
-    private ExecutionEnvironment _environment;
     private IVirtualMachine _virtualMachine;
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
-    private VmState<EthereumGasPolicy> _evmState;
+    private CallFrame<EthereumGasPolicy> _callFrame;
+    private AccessTrackingState _trackingState;
     private IWorldState _stateProvider;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
@@ -79,31 +79,27 @@ public class MultipleUnsignedOperations
         _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
         _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
-        _environment = ExecutionEnvironment.Rent(
-            executingAccount: Address.Zero,
-            codeSource: Address.Zero,
-            caller: Address.Zero,
-            codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
-            callDepth: 0,
-            value: 0,
-            transferValue: 0,
-            inputData: default
-        );
-
-        _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(100_000_000L), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+        _trackingState = AccessTrackingState.RentState();
+        _callFrame = CallFrame<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromLong(100_000_000L),
+            ExecutionType.TRANSACTION,
+            new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
+            Address.Zero, Address.Zero, Address.Zero,
+            default, default,
+            default, _trackingState, _stateProvider.TakeSnapshot());
     }
 
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        _evmState.Dispose();
-        _environment.Dispose();
+        _callFrame.Dispose();
+        AccessTrackingState.ResetAndReturn(_trackingState);
     }
 
     [Benchmark]
     public void ExecuteCode()
     {
-        _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
+        _virtualMachine.ExecuteTransaction<OffFlag>(_callFrame, _stateProvider, _txTracer);
         _stateProvider.Reset();
     }
 
