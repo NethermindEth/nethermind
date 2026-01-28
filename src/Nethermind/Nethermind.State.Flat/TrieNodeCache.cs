@@ -61,7 +61,17 @@ public sealed class TrieNodeCache : ITrieNodeCache
         int h1;
 
         shardIdx = path.Path.Bytes[0];
-        h1 = address is null ? 0 : address.GetHashCode();
+        if (address is not null)
+        {
+            // Add address byte so that the root nodes of storage does not all sit in a single shard
+            shardIdx += address.Bytes[0];
+            shardIdx %= 256;
+            h1 = address.GetHashCode();
+        }
+        else
+        {
+            h1 = 0;
+        }
 
         int h2 = path.GetHashCode();
 
