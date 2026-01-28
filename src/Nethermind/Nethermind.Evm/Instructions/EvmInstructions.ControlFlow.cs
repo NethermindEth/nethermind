@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
@@ -82,6 +83,9 @@ internal static partial class EvmInstructions
         // Validate the jump destination and update the program counter if valid.
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
+        // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
+        PrefetchCodeAtDestination(ref stack, programCounter);
+
         return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
@@ -118,6 +122,8 @@ internal static partial class EvmInstructions
         if (shouldJump)
         {
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+            // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
+            PrefetchCodeAtDestination(ref stack, programCounter);
         }
 
         return new(programCounter, EvmExceptionType.None);
@@ -336,5 +342,37 @@ internal static partial class EvmInstructions
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Prefetches the cache line at the given program counter location.
+    /// Hardware prefetchers cannot predict jump destinations, so we explicitly prefetch
+    /// to reduce cache misses after non-sequential control flow.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PrefetchCodeAtDestination(ref EvmStack stack, int programCounter)
+    {
+        if (Sse.IsSupported)
+        {
+            // Prefetch the cache line containing the jump destination.
+            // Also prefetch the next cache line since code often spans multiple lines.
+            ref byte code = ref stack.Code;
+            nuint dest = (nuint)programCounter;
+            nuint codeLength = (nuint)stack.CodeLength;
+
+            if (dest < codeLength)
+            {
+                unsafe
+                {
+                    Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, dest)));
+                    // Prefetch next cache line too (64 bytes ahead)
+                    nuint nextLine = (dest + 64) & ~(nuint)63;
+                    if (nextLine < codeLength)
+                    {
+                        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, nextLine)));
+                    }
+                }
+            }
+        }
     }
 }
