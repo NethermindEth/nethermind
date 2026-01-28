@@ -616,7 +616,7 @@ internal class SpecialTransactionsTests
         UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 initialBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
 
-        Transaction ? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
