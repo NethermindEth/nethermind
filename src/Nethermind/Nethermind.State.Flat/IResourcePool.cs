@@ -9,5 +9,5 @@ public interface IResourcePool
     void ReturnSnapshotContent(ResourcePool.Usage usage, SnapshotContent snapshotContent);
     TransientResource GetCachedResource(ResourcePool.Usage usage);
     void ReturnCachedResource(ResourcePool.Usage usage, TransientResource transientResource);
-    Snapshot CreateSnapshot(StateId from, StateId to, ResourcePool.Usage usage);
+    Snapshot CreateSnapshot(in StateId from, in StateId to, ResourcePool.Usage usage);
 }

@@ -66,18 +66,18 @@ public class Snapshot(
     public bool TryAcquire() => TryAcquireLease();
 }
 
-public sealed class SnapshotContent() : IDisposable, IResettable
+public sealed class SnapshotContent : IDisposable, IResettable
 {
-    private const int NodeSizeEstimate = 650; // Counting the node size one by one have a notable overhead. So we use estimate.
+    private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
 
-    // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
+    // They dont actually need to be concurrent, but it makes commit fast by just passing the whole content.
     public readonly ConcurrentDictionary<AddressAsKey, Account?> Accounts = new();
     public readonly ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages = new();
 
     // Bool is true if this is a new account also
     public readonly ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses = new();
 
-    // Use of a separate dictionary just for state have a small but measurable impact
+    // Use of a separate dictionary just for state has a small but measurable impact
     public readonly ConcurrentDictionary<TreePath, TrieNode> StateNodes = new();
 
     public readonly ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes = new();

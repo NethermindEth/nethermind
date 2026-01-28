@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -44,13 +45,13 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _addressHash = address.ToAccountPath.ToHash256();
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
-        StorageTrieStoreAdapter storageTrieAdapter = new StorageTrieStoreAdapter(
-            bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new StorageTrieStoreWarmerAdapter(
-            bundle, _addressHash);
+        StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
+        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager);
-        _tree.RootHash = storageRoot;
+        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
+        {
+            RootHash = storageRoot
+        };
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
@@ -74,7 +75,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             byte[] treeValue = _tree.Get(index);
             if (!Bytes.AreEqual(treeValue, value))
             {
-                throw new Exception($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
 
@@ -101,11 +102,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Called by trie warmer.
     public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
     {
-        if (_scope.HintSequenceId != sequenceId)
-        {
-            return false;
-        }
-        if (_scope._pausePrewarmer)
+        if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
         {
             return false;
         }
@@ -119,7 +116,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         return true;
     }
 
-    public byte[] Get(in ValueHash256 hash) => throw new Exception("Not supported");
+    public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 
@@ -133,8 +130,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch =
-            new TrieStoreScopeProvider.StorageTreeBulkWriteBatch(
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
                 estimatedEntries,
                 _tree,
                 onRootUpdated,

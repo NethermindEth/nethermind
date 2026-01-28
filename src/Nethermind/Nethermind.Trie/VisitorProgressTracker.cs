@@ -51,17 +51,9 @@ public class VisitorProgressTracker
         float percentage = Math.Clamp(logger.CurrentValue / 10000f, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
-        if (_printNodes)
-        {
-            return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
-                   Progress.GetMeter(percentage, 1) +
-                   $" nodes: {workStr,8}";
-        }
-        else
-        {
-            return $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} " +
-                   Progress.GetMeter(percentage, 1);
-        }
+        return _printNodes
+            ? $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
+            : $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
     }
 
     /// <summary>

@@ -197,7 +197,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Setup Persistence Reader
         ctx.PersistenceReader.GetAccount(testAddress).Returns(persistedAccount);
-        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue)!.Value;
+        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue);
         ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
             .Returns(x =>
             {
@@ -639,7 +639,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Persistence setup
         ctx.PersistenceReader.GetAccount(addr).Returns(TestItem.GenerateRandomAccount());
-        SlotValue outVal = SlotValue.FromSpanWithoutLeadingZero(persistedVal)!.Value;
+        SlotValue outVal = SlotValue.FromSpanWithoutLeadingZero(persistedVal);
         ctx.PersistenceReader.TryGetSlot(addr, slot, ref Arg.Any<SlotValue>())
             .Returns(x => { x[2] = outVal; return true; });
 
