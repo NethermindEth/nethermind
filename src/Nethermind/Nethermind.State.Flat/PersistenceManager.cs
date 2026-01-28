@@ -29,21 +29,18 @@ public class PersistenceManager(
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly IPersistence _persistence = persistence;
-    private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
-    private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
 
-    public IPersistence.IPersistenceReader LeaseReader() => _persistence.CreateReader();
+    public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
 
     public StateId GetCurrentPersistedStateId()
     {
         if (_currentPersistedStateId == StateId.PreGenesis)
         {
-            using var reader = _persistence.CreateReader();
+            using IPersistence.IPersistenceReader reader = persistence.CreateReader();
             _currentPersistedStateId = reader.CurrentState;
         }
         return _currentPersistedStateId;
@@ -51,8 +48,8 @@ public class PersistenceManager(
 
     private Snapshot? GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
-        Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        using ArrayPoolList<StateId> states = _snapshotRepository.GetStatesAtBlockNumber(blockNumber);
+        Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
         {
             if (stateId.StateRoot != finalizedStateRoot) continue;
@@ -60,11 +57,11 @@ public class PersistenceManager(
             Snapshot? snapshot;
             if (compactedSnapshot)
             {
-                if (!_snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
+                if (!snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
             }
             else
             {
-                if (!_snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
+                if (!snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
             }
 
             if (snapshot.From == currentPersistedState)
@@ -82,17 +79,17 @@ public class PersistenceManager(
 
     private Snapshot? GetFirstSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
-        using ArrayPoolList<StateId> states = _snapshotRepository.GetStatesAtBlockNumber(blockNumber);
+        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
         {
             Snapshot? snapshot;
             if (compactedSnapshot)
             {
-                if (!_snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
+                if (!snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
             }
             else
             {
-                if (!_snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
+                if (!snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
             }
 
             if (snapshot.From == currentPersistedState)
@@ -110,11 +107,11 @@ public class PersistenceManager(
 
     internal Snapshot? DetermineSnapshotToPersist(StateId latestSnapshot)
     {
-        // Actually the latest compacted snapshot, not the latest snapshot.
+        // Actually, the latest compacted snapshot, not the latest snapshot.
         long lastSnapshotNumber = latestSnapshot.BlockNumber;
 
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+        long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
         if (inMemoryStateDepth - _compactSize < _minReorgDepth)
         {
@@ -153,7 +150,7 @@ public class PersistenceManager(
 
     public void AddToPersistence(StateId latestSnapshot)
     {
-        using Lock.Scope _lock = _persistenceLock.EnterScope();
+        using Lock.Scope scope = _persistenceLock.EnterScope();
         // Attempt to add snapshots into bigcache
         while (true)
         {
@@ -174,10 +171,10 @@ public class PersistenceManager(
     /// </summary>
     public StateId FlushToPersistence()
     {
-        using Lock.Scope _lock = _persistenceLock.EnterScope();
+        using Lock.Scope scope = _persistenceLock.EnterScope();
 
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        StateId? latestStateId = _snapshotRepository.GetLastSnapshotId();
+        StateId? latestStateId = snapshotRepository.GetLastSnapshotId();
 
         if (latestStateId is null)
         {
@@ -198,7 +195,7 @@ public class PersistenceManager(
                 currentPersistedState,
                 compactedSnapshot: false);
 
-            // Fall back to first available snapshot if finalized not available
+            // Fall back to the first available snapshot if finalized not available
             snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
                 currentPersistedState.BlockNumber + _compactSize,
                 currentPersistedState,
@@ -231,7 +228,7 @@ public class PersistenceManager(
         if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
         long sw = Stopwatch.GetTimestamp();
-        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
             foreach (KeyValuePair<AddressAsKey, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {

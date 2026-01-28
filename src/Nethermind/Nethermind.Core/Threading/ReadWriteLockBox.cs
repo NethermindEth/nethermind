@@ -10,42 +10,50 @@ namespace Nethermind.Core.Threading;
 /// Rust style wrapper of locked item. Make it a bit easier to know which object this lock is protecting.
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public class ReadWriteLockBox<T>
+public readonly struct ReadWriteLockBox<T>(T item)
 {
-    private readonly ReaderWriterLockSlim _lock;
-    private readonly T _item;
+    private readonly ReaderWriterLockSlim _lock = new();
 
-    public ReadWriteLockBox(T item)
+    public Lock EnterReadLock(out T item1)
     {
-        _item = item;
-        _lock = new ReaderWriterLockSlim();
+        item1 = item;
+        return new Lock(_lock, true);
     }
 
-    public LockExitor EnterReadLock(out T item)
+    public Lock EnterWriteLock(out T item1)
     {
-        item = _item;
-        _lock.EnterReadLock();
-        return new LockExitor(_lock, true);
+        item1 = item;
+        return new Lock(_lock, false);
     }
 
-    public LockExitor EnterWriteLock(out T item)
+    public readonly ref struct Lock : IDisposable
     {
-        item = _item;
-        _lock.EnterWriteLock();
-        return new LockExitor(_lock, false);
-    }
+        private readonly ReaderWriterLockSlim _rwLock;
+        private readonly bool _read;
 
-    public ref struct LockExitor(ReaderWriterLockSlim @lock, bool read) : IDisposable
-    {
-        public void Dispose()
+        public Lock(ReaderWriterLockSlim rwLock, bool read)
         {
-            if (read)
+            _rwLock = rwLock;
+            _read = read;
+            if (_read)
             {
-                @lock.ExitReadLock();
+                _rwLock.EnterReadLock();
             }
             else
             {
-                @lock.ExitWriteLock();
+                _rwLock.EnterWriteLock();
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_read)
+            {
+                _rwLock.ExitReadLock();
+            }
+            else
+            {
+                _rwLock.ExitWriteLock();
             }
         }
     }

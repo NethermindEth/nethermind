@@ -109,7 +109,7 @@ public class FlatDbManagerTests
         StateId persistedStateId = CreateStateId(100);
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
 
-        ResourcePool realResourcePool = new ResourcePool(_config);
+        ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(50);
         StateId snapshotTo = CreateStateId(51);
         Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
@@ -128,7 +128,7 @@ public class FlatDbManagerTests
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
         _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
 
-        ResourcePool realResourcePool = new ResourcePool(_config);
+        ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(10);
         StateId snapshotTo = CreateStateId(11);
         Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
@@ -147,7 +147,7 @@ public class FlatDbManagerTests
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
         _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(false);
 
-        ResourcePool realResourcePool = new ResourcePool(_config);
+        ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(10);
         StateId snapshotTo = CreateStateId(11);
         Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);

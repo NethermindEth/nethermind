@@ -24,6 +24,19 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BasePersistence
 {
+    public const int StoragePrefixPortion = 4;
+
+    internal static void CreateStorageRange(
+        ReadOnlySpan<byte> accountPath,
+        Span<byte> firstKey,
+        Span<byte> lastKey)
+    {
+        accountPath[..StoragePrefixPortion].CopyTo(firstKey);
+        accountPath[..StoragePrefixPortion].CopyTo(lastKey);
+        firstKey[StoragePrefixPortion..].Clear();
+        lastKey[StoragePrefixPortion..].Fill(0xff);
+    }
+
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
@@ -77,52 +90,51 @@ public static class BasePersistence
     public interface ITrieWriteBatch
     {
         public void SelfDestruct(in ValueHash256 address);
-        public void SetStateTrieNode(TreePath path, TrieNode tnValue);
-        public void SetStorageTrieNode(Hash256 address, TreePath path, TrieNode tnValue);
+        public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
     }
 
-    public readonly struct ToHashedWriteBatch<TWriteBatch>(
+    public struct ToHashedWriteBatch<TWriteBatch>(
         TWriteBatch flatWriteBatch,
         bool useFlatAccount = true
     ) : IFlatWriteBatch
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
+        private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
-        public void SelfDestruct(Address addr) =>
-            flatWriteBatch.SelfDestruct(addr.ToAccountPath);
+        public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
 
         public void SetAccount(Address addr, Account? account)
         {
             if (account is null)
             {
-                flatWriteBatch.RemoveAccount(addr.ToAccountPath);
+                _flatWriteBatch.RemoveAccount(addr.ToAccountPath);
                 return;
             }
 
             using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
+            _flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, ref hashBuffer);
-            flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
+            _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
         public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, in SlotValue? value) =>
-            flatWriteBatch.SetStorage(addrHash, slotHash, value);
+            _flatWriteBatch.SetStorage(addrHash, slotHash, value);
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
             using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-
-            flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
+            _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
         }
     }
 
-    public readonly struct ToHashedFlatReader<TFlatReader>(
+    public struct ToHashedFlatReader<TFlatReader>(
         TFlatReader flatReader,
         bool useFlatAccount = true
     ) : IFlatReader
@@ -130,17 +142,18 @@ public static class BasePersistence
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
+        private TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
-            int responseSize = flatReader.GetAccount(address.ToAccountPath, valueBuffer);
+            int responseSize = _flatReader.GetAccount(address.ToAccountPath, valueBuffer);
             if (responseSize == 0)
             {
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
+            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
             return _accountDecoder.Decode(ref ctx);
         }
 
@@ -155,43 +168,37 @@ public static class BasePersistence
         public byte[]? GetAccountRaw(Hash256 addrHash)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
-            int responseSize = flatReader.GetAccount(addrHash.ValueHash256, valueBuffer);
-            if (responseSize == 0) return null;
-            return valueBuffer[..responseSize].ToArray();
+            int responseSize = _flatReader.GetAccount(addrHash.ValueHash256, valueBuffer);
+            return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
 
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
-            flatReader.TryGetStorage(address, slotHash, ref outValue);
+            _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
         public IPersistence.IFlatIterator CreateAccountIterator() =>
-            flatReader.CreateAccountIterator();
+            _flatReader.CreateAccountIterator();
 
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
-            flatReader.CreateStorageIterator(accountKey);
+            _flatReader.CreateStorageIterator(accountKey);
 
-        public bool IsPreimageMode => flatReader.IsPreimageMode;
+        public bool IsPreimageMode => _flatReader.IsPreimageMode;
     }
 
-    public class Reader<TFlatReader, TTrieReader> : IPersistence.IPersistenceReader
+    public class Reader<TFlatReader, TTrieReader>(
+        TFlatReader flatReader,
+        TTrieReader trieReader,
+        StateId currentState,
+        IDisposable disposer)
+        : IPersistence.IPersistenceReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
-        private readonly TTrieReader _trieReader;
-        private readonly TFlatReader _flatReader;
-        private readonly IDisposable _disposer;
+        private TTrieReader _trieReader = trieReader;
+        private TFlatReader _flatReader = flatReader;
 
-        public Reader(TFlatReader flatReader, TTrieReader trieReader, StateId currentState, IDisposable disposer)
-        {
-            _flatReader = flatReader;
-            _trieReader = trieReader;
-            _disposer = disposer;
+        public StateId CurrentState { get; } = currentState;
 
-            CurrentState = currentState;
-        }
-
-        public StateId CurrentState { get; }
-
-        public void Dispose() => _disposer.Dispose();
+        public void Dispose() => disposer.Dispose();
 
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
@@ -228,8 +235,8 @@ public static class BasePersistence
         where TFlatWriteBatch : struct, IFlatWriteBatch
         where TTrieWriteBatch : struct, ITrieWriteBatch
     {
-        private readonly TFlatWriteBatch _flatWriter = flatWriteBatch;
-        private readonly TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
+        private TFlatWriteBatch _flatWriter = flatWriteBatch;
+        private TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
 
         public void Dispose() => disposer.Dispose();
 

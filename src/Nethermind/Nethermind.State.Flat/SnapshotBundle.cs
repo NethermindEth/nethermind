@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class SnapshotBundle : IDisposable
 {
-    private ReadOnlySnapshotBundle _readOnlySnapshotBundle;
+    private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 
 
     private SnapshotContent _currentPooledContent = null!;
@@ -29,8 +29,8 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
 
-    // The cached resource holds some items that is pooled.
-    // Notably it holds loaded caches from trie warmer.
+    // The cached resource holds some items that are pooled.
+    // Notably, it holds loaded caches from trie warmer.
     private TransientResource _transientResource = null!;
 
     internal SnapshotPooledList _snapshots;
@@ -108,10 +108,10 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
         {
-            return slotValue is null ? null : slotValue.Value.ToEvmBytes();
+            return slotValue?.ToEvmBytes();
         }
 
-        // Self destructed at the point of latest change
+        // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
             return null;
@@ -124,7 +124,7 @@ public sealed class SnapshotBundle : IDisposable
             {
                 if (_snapshots[i].TryGetStorage(address, index, out slotValue))
                 {
-                    return slotValue is null ? null : slotValue.Value.ToEvmBytes();
+                    return slotValue?.ToEvmBytes();
                 }
 
                 if (i <= currentBundleSelfDestructIdx)
@@ -142,9 +142,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        TrieNode? node;
-
-        if (_changedStateNodes.TryGetValue(path, out node))
+        if (_changedStateNodes.TryGetValue(path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
@@ -156,9 +154,9 @@ public sealed class SnapshotBundle : IDisposable
         else
         {
             node = _changedStateNodes.GetOrAdd(path,
-                DoFindStateNodeExternal(path, hash, out node) ?
-                    node :
-                    new TrieNode(NodeType.Unknown, hash));
+                DoFindStateNodeExternal(path, hash, out node)
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
         }
 
         return node;
@@ -169,9 +167,7 @@ public sealed class SnapshotBundle : IDisposable
         // TrieWarmer only touch `_transientResource`
         GuardDispose();
 
-        TrieNode? node;
-
-        if (_transientResource.TryGetStateNode(path, hash, out node))
+        if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
@@ -210,8 +206,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        TrieNode? node;
-        if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
+        if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             _transientResource.UpdateStorageNode((Hash256AsKey)address, path, node);
@@ -224,7 +219,7 @@ public sealed class SnapshotBundle : IDisposable
         else
         {
             node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
-                (DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null)
+                DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
         }
@@ -237,15 +232,14 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        TrieNode? node;
-        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
+        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else
         {
             node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                (DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null)
+                DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
         }
@@ -339,8 +333,8 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         Account? account = DoGetAccount(address, excludeChanged: true);
-        // So... a clear is always sent even on new account. This makes is a minor optimization as
-        // it skip persistence, but probably need to make sure it does not send it at all in the first place.
+        // So... a clear is always sent even on a new account. This makes is a minor optimization as
+        // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
@@ -381,13 +375,13 @@ public sealed class SnapshotBundle : IDisposable
     // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
     // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
     // as most of the slot should already be queued by prewarmer.
-    public bool ShouldQueuePrewarm(Address address, UInt256? slot) => _transientResource.ShouldPrewarm(address, slot);
+    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
-        Snapshot snapshot = new Snapshot(
+        Snapshot snapshot = new(
             from: from,
             to: to,
             content: _currentPooledContent,
@@ -402,7 +396,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             TransientResource transientResource = _transientResource;
 
-            // Main block processing only commit once. For optimization we switch the usage so that the used resource
+            // Main block processing only commits once. For optimization, we switch the usage so that the used resource
             // is from a different pool that will essentially be empty all the time.
             if (_usage == ResourcePool.Usage.MainBlockProcessing)
             {

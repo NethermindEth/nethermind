@@ -25,13 +25,6 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     public IWorldStateScopeProvider WorldState { get; }
 
     public IStateReader GlobalStateReader => _reader;
-    public void ResetOverrides()
-    {
-        _dbProvider.ClearTempChanges();
-    }
-
-    public void Dispose()
-    {
-        _dbProvider.Dispose();
-    }
+    public void ResetOverrides() => _dbProvider.ClearTempChanges();
+    public void Dispose() => _dbProvider.Dispose();
 }

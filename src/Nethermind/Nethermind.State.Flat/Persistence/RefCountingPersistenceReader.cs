@@ -25,9 +25,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
             // Reader should be re-created every block unless something holds it for very long.
             // It prevent database compaction, so this need to be closed eventually.
             await Task.Delay(60_000);
-            if (Volatile.Read(ref _leases.Value) != Disposing)
+            if (logger.IsWarn && Volatile.Read(ref _leases.Value) != Disposing)
             {
-                if (logger.IsWarn) logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}");
+                logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}");
             }
         });
     }

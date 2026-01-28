@@ -20,7 +20,7 @@ public class BloomFilterTests
     public void Add_SingleItem_ShouldBeFound()
     {
         // Arrange
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 100, bitsPerKey: 10);
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10);
         ulong hash = 12345;
 
         // Act
@@ -34,7 +34,7 @@ public class BloomFilterTests
     public void Add_MultipleItems_ShouldAllBeFound()
     {
         // Arrange
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 100, bitsPerKey: 10);
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10);
         ulong[] hashes = { 1, 2, 3, 100, 1000, 99999 };
 
         // Act
@@ -58,11 +58,11 @@ public class BloomFilterTests
     public void Add_Concurrent_ShouldBeThreadSafe()
     {
         // Arrange
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 1000, bitsPerKey: 10);
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 1000, bitsPerKey: 10);
         int threadsCount = 10;
         int itemsPerThread = 50;
-        Barrier barrier = new Barrier(threadsCount);
-        System.Collections.Concurrent.ConcurrentBag<ulong> addedHashes = new System.Collections.Concurrent.ConcurrentBag<ulong>();
+        using Barrier barrier = new(threadsCount);
+        System.Collections.Concurrent.ConcurrentBag<ulong> addedHashes = new();
 
         // Act - Multiple threads adding concurrently
         Task[] tasks = Enumerable.Range(0, threadsCount).Select(threadId => Task.Run(() =>
@@ -89,10 +89,9 @@ public class BloomFilterTests
     public void Add_ConcurrentWithMightContain_ShouldWork()
     {
         // Arrange
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 10000, bitsPerKey: 10);
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 10000, bitsPerKey: 10);
         int duration = 1000; // ms
-        CancellationTokenSource cts = new CancellationTokenSource(duration);
-        System.Collections.Concurrent.ConcurrentBag<ulong> addedHashes = new System.Collections.Concurrent.ConcurrentBag<ulong>();
+        CancellationTokenSource cts = new(duration);
 
         // Act - Some threads adding, others querying
         Task[] writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
@@ -101,7 +100,6 @@ public class BloomFilterTests
             while (!cts.Token.IsCancellationRequested)
             {
                 bloom.Add(hash++);
-                addedHashes.Add(hash);
             }
         })).ToArray();
 
@@ -129,7 +127,7 @@ public class BloomFilterTests
     public void Dispose_MultipleTimes_ShouldNotThrow()
     {
         // Arrange
-        Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 100, bitsPerKey: 10);
+        Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10);
 
         // Act & Assert
         bloom.Dispose();
@@ -140,7 +138,7 @@ public class BloomFilterTests
     public void MightContain_BeforeAnyAdds_ShouldReturnFalse()
     {
         // Arrange
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 100, bitsPerKey: 10);
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10);
 
         // Act & Assert
         // Empty bloom filter should generally return false (though false positives are theoretically possible)
@@ -153,7 +151,7 @@ public class BloomFilterTests
     {
         // Arrange
         int totalItems = 500;
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: totalItems, bitsPerKey: 10);
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: totalItems, bitsPerKey: 10);
 
         // Act
         for (ulong i = 0; i < (ulong)totalItems; i++)

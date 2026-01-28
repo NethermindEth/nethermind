@@ -7,7 +7,7 @@ namespace Nethermind.State.Flat;
 
 public interface ISnapshotCompactor
 {
-    bool DoCompactSnapshot(StateId stateId);
+    bool DoCompactSnapshot(in StateId stateId);
     SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot);
     Snapshot CompactSnapshotBundle(SnapshotPooledList snapshots);
 }

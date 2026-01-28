@@ -24,7 +24,7 @@ public abstract class RefCountingDisposable : IDisposable
 
     public void AcquireLease()
     {
-        if (TryAcquireLease() == false)
+        if (!TryAcquireLease())
         {
             ThrowCouldNotAcquire();
         }
@@ -33,14 +33,14 @@ public abstract class RefCountingDisposable : IDisposable
         [StackTraceHidden]
         static void ThrowCouldNotAcquire()
         {
-            throw new Exception("The lease cannot be acquired");
+            throw new InvalidOperationException("The lease cannot be acquired");
         }
     }
 
     protected bool TryAcquireLease()
     {
         // Volatile read for starting value
-        var current = Volatile.Read(ref _leases.Value);
+        long current = Volatile.Read(ref _leases.Value);
         if (current == Disposing)
         {
             // Already disposed
@@ -49,7 +49,7 @@ public abstract class RefCountingDisposable : IDisposable
 
         while (true)
         {
-            var prev = Interlocked.CompareExchange(ref _leases.Value, current + Single, current);
+            long prev = Interlocked.CompareExchange(ref _leases.Value, current + Single, current);
             if (prev == current)
             {
                 // Successfully acquired
@@ -76,7 +76,7 @@ public abstract class RefCountingDisposable : IDisposable
     private void ReleaseLeaseOnce()
     {
         // Volatile read for starting value
-        var current = Volatile.Read(ref _leases.Value);
+        long current = Volatile.Read(ref _leases.Value);
         if (current <= NoAccessors)
         {
             // Mismatched Acquire/Release
@@ -85,7 +85,7 @@ public abstract class RefCountingDisposable : IDisposable
 
         while (true)
         {
-            var prev = Interlocked.CompareExchange(ref _leases.Value, current - Single, current);
+            long prev = Interlocked.CompareExchange(ref _leases.Value, current - Single, current);
             if (prev != current)
             {
                 current = prev;
@@ -118,7 +118,7 @@ public abstract class RefCountingDisposable : IDisposable
         [StackTraceHidden]
         static void ThrowOverDisposed()
         {
-            throw new Exception("The lease has already been disposed");
+            throw new ObjectDisposedException("The lease has already been disposed");
         }
     }
 

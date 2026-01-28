@@ -29,7 +29,6 @@ public class FlatOverridableWorldScopeTests
     {
         private readonly ContainerBuilder _containerBuilder;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly IPersistence.IPersistenceReader _persistenceReader;
 
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
@@ -42,11 +41,11 @@ public class FlatOverridableWorldScopeTests
         public TestContext(FlatDbConfig? config = null)
         {
             config ??= new FlatDbConfig();
-            _persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
+            IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
 
             _containerBuilder = new ContainerBuilder()
                 .AddModule(new FlatWorldStateModule(config))
-                .AddSingleton<IPersistence.IPersistenceReader>(_ => _persistenceReader)
+                .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader)
                 .AddSingleton<IFlatDbManager>(ctx =>
                 {
                     IFlatDbManager flatDbManager = Substitute.For<IFlatDbManager>();

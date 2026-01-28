@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -75,7 +76,7 @@ public static class BaseTriePersistence
 
     private const int FullStateNodesKeyLength = 1 + FullPathLength + PathLengthLength;
 
-    private const int StoragePrefixPortion = 4;
+    private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int ShortenedStorageNodesKeyLength = StoragePrefixPortion + ShortenedPathLength + (StorageHashPrefixLength - StoragePrefixPortion);
     private const int FullStorageNodesKeyLength = 1 + StorageHashPrefixLength + FullPathLength + PathLengthLength;
 
@@ -140,79 +141,74 @@ public static class BaseTriePersistence
     ) : BasePersistence.ITrieWriteBatch
     {
 
+        [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            // Technically, this is kinda not needed for nodes as its always traversed so orphaned trie just get skipped.
-            {
-                Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
-                Span<byte> lastKey = stackalloc byte[ShortenedStorageNodesKeyLength + 1];
-                firstKey.Fill(0x00);
-                lastKey.Fill(0xff);
-                accountPath.Bytes[..StoragePrefixPortion].CopyTo(firstKey);
-                accountPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey);
+            Span<byte> firstKeyAlloc = stackalloc byte[1 + StoragePrefixPortion];
+            Span<byte> lastKeyAlloc = stackalloc byte[FullStorageNodesKeyLength + 1];
 
-                using (ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey))
+            // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
+            {
+                Span<byte> firstKey = firstKeyAlloc[..StoragePrefixPortion];
+                Span<byte> lastKey = lastKeyAlloc[..(ShortenedStorageNodesKeyLength + 1)];
+                BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
+
+                using ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (storageNodeReader.MoveNext())
                 {
-                    while (storageNodeReader.MoveNext())
+                    // Double-check the end portion
+                    if (Bytes.AreEqual(storageNodeReader.CurrentKey[(StoragePrefixPortion + ShortenedPathLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
                     {
-                        // Double check the end portion
-                        if (Bytes.AreEqual(storageNodeReader.CurrentKey[(StoragePrefixPortion + ShortenedPathLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
-                        {
-                            storageNodes.Remove(storageNodeReader.CurrentKey);
-                        }
+                        storageNodes.Remove(storageNodeReader.CurrentKey);
                     }
                 }
             }
 
             {
+                Span<byte> firstKey = firstKeyAlloc;
+                Span<byte> lastKey = lastKeyAlloc;
                 // Do the same for the fallback nodes, except that the key must be prefixed `1` also
-                Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
-                Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
-                firstKey.Fill(0x00);
-                lastKey.Fill(0xff);
                 firstKey[0] = 1;
                 lastKey[0] = 1;
-                accountPath.Bytes[..StoragePrefixPortion].CopyTo(firstKey[1..]);
-                accountPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey[1..]);
-                using (ISortedView storageNodeReader = fallbackNodesSnap.GetViewBetween(firstKey, lastKey))
+                BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
+                using ISortedView storageNodeReader = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (storageNodeReader.MoveNext())
                 {
-                    while (storageNodeReader.MoveNext())
+                    // Double-check the end portion
+                    if (Bytes.AreEqual(storageNodeReader.CurrentKey[(1 + StoragePrefixPortion + FullPathLength + PathLengthLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
                     {
-                        // Double check the end portion
-                        if (Bytes.AreEqual(storageNodeReader.CurrentKey[(1 + StoragePrefixPortion + FullPathLength + PathLengthLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
-                        {
-                            fallbackNodes.Remove(storageNodeReader.CurrentKey);
-                        }
+                        fallbackNodes.Remove(storageNodeReader.CurrentKey);
                     }
                 }
             }
         }
 
-        public void SetStateTrieNode(TreePath path, TrieNode tn)
+        public void SetStateTrieNode(in TreePath path, TrieNode tn)
         {
-            if (path.Length <= StateNodesTopThreshold)
+            switch (path.Length)
             {
-                stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), tn.FullRlp.Span, flags);
-            }
-            else if (path.Length <= ShortenedPathThreshold)
-            {
-                stateNodes.PutSpan(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), tn.FullRlp.Span, flags);
-            }
-            else
-            {
-                fallbackNodes.PutSpan(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), tn.FullRlp.Span, flags);
+                case <= StateNodesTopThreshold:
+                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), tn.FullRlp.Span, flags);
+                    break;
+                case <= ShortenedPathThreshold:
+                    stateNodes.PutSpan(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), tn.FullRlp.Span, flags);
+                    break;
+                default:
+                    fallbackNodes.PutSpan(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), tn.FullRlp.Span, flags);
+                    break;
             }
         }
 
-        public void SetStorageTrieNode(Hash256 address, TreePath path, TrieNode tn)
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tn)
         {
-            if (path.Length <= ShortenedPathThreshold)
+            switch (path.Length)
             {
-                storageNodes.PutSpan(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), tn.FullRlp.Span, flags);
-            }
-            else
-            {
-                fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), tn.FullRlp.Span, flags);
+                case <= ShortenedPathThreshold:
+                    storageNodes.PutSpan(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), tn.FullRlp.Span, flags);
+                    break;
+                default:
+                    fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), tn.FullRlp.Span, flags);
+                    break;
             }
         }
     }
@@ -225,32 +221,17 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore fallbackNodes
     ) : BasePersistence.ITrieReader
     {
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
-        {
-            if (path.Length <= StateNodesTopThreshold)
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
+            path.Length switch
             {
-                return stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags: flags);
-            }
-            else if (path.Length <= ShortenedPathThreshold)
-            {
-                return stateNodes.Get(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags: flags);
-            }
-            else
-            {
-                return fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags: flags);
-            }
-        }
+                <= StateNodesTopThreshold => stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags: flags),
+                <= ShortenedPathThreshold => stateNodes.Get(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags: flags),
+                _ => fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags: flags)
+            };
 
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
-        {
-            if (path.Length <= ShortenedPathThreshold)
-            {
-                return storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags);
-            }
-            else
-            {
-                return fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
-            }
-        }
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
+            path.Length <= ShortenedPathThreshold
+                ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
+                : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
     }
 }

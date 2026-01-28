@@ -50,7 +50,7 @@ public sealed unsafe class BloomFilter : IDisposable
     public BloomFilter(long capacity, double bitsPerKey, long initialCount = 0)
     {
         if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
-        if (!(bitsPerKey > 0.0) || double.IsNaN(bitsPerKey) || double.IsInfinity(bitsPerKey))
+        if (bitsPerKey <= 0.0 || double.IsNaN(bitsPerKey) || double.IsInfinity(bitsPerKey))
             throw new ArgumentOutOfRangeException(nameof(bitsPerKey), "BitsPerKey must be a finite value > 0.");
 
         Capacity = capacity;
@@ -203,21 +203,23 @@ public sealed unsafe class BloomFilter : IDisposable
     {
         int mbpk = (int)Math.Round(bitsPerKey * 1000.0);
 
-        if (mbpk <= 2080) return 1;
-        if (mbpk <= 3580) return 2;
-        if (mbpk <= 5100) return 3;
-        if (mbpk <= 6640) return 4;
-        if (mbpk <= 8300) return 5;
-        if (mbpk <= 10070) return 6;
-        if (mbpk <= 11720) return 7;
-        if (mbpk <= 14001) return 8;
-        if (mbpk <= 16050) return 9;
-        if (mbpk <= 18300) return 10;
-        if (mbpk <= 22001) return 11;
-        if (mbpk <= 25501) return 12;
-        if (mbpk > 50000) return 24;
-
-        return (mbpk - 1) / 2000 - 1;
+        return mbpk switch
+        {
+            <= 2080 => 1,
+            <= 3580 => 2,
+            <= 5100 => 3,
+            <= 6640 => 4,
+            <= 8300 => 5,
+            <= 10070 => 6,
+            <= 11720 => 7,
+            <= 14001 => 8,
+            <= 16050 => 9,
+            <= 18300 => 10,
+            <= 22001 => 11,
+            <= 25501 => 12,
+            > 50000 => 24,
+            _ => (mbpk - 1) / 2000 - 1
+        };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -228,19 +230,10 @@ public sealed unsafe class BloomFilter : IDisposable
         uint h1 = (uint)x;
         uint h2 = (uint)(x >> 32);
 
-        ulong block;
-        if ((ulong)numBlocks <= uint.MaxValue)
-        {
-            // FastRange32-style: floor(h1 * numBlocks / 2^32)
-            block = (((ulong)h1 * (ulong)(uint)numBlocks) >> 32);
-        }
-        else
-        {
-            // 64-bit multiply-high: floor(x * numBlocks / 2^64)
-            block = (ulong)(((UInt128)x * (ulong)numBlocks) >> 64);
-        }
+        lineIndex = (long)((ulong)numBlocks <= uint.MaxValue
+            ? ((ulong)h1 * (ulong)(uint)numBlocks) >> 32 // FastRange32-style: floor(h1 * numBlocks / 2^32)
+            : (ulong)(((UInt128)x * (ulong)numBlocks) >> 64)); // 64-bit multiply-high: floor(x * numBlocks / 2^64)
 
-        lineIndex = (long)block;
         h = h2;
     }
 
