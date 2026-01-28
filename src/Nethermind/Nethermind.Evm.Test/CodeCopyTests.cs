@@ -6,30 +6,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    public class CallDataCopyTests : VirtualMachineTestsBase
+    public class CodeCopyTests : VirtualMachineTestsBase
     {
         [Test]
-        public void Ranges()
-        {
-            byte[] code = Prepare.EvmCode
-                .PushData(0)
-                .PushData("0x1e4e2")
-                .PushData("0x5050600163306e2b386347355944f3636f376163636d6b")
-                .Op(Instruction.CALLDATACOPY)
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.Error.Should().BeNull();
-        }
-
-        [Test]
-        public void CallDataCopy_ZeroLength_ConsumesBaseGas()
+        public void CodeCopy_ZeroLength_ConsumesBaseGas()
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
-                .Op(Instruction.CALLDATACOPY)
+                .Op(Instruction.CODECOPY)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
@@ -40,13 +26,13 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void CallDataCopy_ZeroLength_InsufficientGas_ReturnsOutOfGas()
+        public void CodeCopy_ZeroLength_InsufficientGas_ReturnsOutOfGas()
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
-                .Op(Instruction.CALLDATACOPY)
+                .Op(Instruction.CODECOPY)
                 .Done;
 
             long expectedGas = GasCostOf.Transaction + 3 * GasCostOf.VeryLow + GasCostOf.VeryLow;
@@ -58,13 +44,13 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void CallDataCopy_OneWord_ConsumesMemoryGas()
+        public void CodeCopy_OneWord_ConsumesMemoryGas()
         {
             byte[] code = Prepare.EvmCode
                 .PushData(32)
                 .PushData(0)
                 .PushData(0)
-                .Op(Instruction.CALLDATACOPY)
+                .Op(Instruction.CODECOPY)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
