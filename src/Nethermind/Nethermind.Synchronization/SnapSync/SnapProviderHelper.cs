@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private const int ExtensionRlpChildIndex = 1;
 
-        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
+        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes, Hash256 actualRootHash) AddAccountRange(
             ISnapStateTree tree,
             long blockNumber,
             in ValueHash256 expectedRootHash,
@@ -30,6 +30,8 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<byte[]> proofs = null
         )
         {
+            using var treeDisposer = tree;  // Ensures disposal when method exits
+
             // TODO: Check the accounts boundaries and sorting
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
@@ -39,7 +41,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (accounts[i - 1].Path.CompareTo(accounts[i].Path) >= 0)
                 {
-                    return (AddRangeResult.InvalidOrder, true, null, null);
+                    return (AddRangeResult.InvalidOrder, true, null, null, null);
                 }
             }
 
@@ -50,7 +52,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true, null, null);
+                return (result, true, null, null, tree.RootHash);
             }
 
             List<PathWithAccount> accountsWithStorage = new();
@@ -89,7 +91,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true, null, null);
+                return (AddRangeResult.DifferentRootHash, true, null, null, tree.RootHash);
             }
 
             if (hasExtraStorage)
@@ -119,10 +121,10 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
 
-            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
+            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, null);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
+        public static (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash) AddStorageRange(
             ISnapStorageTree tree,
             PathWithAccount account,
             IReadOnlyList<PathWithStorageSlot> slots,
@@ -131,15 +133,17 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<byte[]>? proofs = null
         )
         {
+            using var treeDisposer = tree;  // Ensures disposal when method exits
+
             if (slots.Count == 0)
-                return (AddRangeResult.EmptySlots, false);
+                return (AddRangeResult.EmptySlots, false, null);
 
             // Validate sorting order
             for (int i = 1; i < slots.Count; i++)
             {
                 if (slots[i - 1].Path.CompareTo(slots[i].Path) >= 0)
                 {
-                    return (AddRangeResult.InvalidOrder, true);
+                    return (AddRangeResult.InvalidOrder, true, null);
                 }
             }
 
@@ -150,7 +154,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true);
+                return (result, true, tree.RootHash);
             }
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
@@ -166,7 +170,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
             {
-                return (AddRangeResult.DifferentRootHash, true);
+                return (AddRangeResult.DifferentRootHash, true, tree.RootHash);
             }
 
             // This will work if all StorageRange requests share the same AccountWithPath object, which seems to be the case.
@@ -178,7 +182,7 @@ namespace Nethermind.Synchronization.SnapSync
                 tree.Commit(writeFlags: WriteFlags.DisableWAL);
             }
 
-            return (AddRangeResult.OK, moreChildrenToRight);
+            return (AddRangeResult.OK, moreChildrenToRight, null);
         }
 
         [SkipLocalsInit]
