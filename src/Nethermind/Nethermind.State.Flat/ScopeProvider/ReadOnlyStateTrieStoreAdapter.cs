@@ -33,6 +33,8 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
         // Used in trie visitor and weird very edge case that cuts the whole thing to pieces
         return new ReadOnlyStorageTrieStoreAdapter(bundle, address);
     }
+
+    public IScopedTrieStore GetStorageTrieStore(Hash256 address) => new ReadOnlyStorageTrieStoreAdapter(bundle, address);
 }
 
 internal class ReadOnlyStorageTrieStoreAdapter(
