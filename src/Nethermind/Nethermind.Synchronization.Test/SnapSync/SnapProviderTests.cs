@@ -29,14 +29,13 @@ using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
-[TestFixtureSource(typeof(SnapTrieFactoryTestFixtureSource))]
-public class SnapProviderTests(Func<INodeStorage, ILogManager, ISnapTrieFactory> createFactory)
+public class SnapProviderTests
 {
     [Test]
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig(), createFactory))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -54,7 +53,7 @@ public class SnapProviderTests(Func<INodeStorage, ILogManager, ISnapTrieFactory>
     public void AddAccountRange_ResponseHasEmptyListOfAccountsAndOneProof_ReturnsExpiredRootHash()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig(), createFactory))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -71,7 +70,7 @@ public class SnapProviderTests(Func<INodeStorage, ILogManager, ISnapTrieFactory>
     public void AddStorageRange_ResponseReversedOrderedListOfAccounts_ReturnsInvalidOrder()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig(), createFactory))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -104,7 +103,7 @@ public class SnapProviderTests(Func<INodeStorage, ILogManager, ISnapTrieFactory>
     public void AddStorageRange_EmptySlotsList_ReturnsEmptySlots()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig(), createFactory))
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .Build();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -147,7 +146,7 @@ public class SnapProviderTests(Func<INodeStorage, ILogManager, ISnapTrieFactory>
             .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 1
-            }, createFactory))
+            }))
             .WithSuggestedHeaderOfStateRoot(root)
             .Build();
 
@@ -189,7 +188,7 @@ public class SnapProviderTests(Func<INodeStorage, ILogManager, ISnapTrieFactory>
             .AddModule(new TestSynchronizerModule(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 2
-            }, createFactory))
+            }))
             .WithSuggestedHeaderOfStateRoot(root)
             .Build();
 
