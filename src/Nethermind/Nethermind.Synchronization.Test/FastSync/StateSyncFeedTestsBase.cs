@@ -37,7 +37,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
-public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
+public abstract class StateSyncFeedTestsBase(
+    Func<INodeStorage, ILogManager, ITreeSyncStore> createTreeSyncStore,
+    int defaultPeerCount = 1,
+    int defaultPeerMaxRandomLatency = 0)
 {
     public const int TimeoutLength = 20000;
 
@@ -128,6 +131,11 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
                 () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength(TestChainLength)))
 
             .Add<SafeContext>();
+
+        containerBuilder.Register(ctx => createTreeSyncStore(
+            ctx.Resolve<INodeStorage>(),
+            ctx.Resolve<ILogManager>()
+        )).As<ITreeSyncStore>().SingleInstance();
 
         containerBuilder.RegisterBuildCallback((ctx) =>
         {

@@ -12,14 +12,18 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
+using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
+[TestFixtureSource(typeof(TreeSyncStoreTestFixtureSource))]
 [Parallelizable(ParallelScope.All)]
-public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
+public class StateSyncFeedHealingTests(Func<INodeStorage, ILogManager, ITreeSyncStore> createTreeSyncStore)
+    : StateSyncFeedTestsBase(createTreeSyncStore)
 {
     [Test]
     public async Task HealTreeWithoutBoundaryProofs()

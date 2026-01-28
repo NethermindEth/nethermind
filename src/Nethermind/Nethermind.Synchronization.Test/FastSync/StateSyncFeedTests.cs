@@ -26,13 +26,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
-    [TestFixture(1, 0)]
-    [TestFixture(1, 100)]
-    [TestFixture(4, 0)]
-    [TestFixture(4, 100)]
+    [TestFixtureSource(typeof(StateSyncFeedTestsFixtureSource))]
     [Parallelizable(ParallelScope.Fixtures)]
-    public class StateSyncFeedTests(int peerCount, int maxNodeLatency)
-        : StateSyncFeedTestsBase(peerCount, maxNodeLatency)
+    public class StateSyncFeedTests(
+        Func<INodeStorage, ILogManager, ITreeSyncStore> createTreeSyncStore,
+        int peerCount,
+        int maxNodeLatency)
+        : StateSyncFeedTestsBase(createTreeSyncStore, peerCount, maxNodeLatency)
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
         private const int TestRepeatCount = 1;
