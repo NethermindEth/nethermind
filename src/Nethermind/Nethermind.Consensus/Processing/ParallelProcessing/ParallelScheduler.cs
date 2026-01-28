@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// When transactions finish out-of-order or dependency is detected, then corresponding indexes are decreased and transactions are re-validated or re-executed depending on the need.
 /// </remarks>
 public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<int>> setPool) where TLogger : struct, IFlag
-// TODO: PooledSet
+    // TODO: PooledSet
 {
     /// <summary>
     /// Index to fetch the next transaction to execute
@@ -341,7 +341,7 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
         (int txIndex, int incarnation) = version;
         ref TxState state = ref _txStates[txIndex];
         ref long stateInt = ref Unsafe.As<TxState, long>(ref state);
-        TxState value = new(TxStatus.Aborting,incarnation);
+        TxState value = new(TxStatus.Aborting, incarnation);
         TxState requiredState = new(TxStatus.Executed, incarnation);
         long requiredInt = Unsafe.As<TxState, long>(ref requiredState);
         long valueInt = Unsafe.As<TxState, long>(ref value);
