@@ -90,7 +90,7 @@ public class OptimismEthRpcModuleTest
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(
             tx,
-            new TransactionForRpcContext(
+            new(
                 chainId: 0,
                 blockHash: receipt.BlockHash!,
                 blockNumber: receipt.BlockNumber,
@@ -158,7 +158,7 @@ public class OptimismEthRpcModuleTest
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(
             tx,
-            new TransactionForRpcContext(
+            new(
                 chainId: 0,
                 blockHash: receipt.BlockHash!,
                 blockNumber: receipt.BlockNumber,

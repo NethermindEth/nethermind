@@ -127,7 +127,7 @@ namespace Nethermind.Facade
             }
 
             return checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
-                ? new TransactionLookupResult(transaction, new TransactionForRpcContext(specProvider.ChainId))
+                ? new TransactionLookupResult(transaction, new(specProvider.ChainId))
                 : default;
         }
 

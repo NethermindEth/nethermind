@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(async () =>
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions
-                    ? TransactionForRpc.FromTransaction(e.Transaction, new TransactionForRpcContext(_specProvider.ChainId))
+                    ? TransactionForRpc.FromTransaction(e.Transaction, new(_specProvider.ChainId))
                     : e.Transaction.Hash!);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");

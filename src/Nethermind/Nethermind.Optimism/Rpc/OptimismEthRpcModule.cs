@@ -228,7 +228,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,
-            new TransactionForRpcContext(
+            new(
                 chainId: _specProvider.ChainId,
                 blockHash: block.Hash!,
                 blockNumber: block.Number,
@@ -278,7 +278,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                     Transaction tx = transactions[i];
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
                         tx,
-                        new TransactionForRpcContext(
+                        new(
                             chainId: _specProvider.ChainId,
                             blockHash: block.Hash!,
                             blockNumber: block.Number,

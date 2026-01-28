@@ -424,7 +424,7 @@ public partial class EthRpcModule(
         {
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, new TransactionForRpcContext(_specProvider.ChainId));
+            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, new(_specProvider.ChainId));
             transactionsModels[i].BlockHash = Keccak.Zero;
         }
 

@@ -20,8 +20,8 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     [JsonConstructor]
     public SetCodeTransactionForRpc() { }
 
-    public SetCodeTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? blockTimestamp = null, UInt256? baseFee = null, ulong? chainId = null)
-        : base(transaction, txIndex, blockHash, blockNumber, blockTimestamp, baseFee, chainId)
+    public SetCodeTransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
+        : base(transaction, extraData)
     {
         AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
     }
@@ -36,5 +36,5 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     }
 
     public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, baseFee: extraData.BaseFee, chainId: extraData.ChainId);
+        => new(tx, extraData);
 }

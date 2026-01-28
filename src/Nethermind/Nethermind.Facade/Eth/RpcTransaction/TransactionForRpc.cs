@@ -52,13 +52,13 @@ public abstract class TransactionForRpc
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? blockTimestamp = null)
+    protected TransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
     {
         Hash = transaction.Hash;
-        TransactionIndex = txIndex;
-        BlockHash = blockHash;
-        BlockNumber = blockNumber;
-        BlockTimestamp = blockTimestamp;
+        TransactionIndex = extraData.TxIndex;
+        BlockHash = extraData.BlockHash;
+        BlockNumber = extraData.BlockNumber;
+        BlockTimestamp = extraData.BlockTimestamp;
     }
 
     public virtual Transaction ToTransaction()

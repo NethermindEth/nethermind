@@ -61,7 +61,7 @@ public class TransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new TransactionForRpcContext(SomeChainId));
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new(SomeChainId));
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
@@ -91,7 +91,7 @@ public class TransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_Nethermind_fields_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new TransactionForRpcContext(SomeChainId));
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new(SomeChainId));
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
