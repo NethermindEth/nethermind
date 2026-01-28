@@ -27,10 +27,10 @@ public class AccountChanges : IEquatable<AccountChanges>
     public IEnumerable<BalanceChange> BalanceChanges => _balanceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<NonceChange> NonceChanges => _nonceChanges.Values;
+    public IList<NonceChange> NonceChanges => _nonceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<CodeChange> CodeChanges => _codeChanges.Values;
+    public IList<CodeChange> CodeChanges => _codeChanges.Values;
 
     private readonly SortedDictionary<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
