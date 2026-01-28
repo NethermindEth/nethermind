@@ -116,6 +116,6 @@ public interface IDiscoveryConfig : IConfig
     /// When discv5 is enabled, use well known discv5 bootnodes, in addition to provided by user.
     /// See Nethermind.Network.Discovery/Discv5/discv5-bootnodes.json
     /// </summary>
-    [ConfigItem(Description = "When discv5 is enabled, use well-known discv5 bootnodes, in addition to those provided by the user.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to use well-known discv5 bootnodes, in addition to those provided by the user.", DefaultValue = "true")]
     public bool UseDefaultDiscv5Bootnodes { get; set; }
 }
