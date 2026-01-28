@@ -452,6 +452,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<StateSyncPivot>()
+            .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
             .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
