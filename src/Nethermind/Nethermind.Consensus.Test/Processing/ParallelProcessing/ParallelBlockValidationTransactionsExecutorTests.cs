@@ -305,13 +305,13 @@ public class ParallelBlockValidationTransactionsExecutorTests
         get
         {
             yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 1)],
-                TransactionResult.TransactionNonceTooLow);
+                TransactionResult.TransactionNonceTooHigh);
 
             yield return Test(
             [
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
-            ], TransactionResult.TransactionNonceTooLow, "nonce gap on dependent transaction");
+            ], TransactionResult.TransactionNonceTooHigh, "nonce gap on dependent transaction");
 
             yield return Test(
             [
