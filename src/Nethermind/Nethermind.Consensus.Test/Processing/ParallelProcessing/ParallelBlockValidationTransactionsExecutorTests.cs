@@ -195,36 +195,43 @@ public class ParallelBlockValidationTransactionsExecutorTests
         long gasLimit = 1_000_000,
         byte[] data = null) =>
         Build.A.Transaction
+            .WithType(TxType.EIP1559)
             .To(to)
             .WithNonce(nonce)
             .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(2.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
             .WithValue(value ?? 1.Ether())
             .WithGasLimit(gasLimit)
             .WithCode(data)
             .SignedAndResolved(from, false)
             .TestObject;
 
+    // MaxFeePerGas * GasLimit must exceed sender balance (1000 ETH)
+    // 50_000_000 GWei = 0.05 ETH per gas, * 21000 gas = 1050 ETH > 1000 ETH
     private static Transaction Tx1559WithHighMaxFee(PrivateKey from, Address to, UInt256 nonce) =>
         Build.A.Transaction
             .WithType(TxType.EIP1559)
             .To(to)
             .WithNonce(nonce)
             .WithChainId(BlockchainIds.Mainnet)
-            .WithMaxFeePerGas(1000000.GWei())
+            .WithMaxFeePerGas(50_000_000.GWei())
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithGasLimit(21000)
             .SignedAndResolved(from, false)
             .WithValue(1.Wei())
             .TestObject;
 
+    // MinerPremiumNegative is triggered when MaxFeePerGas < BaseFee (1 GWei)
+    // Setting MaxFeePerGas to 0 makes it impossible to cover the base fee
     private static Transaction Tx1559WithNegativePremium(PrivateKey from, Address to, UInt256 nonce) =>
         Build.A.Transaction
             .WithType(TxType.EIP1559)
             .To(to)
             .WithNonce(nonce)
             .WithChainId(BlockchainIds.Mainnet)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(10.GWei())
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(1.GWei())
             .WithGasLimit(21000)
             .SignedAndResolved(from, false)
             .WithValue(1.Wei())
@@ -345,10 +352,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
             yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, gasLimit: 10_000_000, data: new byte[50000])],
                 TransactionResult.TransactionSizeOverMaxInitCodeSize);
 
+            // B has 1000 ETH. tx2 sends 999.5 ETH leaving ~0.5 ETH. tx3 tries to send 1 ETH and fails.
             yield return Test(
             [
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether()),
-                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 1.Ether() / 2),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 999.Ether() + 500000000.GWei()),
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
             ], TransactionResult.InsufficientSenderBalance, "on dependent transaction");
         }
@@ -359,7 +367,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
     {
         using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
         BlockHeader head = parallel.BlockTree.Head!.Header;
-        Block block = Build.A.Block.WithTransactions(transactions).WithParent(head).TestObject;
+        Block block = Build.A.Block
+            .WithTransactions(transactions)
+            .WithParent(head)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
         IReleaseSpec releaseSpec = parallel.SpecProvider.GetSpec(block.Header);
         using IDisposable scope = parallel.MainProcessingContext.WorldState.BeginScope(head);
         TransactionResult result = TransactionResult.Ok;
