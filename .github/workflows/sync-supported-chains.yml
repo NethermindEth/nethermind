@@ -38,6 +38,15 @@ jobs:
     outputs:
       image-label: ${{ steps.publish-docker.outputs.image-label }}
     steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
       - name: Publish Docker image
         id: publish-docker
         uses: ./.github/actions/publish-docker

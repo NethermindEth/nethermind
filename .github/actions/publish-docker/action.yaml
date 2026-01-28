@@ -40,15 +40,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Free up disk space
-      uses: jlumbroso/free-disk-space@v1.3.1
-      with:
-        large-packages: false
-        tool-cache: false
-
-    - name: Check out repository
-      uses: actions/checkout@v6
-
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
 
@@ -77,39 +68,39 @@ runs:
       run: |
         # Extract branch name from ref
         branch=$(echo "$GITHUB_REF" | sed -e "s/refs\/heads\///g")
-        
+
         # Set image name with registry prefix
         full_image_name="nethermindeth/${IMAGE_NAME}"
-        
+
         # Determine tag (use input tag or branch name)
         if [ -z "$TAG" ]; then
           tag=$(echo "$branch" | sed 's/\//-/g') # replace '/' with '-'
         else
           tag=$(echo "$TAG" | sed 's/\//-/g') # replace '/' with '-'
         fi
-        
+
         # Set the image label output
         image_label="${full_image_name}:${tag}"
         echo "image-label=${image_label}" >> $GITHUB_OUTPUT
-        
+
         echo "Building image: ${image_label}"
-        
+
         # Build Docker buildx command
         build_cmd="docker buildx build . --platform=${PLATFORMS} -f ${DOCKERFILE} -t ${image_label}"
-        
+
         # Add master tag if on master branch and enabled
         if [ "$branch" = "master" ] && [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$ADD_MASTER_TAG" = "true" ]; then
           master_tag="${full_image_name}:master-${GITHUB_SHA:0:7}"
           build_cmd="${build_cmd} -t ${master_tag}"
           echo "Also tagging as: $master_tag"
         fi
-        
+
         # Add build arguments
         build_cmd="${build_cmd} --build-arg BUILD_CONFIG=${BUILD_CONFIG}"
         build_cmd="${build_cmd} --build-arg CI=${CI}"
         build_cmd="${build_cmd} --build-arg COMMIT_HASH=${GITHUB_SHA}"
         build_cmd="${build_cmd} --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)"
         build_cmd="${build_cmd} --push"
-        
+
         echo "Executing: $build_cmd"
         eval "$build_cmd"
