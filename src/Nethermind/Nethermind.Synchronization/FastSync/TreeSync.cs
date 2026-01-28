@@ -726,7 +726,10 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _store.Flush();
+                if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
+                {
+                    _store.FinalizeSync(pivotHeader);
+                }
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
