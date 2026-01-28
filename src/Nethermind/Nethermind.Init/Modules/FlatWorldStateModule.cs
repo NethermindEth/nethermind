@@ -22,6 +22,8 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Sync;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -66,6 +68,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<TrieWarmer>()
             .Add<FlatOverridableWorldScope>()
 
+            // Sync components
+            .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
+                ctx.Resolve<IBlockTree>(),
+                ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
+            .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
+
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<RocksDbPersistence>()
@@ -100,21 +108,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             builder
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
-        }
-        else
-        {
-            builder
-                .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
-                {
-                    ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<FlatWorldStateModule>();
-                    if (syncConfig.FastSync || syncConfig.SnapSync)
-                    {
-                        if (logger.IsWarn) logger.Warn("Fast sync and snap sync turned off with FlatDB");
-                        syncConfig.FastSync = false;
-                        syncConfig.SnapSync = false;
-                    }
-                    return syncConfig;
-                });
         }
     }
 
