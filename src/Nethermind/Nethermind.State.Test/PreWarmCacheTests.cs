@@ -43,14 +43,36 @@ public class PreWarmCacheTests
     }
 
     [Test]
-    public void TryAdd_overwrites_existing_value()
+    public void TryAdd_skips_write_when_hash_signature_matches()
     {
+        // With skip-if-exact-match optimization, adding the same key twice
+        // will skip the second write since the hash signature already matches.
+        // This is correct for prewarming where same key = same value.
         var cache = new PreWarmCache<StorageCell, byte[]>();
         var key = new StorageCell(TestItem.AddressA, 1);
         byte[] value1 = [1, 2, 3];
         byte[] value2 = [4, 5, 6];
 
         cache.TryAdd(in key, value1).Should().BeTrue();
+        // Second add returns true (skip path) but doesn't overwrite
+        cache.TryAdd(in key, value2).Should().BeTrue();
+        cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
+        // First value is preserved because hash signature matched and write was skipped
+        retrieved.Should().BeEquivalentTo(value1);
+    }
+
+    [Test]
+    public void TryAdd_overwrites_after_clear()
+    {
+        // After Clear(), the epoch changes, so the hash signature no longer matches
+        // and the new value will be written
+        var cache = new PreWarmCache<StorageCell, byte[]>();
+        var key = new StorageCell(TestItem.AddressA, 1);
+        byte[] value1 = [1, 2, 3];
+        byte[] value2 = [4, 5, 6];
+
+        cache.TryAdd(in key, value1).Should().BeTrue();
+        cache.Clear();
         cache.TryAdd(in key, value2).Should().BeTrue();
         cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
         retrieved.Should().BeEquivalentTo(value2);
@@ -203,25 +225,33 @@ public class PreWarmCacheTests
         var cache = new PreWarmCache<StorageCell, byte[]>();
         var key = new StorageCell(TestItem.AddressA, 1);
 
-        // Test multiple full wraparounds
-        for (int round = 0; round < 3; round++)
+        // Round 0: Add initial value
+        byte[] value0 = [0x00];
+        cache.TryAdd(in key, value0);
+        cache.TryGetValue(in key, out byte[]? retrieved0).Should().BeTrue();
+        retrieved0.Should().BeEquivalentTo(value0);
+
+        // Clear through a full epoch cycle (4096 clears = epoch wraps from 0 back to 0)
+        for (int i = 0; i < epochCount; i++)
         {
-            byte[] value = [(byte)round];
-            cache.TryAdd(in key, value);
-            cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
-            retrieved.Should().BeEquivalentTo(value);
-
-            // Clear through a full epoch cycle
-            for (int i = 0; i < epochCount; i++)
-            {
-                cache.Clear();
-            }
-
-            // After wraparound, the entry appears valid again because the epoch matches
-            // (12-bit epoch wraps every 4096 clears - this is acceptable for a prewarming cache)
-            cache.TryGetValue(in key, out byte[]? retrievedAfterWrap).Should().BeTrue();
-            retrievedAfterWrap.Should().BeEquivalentTo(value);
+            cache.Clear();
         }
+
+        // After wraparound, the entry appears valid again because the epoch matches
+        // (12-bit epoch wraps every 4096 clears - this is acceptable for a prewarming cache)
+        cache.TryGetValue(in key, out byte[]? retrievedAfterWrap).Should().BeTrue();
+        retrievedAfterWrap.Should().BeEquivalentTo(value0);
+
+        // Round 1: Try to add new value with same key
+        // With skip-if-exact-match optimization, this is skipped because the hash signature
+        // (epoch + hash bits) matches the existing entry after wraparound.
+        // This is acceptable for prewarming: epoch wraparound takes ~13.6 hours (4096 blocks * 12s),
+        // and stale data from wraparound is already an acknowledged limitation.
+        byte[] value1 = [0x01];
+        cache.TryAdd(in key, value1);
+        cache.TryGetValue(in key, out byte[]? retrieved1).Should().BeTrue();
+        // The original value is preserved because skip-if-exact-match fired
+        retrieved1.Should().BeEquivalentTo(value0);
     }
 
     [Test]
