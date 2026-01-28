@@ -42,19 +42,14 @@ internal class FundsDistributor
         if (keysToMake == 0)
             throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
 
-        string? balanceString = await _rpcClient.Post<string>("eth_getBalance", distributeFrom.Address, "latest");
-        if (balanceString is null)
-            throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
-        ulong? nonce = await RpcHelper.GetTransactionCountAsync(_rpcClient, distributeFrom.Address);
-        if (nonce is null)
-            throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
-
-        UInt256 gasPrice = await RpcHelper.GetGasPriceAsync(_rpcClient);
+        string? balanceString = await _rpcClient.GetBalanceAsync(distributeFrom.Address) ?? throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
+        ulong? nonce = await _rpcClient.GetTransactionCountAsync(distributeFrom.Address) ?? throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
+        UInt256 gasPrice = await _rpcClient.GetGasPriceAsync();
 
         UInt256 maxPriorityFeePerGas = maxPriorityFee;
         if (maxPriorityFee == 0)
         {
-            maxPriorityFeePerGas = await RpcHelper.GetMaxPriorityFeePerGasAsync(_rpcClient);
+            maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
         }
 
         UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
@@ -98,8 +93,8 @@ internal class FundsDistributor
             {
                 if (maxFee == 0)
                 {
-                    gasPrice = await RpcHelper.GetGasPriceAsync(_rpcClient);
-                    maxPriorityFeePerGas = await RpcHelper.GetMaxPriorityFeePerGasAsync(_rpcClient);
+                    gasPrice = await _rpcClient.GetGasPriceAsync();
+                    maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
                 }
 
                 Transaction tx = CreateTx(_chainId,
@@ -114,7 +109,7 @@ internal class FundsDistributor
                 string txRlp = Convert.ToHexStringLower(txDecoder
                     .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-                string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
+                string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
                 if (result is not null)
                     txHash.Add(result);
 
@@ -147,10 +142,10 @@ internal class FundsDistributor
 
         foreach (var signer in privateSigners)
         {
-            string? balanceString = await _rpcClient.Post<string>("eth_getBalance", signer.Address, "latest");
+            string? balanceString = await _rpcClient.GetBalanceAsync(signer.Address);
             if (balanceString is null)
                 continue;
-            ulong? nonce = await RpcHelper.GetTransactionCountAsync(_rpcClient, signer.Address);
+            ulong? nonce = await _rpcClient.GetTransactionCountAsync(signer.Address);
             if (nonce is null)
                 continue;
 
@@ -158,12 +153,12 @@ internal class FundsDistributor
 
             ulong nonceValue = nonce.Value;
 
-            UInt256 gasPrice = await RpcHelper.GetGasPriceAsync(_rpcClient);
+            UInt256 gasPrice = await _rpcClient.GetGasPriceAsync();
 
             UInt256 maxPriorityFeePerGas = maxPriorityFee;
             if (maxPriorityFee == 0)
             {
-                maxPriorityFeePerGas = await RpcHelper.GetMaxPriorityFeePerGasAsync(_rpcClient);
+                maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
             }
 
             UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
@@ -187,7 +182,7 @@ internal class FundsDistributor
             string txRlp = Convert.ToHexStringLower(txDecoder
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-            string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
+            string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
             if (result is not null)
                 txHashes.Add(result);
         }

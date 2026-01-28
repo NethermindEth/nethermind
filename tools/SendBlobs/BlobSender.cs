@@ -70,11 +70,12 @@ internal class BlobSender
 
         waitForInclusion = await EnsureWaitForInclusionAsync(waitForInclusion);
 
-        ulong chainId = await RpcHelper.GetChainIdAsync(_rpcClient);
+        ulong chainId = await _rpcClient.GetChainIdAsync();
 
         foreach (PrivateKey privateKey in privateKeys)
         {
-            ulong? nonce = await RpcHelper.GetTransactionCountAsync(_rpcClient, privateKey.Address);
+            ulong? nonce = await _rpcClient.GetTransactionCountAsync(privateKey.Address);
+
             if (nonce is null)
             {
                 _logger.Error("Unable to get nonce");
@@ -140,7 +141,7 @@ internal class BlobSender
 
                 byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
 
-                BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
+                BlockModel<Hash256>? blockResult = await _rpcClient.GetBlockByNumberAsync("latest", false);
 
                 if (blockResult is null)
                 {
@@ -211,9 +212,10 @@ internal class BlobSender
 
         waitForInclusion = await EnsureWaitForInclusionAsync(waitForInclusion);
 
-        ulong chainId = await RpcHelper.GetChainIdAsync(_rpcClient);
+        ulong chainId = await _rpcClient.GetChainIdAsync();
 
-        ulong? nonce = await RpcHelper.GetTransactionCountAsync(_rpcClient, privateKey.Address);
+        ulong? nonce = await _rpcClient.GetTransactionCountAsync(privateKey.Address);
+
         if (nonce is null)
         {
             _logger.Error("Unable to get nonce");
@@ -240,7 +242,7 @@ internal class BlobSender
 
         byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
 
-        BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
+        BlockModel<Hash256>? blockResult = await _rpcClient.GetBlockByNumberAsync("latest", false);
 
         if (blockResult is null)
         {
@@ -267,7 +269,7 @@ internal class BlobSender
 
         if (defaultMaxPriorityFeePerGas is null)
         {
-            result.maxPriorityFeePerGas = await RpcHelper.GetMaxPriorityFeePerGasAsync(_rpcClient);
+            result.maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
         }
         else
         {
@@ -327,7 +329,7 @@ internal class BlobSender
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
-        string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
+        string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
 
         Console.WriteLine("Sending tx result:" + result);
         Console.WriteLine("Blob hashes:" + string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"0x{Hex.ToHexString(bvh)}")));
@@ -344,7 +346,7 @@ internal class BlobSender
 
         while (true)
         {
-            BlockModel<Hash256>? blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber, false);
+            BlockModel<Hash256>? blockResult = await rpcClient.GetBlockByNumberAsync(lastBlockNumber, false);
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
@@ -369,7 +371,7 @@ internal class BlobSender
             return false;
         }
 
-        bool isNodeSynced = await RpcHelper.IsNodeSyncedAsync(_rpcClient);
+        bool isNodeSynced = await _rpcClient.IsNodeSyncedAsync();
 
         if (isNodeSynced)
         {

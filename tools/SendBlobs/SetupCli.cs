@@ -234,7 +234,7 @@ internal static class SetupCli
                 parseResult.GetValue(rpcUrlOption)!,
                 SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            ulong chainId = await RpcHelper.GetChainIdAsync(rpcClient);
+            ulong chainId = await rpcClient.GetChainIdAsync();
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
@@ -304,7 +304,7 @@ internal static class SetupCli
                 parseResult.GetValue(rpcUrlOption)!,
                 SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            ulong chainId = await RpcHelper.GetChainIdAsync(rpcClient);
+            ulong chainId = await rpcClient.GetChainIdAsync();
 
             FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             await distributor.ReclaimFunds(
