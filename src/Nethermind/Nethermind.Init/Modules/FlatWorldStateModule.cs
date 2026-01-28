@@ -1,0 +1,136 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Autofac;
+using Microsoft.AspNetCore.Http;
+using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Steps;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
+using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
+
+namespace Nethermind.Init.Modules;
+
+public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+
+            // Implementation of nethermind interfaces
+            .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
+            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
+            {
+                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
+            })
+            .AddSingleton<IStateReader, FlatStateReader>()
+
+            // Disable some pruning trie store specific  components
+            .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
+            .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new Exception($"{nameof(MainPruningTrieStoreFactory)} disabled."))
+            .AddSingleton<PruningTrieStateFactory>(_ => throw new Exception($"{nameof(PruningTrieStateFactory)} disabled."))
+
+            // The actual flatDb components
+            .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
+                ctx.Resolve<IResourcePool>(),
+                ctx.Resolve<IProcessExitSource>(),
+                ctx.Resolve<ITrieNodeCache>(),
+                ctx.Resolve<ISnapshotCompactor>(),
+                ctx.Resolve<ISnapshotRepository>(),
+                ctx.Resolve<IPersistenceManager>(),
+                ctx.Resolve<IFlatDbConfig>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+            .AddSingleton<IResourcePool, ResourcePool>()
+            .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
+            .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
+                ? _ => new NoopTrieWarmer()
+                : ctx => ctx.Resolve<TrieWarmer>())
+            .AddSingleton<TrieWarmer>()
+            .Add<FlatOverridableWorldScope>()
+
+            // Persistences
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddSingleton<RocksDbPersistence>()
+            .AddSingleton<FlatInTriePersistence>()
+            .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
+
+            .AddSingleton<PreimageRocksdbPersistence>()
+            .AddDatabase(DbNames.Preimage)
+
+            .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
+            {
+                IPersistence persistence = flatDbConfig.Layout switch
+                {
+                    FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
+                    FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
+                    FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
+                    _ => throw new Exception($"Unsupported layout {flatDbConfig.Layout}")
+                };
+
+                if (flatDbConfig.EnablePreimageRecording)
+                {
+                    IDb preimageDb = ctx.ResolveKeyed<IDb>(DbNames.Preimage);
+                    persistence = new PreimageRecordingPersistence(persistence, preimageDb);
+                }
+
+                return new CachedReaderPersistence(persistence, exitSource, logManager);
+            })
+            ;
+
+        if (flatDbConfig.ImportFromPruningTrieState)
+        {
+            builder
+                .AddSingleton<Importer>()
+                .AddStep(typeof(ImportFlatDb));
+        }
+        else
+        {
+            builder
+                .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
+                {
+                    ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<FlatWorldStateModule>();
+                    if (syncConfig.FastSync || syncConfig.SnapSync)
+                    {
+                        if (logger.IsWarn) logger.Warn("Fast sync and snap sync turned off with FlatDB");
+                        syncConfig.FastSync = false;
+                        syncConfig.SnapSync = false;
+                    }
+                    return syncConfig;
+                });
+        }
+    }
+
+    /// <summary>
+    /// Need to stub out or it will register trie store specific module
+    /// </summary>
+    private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
+    {
+        public ResultWrapper<PruningStatus> admin_prune()
+        {
+            return ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
+        }
+
+        public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
+        {
+            return ResultWrapper<string>.Success("disable");
+        }
+    }
+}

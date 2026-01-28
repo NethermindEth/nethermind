@@ -18,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NonBlocking;
 
 namespace Nethermind.State;
 
@@ -116,11 +115,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void Commit(long blockNumber)
         {
             using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
-
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            // Commit storages with most writes first to minimise waiting
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages
+                .Where(kv => kv.Value.OutstandingWritesEstimate > 0)
+                .OrderByDescending(kv => kv.Value.OutstandingWritesEstimate))
             {
                 if (blockCommitter.TryRequestConcurrencyQuota())
                 {
@@ -128,6 +127,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     {
                         StorageTree st = (StorageTree)ctx;
                         st.Commit();
+                        st.ClearWritesEstimate();
                         blockCommitter.ReturnConcurrencyQuota();
                     }, storage.Value));
                 }
@@ -182,7 +182,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
+            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
+                (address, rootHash) => MarkDirty(address, rootHash), address);
         }
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
@@ -225,10 +226,15 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WorldStateWriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+    public class StorageTreeBulkWriteBatch(
+        int estimatedEntries,
+        StorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated,
+        AddressAsKey address,
+        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
-        private const int MIN_ENTRIES_TO_BATCH = 16;
+        public const int MIN_ENTRIES_TO_BATCH = 16;
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
@@ -262,9 +268,19 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             }
             else
             {
-                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-                _hasSelfDestruct = true;
+                storageTree.IncrementEstimate();
             }
+
+            if (_wasSetCalled)
+            {
+                ThrowNotSet();
+            }
+
+            _hasSelfDestruct = true;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNotSet()
+                => throw new InvalidOperationException("Must call clear first in a storage write batch");
         }
 
         public void Dispose()
@@ -277,22 +293,31 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
+                var span = _bulkWrite.AsSpan();
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(span);
                 storageTree.BulkSet(asRef);
+                storageTree.IncrementEstimate((ulong)span.Length);
 
                 _bulkWrite?.Dispose();
             }
 
             if (hasSet)
             {
-                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
-                worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
+                if (commit)
+                {
+                    storageTree.Commit();
+                }
+                else
+                {
+                    storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
+                }
+                onRootUpdated(address, storageTree.RootHash);
             }
         }
     }
 
-    private class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash)
         {

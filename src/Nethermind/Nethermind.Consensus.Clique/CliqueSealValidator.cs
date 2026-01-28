@@ -150,7 +150,7 @@ namespace Nethermind.Consensus.Clique
             {
                 byte[] signersBytes = new byte[snapshot.Signers.Count * Address.Size];
                 int signerIndex = 0;
-                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.Size, Address.Size);
+                foreach (Address signer in snapshot.Signers.Keys) signer.Bytes.CopyTo(signersBytes.AsSpan(signerIndex++ * Address.Size, Address.Size));
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength;
                 if (!header.ExtraData.AsSpan(Clique.ExtraVanityLength, extraSuffix).SequenceEqual(signersBytes))

@@ -16,7 +16,7 @@ namespace Nethermind.Benchmarks.Store
         {
             Keccak.EmptyTreeHash.BytesToArray(),
             Keccak.Zero.BytesToArray(),
-            TestItem.AddressA.Bytes,
+            TestItem.AddressA.ToArray(),
         };
 
         [Params(0, 1, 2)]

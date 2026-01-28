@@ -27,16 +27,14 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionProgramCounter<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionProgramCounter<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
-        stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
-
-        return EvmExceptionType.None;
+        return new(programCounter, stack.PushUInt32<TTracingInst>((uint)(programCounter - 1)));
     }
 
     /// <summary>
@@ -51,13 +49,13 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost specific for a jump destination marker.
         TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     }
 
     /// <summary>
@@ -74,7 +72,7 @@ internal static partial class EvmInstructions
     /// on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost for performing a jump.
@@ -84,12 +82,12 @@ internal static partial class EvmInstructions
         // Validate the jump destination and update the program counter if valid.
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     InvalidJumpDestination:
-        return EvmExceptionType.InvalidJumpDestination;
+        return new(programCounter, EvmExceptionType.InvalidJumpDestination);
     }
 
     /// <summary>
@@ -107,7 +105,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the high gas cost for a conditional jump.
@@ -122,12 +120,12 @@ internal static partial class EvmInstructions
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
         }
 
-        return EvmExceptionType.None;
+        return new(programCounter, EvmExceptionType.None);
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     InvalidJumpDestination:
-        return EvmExceptionType.InvalidJumpDestination;
+        return new(programCounter, EvmExceptionType.InvalidJumpDestination);
     }
 
     [SkipLocalsInit]
@@ -151,16 +149,16 @@ internal static partial class EvmInstructions
     /// In EOFCREATE or TXCREATE executions, the STOP opcode is considered illegal.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // In contract creation contexts, a STOP is not permitted.
         if (vm.VmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
         {
-            return EvmExceptionType.BadInstruction;
+            return new(programCounter, EvmExceptionType.BadInstruction);
         }
 
-        return EvmExceptionType.Stop;
+        return new(programCounter, EvmExceptionType.Stop);
     }
 
     /// <summary>
@@ -169,12 +167,11 @@ internal static partial class EvmInstructions
     /// and returns a revert exception.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRevert<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionRevert<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if (!stack.PopUInt256(out UInt256 position, out UInt256 length))
         {
             goto StackUnderflow;
         }
@@ -188,12 +185,12 @@ internal static partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
 
-        return EvmExceptionType.Revert;
+        return new(programCounter, EvmExceptionType.Revert);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -202,7 +199,7 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    private static OpcodeResult InstructionSelfDestruct<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Increment metrics for self-destruct operations.
@@ -276,31 +273,31 @@ internal static partial class EvmInstructions
 
     // Jump forward to be unpredicted by the branch predictor.
     Stop:
-        return EvmExceptionType.Stop;
+        return new(programCounter, EvmExceptionType.Stop);
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new(programCounter, EvmExceptionType.StaticCallViolation);
     }
 
     /// <summary>
     /// Handles invalid opcodes by deducting a high gas cost and returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionInvalid<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionInvalid<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume(ref gas, GasCostOf.High);
-        return EvmExceptionType.BadInstruction;
+        return new(programCounter, EvmExceptionType.BadInstruction);
     }
 
     /// <summary>
     /// Default handler for undefined opcodes, always returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => EvmExceptionType.BadInstruction;
+        => new(programCounter, EvmExceptionType.BadInstruction);
 
     /// <summary>
     /// Validates a jump destination and, if valid, updates the program counter.

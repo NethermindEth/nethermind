@@ -15,7 +15,8 @@ public interface ICodeInfoRepository
     ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
-    bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
+    bool TryGetDelegation(Address address, IReleaseSpec spec, out ICodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress);
+    bool IsDelegated(Address address, IReleaseSpec spec);
 
     /// <remarks>
     /// Parses delegation code to extract the contained address.
@@ -25,7 +26,7 @@ public interface ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
+            address = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
             return true;
         }
 

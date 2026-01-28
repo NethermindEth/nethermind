@@ -70,8 +70,7 @@ public class BranchProcessor(
         }
         else
         {
-            BlockHeader? scopeBaseBlock = baseBlock ?? (suggestedBlock.IsGenesis ? suggestedBlock.Header : null);
-            worldStateCloser = stateProvider.BeginScope(scopeBaseBlock);
+            worldStateCloser = stateProvider.BeginScope(baseBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
