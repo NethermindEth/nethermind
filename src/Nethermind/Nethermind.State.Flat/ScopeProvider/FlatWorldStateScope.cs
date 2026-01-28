@@ -40,9 +40,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
 
-    public static bool _disableHintSet = Environment.GetEnvironmentVariable("DISABLE_HINT_SET") == "1";
-    public static bool _disableOutOfScopeWarmUp = Environment.GetEnvironmentVariable("DISABLE_OUT_OF_SCOPE_WARMUP") == "1";
-
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -115,7 +112,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintSet(Address address)
     {
-        if (_disableHintSet) return;
+        if (_configuration.DisableHintSetWarmup) return;
         if (_snapshotBundle.ShouldQueuePrewarm(address, null))
             _warmer.PushAddressJob(this, address, _hintSequenceId, true);
     }
@@ -124,8 +121,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (_isDisposed) return;
         if (_pausePrewarmer) return;
-        if (isWrite && _disableHintSet) return;
-        if (_disableOutOfScopeWarmUp) return;
+        if (isWrite && _configuration.DisableHintSetWarmup) return;
+        if (_configuration.DisableOutOfScopeWarmup) return;
 
         if (slot is null)
         {

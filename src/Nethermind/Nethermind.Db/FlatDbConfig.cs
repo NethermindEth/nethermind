@@ -12,6 +12,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
+    public bool DisableHintSetWarmup { get; set; } = false;
+    public bool DisableOutOfScopeWarmup { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public int CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;

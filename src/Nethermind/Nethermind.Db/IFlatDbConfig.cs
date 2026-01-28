@@ -48,4 +48,10 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Disable HintSet warmup for write operations", DefaultValue = "false")]
+    bool DisableHintSetWarmup { get; set; }
+
+    [ConfigItem(Description = "Disable out of scope warmup from prewarmer", DefaultValue = "false")]
+    bool DisableOutOfScopeWarmup { get; set; }
 }

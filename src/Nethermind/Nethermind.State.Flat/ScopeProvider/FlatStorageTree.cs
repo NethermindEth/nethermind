@@ -92,7 +92,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public void HintSet(in UInt256 index)
     {
-        if (FlatWorldStateScope._disableHintSet) return;
+        if (_config.DisableHintSetWarmup) return;
         WarmUpSlot(index, true);
     }
 
