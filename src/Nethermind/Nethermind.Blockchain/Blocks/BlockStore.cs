@@ -52,12 +52,6 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
-    private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
-    {
-        blockNumber.WriteBigEndian(output);
-        blockHash!.Bytes.CopyTo(output[8..]);
-    }
-
     public void Delete(long blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(blockHash);
@@ -84,7 +78,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
-        GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         MemoryManager<byte>? memoryOwner = blockDb.GetOwnedMemory(keyWithBlockNumber);
         memoryOwner ??= blockDb.GetOwnedMemory(blockHash.Bytes);

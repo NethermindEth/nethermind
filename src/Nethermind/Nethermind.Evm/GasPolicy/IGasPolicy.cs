@@ -215,4 +215,21 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="baseCost">Fixed opcode cost.</param>
     /// <param name="dataCost">Per-word copy cost.</param>
     static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, long baseCost, long dataCost);
+
+    /// <summary>
+    /// Hook called before instruction execution when tracing is active.
+    /// Allows gas policies to capture pre-execution state.
+    /// </summary>
+    /// <param name="gas">The current gas state.</param>
+    /// <param name="pc">The program counter before incrementing.</param>
+    /// <param name="instruction">The instruction about to be executed.</param>
+    /// <param name="depth">The current call depth.</param>
+    static abstract void OnBeforeInstructionTrace(in TSelf gas, int pc, Instruction instruction, int depth);
+
+    /// <summary>
+    /// Hook called after instruction execution when tracing is active.
+    /// Allows gas policies to capture post-execution state.
+    /// </summary>
+    /// <param name="gas">The current gas state after execution.</param>
+    static abstract void OnAfterInstructionTrace(in TSelf gas);
 }
