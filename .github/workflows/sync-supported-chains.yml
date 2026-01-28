@@ -33,6 +33,22 @@ env:
   TERM: xterm
 
 jobs:
+  publish-docker:
+    runs-on: ubuntu-latest
+    outputs:
+      image-label: ${{ steps.publish-docker.outputs.image-label }}
+    steps:
+      - name: Publish Docker image
+        id: publish-docker
+        uses: ./.github/actions/publish-docker
+        with:
+          image-name: "nethermind"
+          tag: ""
+          dockerfile: "Dockerfile"
+          build-config: "release"
+          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
   setup:
     runs-on: ubuntu-slim
     outputs:
@@ -73,7 +89,9 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
   gas-benchmark:
-    needs: setup
+    needs:
+      - setup
+      - publish-docker
     runs-on: ${{ needs.setup.outputs.runner-name }}
     timeout-minutes: 360
     env:
@@ -103,7 +121,7 @@ jobs:
           runs: ${{ env.GAS_BENCHMARK_RUNS }}
           opcodeWarmupCount: "1"
           filter: ${{ env.GAS_BENCHMARK_FILTER }}
-          images: '{"nethermind":"default","geth":"default","reth":"default","erigon":"default","besu":"default","nimbus":"default","ethrex":"default"}'
+          images: '{"nethermind":"${{ needs.publish-docker.outputs.image-label }}","geth":"default","reth":"default","erigon":"default","besu":"default","nimbus":"default","ethrex":"default"}'
 
           # PostgreSQL target (no DB is provisioned by this workflow)
           postgresHost: ${{ secrets.GAS_BENCHMARKS_DB_HOST }}
