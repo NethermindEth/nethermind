@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -38,6 +39,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
     internal bool _pausePrewarmer = false;
+
+    public static bool _disableHintSet = Environment.GetEnvironmentVariable("DISABLE_HINT_SET") == "1";
+    public static bool _disableOutOfScopeWarmUp = Environment.GetEnvironmentVariable("DISABLE_OUT_OF_SCOPE_WARMUP") == "1";
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -106,13 +110,37 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _snapshotBundle.SetAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address, null))
-            _warmer.PushAddressJob(this, address, _hintSequenceId);
+            _warmer.PushAddressJob(this, address, _hintSequenceId, false);
+    }
+
+    public void HintSet(Address address)
+    {
+        if (_disableHintSet) return;
+        if (_snapshotBundle.ShouldQueuePrewarm(address, null))
+            _warmer.PushAddressJob(this, address, _hintSequenceId, true);
+    }
+
+    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
+    {
+        if (_isDisposed) return;
+        if (_pausePrewarmer) return;
+        if (isWrite && _disableHintSet) return;
+        if (_disableOutOfScopeWarmUp) return;
+
+        if (slot is null)
+        {
+            if (_snapshotBundle.ShouldQueuePrewarm(address, null)) _warmer.PushJobMulti(this, address, null, null, _hintSequenceId, isWrite);
+        }
+        else
+        {
+            CreateStorageTreeImpl(address).QueueOutOfScopeWarmup(slot.Value, isWrite);
+        }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
-    public bool WarmUpStateTrie(Address address, int sequenceId)
+    public bool WarmUpStateTrie(Address address, int sequenceId, bool isWrite)
     {
         if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
 

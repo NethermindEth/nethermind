@@ -9,12 +9,13 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, IWorldStateScopeProvider parentScopeProvider, ILifetimeScope parentLifetime)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
         var worldState = new PrewarmerScopeProvider(
             worldStateManager.CreateResettableWorldState(),
+            parentScopeProvider,
             preBlockCaches,
             populatePreBlockCache: true
         );

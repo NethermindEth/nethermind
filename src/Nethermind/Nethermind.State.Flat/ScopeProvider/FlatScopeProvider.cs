@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -20,6 +21,7 @@ public class FlatScopeProvider(
     : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
+    private FlatWorldStateScope? _lastScope;
 
     public bool HasRoot(BlockHeader? baseBlock)
     {
@@ -31,7 +33,7 @@ public class FlatScopeProvider(
         StateId currentState = new StateId(baseBlock);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
 
-        FlatWorldStateScope scope = new FlatWorldStateScope(
+        return _lastScope = new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -40,6 +42,10 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             isReadOnly: isReadOnly);
-        return scope;
+    }
+
+    public void WarmUpOutOfScope(Address address, UInt256? slot, bool isWrite)
+    {
+        _lastScope?.WarmUpOutOfScope(address, slot, isWrite);
     }
 }

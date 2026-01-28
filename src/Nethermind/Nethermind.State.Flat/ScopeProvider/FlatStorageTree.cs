@@ -88,18 +88,32 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // a lot. Setting the set slot have a measurable net negative impact on performance.
     // Trying to set this value async through trie warmer proved to be hard to pull of and result in random invalid
     // block.
-    public void HintGet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
+    public void HintGet(in UInt256 index, byte[]? value) => WarmUpSlot(index, false);
 
-    private void WarmUpSlot(UInt256 index)
+    public void HintSet(in UInt256 index)
+    {
+        if (FlatWorldStateScope._disableHintSet) return;
+        WarmUpSlot(index, true);
+    }
+
+    private void WarmUpSlot(UInt256 index, bool isWrite)
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            _trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId);
+            _trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId, isWrite);
+        }
+    }
+
+    public void QueueOutOfScopeWarmup(UInt256 index, bool isWrite)
+    {
+        if (_bundle.ShouldQueuePrewarm(_address, index))
+        {
+            _trieCacheWarmer.PushJobMulti(_scope, _address, this, index, _scope.HintSequenceId, isWrite);
         }
     }
 
     // Called by trie warmer.
-    public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
+    public bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool isWrite)
     {
         if (_scope.HintSequenceId != sequenceId)
         {
