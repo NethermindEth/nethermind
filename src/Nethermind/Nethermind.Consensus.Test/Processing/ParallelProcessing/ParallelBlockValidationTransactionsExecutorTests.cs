@@ -4,14 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Processing.ParallelProcessing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -22,9 +20,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
@@ -270,6 +266,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .To(to)
             .WithNonce(nonce)
             .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
             .WithGasLimit(100_000)
             .WithAuthorizationCode(authList)
             .SignedAndResolved(from, false)
@@ -335,25 +333,24 @@ public class ParallelBlockValidationTransactionsExecutorTests
             yield return Test([TxWithoutSender(TestItem.AddressB, 0)],
                 TransactionResult.SenderNotSpecified);
 
-            // // InsufficientMaxFeePerGasForSenderBalance - EIP-1559 tx
-            // yield return Test([Tx1559WithHighMaxFee(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
-            //     TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
-            //
-            // // MinerPremiumNegative - maxPriorityFeePerGas > maxFeePerGas
-            // yield return Test([Tx1559WithNegativePremium(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
-            //     TransactionResult.MinerPremiumNegative);
+            // InsufficientMaxFeePerGasForSenderBalance - EIP-1559 tx
+            yield return Test([Tx1559WithHighMaxFee(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
+                TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
+
+            // MinerPremiumNegative - maxPriorityFeePerGas > maxFeePerGas
+            yield return Test([Tx1559WithNegativePremium(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
+                TransactionResult.MinerPremiumNegative);
 
             // TransactionSizeOverMaxInitCodeSize - EIP-3860
             yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, gasLimit: 10_000_000, data: new byte[50000])],
                 TransactionResult.TransactionSizeOverMaxInitCodeSize);
 
-
-            // yield return Test(
-            // [
-            //     Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether()),
-            //     Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 1.Ether() / 2),
-            //     Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
-            // ], TransactionResult.InsufficientSenderBalance, "on dependent transaction");
+            yield return Test(
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether()),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 1.Ether() / 2),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
+            ], TransactionResult.InsufficientSenderBalance, "on dependent transaction");
         }
     }
 
@@ -386,7 +383,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
         Transaction tx = Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether(), 100_000);
         Block block = Build.A.Block
-            .WithTransactions([tx])
+            .WithTransactions(tx)
             .WithParent(head)
             .WithGasLimit(21000)
             .TestObject;
@@ -493,28 +490,29 @@ public class ParallelBlockValidationTransactionsExecutorTests
     {
         using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
 
+        // First block: SetCode authorization that delegates PrivateKeyB to AddressC
         AuthorizationTuple auth = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
         Transaction setCodeTx = TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [auth]);
-        await parallel.AddBlock([setCodeTx]);
+        Block setCodeBlock = await parallel.AddBlock(setCodeTx);
 
-        Transaction txFromB = Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1);
+        Assert.That(setCodeBlock.Transactions, Has.Length.EqualTo(1), "SetCode transaction should be included");
 
-        BlockHeader head = parallel.BlockTree.Head!.Header;
-        Block block = Build.A.Block.WithTransactions([txFromB]).WithParent(head).TestObject;
-        IReleaseSpec releaseSpec = parallel.SpecProvider.GetSpec(block.Header);
-        using IDisposable scope = parallel.MainProcessingContext.WorldState.BeginScope(head);
+        // Second block: Transaction from the delegated account (PrivateKeyB with nonce=1 after authorization)
+        Transaction txFromB = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .To(TestItem.AddressC)
+            .WithNonce(1)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithGasLimit(100_000)
+            .WithValue(1.Ether())
+            .SignedAndResolved(TestItem.PrivateKeyB, false)
+            .TestObject;
 
-        TransactionResult result = TransactionResult.Ok;
-        try
-        {
-            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, releaseSpec);
-        }
-        catch (InvalidTransactionException e)
-        {
-            result = e.Reason;
-        }
+        Block txBlock = await parallel.AddBlock(txFromB);
 
-        Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+        Assert.That(txBlock.Transactions, Has.Length.EqualTo(1), "Transaction from delegated account should be included");
     }
 
     private static IBlocksConfig BuildConfig(bool parallel) =>
