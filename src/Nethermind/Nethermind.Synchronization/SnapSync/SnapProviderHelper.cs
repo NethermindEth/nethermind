@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -21,7 +22,7 @@ namespace Nethermind.Synchronization.SnapSync
         private const int ExtensionRlpChildIndex = 1;
 
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
-            StateTree tree,
+            ISnapStateTree tree,
             long blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
@@ -123,7 +124,7 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
-            StorageTree tree,
+            ISnapStorageTree tree,
             PathWithAccount account,
             IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256? startingHash,
@@ -183,7 +184,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         [SkipLocalsInit]
         private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
-            PatriciaTree tree,
+            ISnapTree tree,
             in ValueHash256? startingHash,
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
