@@ -15,7 +15,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(byte[] payloadId);
+    public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(List<byte[]>? txRlp = null, string privKey = "EMPTY", bool reorg = false);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",

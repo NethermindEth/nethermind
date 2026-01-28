@@ -14,8 +14,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IAsyncHandler<byte[], GetPayloadV5Result?> _getPayloadHandlerV5;
     private readonly IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> _getBlobsHandlerV2;
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(byte[] payloadId)
-        => _getPayloadHandlerV5.HandleAsync(payloadId);
+    public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(List<byte[]>? txRlp = null, string privKey = "EMPTY", bool reorg = false)
+        => _getPayloadHandlerV5.HandleAsync(txRlp, privKey, reorg);
 
     public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes)
          => _getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes));
