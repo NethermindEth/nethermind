@@ -6,7 +6,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync;
 
@@ -15,8 +14,8 @@ namespace Nethermind.Synchronization.SnapSync;
 /// </summary>
 public interface ISnapTree
 {
-    TrieNode? RootRef { get; set; }
-    IScopedTrieStore TrieStore { get; }
+    void SetRootFromProof(TrieNode root);
+    bool IsPersisted(in TreePath path, in ValueHash256 keccak);
 }
 
 public interface ISnapStateTree : ISnapTree
@@ -27,6 +26,5 @@ public interface ISnapStateTree : ISnapTree
     void UpdateRootHash();
     void Commit(bool skipRoot, WriteFlags writeFlags);
 
-    // For hasExtraStorage case in AddAccountRange
     bool Set(in ValueHash256 path, Account account);
 }

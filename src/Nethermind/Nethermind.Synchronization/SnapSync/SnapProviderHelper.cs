@@ -13,7 +13,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -115,7 +114,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+                StitchBoundaries(sortedBoundaryList, tree);
             }
 
             tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
@@ -175,7 +174,7 @@ namespace Nethermind.Synchronization.SnapSync
             // That lock object should be shared between all other StorageRange requests for the same account.
             lock (account.Account)
             {
-                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+                StitchBoundaries(sortedBoundaryList, tree);
                 tree.Commit(writeFlags: WriteFlags.DisableWAL);
             }
 
@@ -202,7 +201,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
             List<(TrieNode, TreePath)> sortedBoundaryList = new();
 
-            Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+            Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs);
 
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
@@ -234,7 +233,7 @@ namespace Nethermind.Synchronization.SnapSync
             // hash will not match.
             Stack<(TrieNode node, TreePath path)> proofNodesToProcess = new();
 
-            tree.RootRef = root;
+            tree.SetRootFromProof(root);
             proofNodesToProcess.Push((root, TreePath.Empty));
             sortedBoundaryList.Add((root, TreePath.Empty));
 
@@ -319,7 +318,7 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IReadOnlyList<byte[]> proofs, IScopedTrieStore store)
+        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IReadOnlyList<byte[]> proofs)
         {
             Dictionary<ValueHash256, TrieNode> dict = new();
 
@@ -330,8 +329,8 @@ namespace Nethermind.Synchronization.SnapSync
                 node.IsBoundaryProofNode = true;
 
                 TreePath emptyPath = TreePath.Empty;
-                node.ResolveNode(store, emptyPath);
-                node.ResolveKey(store, ref emptyPath);
+                node.ResolveNode(UnknownNodeResolver.Instance, emptyPath);
+                node.ResolveKey(UnknownNodeResolver.Instance, ref emptyPath);
 
                 dict[node.Keccak] = node;
             }
@@ -339,7 +338,7 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static void StitchBoundaries(List<(TrieNode, TreePath)> sortedBoundaryList, IScopedTrieStore store)
+        private static void StitchBoundaries(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree tree)
         {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
@@ -355,7 +354,7 @@ namespace Nethermind.Synchronization.SnapSync
                     INodeData nodeData = node.NodeData;
                     if (nodeData is ExtensionData extensionData)
                     {
-                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, store))
+                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree))
                         {
                             node.IsBoundaryProofNode = false;
                         }
@@ -366,7 +365,7 @@ namespace Nethermind.Synchronization.SnapSync
                         int ci = 0;
                         foreach (object? o in branchData.Branches)
                         {
-                            if (!IsChildPersisted(node, ref path, o, ci, store))
+                            if (!IsChildPersisted(node, ref path, o, ci, tree))
                             {
                                 isBoundaryProofNode = true;
                                 break;
@@ -384,14 +383,14 @@ namespace Nethermind.Synchronization.SnapSync
                     //leading to TrieNodeException after sync (as healing may not get to heal the particular storage trie)
                     if (node.IsLeaf)
                     {
-                        node.IsPersisted = store.IsPersisted(path, node.Keccak);
+                        node.IsPersisted = tree.IsPersisted(path, node.Keccak);
                         node.IsBoundaryProofNode = !node.IsPersisted;
                     }
                 }
             }
         }
 
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, object? child, int childIndex, IScopedTrieStore store)
+        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree tree)
         {
             if (child is TrieNode childNode)
             {
@@ -411,7 +410,7 @@ namespace Nethermind.Synchronization.SnapSync
             int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
             try
             {
-                return store.IsPersisted(nodePath, childKeccak);
+                return tree.IsPersisted(nodePath, childKeccak);
             }
             finally
             {
