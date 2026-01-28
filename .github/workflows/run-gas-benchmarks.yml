@@ -1,6 +1,10 @@
 name: Execute Gas benchmarks
 
 on:
+  pull_request:
+    branches: [master]
+    types: [labeled]
+    paths: [src/Nethermind/**]
   workflow_dispatch:
     inputs:
       runs:
@@ -33,7 +37,80 @@ env:
   TERM: xterm
 
 jobs:
+  resolve-inputs:
+    runs-on: ubuntu-slim
+    outputs:
+      should-run: ${{ steps.resolve.outputs.should-run }}
+      runs: ${{ steps.resolve.outputs.runs }}
+      testPath: ${{ steps.resolve.outputs.testPath }}
+      genesisFile: ${{ steps.resolve.outputs.genesisFile }}
+      warmupFile: ${{ steps.resolve.outputs.warmupFile }}
+      clients: ${{ steps.resolve.outputs.clients }}
+      filter: ${{ steps.resolve.outputs.filter }}
+    steps:
+      - name: Resolve workflow inputs
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          DISPATCH_RUNS: ${{ inputs.runs }}
+          DISPATCH_TEST_PATH: ${{ inputs.testPath }}
+          DISPATCH_GENESIS_FILE: ${{ inputs.genesisFile }}
+          DISPATCH_WARMUP_FILE: ${{ inputs.warmupFile }}
+          DISPATCH_CLIENTS: ${{ inputs.clients }}
+          DISPATCH_FILTER: ${{ inputs.filter }}
+        run: |
+          set -euo pipefail
+
+          should_run="true"
+          runs="1"
+          testPath="eest_tests"
+          genesisFile="zkevmgenesis.json"
+          warmupFile="warmup/warmup-1000bl-16wi-24tx.txt"
+          clients="nethermind"
+          filter=""
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            runs="${DISPATCH_RUNS:-1}"
+            testPath="${DISPATCH_TEST_PATH:-eest_tests}"
+            genesisFile="${DISPATCH_GENESIS_FILE:-zkevmgenesis.json}"
+            warmupFile="${DISPATCH_WARMUP_FILE:-warmup/warmup-1000bl-16wi-24tx.txt}"
+            clients="${DISPATCH_CLIENTS:-nethermind}"
+            filter="${DISPATCH_FILTER:-}"
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            label="${LABEL_NAME:-}"
+
+            # Only accept labels in the format: gasbench[-<comma-separated-filters>]
+            if [[ "${label}" == "gasbench" ]]; then
+              filter=""
+            elif [[ "${label}" == gasbench-* ]]; then
+              suffix="${label#gasbench-}"
+              if [[ -z "${suffix}" ]]; then
+                filter=""
+              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$ ]]; then
+                filter="${suffix}"
+              else
+                should_run="false"
+              fi
+            else
+              should_run="false"
+            fi
+          fi
+
+          {
+            echo "should-run=${should_run}"
+            echo "runs=${runs}"
+            echo "testPath=${testPath}"
+            echo "genesisFile=${genesisFile}"
+            echo "warmupFile=${warmupFile}"
+            echo "clients=${clients}"
+            echo "filter=${filter}"
+          } >> "${GITHUB_OUTPUT}"
+
   publish-docker:
+    needs: [resolve-inputs]
+    if: needs.resolve-inputs.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     outputs:
       image-label: ${{ steps.publish-docker.outputs.image-label }}
@@ -59,6 +136,8 @@ jobs:
           docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
   setup:
+    needs: [resolve-inputs]
+    if: needs.resolve-inputs.outputs.should-run == 'true'
     runs-on: ubuntu-slim
     outputs:
       runner-name: ${{ steps.setup-runner.outputs.runner-name }}
@@ -99,18 +178,20 @@ jobs:
 
   gas-benchmark:
     needs:
+      - resolve-inputs
       - setup
       - publish-docker
+    if: needs.resolve-inputs.outputs.should-run == 'true'
     runs-on: ${{ needs.setup.outputs.runner-name }}
     timeout-minutes: 360
     env:
       HOME: /root
-      GAS_BENCHMARK_RUNS: "${{ inputs.runs || '1' }}"
-      GAS_BENCHMARK_TEST_PATH: "${{ inputs.testPath || 'eest_tests' }}"
-      GAS_BENCHMARK_GENESIS_FILE: "${{ inputs.genesisFile || 'zkevmgenesis.json' }}"
-      GAS_BENCHMARK_WARMUP_FILE: "${{ inputs.warmupFile || 'warmup/warmup-1000bl-16wi-24tx.txt' }}"
-      GAS_BENCHMARK_CLIENTS: "${{ inputs.clients || 'nethermind' }}"
-      GAS_BENCHMARK_FILTER: "${{ inputs.filter || '' }}"
+      GAS_BENCHMARK_RUNS: "${{ needs.resolve-inputs.outputs.runs }}"
+      GAS_BENCHMARK_TEST_PATH: "${{ needs.resolve-inputs.outputs.testPath }}"
+      GAS_BENCHMARK_GENESIS_FILE: "${{ needs.resolve-inputs.outputs.genesisFile }}"
+      GAS_BENCHMARK_WARMUP_FILE: "${{ needs.resolve-inputs.outputs.warmupFile }}"
+      GAS_BENCHMARK_CLIENTS: "${{ needs.resolve-inputs.outputs.clients }}"
+      GAS_BENCHMARK_FILTER: "${{ needs.resolve-inputs.outputs.filter }}"
     steps:
       - name: Checkout Gas Benchmarks
         uses: actions/checkout@v6
@@ -118,6 +199,9 @@ jobs:
           repository: NethermindEth/gas-benchmarks
           ref: main
           lfs: true
+
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v4
 
       - name: Run gas-benchmarks composite action
         uses: ./.github/actions/gas-benchmark-action
@@ -141,8 +225,8 @@ jobs:
           postgresPassword: ${{ secrets.GAS_BENCHMARKS_DB_PASSWORD }}
 
   cleanup:
-    needs: [setup, gas-benchmark]
-    if: always()
+    needs: [resolve-inputs, setup, gas-benchmark]
+    if: always() && needs.resolve-inputs.outputs.should-run == 'true'
     runs-on: ubuntu-slim
 
     steps:
