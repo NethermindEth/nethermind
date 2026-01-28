@@ -78,13 +78,10 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                var account_ = account.Account;
-                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
-                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
-                if (account is not null)
-                {
-                    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
-                }
+                Account accountValue = account.Account;
+                Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
+                Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
             }
 
             tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
