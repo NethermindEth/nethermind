@@ -32,7 +32,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        int offset = (int)location;
+        int offset = (int)location.u0;
 
         // Direct 256bit register copy rather than invoke Memmove
         Unsafe.WriteUnaligned(
@@ -50,7 +50,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        _memory![(long)location] = value;
+        _memory![(long)location.u0] = value;
         return true;
     }
 
@@ -66,7 +66,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        value.CopyTo(_memory.AsSpan((int)location, value.Length));
+        value.CopyTo(_memory.AsSpan((int)location.u0, value.Length));
         return true;
     }
 
@@ -121,7 +121,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, (long)location, value.Length);
+        Array.Copy(value, 0, _memory!, (long)location.u0, value.Length);
         return true;
     }
 
@@ -141,7 +141,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        int intLocation = (int)location.u0;
+        int intLocation = (int)(uint)location.u0;
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
@@ -165,7 +165,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         UpdateSize(newLength);
-        data = _memory.AsSpan((int)location, WordSize);
+        data = _memory.AsSpan((int)(uint)location.u0, WordSize);
         return true;
     }
 
@@ -185,7 +185,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         UpdateSize(newLength);
-        data = _memory.AsSpan((int)location, (int)length);
+        data = _memory.AsSpan((int)(uint)location.u0, (int)(uint)length.u0);
         return true;
     }
 
@@ -206,7 +206,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         UpdateSize(newLength);
 
-        data = _memory.AsMemory((int)location, (int)length);
+        data = _memory.AsMemory((int)(uint)location.u0, (int)(uint)length.u0);
         return true;
     }
 
@@ -219,7 +219,7 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (location > int.MaxValue)
         {
-            return new byte[(long)length];
+            return new byte[(long)length.u0];
         }
 
         if (_memory is null)
@@ -237,8 +237,8 @@ public struct EvmPooledMemory : IEvmMemory
             return default;
         }
 
-        ClearForTracing((ulong)largeSize);
-        return _memory.AsMemory((int)location, (int)length);
+        ClearForTracing(largeSize.u0);
+        return _memory.AsMemory((int)(uint)location.u0, (int)(uint)length.u0);
     }
 
     private void ClearForTracing(ulong size)
@@ -249,6 +249,25 @@ public struct EvmPooledMemory : IEvmMemory
             Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
             _lastZeroedSize += (uint)lengthToClear;
         }
+    }
+
+    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    {
+        outOfGas = false;
+        if (length == 0)
+        {
+            return 0L;
+        }
+
+        CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
+
+        if (newSize > Size)
+        {
+            return ComputeMemoryExpansionCost(newSize, out outOfGas);
+        }
+
+        return 0L;
     }
 
     public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
@@ -264,28 +283,34 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
-            if (outOfGas) return 0;
-            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
-            if (outOfGas) return 0;
-
-            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-            ulong cost = (ulong)
-                ((newActiveWords - activeWords) * GasCostOf.Memory +
-                 ((newActiveWords * newActiveWords) >> 9) -
-                 ((activeWords * activeWords) >> 9));
-
-            if (cost > long.MaxValue)
-            {
-                return long.MaxValue;
-            }
-
-            UpdateSize(newSize, rentIfNeeded: false);
-
-            return (long)cost;
+            return ComputeMemoryExpansionCost(newSize, out outOfGas);
         }
 
         return 0L;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private long ComputeMemoryExpansionCost(ulong newSize, out bool outOfGas)
+    {
+        long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
+        if (outOfGas) return 0;
+        long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
+        if (outOfGas) return 0;
+
+        // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
+        ulong cost = (ulong)
+            ((newActiveWords - activeWords) * GasCostOf.Memory +
+                ((newActiveWords * newActiveWords) >> 9) -
+                ((activeWords * activeWords) >> 9));
+
+        if (cost > long.MaxValue)
+        {
+            return long.MaxValue;
+        }
+
+        UpdateSize(newSize, rentIfNeeded: false);
+
+        return (long)cost;
     }
 
     public TraceMemory GetTrace()
@@ -307,7 +332,6 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
-        const int MinRentSize = 1_024;
         Length = length;
 
         if (Length > Size)
@@ -318,34 +342,41 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (rentIfNeeded)
         {
-            if (_memory is null)
+            Rent();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Rent()
+    {
+        const uint MinRentSize = 1_024;
+        if (_memory is null)
+        {
+            _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
+            Array.Clear(_memory, 0, (int)Size);
+        }
+        else
+        {
+            int lastZeroedSize = (int)_lastZeroedSize;
+            if (Size > (ulong)_memory.LongLength)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
-                Array.Clear(_memory, 0, (int)Size);
+                byte[] beforeResize = _memory;
+                _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                ArrayPool<byte>.Shared.Return(beforeResize);
+            }
+            else if (Size > _lastZeroedSize)
+            {
+                Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
             }
             else
             {
-                int lastZeroedSize = (int)_lastZeroedSize;
-                if (Size > (ulong)_memory.LongLength)
-                {
-                    byte[] beforeResize = _memory;
-                    _memory = ArrayPool<byte>.Shared.Rent((int)Size);
-                    Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                    ArrayPool<byte>.Shared.Return(beforeResize);
-                }
-                else if (Size > _lastZeroedSize)
-                {
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                }
-                else
-                {
-                    return;
-                }
+                return;
             }
-
-            _lastZeroedSize = Size;
         }
+
+        _lastZeroedSize = Size;
     }
 
     [DoesNotReturn, StackTraceHidden]

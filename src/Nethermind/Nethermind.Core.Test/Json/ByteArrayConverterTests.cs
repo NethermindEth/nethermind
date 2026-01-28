@@ -304,7 +304,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         {
             { Bytes.FromHexString("0x0"), null },
             { Bytes.FromHexString("0x1"), random.NextInt(int.MaxValue) },
-            { Build.An.Address.TestObject.Bytes, random.NextInt(int.MaxValue) },
+            { Build.An.Address.TestObject.Bytes.ToArray(), random.NextInt(int.MaxValue) },
             { random.GenerateRandomBytes(10), random.NextInt(int.MaxValue) },
             { random.GenerateRandomBytes(32), random.NextInt(int.MaxValue) },
         };
