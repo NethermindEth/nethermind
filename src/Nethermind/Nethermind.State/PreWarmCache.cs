@@ -168,7 +168,14 @@ public sealed class PreWarmCache<TKey, TValue>
         ref int hashSlot = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_hashes), index);
         int existing = Volatile.Read(ref hashSlot);
 
-        // Can add if: slot is empty (0), OR has stale epoch, OR same epoch (overwrite)
+        // Skip if exact match already exists (same epoch, same hash signature)
+        // This reduces cache line invalidation for hot storage cells
+        if ((existing & ~LockMarker) == hashToStore)
+        {
+            return true;
+        }
+
+        // Can add if: slot is empty (0), OR has stale epoch, OR different key (overwrite)
         // Just need to acquire lock
         if ((existing & LockMarker) == 0 &&
             Interlocked.CompareExchange(ref hashSlot, hashToStore | LockMarker, existing) == existing)
