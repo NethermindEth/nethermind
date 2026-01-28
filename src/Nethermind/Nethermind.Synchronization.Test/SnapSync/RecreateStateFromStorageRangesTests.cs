@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var rawTrieStore = new RawScopedTrieStore(new NodeStorage(testMemDb), account);
             StorageTree tree = new(rawTrieStore, LimboLogs.Instance);
 
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(
+            (AddRangeResult result, bool moreChildrenToRight, Hash256 _) = SnapProviderHelper.AddStorageRange(
                 new PatriciaSnapStorageTree(tree),
                 new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA)),
                 [
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var rawTrieStore = new RawScopedTrieStore(new NodeStorage(testMemDb), account);
             StorageTree tree = new(rawTrieStore, LimboLogs.Instance);
 
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(
+            (AddRangeResult result, bool moreChildrenToRight, Hash256 _) = SnapProviderHelper.AddStorageRange(
                 new PatriciaSnapStorageTree(tree),
                 new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA)),
                 Array.Empty<PathWithStorageSlot>(), // Empty slots list
