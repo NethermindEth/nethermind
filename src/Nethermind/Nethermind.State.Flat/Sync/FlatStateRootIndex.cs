@@ -13,14 +13,18 @@ namespace Nethermind.State.Flat.Sync;
 /// Tracks mapping from state root hash to StateId for serving snap sync requests.
 /// Similar to <see cref="Nethermind.Blockchain.Utils.LastNStateRootTracker"/> but stores StateId for lookup.
 /// </summary>
-public class FlatStateRootIndex(IBlockTree blockTree, int lastN) : IFlatStateRootIndex, IDisposable
+public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
 {
+    private readonly IBlockTree _blockTree;
+    private readonly int _lastN;
     private Hash256? _lastQueuedStateRoot;
     private Queue<Hash256> _stateRootQueue = new();
     private NonBlocking.ConcurrentDictionary<Hash256AsKey, StateId> _availableStateRoots = new();
 
-    public void Initialize()
+    public FlatStateRootIndex(IBlockTree blockTree, int lastN)
     {
+        _blockTree = blockTree;
+        _lastN = lastN;
         blockTree.BlockAddedToMain += BlockTreeOnNewHeadBlock;
         if (blockTree.Head is not null) ResetAvailableStateRoots(blockTree.Head.Header, true);
     }
@@ -33,14 +37,14 @@ public class FlatStateRootIndex(IBlockTree blockTree, int lastN) : IFlatStateRoo
         if (newHead?.StateRoot is null) return;
         if (_availableStateRoots.ContainsKey(newHead.StateRoot)) return;
 
-        BlockHeader? parent = blockTree.FindParentHeader(newHead, BlockTreeLookupOptions.All);
+        BlockHeader? parent = _blockTree.FindParentHeader(newHead, BlockTreeLookupOptions.All);
         if (parent?.StateRoot is null) return;
 
         if (!resetQueue && _lastQueuedStateRoot == parent.StateRoot)
         {
             // Queue is intact - just add the new state root
             _availableStateRoots[newHead.StateRoot] = new StateId(newHead);
-            while (_stateRootQueue.Count >= lastN && _stateRootQueue.TryDequeue(out Hash256? oldStateRoot))
+            while (_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256? oldStateRoot))
             {
                 if (oldStateRoot is not null)
                     _availableStateRoots.TryRemove(oldStateRoot, out _);
@@ -57,12 +61,12 @@ public class FlatStateRootIndex(IBlockTree blockTree, int lastN) : IFlatStateRoo
         stateRoots.Add((newHead.StateRoot, new StateId(newHead)));
 
         BlockHeader? current = parent;
-        while (current?.StateRoot is not null && stateRoots.Count < lastN)
+        while (current?.StateRoot is not null && stateRoots.Count < _lastN)
         {
             StateId stateId = new(current);
             newStateRootSet[current.StateRoot] = stateId;
             stateRoots.Add((current.StateRoot, stateId));
-            current = blockTree.FindParentHeader(current, BlockTreeLookupOptions.All);
+            current = _blockTree.FindParentHeader(current, BlockTreeLookupOptions.All);
         }
 
         _availableStateRoots = newStateRootSet;
@@ -76,5 +80,5 @@ public class FlatStateRootIndex(IBlockTree blockTree, int lastN) : IFlatStateRoo
     public bool TryGetStateId(Hash256 stateRoot, out StateId stateId) =>
         _availableStateRoots.TryGetValue(stateRoot, out stateId);
 
-    public void Dispose() => blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
+    public void Dispose() => _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
 }
