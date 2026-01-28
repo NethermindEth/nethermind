@@ -449,7 +449,7 @@ public sealed class SnapshotBundle : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        if (Interlocked.Exchange(ref _isDisposed, true)) return;
 
         _snapshots.Dispose();
 
