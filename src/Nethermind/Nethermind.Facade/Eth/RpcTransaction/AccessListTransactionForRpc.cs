@@ -27,7 +27,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     [JsonConstructor]
     public AccessListTransactionForRpc() { }
 
-    public AccessListTransactionForRpc(Transaction transaction, TransactionForRpcContext extraData)
+    public AccessListTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData)
     {
         AccessList = AccessListForRpc.FromAccessList(transaction.AccessList);
