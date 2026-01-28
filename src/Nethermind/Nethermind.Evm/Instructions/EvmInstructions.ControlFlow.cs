@@ -31,6 +31,8 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1)) return EvmExceptionType.StackOverflow;
+
         // Deduct the base gas cost for reading the program counter.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
@@ -77,10 +79,13 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         // Deduct the gas cost for performing a jump.
         TGasPolicy.Consume(ref gas, GasCostOf.Jump);
         // Pop the jump destination from the stack.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
         // Validate the jump destination and update the program counter if valid.
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
@@ -110,13 +115,14 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        if (CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
+
         // Deduct the high gas cost for a conditional jump.
         TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
         // Pop the jump destination.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
-        bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-        if (isOverflow) goto StackUnderflow;
+        bool shouldJump = TestJumpCondition(ref stack);
         if (shouldJump)
         {
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
@@ -132,16 +138,10 @@ internal static partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TestJumpCondition(ref EvmStack stack, out bool isOverflow)
+    private static bool TestJumpCondition(ref EvmStack stack)
     {
-        isOverflow = false;
         // Pop the condition as a byte reference.
         ref byte condition = ref stack.PopBytesByRef();
-        if (Unsafe.IsNullRef(in condition))
-        {
-            isOverflow = true;
-            return false;
-        }
         // If the condition is non-zero (i.e., true), attempt to perform the jump.
         return (Unsafe.As<byte, Vector256<byte>>(ref condition) != default);
     }
@@ -172,12 +172,11 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionRevert<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        if (CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
+
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
-        {
-            goto StackUnderflow;
-        }
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
 
         // Ensure sufficient gas for any required memory expansion.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
@@ -208,6 +207,8 @@ internal static partial class EvmInstructions
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
 
+        if (CheckStackUnderflow(ref stack, 1)) goto StackUnderflow;
+
         VmState<TGasPolicy> vmState = vm.VmState;
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
@@ -224,8 +225,6 @@ internal static partial class EvmInstructions
 
         // Pop the inheritor address from the stack; signal underflow if missing.
         Address inheritor = stack.PopAddress();
-        if (inheritor is null)
-            goto StackUnderflow;
 
         // Charge gas for account access; if insufficient, signal out-of-gas.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))

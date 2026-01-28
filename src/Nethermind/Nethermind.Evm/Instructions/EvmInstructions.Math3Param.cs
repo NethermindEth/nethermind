@@ -15,6 +15,10 @@ internal static partial class EvmInstructions
     {
         virtual static long GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
+        virtual static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     [SkipLocalsInit]
@@ -23,9 +27,16 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
+        if (TOpMath.CheckStackUnderflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
+
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
+        stack.PopUInt256(out UInt256 c);
 
         if (c.IsZero)
         {

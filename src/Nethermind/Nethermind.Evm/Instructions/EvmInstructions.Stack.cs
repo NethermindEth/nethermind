@@ -18,6 +18,21 @@ using static Unsafe;
 
 internal static partial class EvmInstructions
 {
+    const int PopStackRequiredItemsCount = 1;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool CheckStackUnderflow(ref EvmStack stack, int itemsPoppedCount)
+    {
+        return stack.Head < itemsPoppedCount;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool CheckStackOverflow(ref EvmStack stack, int itemsPushedCount)
+    {
+        return stack.Head + itemsPushedCount >= EvmStack.MaxStackSize;
+    }
+
+
     /// <summary>
     /// Pops a value from the EVM stack.
     /// Deducts the base gas cost and returns an exception if the stack is underflowed.
@@ -32,10 +47,15 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionPop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        if (CheckStackUnderflow(ref stack, PopStackRequiredItemsCount))
+            return EvmExceptionType.StackUnderflow;
+
         // Deduct the minimal gas cost for a POP operation.
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // Pop from the stack; if nothing to pop, signal a stack underflow.
-        return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+        stack.PopLimbo();
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -121,6 +141,12 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
+
+        if (CheckStackOverflow(ref stack, 1))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
@@ -150,9 +176,13 @@ internal static partial class EvmInstructions
             else
             {
                 TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
+                if (CheckStackUnderflow(ref stack, 1))
+                {
+                    goto StackUnderflow;
+                }
+
                 vm.OpCodeCount++;
-                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-                if (isOverflow) goto StackUnderflow;
+                bool shouldJump = TestJumpCondition(ref stack);
                 if (!shouldJump)
                 {
                     // Move forward by 2 bytes + JUMPI
@@ -493,6 +523,12 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+
+        if (CheckStackOverflow(ref stack, 1))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
         stack.PushZero<TTracingInst>();
         return EvmExceptionType.None;
@@ -516,6 +552,11 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackOverflow(ref stack, 1))
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
@@ -544,9 +585,17 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, TOpCount.Count))
+            return EvmExceptionType.StackUnderflow;
+
+        if (CheckStackOverflow(ref stack, 1))
+            return EvmExceptionType.StackOverflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        return stack.Dup<TTracingInst>(TOpCount.Count);
+        stack.Dup<TTracingInst>(TOpCount.Count);
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -566,9 +615,16 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, TOpCount.Count + 1))
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
-        return stack.Swap<TTracingInst>(TOpCount.Count + 1);
+        stack.Swap<TTracingInst>(TOpCount.Count + 1);
+
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -595,8 +651,12 @@ internal static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic) goto StaticCallViolation;
 
+        if (CheckStackUnderflow(ref stack, TOpCount.Count + 2))
+            goto StackUnderflow;
+
         // Pop memory offset and length for the log data.
-        if (!stack.PopUInt256(out UInt256 position) || !stack.PopUInt256(out UInt256 length)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
 
         // The number of topics is defined by the generic parameter.
         long topicsCount = TOpCount.Count;
