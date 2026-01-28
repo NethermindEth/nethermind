@@ -68,11 +68,11 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
+    public static OpcodeResult InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
@@ -92,10 +92,13 @@ internal static partial class EvmInstructions
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
+        if (!stack.PopUInt256(
+            out UInt256 value,
+            out UInt256 memoryPositionOfInitCode,
+            out UInt256 initCodeLength))
+        {
             goto StackUnderflow;
+        }
 
         Span<byte> salt = default;
         // For CREATE2, an extra salt value is required. Use type check to differentiate.
@@ -133,8 +136,7 @@ internal static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Load the initialization code from memory based on the specified position and length.
@@ -146,8 +148,7 @@ internal static partial class EvmInstructions
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
@@ -156,8 +157,7 @@ internal static partial class EvmInstructions
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Get remaining gas for the create operation.
@@ -191,9 +191,8 @@ internal static partial class EvmInstructions
         if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
             TGasPolicy.UpdateGasUp(ref gas, callGas);
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Increment the nonce of the executing account to reflect the contract creation.
@@ -205,18 +204,19 @@ internal static partial class EvmInstructions
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        // Check for contract address collision. If the contract already exists and contains code or non-zero state,
-        // then the creation should be aborted.
-        bool accountExists = state.AccountExists(contractAddress);
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        // Single state lookup for contract address - avoids triple call to AccountExists + GetNonce + IsDeadAccount.
+        Account contractAccount = state.GetAccount(contractAddress);
+        // Check for contract address collision (EIP-7610). If the contract already exists and contains
+        // code, non-zero nonce, or storage, then the creation should be aborted.
+        if (contractAccount.HasCode || contractAccount.HasStorage || !contractAccount.Nonce.IsZero)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-            goto None;
+            return new(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        // IsEmpty = account has no code, balance, or nonce (matches IsDeadAccount semantics).
+        if (contractAccount.IsEmpty)
         {
             // Note: Seems to be needed on block 21827914 for some reason
             state.ClearStorage(contractAddress);
@@ -238,24 +238,24 @@ internal static partial class EvmInstructions
             inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        vm.ReturnData = VmState<TGasPolicy>.Rent(
             gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: accountExists,
+            isCreateOnPreExistingAccount: !contractAccount.IsTotallyEmpty,
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
-    None:
-        return EvmExceptionType.None;
+
+        return new(programCounter, EvmExceptionType.Return);
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new(programCounter, EvmExceptionType.StaticCallViolation);
     }
 }

@@ -305,7 +305,7 @@ namespace Nethermind.TxPool
                         }
 
                         UpdateBuckets();
-                        TxPoolHeadChanged?.Invoke(this, args.Block);
+                        RaiseTxPoolHeadChanged(args.Block);
                         Metrics.TransactionCount = _transactions.Count;
                         Metrics.BlobTransactionCount = _blobTransactions.Count;
                     }
@@ -993,6 +993,33 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs>? RemovedPending;
         public event EventHandler<TxEventArgs>? EvictedPending;
 
+        private void RaiseTxPoolHeadChanged(Block block)
+        {
+            EventHandler<Block>? eventHandler = TxPoolHeadChanged;
+            if (eventHandler is null)
+            {
+                return;
+            }
+
+            foreach (EventHandler<Block> subscriber in Delegate.EnumerateInvocationList(eventHandler))
+            {
+                try
+                {
+                    subscriber.Invoke(this, block);
+                }
+                catch (Exception e)
+                {
+                    LogTxPoolHeadChangedSubscriberFailure(e);
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void LogTxPoolHeadChangedSubscriberFailure(Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"TxPoolHeadChanged subscriber failed for block {block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (_isDisposed) return;
@@ -1170,4 +1197,3 @@ Db usage:
         }
     }
 }
-

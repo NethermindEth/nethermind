@@ -49,7 +49,7 @@ internal static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
@@ -57,19 +57,26 @@ internal static partial class EvmInstructions
         // Deduct the gas cost for the specific math operation.
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
-        // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        // Single bounds check: pop one, peek one. Result written to top (no push bounds check needed).
+        ref byte top = ref stack.PopPeekBytesByRef();
+        if (IsNullRef(ref top)) goto StackUnderflow;
 
-        // Execute the math operation defined by TOpMath.
+        // Read both operands with big-endian conversion (popped is at top + WordSize)
+        ref byte popped = ref Add(ref top, EvmStack.WordSize);
+        UInt256 a = EvmStack.ReadUInt256FromSlot(ref popped);
+        UInt256 b = EvmStack.ReadUInt256FromSlot(ref top);
+
+        // Execute the math operation and write result to top with big-endian conversion
         TOpMath.Operation(in a, in b, out UInt256 result);
+        EvmStack.WriteUInt256ToSlot(ref top, in result);
 
-        // Push the computed result onto the stack.
-        stack.PushUInt256<TTracingInst>(in result);
+        if (TTracingInst.IsActive)
+            stack.ReportPushUInt256(ref top);
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        return new(programCounter);
+
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -77,6 +84,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpAdd : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Add(in a, in b, out result);
     }
@@ -86,6 +94,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSub : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Subtract(in a, in b, out result);
     }
@@ -97,6 +106,8 @@ internal static partial class EvmInstructions
     public struct OpMul : IOpMath2Param
     {
         public static long GasCost => GasCostOf.Low;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
@@ -108,6 +119,8 @@ internal static partial class EvmInstructions
     public struct OpDiv : IOpMath2Param
     {
         public static long GasCost => GasCostOf.Low;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -132,6 +145,8 @@ internal static partial class EvmInstructions
     public struct OpSDiv : IOpMath2Param
     {
         public static long GasCost => GasCostOf.Low;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -163,6 +178,8 @@ internal static partial class EvmInstructions
     public struct OpMod : IOpMath2Param
     {
         public static long GasCost => GasCostOf.Low;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -185,6 +202,8 @@ internal static partial class EvmInstructions
     public struct OpSMod : IOpMath2Param
     {
         public static long GasCost => GasCostOf.Low;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -208,54 +227,69 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Implements the less-than comparison.
     /// Returns 1 if the first operand is less than the second; otherwise, returns 0.
+    /// Uses branchless pattern to avoid conditional jumps.
     /// </summary>
     public struct OpLt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = a < b ? UInt256.One : default;
+            // Branchless: convert bool to ulong (0 or 1) without conditional
+            bool cmp = a < b;
+            result = new UInt256(As<bool, byte>(ref cmp), 0UL, 0UL, 0UL);
         }
     }
 
     /// <summary>
     /// Implements the greater-than comparison.
     /// Returns 1 if the first operand is greater than the second; otherwise, returns 0.
+    /// Uses branchless pattern to avoid conditional jumps.
     /// </summary>
     public struct OpGt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = a > b ? UInt256.One : default;
+            // Branchless: convert bool to ulong (0 or 1) without conditional
+            bool cmp = a > b;
+            result = new UInt256(As<bool, byte>(ref cmp), 0UL, 0UL, 0UL);
         }
     }
 
     /// <summary>
     /// Implements the signed less-than comparison.
     /// Converts unsigned operands to signed representations and returns 1 if the first is less than the second.
+    /// Uses branchless pattern: extracts sign bit from comparison result.
     /// </summary>
     public struct OpSLt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = As<UInt256, Int256>(ref AsRef(in a))
-                .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) < 0 ?
-                UInt256.One :
-                default;
+            // CompareTo returns: negative if a < b, zero if a == b, positive if a > b
+            // Extract sign bit branchlessly: (uint)cmp >> 31 gives 1 if negative, 0 otherwise
+            int cmp = As<UInt256, Int256>(ref AsRef(in a))
+                .CompareTo(As<UInt256, Int256>(ref AsRef(in b)));
+            result = new UInt256((uint)cmp >> 31, 0UL, 0UL, 0UL);
         }
     }
 
     /// <summary>
     /// Implements the signed greater-than comparison.
     /// Converts unsigned operands to signed representations and returns 1 if the first is greater than the second.
+    /// Uses branchless pattern: negates and extracts sign bit from comparison result.
     /// </summary>
     public struct OpSGt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
-            result = As<UInt256, Int256>(ref AsRef(in a))
-                .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) > 0 ?
-                UInt256.One :
-                default;
+            // CompareTo returns: negative if a < b, zero if a == b, positive if a > b
+            // For cmp > 0: negate then extract sign bit
+            // -(-1) = 1 → 0, -(0) = 0 → 0, -(1) = -1 → 1
+            int cmp = As<UInt256, Int256>(ref AsRef(in a))
+                .CompareTo(As<UInt256, Int256>(ref AsRef(in b)));
+            result = new UInt256((uint)(-cmp) >> 31, 0UL, 0UL, 0UL);
         }
     }
 
@@ -271,7 +305,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -290,7 +324,7 @@ internal static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            stack.PushOne<TTracingInst>();
+            return new(programCounter, stack.PushOne<TTracingInst>());
         }
         else
         {
@@ -298,25 +332,26 @@ internal static partial class EvmInstructions
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
             TGasPolicy.Consume(ref gas, vm.Spec.GetExpByteCost() * expSize);
 
-            if (a.IsZero)
+            if (a.IsUint64)
             {
-                stack.PushZero<TTracingInst>();
+                ulong value = a.u0;
+                if (value == 0)
+                {
+                    return new(programCounter, stack.PushZero<TTracingInst>());
+                }
+                else if (value == 1)
+                {
+                    return new(programCounter, stack.PushOne<TTracingInst>());
+                }
             }
-            else if (a.IsOne)
-            {
-                stack.PushOne<TTracingInst>();
-            }
-            else
-            {
-                // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(in a, in exponent, out UInt256 result);
-                stack.PushUInt256<TTracingInst>(in result);
-            }
+
+            // Perform exponentiation and push the 256-bit result onto the stack.
+            UInt256.Exp(in a, in exponent, out UInt256 result);
+            return new(programCounter, stack.PushUInt256<TTracingInst>(in result));
         }
 
-        return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

@@ -217,7 +217,7 @@ namespace Nethermind.Evm.Test
         public void Can_dispose_after_init()
         {
             VmState<EthereumGasPolicy> vmState = CreateEvmState();
-            vmState.InitializeStacks();
+            vmState.InitializeStacks(null, default, out _);
             vmState.Dispose();
         }
 
@@ -228,7 +228,7 @@ namespace Nethermind.Evm.Test
                     RentExecutionEnvironment(),
                     new StackAccessTracker(),
                     Snapshot.Empty)
-                : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromLong(10000),
+                : VmState<EthereumGasPolicy>.Rent(EthereumGasPolicy.FromLong(10000),
                     0,
                     0,
                     ExecutionType.CALL,

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+
 namespace Nethermind.Evm
 {
     public static class RefundOf
@@ -16,9 +19,11 @@ namespace Nethermind.Evm
         private const long DestroyBefore3529 = 24000;
         private const long DestroyAfter3529 = 0;
 
-        public static long SClear(bool eip3529Enabled)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long SClear<EIP3529>()
+            where EIP3529 : struct, IFlag
         {
-            return eip3529Enabled ? SClearAfter3529 : SClearBefore3529;
+            return EIP3529.IsActive ? SClearAfter3529 : SClearBefore3529;
         }
 
         public static long Destroy(bool eip3529Enabled)
