@@ -38,16 +38,10 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         {
             long newCapacity = (long)BitOperations.RoundUpToPowerOf2((ulong)PrewarmedAddresses.Count);
             double bitsPerKey = PrewarmedAddresses.BitsPerKey;
-            BloomFilter oldFilter = PrewarmedAddresses;
-            PrewarmedAddresses = null!;
-            try
-            {
-                oldFilter.Dispose();
-            }
-            finally
-            {
-                PrewarmedAddresses = new BloomFilter(newCapacity, bitsPerKey);
-            }
+            // Create new filter before disposing old one to avoid null ref race condition
+            BloomFilter newFilter = new BloomFilter(newCapacity, bitsPerKey);
+            BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
+            oldFilter.Dispose();
         }
         else
         {
