@@ -79,8 +79,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
     }
 
-    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
     private const int HeadPivotDistance = 500;
 
@@ -99,7 +99,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
@@ -478,7 +478,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        Dictionary<Address, UInt256> nonces = [];
+        readonly Dictionary<Address, UInt256> nonces = [];
 
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
@@ -591,7 +591,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private class ImmediateDisconnectFailure : IDisconnectsAnalyzer
     {
         private string? DisconnectFailure = null;
-        private CancellationTokenSource _cts = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
