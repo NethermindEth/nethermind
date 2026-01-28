@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 
 namespace Nethermind.Config;
@@ -26,7 +26,12 @@ public class NetworkNode
     private readonly Enode? _enode;
     private readonly Enr? _enr;
 
+    [MemberNotNullWhen(true, nameof(Enode))]
+    [MemberNotNullWhen(false, nameof(Enr))]
     public bool IsEnode => _enode is not null;
+
+    [MemberNotNullWhen(true, nameof(Enr))]
+    [MemberNotNullWhen(false, nameof(Enode))]
     public bool IsEnr => _enr is not null;
 
     public NetworkNode(string nodeString)
@@ -77,22 +82,23 @@ public class NetworkNode
         return [.. nodes];
     }
 
-    public override string ToString() => IsEnode ? _enode!.ToString() : _enr!.ToString();
+    public override string ToString() => IsEnode ? Enode.ToString() : Enr.ToString();
 
     public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
+        : this(new Enode(publicKey, IPAddress.Parse(ip), port))
     {
-        _enode = new Enode(publicKey, IPAddress.Parse(ip), port);
         Reputation = reputation;
     }
 
     public NetworkNode(Enode enode) => _enode = enode;
 
-    public Enode Enode => _enode ?? throw new InvalidDataException(nameof(Enode));
-    public Enr Enr => _enr ?? throw new InvalidDataException(nameof(Enr));
+    public Enode? Enode => _enode;
 
-    public PublicKey NodeId => IsEnode ? _enode!.PublicKey : new PublicKey(_enr!.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value);
-    public string Host => IsEnode ? _enode!.HostIp.ToString() : _enr!.GetEntry<EntryIp>(EnrEntryKey.Ip).Value.ToString();
-    public IPAddress HostIp => IsEnode ? _enode!.HostIp : _enr!.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
-    public int Port => IsEnode ? _enode!.Port : _enr!.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
+    public Enr? Enr => _enr;
+
+    public PublicKey NodeId => IsEnode ? Enode.PublicKey : new PublicKey(Enr.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value);
+    public string Host => IsEnode ? Enode.HostIp.ToString() : Enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value.ToString();
+    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
+    public int Port => IsEnode ? Enode.Port : Enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
     public long Reputation { get; set; }
 }

@@ -14,7 +14,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin.Secp256k1;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -79,9 +78,8 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _enrFactory = new EnrFactory(new EnrEntryRegistry());
 
         ENR[] bootstrapEnrs = [
-            .. networkConfig.Bootnodes.Where(bn => bn.IsEnode).Select(bn => bn.Enode).Select(ToEnr),
-            .. networkConfig.Bootnodes.Where(bn => bn.IsEnr).Select(bn => bn.Enr),
-            .. (discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : []),
+            .. networkConfig.Bootnodes.Select(bn => bn.ToEnr(_sessionOptions.Verifier, _sessionOptions.Signer)),
+            .. discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : [],
             .. LoadStoredEnrs(),
             ];
 
@@ -119,15 +117,6 @@ public sealed class DiscoveryV5App : IDiscoveryApp
     private ENR ToEnr(string enrString) => _enrFactory.CreateFromString(enrString, _sessionOptions.Verifier!);
 
     private ENR ToEnr(byte[] enrBytes) => _enrFactory.CreateFromBytes(enrBytes, _sessionOptions.Verifier!);
-
-    private ENR ToEnr(Enode node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
-        .Build();
 
     private ENR ToEnr(Node node) => new EnrBuilder()
         .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
