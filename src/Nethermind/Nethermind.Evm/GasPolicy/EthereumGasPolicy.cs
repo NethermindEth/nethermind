@@ -123,6 +123,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, VmState<EthereumGasPolicy> vmState)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas(ref EthereumGasPolicy gas,
         long gasCost)
     {
@@ -179,13 +190,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
-        long standard = GasCostOf.Transaction
-                        + DataCost(tx, spec, tokensInCallData)
-                        + CreateCost(tx, spec)
-                        + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
-                        + AuthorizationListCost(tx, spec);
+        EthereumGasPolicy standard = CalculateIntrinsicGas(tx, spec, tokensInCallData);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
-        return new IntrinsicGas<EthereumGasPolicy>(FromLong(standard), FromLong(floorCost));
+        return new IntrinsicGas<EthereumGasPolicy>(standard, FromLong(floorCost));
+    }
+
+    public static EthereumGasPolicy CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long tokensInCallData)
+    {
+        long gas = GasCostOf.Transaction
+                   + DataCost(tx, spec, tokensInCallData)
+                   + CreateCost(tx, spec)
+                   + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
+                   + AuthorizationListCost(tx, spec);
+
+        return FromLong(gas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

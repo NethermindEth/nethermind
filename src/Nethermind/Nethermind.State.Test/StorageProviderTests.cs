@@ -698,6 +698,32 @@ public class StorageProviderTests
         clearedHash.Should().Be(emptyHash);
     }
 
+    [Test]
+    public void Commit_empty_account_with_storage_value_materializes_account()
+    {
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
+
+        BlockHeader baseBlock = null;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 0);
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), [1]);
+
+            Assert.DoesNotThrow(() => worldState.Commit(MuirGlacier.Instance));
+            worldState.AccountExists(TestItem.AddressA).Should().BeTrue();
+
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
+        }
+
+        using (worldState.BeginScope(baseBlock))
+        {
+            worldState.AccountExists(TestItem.AddressA).Should().BeTrue();
+            worldState.Get(new StorageCell(TestItem.AddressA, 1)).ToArray().Should().BeEquivalentTo([1]);
+        }
+    }
+
     private class Context
     {
         public WorldState StateProvider { get; }
