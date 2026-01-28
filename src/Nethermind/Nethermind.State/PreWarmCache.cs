@@ -124,36 +124,19 @@ public sealed class PreWarmCache<TKey, TValue>
             return value;
         }
         value = valueFactory(key);
-        TryAdd(in key, value);
+        Set(in key, value);
         return value;
     }
 
     /// <summary>
-    /// Indexer for setting values. Getting via indexer throws if key not found.
+    /// Sets a key-value pair in the cache.
+    /// On lock contention, the operation is silently skipped.
     /// </summary>
-    public TValue? this[in TKey key]
-    {
-        get
-        {
-            if (TryGetValue(in key, out TValue? value))
-            {
-                return value;
-            }
-            throw new System.Collections.Generic.KeyNotFoundException();
-        }
-        set => TryAdd(in key, value);
-    }
-
-    /// <summary>
-    /// Tries to add a key-value pair to the cache.
-    /// On collision or lock contention, the operation is silently skipped.
-    /// </summary>
-    /// <param name="key">The key to add</param>
-    /// <param name="value">The value to add</param>
-    /// <returns>True if the value was added, false if skipped due to collision or lock contention</returns>
+    /// <param name="key">The key to set</param>
+    /// <param name="value">The value to set</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryAdd(in TKey key, TValue? value)
+    public void Set(in TKey key, TValue? value)
     {
         int hashCode = key.GetHashCode();
         int index = hashCode & BucketMask;
@@ -172,7 +155,7 @@ public sealed class PreWarmCache<TKey, TValue>
         // This reduces cache line invalidation for hot storage cells
         if ((existing & ~LockMarker) == hashToStore)
         {
-            return true;
+            return;
         }
 
         // Can add if: slot is empty (0), OR has stale epoch, OR different key (overwrite)
@@ -185,10 +168,7 @@ public sealed class PreWarmCache<TKey, TValue>
 
             // Release lock
             Volatile.Write(ref hashSlot, hashToStore);
-            return true;
         }
-
-        return false;
     }
 
     /// <summary>

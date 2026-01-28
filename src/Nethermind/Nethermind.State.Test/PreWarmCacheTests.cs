@@ -21,13 +21,13 @@ namespace Nethermind.State.Test;
 public class PreWarmCacheTests
 {
     [Test]
-    public void TryAdd_and_TryGetValue_roundtrip()
+    public void Set_and_TryGetValue_roundtrip()
     {
         var cache = new PreWarmCache<StorageCell, byte[]>();
         var key = new StorageCell(TestItem.AddressA, 1);
         byte[] value = [1, 2, 3, 4];
 
-        cache.TryAdd(in key, value).Should().BeTrue();
+        cache.Set(in key, value);
         cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
         retrieved.Should().BeEquivalentTo(value);
     }
@@ -43,9 +43,9 @@ public class PreWarmCacheTests
     }
 
     [Test]
-    public void TryAdd_skips_write_when_hash_signature_matches()
+    public void Set_skips_write_when_hash_signature_matches()
     {
-        // With skip-if-exact-match optimization, adding the same key twice
+        // With skip-if-exact-match optimization, setting the same key twice
         // will skip the second write since the hash signature already matches.
         // This is correct for prewarming where same key = same value.
         var cache = new PreWarmCache<StorageCell, byte[]>();
@@ -53,16 +53,16 @@ public class PreWarmCacheTests
         byte[] value1 = [1, 2, 3];
         byte[] value2 = [4, 5, 6];
 
-        cache.TryAdd(in key, value1).Should().BeTrue();
-        // Second add returns true (skip path) but doesn't overwrite
-        cache.TryAdd(in key, value2).Should().BeTrue();
+        cache.Set(in key, value1);
+        // Second set skips the write but doesn't overwrite
+        cache.Set(in key, value2);
         cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
         // First value is preserved because hash signature matched and write was skipped
         retrieved.Should().BeEquivalentTo(value1);
     }
 
     [Test]
-    public void TryAdd_overwrites_after_clear()
+    public void Set_overwrites_after_clear()
     {
         // After Clear(), the epoch changes, so the hash signature no longer matches
         // and the new value will be written
@@ -71,9 +71,9 @@ public class PreWarmCacheTests
         byte[] value1 = [1, 2, 3];
         byte[] value2 = [4, 5, 6];
 
-        cache.TryAdd(in key, value1).Should().BeTrue();
+        cache.Set(in key, value1);
         cache.Clear();
-        cache.TryAdd(in key, value2).Should().BeTrue();
+        cache.Set(in key, value2);
         cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
         retrieved.Should().BeEquivalentTo(value2);
     }
@@ -86,8 +86,8 @@ public class PreWarmCacheTests
         var key2 = new StorageCell(TestItem.AddressB, 2);
         byte[] value = [1, 2, 3];
 
-        cache.TryAdd(in key1, value);
-        cache.TryAdd(in key2, value);
+        cache.Set(in key1, value);
+        cache.Set(in key2, value);
 
         cache.Clear();
 
@@ -103,7 +103,7 @@ public class PreWarmCacheTests
         byte[] existingValue = [1, 2, 3];
         byte[] factoryValue = [4, 5, 6];
 
-        cache.TryAdd(in key, existingValue);
+        cache.Set(in key, existingValue);
         byte[]? result = cache.GetOrAdd(in key, _ => factoryValue);
 
         result.Should().BeEquivalentTo(existingValue);
@@ -128,49 +128,13 @@ public class PreWarmCacheTests
     }
 
     [Test]
-    public void Indexer_set_adds_value()
-    {
-        var cache = new PreWarmCache<StorageCell, byte[]>();
-        var key = new StorageCell(TestItem.AddressA, 1);
-        byte[] value = [1, 2, 3];
-
-        cache[in key] = value;
-
-        cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
-        retrieved.Should().BeEquivalentTo(value);
-    }
-
-    [Test]
-    public void Indexer_get_throws_for_missing_key()
-    {
-        var cache = new PreWarmCache<StorageCell, byte[]>();
-        var key = new StorageCell(TestItem.AddressA, 1);
-
-        Action act = () => _ = cache[in key];
-
-        act.Should().Throw<System.Collections.Generic.KeyNotFoundException>();
-    }
-
-    [Test]
-    public void Indexer_get_returns_value_for_existing_key()
-    {
-        var cache = new PreWarmCache<StorageCell, byte[]>();
-        var key = new StorageCell(TestItem.AddressA, 1);
-        byte[] value = [1, 2, 3];
-
-        cache[in key] = value;
-
-        cache[in key].Should().BeEquivalentTo(value);
-    }
-
-    [Test]
     public void Works_with_AddressAsKey()
     {
         var cache = new PreWarmCache<AddressAsKey, Account>();
         AddressAsKey key = TestItem.AddressA;
         var account = new Account(100);
 
-        cache.TryAdd(in key, account).Should().BeTrue();
+        cache.Set(in key, account);
         cache.TryGetValue(in key, out Account? retrieved).Should().BeTrue();
         retrieved.Should().Be(account);
     }
@@ -183,8 +147,8 @@ public class PreWarmCacheTests
         AddressAsKey key2 = TestItem.AddressB;
         var account = new Account(100);
 
-        cache.TryAdd(in key1, account);
-        cache.TryAdd(in key2, account);
+        cache.Set(in key1, account);
+        cache.Set(in key2, account);
         cache.Clear();
 
         cache.TryGetValue(in key1, out _).Should().BeFalse();
@@ -202,7 +166,7 @@ public class PreWarmCacheTests
         var key = new StorageCell(TestItem.AddressA, 1);
         byte[] value = [1, 2, 3];
 
-        cache.TryAdd(in key, value);
+        cache.Set(in key, value);
         cache.TryGetValue(in key, out _).Should().BeTrue();
 
         // Clear enough times to wrap the epoch
@@ -227,7 +191,7 @@ public class PreWarmCacheTests
 
         // Round 0: Add initial value
         byte[] value0 = [0x00];
-        cache.TryAdd(in key, value0);
+        cache.Set(in key, value0);
         cache.TryGetValue(in key, out byte[]? retrieved0).Should().BeTrue();
         retrieved0.Should().BeEquivalentTo(value0);
 
@@ -242,13 +206,13 @@ public class PreWarmCacheTests
         cache.TryGetValue(in key, out byte[]? retrievedAfterWrap).Should().BeTrue();
         retrievedAfterWrap.Should().BeEquivalentTo(value0);
 
-        // Round 1: Try to add new value with same key
+        // Round 1: Try to set new value with same key
         // With skip-if-exact-match optimization, this is skipped because the hash signature
         // (epoch + hash bits) matches the existing entry after wraparound.
         // This is acceptable for prewarming: epoch wraparound takes ~13.6 hours (4096 blocks * 12s),
         // and stale data from wraparound is already an acknowledged limitation.
         byte[] value1 = [0x01];
-        cache.TryAdd(in key, value1);
+        cache.Set(in key, value1);
         cache.TryGetValue(in key, out byte[]? retrieved1).Should().BeTrue();
         // The original value is preserved because skip-if-exact-match fired
         retrieved1.Should().BeEquivalentTo(value0);
@@ -275,7 +239,7 @@ public class PreWarmCacheTests
 
                     if (random.Next(2) == 0)
                     {
-                        cache.TryAdd(in key, value);
+                        cache.Set(in key, value);
                     }
                     else
                     {
@@ -323,7 +287,7 @@ public class PreWarmCacheTests
                     var key = new StorageCell(TestItem.AddressA, (UInt256)keyIndex);
                     byte[] value = [(byte)threadId];
 
-                    cache.TryAdd(in key, value);
+                    cache.Set(in key, value);
                     cache.TryGetValue(in key, out _);
                 }
             }
@@ -353,7 +317,7 @@ public class PreWarmCacheTests
             try
             {
                 byte[] value = [(byte)(i & 0xFF)];
-                cache.TryAdd(in key, value);
+                cache.Set(in key, value);
                 cache.TryGetValue(in key, out byte[]? retrieved);
             }
             catch (Exception ex)
@@ -377,12 +341,12 @@ public class PreWarmCacheTests
         byte[] value2 = [2, 2, 2];
 
         // Add first key
-        cache.TryAdd(in key1, value1);
+        cache.Set(in key1, value1);
         cache.TryGetValue(in key1, out byte[]? retrieved1).Should().BeTrue();
         retrieved1.Should().BeEquivalentTo(value1);
 
         // Add second key (same bucket) - should overwrite the slot
-        cache.TryAdd(in key2, value2);
+        cache.Set(in key2, value2);
 
         // First key should now miss (bucket collision)
         // This is expected behavior for a one-way set-associative cache
@@ -406,7 +370,7 @@ public class PreWarmCacheTests
             {
                 var key = i % 2 == 0 ? key1 : key2;
                 byte[] value = [(byte)(i & 0xFF)];
-                cache.TryAdd(in key, value);
+                cache.Set(in key, value);
                 cache.TryGetValue(in key, out _);
             }
             catch (Exception ex)
@@ -439,7 +403,7 @@ public class PreWarmCacheTests
                 var key = keys[keyIndex];
                 byte[] value = [(byte)keyIndex];
 
-                cache.TryAdd(in key, value);
+                cache.Set(in key, value);
                 cache.TryGetValue(in key, out byte[]? retrieved);
             }
             catch (Exception ex)
@@ -458,7 +422,7 @@ public class PreWarmCacheTests
         var key = new StorageCell(TestItem.AddressA, UInt256.MaxValue);
         byte[] value = [1, 2, 3];
 
-        cache.TryAdd(in key, value).Should().BeTrue();
+        cache.Set(in key, value);
         cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
         retrieved.Should().BeEquivalentTo(value);
     }
@@ -473,7 +437,7 @@ public class PreWarmCacheTests
             var key = new StorageCell(address, 42);
             byte[] value = address.Bytes[..4].ToArray();
 
-            cache.TryAdd(in key, value);
+            cache.Set(in key, value);
             cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
             retrieved.Should().BeEquivalentTo(value);
 
@@ -492,7 +456,7 @@ public class PreWarmCacheTests
         {
             var key = new StorageCell(TestItem.AddressA, (UInt256)i);
             byte[] value = BitConverter.GetBytes(i);
-            cache.TryAdd(in key, value);
+            cache.Set(in key, value);
         }
 
         // Verify we can read back (note: some may have been evicted due to collisions)
@@ -521,7 +485,7 @@ public class PreWarmCacheTests
         var cache = new PreWarmCache<StorageCell, byte[]>();
         var key = new StorageCell(TestItem.AddressA, 1);
 
-        cache.TryAdd(in key, null).Should().BeTrue();
+        cache.Set(in key, null);
         cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
         retrieved.Should().BeNull();
     }
@@ -533,7 +497,7 @@ public class PreWarmCacheTests
         var keyWithNull = new StorageCell(TestItem.AddressA, 1);
         var keyMissing = new StorageCell(TestItem.AddressA, 2);
 
-        cache.TryAdd(in keyWithNull, null);
+        cache.Set(in keyWithNull, null);
 
         // Key with null value should return true
         cache.TryGetValue(in keyWithNull, out byte[]? value1).Should().BeTrue();
@@ -577,7 +541,7 @@ public class PreWarmCacheTests
 
         for (int i = 0; i < 10_000; i++)
         {
-            cache.TryAdd(in key, value);
+            cache.Set(in key, value);
             cache.Clear();
             cache.TryGetValue(in key, out _).Should().BeFalse();
         }
