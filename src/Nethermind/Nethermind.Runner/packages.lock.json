@@ -1127,6 +1127,7 @@
           "Nethermind.Evm": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.State": "[1.37.0-unstable, )",
+          "Nethermind.Synchronization": "[1.37.0-unstable, )",
           "Nethermind.Trie": "[1.37.0-unstable, )",
           "System.IO.Hashing": "[10.0.2, )"
         }
