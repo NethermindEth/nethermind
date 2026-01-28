@@ -47,9 +47,10 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     [JsonConstructor]
     public DepositTransactionForRpc() { }
 
-    public DepositTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
-        : base(transaction, txIndex, blockHash, blockNumber)
+    public DepositTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+        : base(transaction, extraData)
     {
+        OptimismTxReceipt? receipt = extraData.Receipt as OptimismTxReceipt;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
         From = transaction.SenderAddress ?? Address.SystemUser;
         To = transaction.To;
@@ -91,6 +92,6 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
 
     public override bool ShouldSetBaseFee() => false;
 
-    public static DepositTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
+    public static DepositTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
+        => new(tx, extraData);
 }
