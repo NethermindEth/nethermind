@@ -45,15 +45,18 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(
-            IWorldStateScopeProvider scopeProvider,
-            ILogManager? logManager)
+        protected WorldState(IWorldStateScopeProvider scopeProvider, StateProvider stateProvider, ILogManager? logManager)
         {
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(logManager);
+            _stateProvider = stateProvider;
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
+        }
+
+        public WorldState(IWorldStateScopeProvider scopeProvider, ILogManager? logManager)
+            : this(scopeProvider, new StateProvider(logManager), logManager)
+        {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -195,13 +198,6 @@ namespace Nethermind.State
                 Out.Log("account", address.ToString(), $"created[b={balance}, n={nonce}]");
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
-        }
-
-        public void CreateEmptyAccountIfDeleted(Address address)
-        {
-            if (Out.IsTargetBlock)
-                Out.Log("account", address.ToString(), "created-if-deleted");
-            _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
         }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)

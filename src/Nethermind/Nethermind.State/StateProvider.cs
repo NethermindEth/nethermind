@@ -27,14 +27,14 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    public class StateProvider
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
-        private readonly HashSet<AddressAsKey> _deletedThisBlock = new();
+
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -434,37 +434,19 @@ namespace Nethermind.State
                 => _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
         }
 
-        public void CreateEmptyAccountIfDeletedOrNew(Address address)
+        public void CreateEmptyAccount(Address address)
         {
-            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
-            {
-                //we only want to persist empty accounts if they were deleted or created as empty
-                //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-                var lastChange = _changes[value.Peek()];
-                if (lastChange.ChangeType == ChangeType.Delete ||
-                    (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
-                {
-                    _needsStateRootUpdate = true;
-                    if (_logger.IsTrace) Trace(address);
+            _needsStateRootUpdate = true;
+            PushRecreateEmpty(address);
+        }
 
-                    Account account = Account.TotallyEmpty;
-                    PushRecreateEmpty(address, account, value);
-                }
-            }
-            else if (_deletedThisBlock.Contains(address))
-            {
-                _needsStateRootUpdate = true;
-                if (_logger.IsTrace) Trace(address);
+        protected bool HasIntraTxChanges(Address address)
+        {
+            return _intraTxCache.ContainsKey(address);
+        }
 
-                Account account = Account.TotallyEmpty;
-                StackList<int> stack = SetupCache(address);
-                PushRecreateEmpty(address, account, stack);
-                _deletedThisBlock.Remove(address);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address)
-                => _logger.Trace($"Creating zombie account: {address}");
+        protected virtual void OnAccountRemovedFromState(Address address)
+        {
         }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
@@ -562,6 +544,7 @@ namespace Nethermind.State
 
                                 if (isTracing) TraceRemoveEmpty(change);
                                 SetState(change.Address, null);
+                                OnAccountRemovedFromState(change.Address);
                                 trace?.AddToTrace(change.Address, null);
                             }
                             else
@@ -592,7 +575,7 @@ namespace Nethermind.State
                                 if (Out.IsTargetBlock && Out.TraceShowStateRootChange)
                                     Out.Log($"s=commit deleted address={change.Address} balance={change.Account.Balance} storageRoot={change.Account.StorageRoot} nonce={change.Account.Nonce}");
 
-                                _deletedThisBlock.Add(change.Address);
+                                OnAccountRemovedFromState(change.Address);
                             }
 
                             break;
@@ -628,6 +611,7 @@ namespace Nethermind.State
                                     Out.Log($"s=commit delete address={change.Address}");
 
                                 SetState(change.Address, null);
+                                OnAccountRemovedFromState(change.Address);
                                 trace?.AddToTrace(change.Address, null);
                             }
 
@@ -843,10 +827,11 @@ namespace Nethermind.State
             _changes.Add(new Change(address, account, ChangeType.New));
         }
 
-        private void PushRecreateEmpty(Address address, Account account, StackList<int> stack)
+        private void PushRecreateEmpty(Address address)
         {
+            StackList<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
-            _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
+            _changes.Add(new Change(address, Account.TotallyEmpty, ChangeType.RecreateEmpty));
         }
 
         private StackList<int> SetupCache(Address address)
@@ -878,7 +863,7 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resetBlockChanges = true)
+        public virtual void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) Trace();
             if (resetBlockChanges)
@@ -886,7 +871,6 @@ namespace Nethermind.State
                 _blockCodeInsertFilter.Clear();
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
-                _deletedThisBlock.Clear();
             }
             _intraTxCache.ResetAndClear();
             _committedThisRound.Clear();
