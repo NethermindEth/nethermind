@@ -353,7 +353,21 @@ public class FlatTreeSyncStore(IPersistence persistence, ILogManager logManager)
         return result;
     }
 
-    public void Flush() => persistence.Flush();
+    public void FinalizeSync(BlockHeader pivotHeader)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        StateId from = reader.CurrentState;
+        StateId to = new StateId(pivotHeader);
+
+        // Create and immediately dispose to increment state ID
+        // This pattern is used by Importer - the from->to transition updates the current state pointer
+        using (persistence.CreateWriteBatch(from, to))
+        {
+            // Empty batch - just incrementing state
+        }
+
+        persistence.Flush();
+    }
 
     public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) =>
         new FlatVerificationContext(persistence, rootNodeData, logManager);

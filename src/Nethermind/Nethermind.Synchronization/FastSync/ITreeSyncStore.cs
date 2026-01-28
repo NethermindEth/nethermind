@@ -30,9 +30,10 @@ public interface ITreeSyncStore
     void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data);
 
     /// <summary>
-    /// Flush all pending writes to persistent storage.
+    /// Called when sync is complete and state should be finalized and flushed.
     /// </summary>
-    void Flush();
+    /// <param name="pivotHeader">The block header containing the synced state root.</param>
+    void FinalizeSync(BlockHeader pivotHeader);
 
     /// <summary>
     /// Create a verification context for checking storage roots during sync.
