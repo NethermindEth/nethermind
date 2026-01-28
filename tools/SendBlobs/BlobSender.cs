@@ -18,6 +18,7 @@ using Nethermind.JsonRpc.Client;
 using CkzgLib;
 
 namespace SendBlobs;
+
 internal class BlobSender
 {
     private static readonly TxDecoder txDecoder = TxDecoder.Instance;
@@ -37,7 +38,7 @@ internal class BlobSender
         _rpcClient = SetupCli.InitRpcClient(rpcUrl, _logger);
         _rpcUrl = rpcUrl;
 
-        KzgPolynomialCommitments.InitializeAsync().Wait();
+        KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
     }
 
     // send-blobs <url-without-auth> <transactions-send-formula 10x1,4x2,3x6> <secret-key> <receiver-address>
@@ -62,37 +63,28 @@ internal class BlobSender
         ulong feeMultiplier,
         UInt256? maxPriorityFeeGasArgs,
         bool waitForInclusion,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        int? seed)
     {
         List<(Signer, ulong)> signers = [];
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
+        waitForInclusion = await EnsureWaitForInclusionAsync(waitForInclusion);
 
-        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        ulong chainId = await RpcHelper.GetChainIdAsync(_rpcClient);
 
         foreach (PrivateKey privateKey in privateKeys)
         {
-            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
-            if (nonceString is null)
+            ulong? nonce = await RpcHelper.GetTransactionCountAsync(_rpcClient, privateKey.Address);
+            if (nonce is null)
             {
                 _logger.Error("Unable to get nonce");
                 return;
             }
-            ulong nonce = HexConvert.ToUInt64(nonceString);
 
-            signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
+            signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce.Value));
         }
 
-        Random random = new();
+        Random random = seed is null ? new() : new(seed.Value);
 
         int signerIndex = -1;
 
@@ -217,27 +209,16 @@ internal class BlobSender
         }
         data = normalized.ToArray();
 
-        if (waitForInclusion)
-        {
-            bool isNodeSynced = await _rpcClient.Post<dynamic>("eth_syncing") is bool;
-            if (!isNodeSynced)
-            {
-                Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
-                waitForInclusion = false;
-            }
-        }
+        waitForInclusion = await EnsureWaitForInclusionAsync(waitForInclusion);
 
-        string? chainIdString = await _rpcClient.Post<string>("eth_chainId") ?? "1";
-        ulong chainId = HexConvert.ToUInt64(chainIdString);
+        ulong chainId = await RpcHelper.GetChainIdAsync(_rpcClient);
 
-
-        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
-        if (nonceString is null)
+        ulong? nonce = await RpcHelper.GetTransactionCountAsync(_rpcClient, privateKey.Address);
+        if (nonce is null)
         {
             _logger.Error("Unable to get nonce");
             return;
         }
-        ulong nonce = HexConvert.ToUInt64(nonceString);
 
         Signer signer = new(chainId, privateKey, _logManager);
 
@@ -273,7 +254,7 @@ internal class BlobSender
         maxGasPrice *= feeMultiplier;
         maxFeePerBlobGas *= feeMultiplier;
 
-        Hash256? hash = await SendTransaction(chainId, nonce, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
+        Hash256? hash = await SendTransaction(chainId, nonce.Value, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
 
         if (waitForInclusion)
             await WaitForBlobInclusion(_rpcClient, hash, blockResult.Number);
@@ -286,8 +267,7 @@ internal class BlobSender
 
         if (defaultMaxPriorityFeePerGas is null)
         {
-            string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "0x1";
-            result.maxPriorityFeePerGas = UInt256.Parse(maxPriorityFeePerGasRes);
+            result.maxPriorityFeePerGas = await RpcHelper.GetMaxPriorityFeePerGasAsync(_rpcClient);
         }
         else
         {
@@ -375,13 +355,29 @@ internal class BlobSender
                     return;
                 }
             }
-            else
-            {
-                await Task.Delay(waitInMs);
-            }
+            await Task.Delay(waitInMs);
 
             retryCount--;
             if (retryCount == 0) break;
         }
+    }
+
+    private async Task<bool> EnsureWaitForInclusionAsync(bool waitForInclusion)
+    {
+        if (!waitForInclusion)
+        {
+            return false;
+        }
+
+        bool isNodeSynced = await RpcHelper.IsNodeSyncedAsync(_rpcClient);
+
+        if (isNodeSynced)
+        {
+            return true;
+        }
+
+        Console.WriteLine($"Will not wait for blob inclusion since selected node at {_rpcUrl} is still syncing");
+
+        return false;
     }
 }
