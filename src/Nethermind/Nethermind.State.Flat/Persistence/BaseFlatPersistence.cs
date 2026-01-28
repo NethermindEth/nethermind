@@ -188,7 +188,8 @@ public static class BaseFlatPersistence
         public void Dispose() => view.Dispose();
     }
 
-    public readonly struct WriteBatch(
+    public struct WriteBatch(
+        ISortedKeyValueStore stateSnap,
         ISortedKeyValueStore storageSnap,
         IWriteOnlyKeyValueStore state,
         IWriteOnlyKeyValueStore storage,
@@ -242,6 +243,46 @@ public static class BaseFlatPersistence
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];
             state.PutSpan(key, account, flags);
+        }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            // Account keys are the first 20 bytes of the address hash
+            Span<byte> firstKey = stackalloc byte[AccountKeyLength];
+            Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1]; // +1 for exclusive upper bound
+            fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
+            toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
+            lastKey[AccountKeyLength] = 0; // Exclusive upper bound
+
+            using ISortedView view = stateSnap.GetViewBetween(firstKey, lastKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != AccountKeyLength) continue;
+                state.Remove(view.CurrentKey);
+            }
+        }
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
+            // We need to iterate all keys in the slot range with the same address
+            Span<byte> firstKey = stackalloc byte[StorageKeyLength];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            EncodeStorageKeyHashedWithShortPrefix(firstKey, addressHash, fromPath);
+            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], addressHash, toPath);
+            lastKey[StorageKeyLength] = 0; // Exclusive upper bound
+
+            using ISortedView view = storageSnap.GetViewBetween(firstKey, lastKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != StorageKeyLength) continue;
+
+                // Verify the 16-byte address suffix matches
+                if (Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], addressHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
+                {
+                    storage.Remove(view.CurrentKey);
+                }
+            }
         }
     }
 }

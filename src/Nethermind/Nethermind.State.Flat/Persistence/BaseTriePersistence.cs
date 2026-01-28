@@ -131,6 +131,8 @@ public static class BaseTriePersistence
     }
 
     public readonly struct WriteBatch(
+        ISortedKeyValueStore stateTopNodesSnap,
+        ISortedKeyValueStore stateNodesSnap,
         ISortedKeyValueStore storageNodesSnap,
         ISortedKeyValueStore fallbackNodesSnap,
         IWriteOnlyKeyValueStore stateTopNodes,
@@ -209,6 +211,113 @@ public static class BaseTriePersistence
                 default:
                     fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), tn.FullRlp.Span, flags);
                     break;
+            }
+        }
+
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath)
+        {
+            // State trie nodes are stored across 3 columns based on path length:
+            // - StateNodesTop: path length 0-5 (3 byte keys)
+            // - StateNodes: path length 6-15 (8 byte keys)
+            // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
+
+            // Delete from StateNodesTop (path length 0-5)
+            {
+                Span<byte> firstKey = stackalloc byte[StateNodesTopPathLength];
+                Span<byte> lastKey = stackalloc byte[StateNodesTopPathLength + 1];
+                EncodeStateTopNodeKey(firstKey, fromPath);
+                EncodeStateTopNodeKey(lastKey[..StateNodesTopPathLength], toPath);
+                lastKey[StateNodesTopPathLength] = 0; // Exclusive upper bound
+
+                using ISortedView view = stateTopNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (view.MoveNext())
+                {
+                    if (view.CurrentKey.Length != StateNodesTopPathLength) continue;
+                    stateTopNodes.Remove(view.CurrentKey);
+                }
+            }
+
+            // Delete from StateNodes (path length 6-15)
+            {
+                Span<byte> firstKey = stackalloc byte[ShortenedPathLength];
+                Span<byte> lastKey = stackalloc byte[ShortenedPathLength + 1];
+                EncodeShortenedStateNodeKey(firstKey, fromPath);
+                EncodeShortenedStateNodeKey(lastKey[..ShortenedPathLength], toPath);
+                lastKey[ShortenedPathLength] = 0; // Exclusive upper bound
+
+                using ISortedView view = stateNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (view.MoveNext())
+                {
+                    if (view.CurrentKey.Length != ShortenedPathLength) continue;
+                    stateNodes.Remove(view.CurrentKey);
+                }
+            }
+
+            // Delete from FallbackNodes (path length 16+, prefix 0x00)
+            {
+                Span<byte> firstKey = stackalloc byte[FullStateNodesKeyLength];
+                Span<byte> lastKey = stackalloc byte[FullStateNodesKeyLength + 1];
+                EncodeFullStateNodeKey(firstKey, fromPath);
+                EncodeFullStateNodeKey(lastKey[..FullStateNodesKeyLength], toPath);
+                lastKey[FullStateNodesKeyLength] = 0; // Exclusive upper bound
+
+                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (view.MoveNext())
+                {
+                    if (view.CurrentKey.Length != FullStateNodesKeyLength) continue;
+                    if (view.CurrentKey[0] != 0) continue; // State nodes have 0x00 prefix
+                    fallbackNodes.Remove(view.CurrentKey);
+                }
+            }
+        }
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath)
+        {
+            // Storage trie nodes are stored across 2 columns based on path length:
+            // - StorageNodes: path length 0-15 (28 byte keys)
+            // - FallbackNodes: path length 16+ (54 byte keys with 0x01 prefix)
+
+            Hash256 address = new Hash256(addressHash);
+
+            // Delete from StorageNodes (path length 0-15)
+            {
+                Span<byte> firstKey = stackalloc byte[ShortenedStorageNodesKeyLength];
+                Span<byte> lastKey = stackalloc byte[ShortenedStorageNodesKeyLength + 1];
+                EncodeShortenedStorageNodeKey(firstKey, address, fromPath);
+                EncodeShortenedStorageNodeKey(lastKey[..ShortenedStorageNodesKeyLength], address, toPath);
+                lastKey[ShortenedStorageNodesKeyLength] = 0; // Exclusive upper bound
+
+                using ISortedView view = storageNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (view.MoveNext())
+                {
+                    if (view.CurrentKey.Length != ShortenedStorageNodesKeyLength) continue;
+                    // Verify the 16-byte address suffix matches
+                    if (Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + ShortenedPathLength)..], addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength]))
+                    {
+                        storageNodes.Remove(view.CurrentKey);
+                    }
+                }
+            }
+
+            // Delete from FallbackNodes (path length 16+, prefix 0x01)
+            {
+                Span<byte> firstKey = stackalloc byte[FullStorageNodesKeyLength];
+                Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
+                EncodeFullStorageNodeKey(firstKey, address, fromPath);
+                EncodeFullStorageNodeKey(lastKey[..FullStorageNodesKeyLength], address, toPath);
+                lastKey[FullStorageNodesKeyLength] = 0; // Exclusive upper bound
+
+                using ISortedView view = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
+                while (view.MoveNext())
+                {
+                    if (view.CurrentKey.Length != FullStorageNodesKeyLength) continue;
+                    if (view.CurrentKey[0] != 1) continue; // Storage nodes have 0x01 prefix
+                    // Verify the 16-byte address suffix matches
+                    if (Bytes.AreEqual(view.CurrentKey[(1 + StoragePrefixPortion + FullPathLength + PathLengthLength)..], addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength]))
+                    {
+                        fallbackNodes.Remove(view.CurrentKey);
+                    }
+                }
             }
         }
     }

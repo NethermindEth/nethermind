@@ -55,6 +55,10 @@ public static class BasePersistence
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
 
         public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
     }
 
     public interface IFlatReader
@@ -79,6 +83,10 @@ public static class BasePersistence
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
 
         public void SetAccountRaw(Hash256 addrHash, Account account);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
     }
 
     public interface ITrieReader
@@ -92,6 +100,8 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
         public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
 
     public struct ToHashedWriteBatch<TWriteBatch>(
@@ -132,6 +142,12 @@ public static class BasePersistence
             using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
         }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            flatWriteBatch.DeleteAccountRange(fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            flatWriteBatch.DeleteStorageRange(addressHash, fromPath, toPath);
     }
 
     public struct ToHashedFlatReader<TFlatReader>(
@@ -263,5 +279,17 @@ public static class BasePersistence
 
         public void SetAccountRaw(Hash256 addrHash, Account account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriter.DeleteAccountRange(fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriter.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
+            _trieWriteBatch.DeleteStateTrieNodeRange(fromPath, toPath);
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
+            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
     }
 }
