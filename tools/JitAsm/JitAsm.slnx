@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="JitAsm.csproj" />
+  <Project Path="..\JitAsm.Test\JitAsm.Test.csproj" />
+</Solution>

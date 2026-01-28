@@ -222,6 +222,31 @@ namespace Nethermind.Core.Extensions
             return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
+        /// <summary>
+        /// Combines IsZero check and WithoutLeadingZeros into a single scan operation.
+        /// Returns the trimmed span and sets isZero to true if the entire span is zero.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ReadOnlySpan<byte> WithoutLeadingZerosAndCheckZero(this ReadOnlySpan<byte> bytes, out bool isZero)
+        {
+            if (bytes.Length == 0)
+            {
+                isZero = true;
+                return ZeroByteSpan;
+            }
+
+            int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZeroIndex < 0)
+            {
+                isZero = true;
+                // Keep one byte or it will be interpreted as null
+                return bytes[^1..];
+            }
+
+            isZero = false;
+            return bytes[nonZeroIndex..];
+        }
+
         public static byte[] Concat(byte prefix, byte[] bytes)
         {
             byte[] result = new byte[1 + bytes.Length];

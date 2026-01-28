@@ -113,7 +113,7 @@ namespace Nethermind.State.Proofs
         }
 
         public AccountProofCollector(Address? address, params byte[][] storageKeys)
-            : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
+            : this(Keccak.Compute(address is not null ? address.Bytes : Address.Zero.Bytes).Bytes, storageKeys)
         {
             _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
         }

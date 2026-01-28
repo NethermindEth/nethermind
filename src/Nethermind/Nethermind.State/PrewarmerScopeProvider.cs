@@ -46,7 +46,7 @@ public class PrewarmerScopeProvider(
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
     {
-        ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
+        PreWarmCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -154,7 +154,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
+        PreWarmCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache
     ) : IWorldStateScopeProvider.IStorageTree

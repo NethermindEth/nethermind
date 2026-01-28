@@ -54,7 +54,7 @@ public class AuthorizationTupleDecoderTests
         yield return TupleRlpStream(
             //Wrong chain size
             Enumerable.Range(0, 33).Select(static i => (byte)0xFF).ToArray(),
-            Address.Zero.Bytes,
+            Address.Zero.ToArray(),
             Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
@@ -84,7 +84,7 @@ public class AuthorizationTupleDecoderTests
         yield return TupleRlpStream(
             //Wrong nonce size
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
-            Address.Zero.Bytes,
+            Address.Zero.ToArray(),
             Enumerable.Range(0, 9).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
@@ -94,7 +94,7 @@ public class AuthorizationTupleDecoderTests
         yield return TupleRlpStream(
             //Wrong yParity size
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
-            Address.Zero.Bytes,
+            Address.Zero.ToArray(),
             Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 2).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
@@ -104,7 +104,7 @@ public class AuthorizationTupleDecoderTests
         yield return TupleRlpStream(
             //Wrong R size
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
-            Address.Zero.Bytes,
+            Address.Zero.ToArray(),
             Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 33).Select(static i => (byte)0xFF).ToArray(),
@@ -114,7 +114,7 @@ public class AuthorizationTupleDecoderTests
         yield return TupleRlpStream(
             //Wrong S size
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),
-            Address.Zero.Bytes,
+            Address.Zero.ToArray(),
             Enumerable.Range(0, 8).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 1).Select(static i => (byte)0xFF).ToArray(),
             Enumerable.Range(0, 32).Select(static i => (byte)0xFF).ToArray(),

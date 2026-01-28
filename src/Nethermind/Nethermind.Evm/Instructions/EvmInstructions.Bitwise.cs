@@ -43,31 +43,30 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
         TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
-        // Pop the first operand from the stack by reference to minimize copying.
-        ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        // Read the 256-bit vector from unaligned memory.
-        Word aVec = ReadUnaligned<Word>(ref bytesRef);
+        // Single bounds check: pop one and get ref to new top (popped is at top + WordSize)
+        ref byte top = ref stack.PopPeekBytesByRef();
+        if (IsNullRef(ref top)) goto StackUnderflow;
 
-        // Peek at the top of the stack for the second operand without removing it.
-        bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        Word bVec = ReadUnaligned<Word>(ref bytesRef);
+        // Read both 256-bit vectors (popped element is 32 bytes after top)
+        ref byte popped = ref Add(ref top, EvmStack.WordSize);
+        Word aVec = ReadUnaligned<Word>(ref popped);
+        Word bVec = ReadUnaligned<Word>(ref top);
 
-        // Write the result directly into the memory of the top stack element.
-        WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
+        // Write the result directly into the memory of the new top stack element
+        WriteUnaligned(ref top, TOpBitwise.Operation(aVec, bVec));
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        return new(programCounter);
+
+    // Forward jump - unpredicted by branch predictor for error path
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -75,6 +74,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(in Word a, in Word b) => Vector256.BitwiseAnd(a, b);
     }
 
@@ -83,6 +83,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(in Word a, in Word b) => Vector256.BitwiseOr(a, b);
     }
 
@@ -91,6 +92,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(in Word a, in Word b) => Vector256.Xor(a, b);
     }
 
@@ -101,16 +103,33 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseEq : IOpBitwise
     {
-        // Precomputed vector used as a marker for equality (only the last byte is set to 1).
-        public static Word One = Vector256.Create(
-            (byte)
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 1
-        );
-
         // Returns a non-zero marker vector if the operands are equal.
-        public static Word Operation(in Word a, in Word b) => a == b ? One : default;
+        // Computes result inline to avoid static field initialization overhead.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Word Operation(in Word a, in Word b)
+        {
+            // Compare all bytes and extract mask (0xFFFFFFFF if all equal, else has zero bits)
+            int mask = (int)Vector256.ExtractMostSignificantBits(Vector256.Equals(a, b));
+            // Convert mask to EVM boolean: 1 if all equal (-1 mask), else 0
+            return IsAllOnesAsBoolVector(mask);
+        }
+    }
+
+    /// <summary>
+    /// Converts an all-ones mask (-1) to a 256-bit vector representing EVM boolean true (byte 31 = 1),
+    /// or returns zero vector for any other mask value.
+    /// </summary>
+    /// <param name="mask">32-bit mask from ExtractMostSignificantBits - should be -1 (all bits set) for true.</param>
+    /// <returns>EVM boolean vector: 0x00...01 if mask == -1, else 0x00...00</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static Word IsAllOnesAsBoolVector(int mask)
+    {
+        // mask == -1 (all bytes matched) means we should return 1.
+        // Add 1: if mask was -1, sum = 0; otherwise sum != 0.
+        // Branchless zero-check: (~(x | -x)) >> 31 returns 1 iff x == 0.
+        uint sum = (uint)(mask + 1);
+        ulong isTrue = (~(sum | (uint)-(int)sum)) >> 31;
+        // Place the 1 in byte 31 (high byte of ulong[3]) for big-endian EVM representation
+        return Vector256.Create(0UL, 0UL, 0UL, isTrue << 56).AsByte();
     }
 }

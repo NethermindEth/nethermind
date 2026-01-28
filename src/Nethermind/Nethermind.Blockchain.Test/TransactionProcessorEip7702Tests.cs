@@ -163,7 +163,7 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes));
+        Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes.ToArray()));
     }
 
     public static IEnumerable<object[]> DifferentAuthorityTupleValues()

@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -20,11 +21,13 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public class Address : IEquatable<Address>, IComparable<Address>
+    public sealed class Address : MemoryManager<byte>, IEquatable<Address>, IComparable<Address>
     {
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
+
+        private AddressData _addressData;
 
         public static Address Zero { get; } = new(new byte[Size]);
         public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
@@ -32,11 +35,13 @@ namespace Nethermind.Core
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
         public static Address SystemUser { get; } = new(SystemUserHex);
 
-        public byte[] Bytes { get; }
+        public ReadOnlySpan<byte> Bytes => _addressData.AsReadOnlySpan();
 
-        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size).ToArray()) { }
+        public byte[] ToArray() => Bytes.ToArray();
 
-        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size).ToArray()) { }
+        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size)) { }
+
+        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size)) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -126,30 +131,26 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(byte[] bytes)
+        public Address(byte[] bytes) : this(new ReadOnlySpan<byte>(bytes))
         {
-            ArgumentNullException.ThrowIfNull(bytes);
-
-            if (bytes.Length != Size)
-            {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
-            }
-
-            Bytes = bytes;
         }
 
         public Address(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
+                ThrowAddressWrongSize(bytes);
             }
 
-            Bytes = bytes.ToArray();
+            bytes.CopyTo(_addressData.AsSpan());
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowAddressWrongSize(ReadOnlySpan<byte> bytes)
+        {
+            throw new ArgumentException(
+                $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
+                nameof(bytes));
         }
 
         public bool Equals(Address? other)
@@ -165,8 +166,8 @@ namespace Nethermind.Core
             }
 
             // Address must be 20 bytes long Vector128 + uint
-            ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
-            ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
+            ref byte bytes0 = ref _addressData._element0;
+            ref byte bytes1 = ref other._addressData._element0;
             // Compare first 16 bytes with Vector128 and last 4 bytes with uint
             return
                 Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
@@ -217,7 +218,7 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
+        public override int GetHashCode() => _addressData.AsReadOnlySpan().FastHash();
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -233,7 +234,7 @@ namespace Nethermind.Core
 
         public AddressStructRef ToStructRef() => new(Bytes);
 
-        public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
+        public int CompareTo(Address? other) => Bytes.SequenceCompareTo(other is not null ? other.Bytes : default);
 
         private class AddressTypeConverter : TypeConverter
         {
@@ -257,7 +258,7 @@ namespace Nethermind.Core
         [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
-            ref byte value = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            ref byte value = ref _addressData._element0;
             // build the 4×8-byte lanes:
             // - lane0 = 0UL
             // - lane1 = first 4 bytes of 'value', shifted up into the high half
@@ -272,6 +273,23 @@ namespace Nethermind.Core
                 = Vector256.Create(default, lane1, lane2, lane3).AsByte();
 
             return result;
+        }
+
+        protected override void Dispose(bool disposing) { }
+
+        public override Span<byte> GetSpan() => _addressData.AsSpan();
+
+        public override MemoryHandle Pin(int elementIndex = 0)
+            => throw new NotSupportedException();
+
+        public override void Unpin() { }
+
+        [InlineArray(Size)]
+        public struct AddressData
+        {
+            public byte _element0;
+            public ReadOnlySpan<byte> AsReadOnlySpan() => MemoryMarshal.CreateReadOnlySpan(ref _element0, Size);
+            public Span<byte> AsSpan() => MemoryMarshal.CreateSpan(ref _element0, Size);
         }
     }
 
@@ -397,6 +415,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public readonly Address ToAddress() => new(Bytes.ToArray());
+        public readonly Address ToAddress() => new(Bytes);
     }
 }

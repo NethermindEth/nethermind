@@ -70,6 +70,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private JsonRpcRequest DeserializeObject(JsonElement element)
     {
         string? jsonRpc = null;

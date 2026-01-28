@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Clique
             Address[] signers = new Address[signersData.Length / Address.Size];
             for (int i = 0; i < signers.Length; i++)
             {
-                signers[i] = new Address(signersData.Slice(i * 20, 20).ToArray());
+                signers[i] = new Address(signersData.Slice(i * 20, 20));
             }
 
             return signers;

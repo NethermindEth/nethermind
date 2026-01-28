@@ -8,6 +8,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using Arm = System.Runtime.Intrinsics.Arm;
+using x64 = System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
@@ -64,7 +66,11 @@ public static unsafe class KeccakCache
             goto Uncommon;
         }
 
-        int hashCode = input.FastHash();
+        // Fast path for 32-byte input (Hash256/UInt256) - most common case
+        // Uses inline AES-based hash instead of call to avoid overhead
+        int hashCode = (x64.Aes.IsSupported || Arm.Aes.IsSupported) && input.Length == InputLengthOfKeccak
+            ? SpanExtensions.FastHash32(ref MemoryMarshal.GetReference(input))
+            : input.FastHash();
         uint index = (uint)hashCode & BucketMask;
 
         Debug.Assert(index < Count);

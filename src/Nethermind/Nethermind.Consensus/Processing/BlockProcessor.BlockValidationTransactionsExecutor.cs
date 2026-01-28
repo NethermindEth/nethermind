@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -28,6 +29,7 @@ namespace Nethermind.Consensus.Processing
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveOptimization)]
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
                 Metrics.ResetBlockStats();

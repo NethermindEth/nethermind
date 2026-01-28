@@ -55,13 +55,38 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
+    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec, out ICodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
     {
         delegatedAddress = null;
-        return _codeOverrides.TryGetValue(address, out var result)
-            ? ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegatedAddress)
-            : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+
+        // Check precompile overrides first (same order as GetCachedCodeInfo)
+        if (_precompileOverrides.TryGetValue(address, out var precompile))
+        {
+            codeInfo = precompile.codeInfo;
+            return false; // Precompiles don't have delegation
+        }
+
+        if (_codeOverrides.TryGetValue(address, out var result))
+        {
+            codeInfo = result.codeInfo;
+            return ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegatedAddress);
+        }
+        else
+        {
+            return codeInfoRepository.TryGetDelegation(address, vmSpec, out codeInfo, out delegatedAddress);
+        }
+    }
+
+    public bool IsDelegated(Address address, IReleaseSpec spec)
+    {
+        if (_codeOverrides.TryGetValue(address, out var result))
+        {
+            return ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out _);
+        }
+        else
+        {
+            return codeInfoRepository.IsDelegated(address, spec);
+        }
     }
 
 

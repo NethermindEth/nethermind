@@ -24,11 +24,11 @@ public class TaikoTransactionProcessor(
     ILogManager? logManager
     ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+    protected override TransactionResult ValidateStatic<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
-        => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
+        => base.ValidateStatic<TLogTracing>(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
 
-    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas<TLogTracing>(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
@@ -40,7 +40,7 @@ public class TaikoTransactionProcessor(
             return TransactionResult.Ok;
         }
 
-        return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+        return base.BuyGas<TLogTracing>(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
     }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
@@ -52,7 +52,7 @@ public class TaikoTransactionProcessor(
         // If the account has been destroyed during the execution, the balance is already set
         // as zero. So there is no need to create the account and pay the fees to the beneficiary,
         // except for the case when a restore is required due to a failure.
-        bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
+        bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary!);
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
         {
             WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
@@ -85,15 +85,15 @@ public class TaikoTransactionProcessor(
             tracer.ReportFees(tipFees, baseFees);
     }
 
-    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult IncrementNonce<TLogTracing>(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.IsAnchorTx)
             WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, UInt256.Zero);
 
-        return base.IncrementNonce(tx, header, spec, tracer, opts);
+        return base.IncrementNonce<TLogTracing>(tx, header, spec, tracer, opts);
     }
 
-    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+    protected override void PayRefund(Transaction tx, in UInt256 refundAmount, IReleaseSpec spec)
     {
         if (!tx.IsAnchorTx)
         {

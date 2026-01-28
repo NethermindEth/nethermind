@@ -37,5 +37,5 @@ public readonly struct TraceStack
 
     public ReadOnlySpan<byte> Peek(int index) => this[^(index + 1)].Span;
     public UInt256 PeekUInt256(int index) => new(Peek(index), true);
-    public Address PeekAddress(int index) => new(Peek(index)[12..].ToArray());
+    public Address PeekAddress(int index) => new(Peek(index)[12..]);
 }

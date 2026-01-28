@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -21,19 +22,26 @@ public class CachedCodeInfoRepository(
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
+    private FrozenDictionary<AddressAsKey, PrecompileInfo> CachedPrecompiles { get; } = precompileCache is null
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        PrecompileInfo cachedCodeInfo;
+        if (vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out cachedCodeInfo))
         {
             delegationAddress = null;
             return cachedCodeInfo;
         }
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        bool TryGetCachedPrecompile(Address codeSource, out PrecompileInfo cachedCodeInfo)
+        {
+            return CachedPrecompiles.TryGetValue(codeSource, out cachedCodeInfo);
+        }
     }
 
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
@@ -51,10 +59,14 @@ public class CachedCodeInfoRepository(
         baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out ICodeInfo codeInfo, [NotNullWhen(true)] out Address? delegatedAddress)
     {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
+        return baseCodeInfoRepository.TryGetDelegation(address, spec, out codeInfo, out delegatedAddress);
+    }
+
+    public bool IsDelegated(Address address, IReleaseSpec spec)
+    {
+        return baseCodeInfoRepository.IsDelegated(address, spec);
     }
 
     private static PrecompileInfo CreateCachedPrecompile(

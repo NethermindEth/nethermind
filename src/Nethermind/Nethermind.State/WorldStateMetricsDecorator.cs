@@ -72,8 +72,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
         innerState.AddToBalance(address, in balanceChange, spec);
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
-        innerState.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec);
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool incrementNonce = false) =>
+        innerState.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, incrementNonce);
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
         innerState.SubtractFromBalance(address, in balanceChange, spec);
@@ -140,4 +140,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     bool IAccountStateProvider.IsStorageEmpty(Address address) => innerState.IsStorageEmpty(address);
 
     bool IAccountStateProvider.HasCode(Address address) => innerState.HasCode(address);
+
+    public Account GetAccount(Address address) => innerState.GetAccount(address);
 }
