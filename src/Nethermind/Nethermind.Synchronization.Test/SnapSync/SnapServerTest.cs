@@ -22,8 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
-[TestFixtureSource(typeof(SnapTrieFactoryTestFixtureSource))]
-public class SnapServerTest(Func<INodeStorage, ILogManager, ISnapTrieFactory> createFactory)
+public class SnapServerTest
 {
     private class Context
     {
@@ -46,7 +45,7 @@ public class SnapServerTest(Func<INodeStorage, ILogManager, ISnapTrieFactory> cr
 
         INodeStorage nodeStorage = new NodeStorage(clientStateDb);
 
-        SnapProvider snapProvider = new(progressTracker, new MemDb(), createFactory(nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, new MemDb(), new PatriciaSnapTrieFactory(nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
 
         return new Context
         {
@@ -272,7 +271,7 @@ public class SnapServerTest(Func<INodeStorage, ILogManager, ISnapTrieFactory> cr
         IDb stateDb2 = new MemDb();
 
         using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, codeDb2, createFactory(new NodeStorage(stateDb2), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new PatriciaSnapTrieFactory(new NodeStorage(stateDb2), LimboLogs.Instance), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
@@ -337,7 +336,7 @@ public class SnapServerTest(Func<INodeStorage, ILogManager, ISnapTrieFactory> cr
         IDb codeDb2 = new MemDb();
 
         using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, codeDb2, createFactory(new NodeStorage(stateDb2), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new PatriciaSnapTrieFactory(new NodeStorage(stateDb2), LimboLogs.Instance), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)
