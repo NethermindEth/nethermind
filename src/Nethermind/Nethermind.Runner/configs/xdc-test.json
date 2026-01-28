@@ -5,7 +5,7 @@
     "BaseDbPath": "nethermind_db/xdc-test",
     "LogFileName": "xdc.log",
     "StateDbKeyScheme": "Hash",
-    "AutoDump": "Geth"
+    "AutoDump": "All"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
