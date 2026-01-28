@@ -12,8 +12,11 @@
     "SnapSync": true,
     "PivotNumber": 24206000,
     "PivotHash": "0x8b93b9748a198442fbbd6fd9cd67950c938d171f7b0a2495abb3f54f8078daf4",
+    "DownloadBodiesInFastSync": false,
+    "DownloadReceiptsInFastSync": false,
     "PivotTotalDifficulty": "58750003716598352816469",
-    "FastSyncCatchUpHeightDelta": 10000000000,
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "NonValidatorNode": true,
     "AncientReceiptsBarrier": 15537394,
     "AncientBodiesBarrier": 15537394
   },
@@ -33,7 +36,8 @@
     "Port": 8545,
     "AdditionalRpcUrls": [
       "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client"
-    ]
+    ],
+    "JwtSecretFile": "F:\\Eth\\jwtsecret"
   },
   "Merge": {
     "Enabled": true

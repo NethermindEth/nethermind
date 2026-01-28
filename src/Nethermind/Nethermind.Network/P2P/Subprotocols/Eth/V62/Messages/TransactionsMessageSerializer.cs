@@ -11,6 +11,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
+        /// <summary>
+        /// Maximum total RLP elements allowed in a transactions message.
+        /// Prevents nested amplification DOS (e.g., transactions × access list entries × storage keys).
+        /// Set to 2M to allow legitimate large tx batches (each tx has ~10 RLP fields) while preventing DOS.
+        /// </summary>
+        private const int MaxTotalElements = 2_000_000;
+
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private readonly TxDecoder _decoder = TxDecoder.Instance;
 
@@ -30,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(rlpStream);
+            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(rlpStream, MaxTotalElements);
             return new TransactionsMessage(txs);
         }
 
@@ -45,8 +52,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(RlpStream rlpStream)
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(RlpStream rlpStream, int maxTotalElements = MaxTotalElements)
         {
+            // Pass 1: Validate nested structure to prevent memory DOS
+            RlpElementCounter.CountElementsInSequence(rlpStream, maxTotalElements);
+
+            // Pass 2: Actual decode (limits validated, safe to allocate)
+            rlpStream.Position = 0;
             return Rlp.DecodeArrayPool<Transaction>(rlpStream, RlpBehaviors.InMempoolForm, limit: RlpLimit);
         }
     }

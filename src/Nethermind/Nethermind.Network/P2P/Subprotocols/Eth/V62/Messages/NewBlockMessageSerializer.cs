@@ -9,6 +9,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class NewBlockMessageSerializer : IZeroInnerMessageSerializer<NewBlockMessage>
     {
+        /// <summary>
+        /// Maximum total RLP elements allowed in a new block message.
+        /// Single block with transactions, access lists, etc.
+        /// </summary>
+        private const int MaxTotalElements = 100_000;
+
         private readonly BlockDecoder _blockDecoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
@@ -24,7 +30,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public NewBlockMessage Deserialize(IByteBuffer byteBuffer)
         {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
+
+            // Pass 1: Validate nested structure to prevent memory DOS
+            RlpElementCounter.CountElementsInSequence(rlpStream, MaxTotalElements);
+
+            // Pass 2: Actual decode (limits validated, safe to allocate)
+            rlpStream.Position = 0;
             return Deserialize(rlpStream);
         }
 

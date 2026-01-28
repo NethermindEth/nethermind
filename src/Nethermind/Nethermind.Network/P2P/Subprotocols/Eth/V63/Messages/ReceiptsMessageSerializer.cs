@@ -14,6 +14,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
+        /// <summary>
+        /// Maximum total RLP elements allowed in a receipts message.
+        /// Prevents nested amplification DOS (e.g., 256 receipts × 1000 logs × 100 topics).
+        /// Set to 2M to allow legitimate large receipts while preventing memory DOS attacks.
+        /// </summary>
+        private const int MaxTotalElements = 2_000_000;
+
         private readonly ISpecProvider _specProvider;
         private readonly IRlpStreamDecoder<TxReceipt> _decoder;
         private readonly Func<IRlpReader, TxReceipt[]> _decodeArrayFunc;
@@ -91,6 +98,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
+            // Pass 1: Validate nested structure to prevent memory DOS
+            RlpElementCounter.CountElementsInSequence(rlpStream, MaxTotalElements);
+
+            // Pass 2: Actual decode (limits validated, safe to allocate)
+            rlpStream.Position = 0;
             ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc);
             ReceiptsMessage message = new(data);
 

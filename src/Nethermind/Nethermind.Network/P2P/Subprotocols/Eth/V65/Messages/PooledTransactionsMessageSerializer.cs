@@ -11,6 +11,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
     public class PooledTransactionsMessageSerializer : IZeroInnerMessageSerializer<PooledTransactionsMessage>
     {
+        /// <summary>
+        /// Maximum total RLP elements allowed in a pooled transactions message.
+        /// Same as TransactionsMessageSerializer limit.
+        /// </summary>
+        private const int MaxTotalElements = 2_000_000;
+
         private readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
 
         public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message)
@@ -21,7 +27,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            IOwnedReadOnlyList<Transaction> txs = TransactionsMessageSerializer.DeserializeTxs(rlpStream);
+            // DeserializeTxs includes element count validation
+            IOwnedReadOnlyList<Transaction> txs = TransactionsMessageSerializer.DeserializeTxs(rlpStream, MaxTotalElements);
             return new PooledTransactionsMessage(txs);
         }
 

@@ -12,6 +12,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
+        /// <summary>
+        /// Maximum total RLP elements allowed in a block bodies message.
+        /// Prevents nested amplification DOS (e.g., 256 bodies × 10000 transactions × access lists).
+        /// Set to 2M to allow legitimate large blocks (each tx has ~10 RLP fields) while preventing memory DOS.
+        /// </summary>
+        private const int MaxTotalElements = 2_000_000;
+
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
@@ -52,6 +59,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
         {
+            // Pass 1: Validate nested structure to prevent memory DOS
+            int originalReaderIndex = byteBuffer.ReaderIndex;
+            NettyRlpStream countingStream = new(byteBuffer);
+            RlpElementCounter.CountElementsInSequence(countingStream, MaxTotalElements);
+
+            // Pass 2: Actual decode (limits validated, safe to allocate)
+            byteBuffer.SetReaderIndex(originalReaderIndex);
             NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
 
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
