@@ -193,7 +193,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionConverterExtraData extraData = transactionResult.ExtraData with { ChainId = _specProvider.ChainId };
+        TransactionForRpcContext extraData = transactionResult.ExtraData;
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction: transaction,
             extraData: extraData);
@@ -227,13 +227,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             .FirstOrDefault(r => r.TxHash == transaction.Hash);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            transaction: transaction,
-            blockHash: receipt?.BlockHash,
-            blockNumber: receipt?.BlockNumber,
-            txIndex: receipt?.Index,
-            blockTimestamp: block.Timestamp,
-            baseFee: block.BaseFeePerGas,
-            chainId: _specProvider.ChainId);
+            transaction,
+            new TransactionForRpcContext(
+                chainId: _specProvider.ChainId,
+                blockHash: block.Hash!,
+                blockNumber: block.Number,
+                txIndex: (int)positionIndex,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
@@ -275,11 +277,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                 {
                     Transaction tx = transactions[i];
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
-                        transaction: tx,
-                        blockHash: block.Hash,
-                        blockNumber: block.Number,
-                        txIndex: i,
-                        blockTimestamp: block.Timestamp);
+                        tx,
+                        new TransactionForRpcContext(
+                            chainId: _specProvider.ChainId,
+                            blockHash: block.Hash!,
+                            blockNumber: block.Number,
+                            txIndex: i,
+                            blockTimestamp: block.Timestamp,
+                            baseFee: block.BaseFeePerGas,
+                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {

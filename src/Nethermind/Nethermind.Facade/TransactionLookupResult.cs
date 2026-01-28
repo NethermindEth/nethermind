@@ -6,14 +6,8 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Facade;
 
-public readonly struct TransactionLookupResult
+public readonly struct TransactionLookupResult(Transaction? transaction, TransactionForRpcContext extraData)
 {
-    public TransactionLookupResult(Transaction? transaction, TransactionConverterExtraData extraData)
-    {
-        Transaction = transaction;
-        ExtraData = extraData;
-    }
-
-    public Transaction? Transaction { get; }
-    public TransactionConverterExtraData ExtraData { get; }
+    public Transaction? Transaction { get; } = transaction;
+    public TransactionForRpcContext ExtraData { get; } = extraData;
 }

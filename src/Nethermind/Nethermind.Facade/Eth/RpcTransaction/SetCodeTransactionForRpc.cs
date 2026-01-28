@@ -35,6 +35,6 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
         return tx;
     }
 
-    public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+    public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
         => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, baseFee: extraData.BaseFee, chainId: extraData.ChainId);
 }

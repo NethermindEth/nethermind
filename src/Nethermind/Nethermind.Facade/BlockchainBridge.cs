@@ -114,21 +114,20 @@ namespace Nethermind.Facade
         {
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _))
             {
-                TransactionConverterExtraData extraData = new()
-                {
-                    BlockHash = block.Hash,
-                    BlockNumber = block.Number,
-                    BlockTimestamp = block.Timestamp,
-                    TxIndex = txReceipt?.Index,
-                    BaseFee = block.BaseFeePerGas,
-                    Receipt = txReceipt
-                };
+                TransactionForRpcContext extraData = new(
+                    chainId: specProvider.ChainId,
+                    blockHash: block.Hash,
+                    blockNumber: block.Number,
+                    txIndex: txReceipt!.Index,
+                    blockTimestamp: block.Timestamp,
+                    baseFee: block.BaseFeePerGas,
+                    receipt: txReceipt);
 
                 return new TransactionLookupResult(tx, extraData);
             }
 
             return checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
-                ? new TransactionLookupResult(transaction, default)
+                ? new TransactionLookupResult(transaction, new TransactionForRpcContext(specProvider.ChainId))
                 : default;
         }
 

@@ -45,6 +45,6 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         return tx;
     }
 
-    public new static AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+    public new static AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionForRpcContext extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, blockTimestamp: extraData.BlockTimestamp, chainId: extraData.ChainId);
 }

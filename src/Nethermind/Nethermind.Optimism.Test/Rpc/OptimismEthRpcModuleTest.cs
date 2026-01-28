@@ -88,14 +88,16 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(tx, new TransactionConverterExtraData
-        {
-            BlockHash = receipt.BlockHash,
-            BlockNumber = receipt.BlockNumber,
-            TxIndex = receipt.Index,
-            BaseFee = 0,
-            Receipt = receipt
-        }));
+        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(
+            tx,
+            new TransactionForRpcContext(
+                chainId: 0,
+                blockHash: receipt.BlockHash!,
+                blockNumber: receipt.BlockNumber,
+                txIndex: receipt.Index,
+                blockTimestamp: 0,
+                baseFee: 0,
+                receipt: receipt)));
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
@@ -128,6 +130,7 @@ public class OptimismEthRpcModuleTest
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockNumber": "0x10",
+                                 "blockTimestamp": "0x0",
                                  "transactionIndex": "0x20"
                              },
                             "id":67
@@ -153,14 +156,16 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(tx, new TransactionConverterExtraData
-        {
-            BlockHash = receipt.BlockHash,
-            BlockNumber = receipt.BlockNumber,
-            TxIndex = receipt.Index,
-            BaseFee = 0,
-            Receipt = receipt
-        }));
+        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns(new TransactionLookupResult(
+            tx,
+            new TransactionForRpcContext(
+                chainId: 0,
+                blockHash: receipt.BlockHash!,
+                blockNumber: receipt.BlockNumber,
+                txIndex: receipt.Index,
+                blockTimestamp: 0,
+                baseFee: 0,
+                receipt: receipt)));
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
@@ -193,6 +198,7 @@ public class OptimismEthRpcModuleTest
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockNumber": "0x10",
+                                 "blockTimestamp": "0x0",
                                  "transactionIndex": "0x20"
                              },
                             "id":67
@@ -261,7 +267,8 @@ public class OptimismEthRpcModuleTest
                                 "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                 "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                 "blockNumber": "0x10",
-                                "transactionIndex": "0x20"
+                                "blockTimestamp": "0xf4240",
+                                "transactionIndex": "0x0"
                             },
                             "id":67
                          }
@@ -338,7 +345,8 @@ public class OptimismEthRpcModuleTest
                                  "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockNumber": "0x10",
-                                 "transactionIndex": "0x20"
+                                 "blockTimestamp": "0xf4240",
+                                 "transactionIndex": "0x0"
                              },
                             "id":67
                          }

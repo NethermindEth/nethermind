@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Facade.Eth;
 using System;
 using System.Text.Json;
 using FluentAssertions;
@@ -60,7 +61,7 @@ public class TransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, chainId: SomeChainId);
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new TransactionForRpcContext(SomeChainId));
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
@@ -90,7 +91,7 @@ public class TransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_Nethermind_fields_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, chainId: SomeChainId);
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, new TransactionForRpcContext(SomeChainId));
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;

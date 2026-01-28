@@ -25,6 +25,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Facade.Test;
 
@@ -35,6 +36,7 @@ public class BlockchainBridgeTests
     private IReceiptStorage _receiptStorage;
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
+    private ISpecProvider _specProvider;
     private IContainer _container;
 
     [SetUp]
@@ -55,6 +57,7 @@ public class BlockchainBridgeTests
             .AddScoped(_transactionProcessor)
             .Build();
 
+        _specProvider = _container.Resolve<ISpecProvider>();
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();
         return Task.CompletedTask;
     }
@@ -103,15 +106,14 @@ public class BlockchainBridgeTests
         _receiptStorage.Get(block).Returns(receipts);
         TransactionLookupResult result = _blockchainBridge.GetTransaction(transactions[index].Hash!);
         result.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
-        result.ExtraData.Should().BeEquivalentTo(new TransactionConverterExtraData
-        {
-            BlockHash = block.Hash,
-            BlockNumber = block.Number,
-            BlockTimestamp = block.Timestamp,
-            TxIndex = receipts[index].Index,
-            BaseFee = UInt256.Zero,
-            Receipt = receipts[index]
-        });
+        result.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
+            chainId: _specProvider.ChainId,
+            blockHash: block.Hash,
+            blockNumber: block.Number,
+            txIndex: receipts[index].Index,
+            blockTimestamp: block.Timestamp,
+            baseFee: UInt256.Zero,
+            receipt: receipts[index]));
     }
 
     [Test]

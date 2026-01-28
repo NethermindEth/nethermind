@@ -394,7 +394,7 @@ public partial class EthRpcModule(
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionConverterExtraData extraData = transactionResult.ExtraData with { ChainId = _specProvider.ChainId };
+        TransactionForRpcContext extraData = transactionResult.ExtraData;
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction: transaction,
             extraData: extraData);
@@ -424,7 +424,7 @@ public partial class EthRpcModule(
         {
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, chainId: _specProvider.ChainId);
+            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, new TransactionForRpcContext(_specProvider.ChainId));
             transactionsModels[i].BlockHash = Keccak.Zero;
         }
 
@@ -463,14 +463,15 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
-            transaction: transaction,
+        TransactionForRpcContext extraData = new(
+            chainId: _specProvider.ChainId,
             blockHash: block.Hash,
             blockNumber: block.Number,
             txIndex: (int)positionIndex,
             blockTimestamp: block.Timestamp,
             baseFee: block.BaseFeePerGas,
-            chainId: _specProvider.ChainId);
+            receipt: null);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, extraData);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
