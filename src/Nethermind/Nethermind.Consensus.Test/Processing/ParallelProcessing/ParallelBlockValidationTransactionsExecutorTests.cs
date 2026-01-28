@@ -305,26 +305,26 @@ public class ParallelBlockValidationTransactionsExecutorTests
         get
         {
             yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 1)],
-                TransactionResult.WrongTransactionNonce);
+                TransactionResult.TransactionNonceTooLow);
 
             yield return Test(
             [
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
-            ], TransactionResult.WrongTransactionNonce, "nonce gap on dependent transaction");
+            ], TransactionResult.TransactionNonceTooLow, "nonce gap on dependent transaction");
 
             yield return Test(
             [
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0)
-            ], TransactionResult.WrongTransactionNonce, "nonce reuse on dependent transaction");
+            ], TransactionResult.TransactionNonceTooLow, "nonce reuse on dependent transaction");
 
             AuthorizationTuple auth = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
             yield return Test(
             [
                 TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [auth]),
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0),
-            ], TransactionResult.WrongTransactionNonce, "nonce reuse of SetCode authorization");
+            ], TransactionResult.TransactionNonceTooLow, "nonce reuse of SetCode authorization");
 
             yield return Test([Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0)],
                 TransactionResult.InsufficientSenderBalance);

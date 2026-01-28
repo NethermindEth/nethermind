@@ -32,7 +32,7 @@ namespace Nethermind.State
         private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
-        private bool _isInScope = false;
+        private bool _isInScope;
         private readonly ILogger _logger;
 
         public Hash256 StateRoot
@@ -104,7 +104,7 @@ namespace Nethermind.State
 
         bool IAccountStateProvider.IsStorageEmpty(Address address)
         {
-            return _persistentStorageProvider.GetStorageRoot(address) == Keccak.EmptyTreeHash;
+            return _persistentStorageProvider.IsStorageEmpty(address);
         }
 
         bool IAccountStateProvider.HasCode(Address address)

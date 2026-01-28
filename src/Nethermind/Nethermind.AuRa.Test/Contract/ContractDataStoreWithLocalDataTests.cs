@@ -86,7 +86,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+                Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
             );
 
             localDataSource.Data.Returns(new[] { TestItem.AddressC, TestItem.AddressD });
@@ -95,7 +95,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-                Is.EquivalentTo(expected.Cast<object>()).After(1000, 100)
+                Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
             );
         }
 

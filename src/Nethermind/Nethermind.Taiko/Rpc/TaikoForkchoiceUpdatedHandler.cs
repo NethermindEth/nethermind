@@ -90,4 +90,16 @@ internal class TaikoForkchoiceUpdatedHandler(
 
         return blockHeader;
     }
+
+    protected override bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
+    {
+        // Allow resetting to any block already on the main chain (including genesis)
+        if (_blockTree.IsMainChain(newHeadBlock.Header))
+        {
+            blocks = [newHeadBlock];
+            return true;
+        }
+
+        return base.TryGetBranch(newHeadBlock, out blocks);
+    }
 }

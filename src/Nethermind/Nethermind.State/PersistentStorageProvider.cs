@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,10 +21,11 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using RuntimeInformation = Nethermind.Core.Cpu.RuntimeInformation;
+using Nethermind.Trie;
 
 namespace Nethermind.State;
 
+using Nethermind.Core.Cpu;
 
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
@@ -31,7 +33,7 @@ namespace Nethermind.State;
 /// </summary>
 internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 {
-    private IWorldStateScopeProvider.IScope _currentScope = null!;
+    private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
@@ -113,6 +115,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(address).StorageRoot;
     }
 
+    public bool IsStorageEmpty(Address address) =>
+        GetOrCreateStorage(address).IsEmpty;
+
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
@@ -166,12 +171,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             _committedThisRound.Add(change.StorageCell);
-
-            if (change.ChangeType == ChangeType.Destroy)
-            {
-                continue;
-            }
-
             int forAssertion = _intraBlockCache[change.StorageCell].Pop();
             if (forAssertion != currentPosition - i)
             {
@@ -276,6 +275,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             // We can recalculate the roots in parallel as they are all independent tries
             using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
+                // Only consider contracts that actually have pending changes
+                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                // Schedule larger changes first to help balance the work
+                .OrderByDescending(kv => kv.Value.EstimatedChanges)
                 .Select((kv) => (
                     kv.Key,
                     kv.Value,
@@ -291,12 +294,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 static (i, state) =>
                 {
                     ref var kvp = ref state.storages.GetRef(i);
-                    if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
-                    {
-                        // Wasn't updated don't recalculate
-                        return state;
-                    }
-
                     (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
                     if (writes == 0)
                     {
@@ -406,7 +403,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _missingAreDefault = false;
             _dictionary.Clear();
         }
-
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
@@ -456,13 +452,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private sealed class PerContractState(Address address, PersistentStorageProvider provider) : IReturnable
+    private sealed class PerContractState : IReturnable
     {
+        private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
         private IWorldStateScopeProvider.IStorageTree? _backend;
-        private readonly DefaultableDictionary _blockChange = new();
-        private bool _wasWritten;
-        private PersistentStorageProvider _provider = provider;
-        private Address _address = address;
+
+        private readonly DefaultableDictionary BlockChange = new();
+        private bool _wasWritten = false;
+        private PersistentStorageProvider _provider;
+        private Address _address;
+
+        private PerContractState(Address address, PersistentStorageProvider provider) => Initialize(address, provider);
 
         private void Initialize(Address address, PersistentStorageProvider provider)
         {
@@ -470,14 +470,27 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _provider = provider;
         }
 
-        public int EstimatedChanges => _blockChange.EstimatedSize;
+        public int EstimatedChanges => BlockChange.EstimatedSize;
 
         public Hash256 StorageRoot
         {
             get
             {
                 EnsureStorageTree();
-                return _backend!.RootHash;
+                return _backend.RootHash;
+            }
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
+                // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
+                if (BlockChange.HasClear) return true;
+
+                EnsureStorageTree();
+                return _backend.RootHash == Keccak.EmptyTreeHash;
             }
         }
 
@@ -497,20 +510,20 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             if (isEmpty && !_wasWritten)
             {
                 // Slight optimization that skips the tree
-                _blockChange.ClearAndSetMissingAsDefault();
+                BlockChange.ClearAndSetMissingAsDefault();
             }
         }
 
         public void Clear()
         {
             EnsureStorageTree();
-            _blockChange.ClearAndSetMissingAsDefault();
+            BlockChange.ClearAndSetMissingAsDefault();
         }
 
         public void Return()
         {
-            _address = null!;
-            _provider = null!;
+            _address = null;
+            _provider = null;
             _backend = null;
             _wasWritten = false;
             Pool.Return(this);
@@ -519,16 +532,24 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
             _wasWritten = true;
-            ref StorageChangeTrace valueChanges = ref _blockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            valueChanges = !exists ? new StorageChangeTrace(value) : new StorageChangeTrace(valueChanges.Before, value);
+            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            if (!exists)
+            {
+                valueChanges = new StorageChangeTrace(value);
+            }
+            else
+            {
+                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+            }
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref StorageChangeTrace valueChange = ref _blockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
                 byte[] value = LoadFromTreeStorage(storageCell);
+
                 valueChange = new(value, value);
             }
             else
@@ -546,8 +567,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             EnsureStorageTree();
             return !storageCell.IsHash
-                ? _backend!.Get(storageCell.Index)
-                : _backend!.Get(storageCell.Hash);
+                ? _backend.Get(storageCell.Index)
+                : _backend.Get(storageCell.Hash);
         }
 
         private static byte[] LoadFromTreeStorage(StorageCell storageCell, PerContractState @this)
@@ -562,18 +583,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int writes = 0;
             int skipped = 0;
 
-            if (_blockChange.HasClear)
+            if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
-                _blockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
+                BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in _blockChange)
+            foreach (var kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                 {
-                    _blockChange[kvp.Key] = new(after, after);
+                    BlockChange[kvp.Key] = new(after, after);
                     storageWriteBatch.Set(kvp.Key, after);
 
                     writes++;
@@ -617,7 +638,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 const int MaxItemSize = 512;
                 const int MaxPooledCount = 2048;
 
-                if (item._blockChange.Capacity > MaxItemSize)
+                if (item.BlockChange.Capacity > MaxItemSize)
                     return;
 
                 // shared pool fallback
@@ -627,7 +648,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     return;
                 }
 
-                item._blockChange.Reset();
+                item.BlockChange.Reset();
                 _pool.Enqueue(item);
             }
         }

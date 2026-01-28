@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -38,9 +39,10 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         protected override void Load(ContainerBuilder builder)
         {
             builder
-                .AddSingleton<PreBlockCaches>() // Singleton so that all child env share the same caches
+                // Singleton so that all child env share the same caches. Note: this module is applied per-processing
+                // module, so the singleton here is like scoped but excludes inner prewarmer lifetime.
+                .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
                 .Add<PrewarmerEnvFactory>()
 
                 // These are the actual decorated components that provide a cached result
@@ -55,10 +57,12 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {
+                    IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
                     // Note: The use of FrozenDictionary means that this cannot be used for another processing env also due to the risk of memory leak.
-                    return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository, preBlockCaches.PrecompileCache);
+                    return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
+                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 });
         }
     }

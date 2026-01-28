@@ -203,7 +203,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             ? new(estimatedEntries)
             : null;
 
-        private readonly ValueHash256 _keyBuff = new();
+        private ValueHash256 _keyBuff;
 
         public void Set(in UInt256 index, byte[] value)
         {
@@ -214,7 +214,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             }
             else
             {
-                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
+                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
                 _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
             }
         }

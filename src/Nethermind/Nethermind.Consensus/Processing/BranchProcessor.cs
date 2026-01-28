@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -71,7 +70,8 @@ public class BranchProcessor(
         }
         else
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            BlockHeader? scopeBaseBlock = baseBlock ?? (suggestedBlock.IsGenesis ? suggestedBlock.Header : null);
+            worldStateCloser = stateProvider.BeginScope(scopeBaseBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();

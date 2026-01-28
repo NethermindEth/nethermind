@@ -187,7 +187,7 @@ internal class VotesManager(
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)vote.GapNumber);
         if (snapshot is null) return false;
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);

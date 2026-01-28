@@ -295,7 +295,6 @@ namespace Nethermind.State
             Null = 0,
             JustCache,
             Update,
-            Destroy,
         }
     }
 }

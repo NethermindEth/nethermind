@@ -53,7 +53,7 @@ internal class MineModuleTests
 
         // mine the gap block that should trigger master node update
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -61,7 +61,7 @@ internal class MineModuleTests
         var newHead = (XdcBlockHeader)tree.Head!.Header!;
         Assert.That(newHead.Number, Is.EqualTo(gapBlock.Number));
 
-        var snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber((ulong)newHead.Number);
+        var snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber(newHead.Number);
 
         Assert.That(snapshotAfter, Is.Not.Null);
         Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
@@ -127,7 +127,7 @@ internal class MineModuleTests
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -136,13 +136,11 @@ internal class MineModuleTests
 
         header = (XdcBlockHeader)gapBlock.Header!;
         spec = blockchain.SpecProvider.GetXdcSpec(header);
-        snapshot = blockchain.SnapshotManager.GetSnapshotByGapNumber((ulong)header.Number);
+        snapshot = blockchain.SnapshotManager.GetSnapshotByGapNumber(header.Number);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
-
-        long tstamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var epochSwitchBlock = await blockchain.AddBlock();
         while (!blockchain.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)tree.Head!.Header!))

@@ -38,9 +38,7 @@ namespace Nethermind.Grpc.Clients
                     nameof(reconnectionInterval));
             }
 
-            _address = string.IsNullOrWhiteSpace(host)
-                ? throw new ArgumentException("Missing gRPC host", nameof(host))
-                : $"{host}:{port}";
+            _address = $"{host}:{port}";
             _reconnectionInterval = reconnectionInterval;
             _logger = logManager.GetClassLogger();
         }
@@ -137,7 +135,7 @@ namespace Nethermind.Grpc.Clients
 
         private async Task TryReconnectAsync()
         {
-            _connected = false;
+            await StopAsync();
             _retry++;
             if (_logger.IsWarn) _logger.Warn($"Retrying ({_retry}) gRPC connection to: '{_address}' in {_reconnectionInterval} ms.");
             await Task.Delay(_reconnectionInterval);

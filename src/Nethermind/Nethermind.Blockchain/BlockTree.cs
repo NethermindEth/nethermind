@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain
             new(128, 128, "invalid blocks");
 
         protected readonly ILogger Logger;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider SpecProvider;
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
@@ -94,9 +94,9 @@ namespace Nethermind.Blockchain
 
         public long BestKnownBeaconNumber { get; private set; }
 
-        public ulong NetworkId => _specProvider.NetworkId;
+        public ulong NetworkId => SpecProvider.NetworkId;
 
-        public ulong ChainId => _specProvider.ChainId;
+        public ulong ChainId => SpecProvider.ChainId;
 
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
@@ -765,7 +765,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < level.BlockInfos.Length; i++)
             {
                 BlockInfo current = level.BlockInfos[i];
-                if (level.BlockInfos[i].TotalDifficulty >= bestDifficultySoFar)
+                if (current.TotalDifficulty >= bestDifficultySoFar)
                 {
                     bestDifficultySoFar = current.TotalDifficulty;
                     bestHash = current.BlockHash;
@@ -1130,7 +1130,7 @@ namespace Nethermind.Blockchain
         public bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better
             && ((header.IsGenesis && Genesis is null) // is genesis
-                || header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty // is post-merge block, we follow engine API
+                || header.TotalDifficulty >= SpecProvider.TerminalTotalDifficulty // is post-merge block, we follow engine API
                 || header.TotalDifficulty > (Head?.TotalDifficulty ?? 0) // pre-merge rules
                 || (header.TotalDifficulty == Head?.TotalDifficulty // when in doubt on difficulty
                     && ((Head?.Number ?? 0L).CompareTo(header.Number) > 0 // pick longer chain
@@ -1208,15 +1208,15 @@ namespace Nethermind.Blockchain
             // before merge TD requirements are satisfied only if TD > block head
             bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
                                                            && (header.TotalDifficulty <
-                                                               _specProvider.TerminalTotalDifficulty
-                                                               || _specProvider.TerminalTotalDifficulty is null);
+                                                               SpecProvider.TerminalTotalDifficulty
+                                                               || SpecProvider.TerminalTotalDifficulty is null);
 
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
             // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
             // than current head and header.TD >= TTD.
-            bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty is not null &&
+            bool postMergeImprovementRequirementSatisfied = SpecProvider.TerminalTotalDifficulty is not null &&
                                                             header.TotalDifficulty >=
-                                                            _specProvider.TerminalTotalDifficulty;
+                                                            SpecProvider.TerminalTotalDifficulty;
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
@@ -1224,11 +1224,11 @@ namespace Nethermind.Blockchain
         {
             if (BestSuggestedHeader is null) return true;
 
-            bool reachedTtd = header.IsPostTTD(_specProvider);
+            bool reachedTtd = header.IsPostTTD(SpecProvider);
             bool isPostMerge = header.IsPoS();
             bool tdImproved = header.TotalDifficulty > (BestSuggestedBody?.TotalDifficulty ?? 0);
             bool preMergeImprovementRequirementSatisfied = tdImproved && !reachedTtd;
-            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && header.IsTerminalBlock(_specProvider) && !Head.IsPoS();
+            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && header.IsTerminalBlock(SpecProvider) && !Head.IsPoS();
             bool postMergeImprovementRequirementSatisfied = reachedTtd && (BestSuggestedBody?.Number ?? 0) <= header.Number && isPostMerge;
 
             return preMergeImprovementRequirementSatisfied || terminalBlockRequirementSatisfied || postMergeImprovementRequirementSatisfied;
@@ -1496,7 +1496,7 @@ namespace Nethermind.Blockchain
         {
             // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty
-            return Genesis?.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0;
+            return Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
         }
 
         private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)

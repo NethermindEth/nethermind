@@ -44,21 +44,22 @@ namespace Nethermind.State
             return account.CodeHash;
         }
 
-        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
+        public static TrieStats CollectStats(this IStateReader stateProvider, BlockHeader? baseBlock, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
         {
             TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
-            stateProvider.RunTreeVisitor(collector, root, new VisitingOptions
+            stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
                 FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
             });
+            collector.Finish();
             return collector.Stats;
         }
 
-        public static string DumpState(this IStateReader stateReader, Hash256 root)
+        public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)
         {
             TreeDumper dumper = new();
-            stateReader.RunTreeVisitor(dumper, root);
+            stateReader.RunTreeVisitor(dumper, baseBlock);
             return dumper.ToString();
         }
     }

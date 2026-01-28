@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -21,22 +18,24 @@ namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
-        private const int LookupSize = 1024;
-        private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
+        private static readonly ValueHash256[] Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
-        private static FrozenDictionary<UInt256, byte[]> CreateLookup()
+        private static ValueHash256[] CreateLookup()
         {
+            const int LookupSize = 1024;
+
             Span<byte> buffer = stackalloc byte[32];
-            Dictionary<UInt256, byte[]> lookup = new Dictionary<UInt256, byte[]>(LookupSize);
-            for (int i = 0; i < LookupSize; i++)
+            ValueHash256[] lookup = new ValueHash256[LookupSize];
+
+            for (int i = 0; i < lookup.Length; i++)
             {
-                UInt256 index = (UInt256)i;
+                UInt256 index = new UInt256((uint)i);
                 index.ToBigEndian(buffer);
-                lookup[index] = Keccak.Compute(buffer).BytesToArray();
+                lookup[i] = ValueKeccak.Compute(buffer);
             }
 
-            return lookup.ToFrozenDictionary();
+            return lookup;
         }
 
         public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
@@ -52,27 +51,30 @@ namespace Nethermind.State
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ComputeKey(in UInt256 index, Span<byte> key)
+        private static void ComputeKey(in UInt256 index, out ValueHash256 key)
         {
-            index.ToBigEndian(key);
-
-            // We can't direct ComputeTo the key as its also the input, so need a separate variable
-            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
-            // Which we can then directly assign to fast update the key
-            Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
+            // Cannot use key as both in and out to KeccakCache.ComputeTo,
+            // so create another 32-byte buffer
+            Unsafe.SkipInit(out ValueHash256 buffer);
+            index.ToBigEndian(buffer.BytesAsSpan);
+            KeccakCache.ComputeTo(buffer.Bytes, out key);
         }
 
-        public static void ComputeKeyWithLookup(in UInt256 index, Span<byte> key)
+        [SkipLocalsInit]
+        public static void ComputeKeyWithLookup(in UInt256 index, ref ValueHash256 key)
         {
-            if (index < LookupSize)
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                Lookup[index].CopyTo(key);
+                key = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0);
+                return;
             }
 
-            ComputeKey(index, key);
+            ComputeKey(index, out key);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(ValueHash256 key, byte[]? value)
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value)
         {
             byte[] encodedValue;
             if (value.IsZero())
@@ -92,15 +94,19 @@ namespace Nethermind.State
                 }
             }
 
-            return new BulkSetEntry(key, encodedValue);
+            return new BulkSetEntry(in key, encodedValue);
         }
 
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
-            if (index < LookupSize)
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                return GetArray(Lookup[index], storageRoot);
+                return GetArray(
+                    in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0),
+                    storageRoot);
             }
 
             return GetWithKeyGenerate(in index, storageRoot);
@@ -108,14 +114,14 @@ namespace Nethermind.State
             [SkipLocalsInit]
             byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
             {
-                Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, key);
-                return GetArray(key, storageRoot);
+                ComputeKey(index, out ValueHash256 key);
+                return GetArray(in key, storageRoot);
             }
         }
 
-        public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public byte[] GetArray(in ValueHash256 key, Hash256? rootHash = null)
         {
+            ReadOnlySpan<byte> rawKey = key.Bytes;
             ReadOnlySpan<byte> value = Get(rawKey, rootHash);
 
             if (value.IsEmpty)
@@ -150,15 +156,17 @@ namespace Nethermind.State
 
         public byte[] Get(in ValueHash256 hash)
         {
-            return GetArray(hash.Bytes, null);
+            return GetArray(in hash, null);
         }
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
-            if (index < LookupSize)
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                SetInternal(Lookup[index], value);
+                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value);
             }
             else
             {
@@ -168,19 +176,19 @@ namespace Nethermind.State
             [SkipLocalsInit]
             void SetWithKeyGenerate(in UInt256 index, byte[] value)
             {
-                Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, key);
-                SetInternal(key, value);
+                ComputeKey(index, out ValueHash256 key);
+                SetInternal(in key, value);
             }
         }
 
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
         {
-            SetInternal(key.Bytes, value, rlpEncode);
+            SetInternal(in key, value, rlpEncode);
         }
 
-        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {
+            ReadOnlySpan<byte> rawKey = hash.Bytes;
             if (value.IsZero())
             {
                 Set(rawKey, []);

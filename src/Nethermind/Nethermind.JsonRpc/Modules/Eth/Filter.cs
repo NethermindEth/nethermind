@@ -1,28 +1,29 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
-
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class Filter : IJsonRpcParam
 {
-    public object? Address { get; set; }
+    public HashSet<AddressAsKey>? Address { get; set; }
 
-    public BlockParameter? FromBlock { get; set; }
+    public BlockParameter FromBlock { get; set; }
 
-    public BlockParameter? ToBlock { get; set; }
+    public BlockParameter ToBlock { get; set; }
 
-    public IEnumerable<object?>? Topics { get; set; }
+    public IEnumerable<Hash256[]?>? Topics { get; set; }
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
         JsonDocument doc = null;
-        string blockHash = null;
         try
         {
             if (filter.ValueKind == JsonValueKind.String)
@@ -31,33 +32,38 @@ public class Filter : IJsonRpcParam
                 filter = doc.RootElement;
             }
 
-            if (filter.TryGetProperty("blockHash"u8, out JsonElement blockHashElement))
-            {
-                blockHash = blockHashElement.GetString();
-            }
+            bool hasBlockHash = filter.TryGetProperty("blockHash"u8, out JsonElement blockHashElement);
+            bool hasFromBlock = filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
+            bool hasToBlock = filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
 
-            if (blockHash is null)
+            if (hasBlockHash && blockHashElement.ValueKind != JsonValueKind.Null)
             {
-                filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
-                FromBlock = BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString());
-                filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
-                ToBlock = BlockParameterConverter.GetBlockParameter(toBlockElement.ToString());
+                if (hasFromBlock || hasToBlock)
+                {
+                    throw new ArgumentException("cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other");
+                }
+
+                FromBlock = new(new Hash256(blockHashElement.ToString()));
+                ToBlock = FromBlock;
             }
             else
             {
-                FromBlock = ToBlock = BlockParameterConverter.GetBlockParameter(blockHash);
+                FromBlock = hasFromBlock && fromBlockElement.ValueKind != JsonValueKind.Null
+                    ? BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString())
+                    : BlockParameter.Earliest;
+                ToBlock = hasToBlock && toBlockElement.ValueKind != JsonValueKind.Null
+                    ? BlockParameterConverter.GetBlockParameter(toBlockElement.ToString())
+                    : BlockParameter.Latest;
             }
 
-            filter.TryGetProperty("address"u8, out JsonElement addressElement);
-            Address = GetAddress(addressElement, options);
+            if (filter.TryGetProperty("address"u8, out JsonElement addressElement))
+            {
+                Address = GetAddress(addressElement, options);
+            }
 
             if (filter.TryGetProperty("topics"u8, out JsonElement topicsElement) && topicsElement.ValueKind == JsonValueKind.Array)
             {
                 Topics = GetTopics(topicsElement, options);
-            }
-            else
-            {
-                Topics = null;
             }
         }
         finally
@@ -66,27 +72,57 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static object? GetAddress(JsonElement? token, JsonSerializerOptions options) => GetSingleOrMany(token, options);
+    private static HashSet<AddressAsKey>? GetAddress(JsonElement token, JsonSerializerOptions options)
+    {
+        switch (token.ValueKind)
+        {
+            case JsonValueKind.Undefined or JsonValueKind.Null:
+                return null;
+            case JsonValueKind.String:
+                return [new AddressAsKey(new Address(token.ToString()))];
+            case JsonValueKind.Array:
+                HashSet<AddressAsKey> result = new(token.GetArrayLength());
+                foreach (JsonElement element in token.EnumerateArray())
+                {
+                    result.Add(new(new Address(element.ToString())));
+                }
 
-    private static IEnumerable<object?> GetTopics(JsonElement? array, JsonSerializerOptions options)
+                return result;
+            default:
+                throw new ArgumentException("invalid address field");
+        }
+    }
+
+    private static IEnumerable<Hash256[]?>? GetTopics(JsonElement? array, JsonSerializerOptions options)
     {
         if (array is null)
         {
             yield break;
         }
 
-        foreach (var token in array.GetValueOrDefault().EnumerateArray())
+        foreach (JsonElement token in array.Value.EnumerateArray())
         {
-            yield return GetSingleOrMany(token, options);
+            switch (token.ValueKind)
+            {
+                case JsonValueKind.Undefined or JsonValueKind.Null:
+                    yield return null;
+                    break;
+                case JsonValueKind.String:
+                    yield return [new Hash256(token.GetString()!)];
+                    break;
+                case JsonValueKind.Array:
+                    Hash256[] result = new Hash256[token.GetArrayLength()];
+                    int i = 0;
+                    foreach (JsonElement element in token.EnumerateArray())
+                    {
+                        result[i++] = new Hash256(element.ToString());
+                    }
+
+                    yield return result;
+                    break;
+                default:
+                    throw new ArgumentException("invalid topics field");
+            }
         }
     }
-
-    private static object? GetSingleOrMany(JsonElement? token, JsonSerializerOptions options) => token switch
-    {
-        null => null,
-        { ValueKind: JsonValueKind.Undefined } _ => null,
-        { ValueKind: JsonValueKind.Null } _ => null,
-        { ValueKind: JsonValueKind.Array } _ => token.GetValueOrDefault().Deserialize<string[]>(options),
-        _ => token.GetValueOrDefault().GetString(),
-    };
 }

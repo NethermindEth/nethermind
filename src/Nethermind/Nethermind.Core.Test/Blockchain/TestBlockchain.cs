@@ -327,7 +327,7 @@ public class TestBlockchain : IDisposable
             // Eip2935
             if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
             {
-                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress, 1);
+                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress!, 1);
             }
 
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
