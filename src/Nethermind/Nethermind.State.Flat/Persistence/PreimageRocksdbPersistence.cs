@@ -100,7 +100,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
 
         FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new FakeHashWriter<BaseFlatPersistence.WriteBatch>(
             new BaseFlatPersistence.WriteBatch(
-                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Account),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
                 batch.GetColumnBatch(FlatDbColumns.Account),
                 batch.GetColumnBatch(FlatDbColumns.Storage),
                 flags
@@ -108,6 +109,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         );
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new BaseTriePersistence.WriteBatch(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
@@ -178,6 +181,12 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
 
         public void SetAccountRaw(Hash256 addrHash, Account account) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new InvalidOperationException("Range deletion not available in preimage mode");
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new InvalidOperationException("Range deletion not available in preimage mode");
     }
 
     public struct FakeHashFlatReader<TFlatReader>(

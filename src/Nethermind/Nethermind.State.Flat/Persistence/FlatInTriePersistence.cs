@@ -68,6 +68,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new BaseTriePersistence.WriteBatch(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
@@ -79,6 +81,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
         return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
                 new BaseFlatPersistence.WriteBatch(
+                    (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
                     batch.GetColumnBatch(FlatDbColumns.StateNodes),
                     batch.GetColumnBatch(FlatDbColumns.StorageNodes),

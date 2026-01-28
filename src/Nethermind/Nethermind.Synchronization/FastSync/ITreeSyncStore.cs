@@ -23,6 +23,10 @@ public interface ITreeSyncStore
     /// <summary>
     /// Save a trie node to storage.
     /// </summary>
+    /// <param name="address">Storage address for storage tries, null for state trie.</param>
+    /// <param name="path">The path to this node in the trie.</param>
+    /// <param name="hash">The hash of the node data.</param>
+    /// <param name="data">The RLP-encoded node data.</param>
     void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data);
 
     /// <summary>

@@ -47,6 +47,11 @@ public interface IPersistence
 
         void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
         void SetAccountRaw(Hash256 addrHash, Account account);
+
+        void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+        void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
+        void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
+        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
 
     /// <summary>
