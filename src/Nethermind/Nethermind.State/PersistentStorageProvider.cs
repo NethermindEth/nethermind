@@ -84,6 +84,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
         TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
+    public override bool Set(in StorageCell storageCell, byte[] newValue)
+    {
+        if (base.Set(storageCell, newValue))
+        {
+            GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
@@ -340,6 +350,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
+        GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
         if (isEmpty)
         {
         }
@@ -608,9 +619,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return (writes, skipped);
         }
 
-        public void RemoveStorageTree()
-        {
+        public void RemoveStorageTree() =>
             _backend = null;
+
+        public void HintSet(in StorageCell storageCell)
+        {
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index);
         }
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)

@@ -31,7 +31,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
-    private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
+    private readonly ConcurrentDictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -152,21 +152,29 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
     {
-        ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-        if (exists) return storage!;
+        if (_storages.TryGetValue(address, out FlatStorageTree? tree)) return tree;
 
+        // Get the storage root ahead of time out of lock
         Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        storage = new FlatStorageTree(
-            this,
-            _warmer,
-            _snapshotBundle,
-            _configuration,
-            _concurrencyQuota,
-            storageRoot,
-            address,
-            _logManager);
 
-        return storage;
+        lock (_storages)
+        {
+            // Double check
+            if (_storages.TryGetValue(address, out tree)) return tree;
+
+            tree = new FlatStorageTree(
+                this,
+                _warmer,
+                _snapshotBundle,
+                _configuration,
+                _concurrencyQuota,
+                storageRoot,
+                address,
+                _logManager);
+
+            _storages[address] = tree;
+            return tree;
+        }
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>

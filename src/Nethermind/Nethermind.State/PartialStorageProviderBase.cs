@@ -47,10 +47,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
-        {
+        /// <returns>True if this is a new update (not updating an existing cached value)</returns>
+        public virtual bool Set(in StorageCell storageCell, byte[] newValue) =>
             PushUpdate(in storageCell, newValue);
-        }
 
         /// <summary>
         /// Creates a restartable snapshot.
@@ -211,11 +210,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        /// <returns>True if this is a new update (not updating an existing cached value)</returns>
+        private bool PushUpdate(in StorageCell cell, byte[] value)
         {
             StackList<int> stack = SetupRegistry(cell);
+            bool isNewUpdate = stack.Count == 0 || (stack.Count == 1 && stack.TryPeek(out int item) && _changes[item].ChangeType == ChangeType.JustCache);
             stack.Push(_changes.Count);
             _changes.Add(new Change(in cell, value, ChangeType.Update));
+            return isNewUpdate;
         }
 
         /// <summary>

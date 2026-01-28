@@ -24,6 +24,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024;
 
+    private readonly ILogger _logger;
+    private bool _isDisposed = false;
+
     private readonly SpmcRingBuffer<SlotJob> _slotJobBuffer = new(SlotBufferSize);
     private readonly MpmcRingBuffer<Job> _jobBufferMulti = new(BufferSize);
 
@@ -43,9 +46,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         int sequenceId,
         bool isWrite);
 
-    private Task? _warmerJob = null;
-
+    private readonly Task? _warmerJob = null;
     private readonly int _secondaryWorkerCount;
+    private CancellationTokenSource _cancelTokenSource;
 
     private int _pendingWakeUpSlots = 0;
     private int _activeSecondaryWorker = 0;
@@ -58,6 +61,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager, IFlatDbConfig flatDbConfig)
     {
+        _logger = logManager.GetClassLogger<TrieWarmer>();
+
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
             ? Math.Max(Environment.ProcessorCount - 1, 1)
@@ -67,6 +72,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         _executionSlots = new Semaphore(0, _secondaryWorkerCount);
 
+        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+
         if (_secondaryWorkerCount > 0)
         {
             _warmerJob = Task.Run(() =>
@@ -74,9 +81,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 using ArrayPoolList<Thread> tasks = new ArrayPoolList<Thread>(_secondaryWorkerCount);
                 Thread primaryWorkerThread = new Thread(() =>
                 {
-                    RunPrimaryWorker(processExitSource.Token);
+                    RunPrimaryWorker(_cancelTokenSource.Token);
                 });
                 primaryWorkerThread.Name = "TrieWarmer-Primary";
+                primaryWorkerThread.IsBackground = true;
                 primaryWorkerThread.Start();
                 tasks.Add(primaryWorkerThread);
 
@@ -84,10 +92,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 {
                     Thread t = new Thread(() =>
                     {
-                        RunSecondaryWorker(processExitSource.Token);
+                        RunSecondaryWorker(_cancelTokenSource.Token);
                     });
                     t.Name = $"TrieWarmer-Secondary-{i}";
                     t.Priority = ThreadPriority.Lowest;
+                    t.IsBackground = true;
                     t.Start();
                     tasks.Add(t);
                 }
@@ -132,16 +141,14 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("Error in warmup job " + ex);
+            if (_logger.IsError) _logger.Error("Error in primary warmup job ", ex);
         }
     }
 
-    public void RunSecondaryWorker(CancellationToken cancellationToken)
+    private void RunSecondaryWorker(CancellationToken cancellationToken)
     {
         try
         {
@@ -165,12 +172,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("Error in warmup job " + ex);
+            if (_logger.IsError) _logger.Error("Error in warmup job ", ex);
         }
     }
 
@@ -237,7 +242,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         catch (SemaphoreFullException)
         {
-            Console.Error.WriteLine($"Throw 1, {_activeSecondaryWorker}:{_secondaryWorkerCount}");
+            if (_logger.IsError) _logger.Error($"SemaphoreFullException in MaybeWakeOpOtherWorkerSingle, activeSecondaryWorker:{_activeSecondaryWorker}, secondaryWorkerCount:{_secondaryWorkerCount}");
             Interlocked.Decrement(ref _pendingWakeUpSlots);
         }
     }
@@ -364,7 +369,25 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+
+        _cancelTokenSource.Cancel();
+
+        // Release semaphore so that worker detect the cancellation quickly
+        while (true)
+        {
+            try
+            {
+                _executionSlots.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+                break;
+            }
+        }
+
         if (_warmerJob is not null) await _warmerJob;
         _executionSlots.Dispose();
+        _cancelTokenSource.Dispose();
     }
 }

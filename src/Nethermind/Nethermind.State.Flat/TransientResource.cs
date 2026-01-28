@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -24,6 +26,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
     public BloomFilter PrewarmedAddresses = new BloomFilter(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probe, which the SIMD instruction do.
+    public ConcurrentDictionary<(Address, UInt256?), bool> PrewarmedAddresses2 = new(); // 14 is exactly 8 probe, which the SIMD instruction do.
     public TrieNodeCache.ChildCache Nodes = new TrieNodeCache.ChildCache(size.NodesCacheSize);
 
     public Size GetSize() => new(PrewarmedAddresses.Capacity, Nodes.Capacity);
@@ -33,6 +36,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void Reset()
     {
         Nodes.Reset();
+        PrewarmedAddresses2.NoResizeClear();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
@@ -57,6 +61,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public bool ShouldPrewarm(Address address, UInt256? slot)
     {
+        return true;
+        // return PrewarmedAddresses2.TryAdd((address, slot), true);
+        /*
         ulong hash;
         if (slot is null)
         {
@@ -73,6 +80,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         if (PrewarmedAddresses.MightContain(hash)) return false;
         PrewarmedAddresses.Add(hash);
         return true;
+        */
     }
 
     public void Dispose() => PrewarmedAddresses.Dispose();
