@@ -209,7 +209,7 @@ public class ShutterEventSimulator
             eon,
             txIndex,
             identityPreimage[..32].ToArray(),
-            new Address(identityPreimage[32..].ToArray()),
+            new Address(identityPreimage[32..]),
             encryptedTransaction.ToArray(),
             gasLimit
         ]);

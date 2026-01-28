@@ -116,6 +116,11 @@ namespace Nethermind.Core
             return new(this, newNonce, Balance);
         }
 
+        public Account WithChangedBalanceAndNonce(in UInt256 newBalance, in UInt256 newNonce)
+        {
+            return new(this, newNonce, newBalance);
+        }
+
         public Account WithChangedStorageRoot(Hash256 newStorageRoot)
         {
             return new(this, newStorageRoot);

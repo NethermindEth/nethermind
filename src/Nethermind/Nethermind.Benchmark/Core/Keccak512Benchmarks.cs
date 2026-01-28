@@ -20,7 +20,7 @@ namespace Nethermind.Benchmarks.Core
             Array.Empty<byte>(),
             new byte[]{1},
             new byte[100000],
-            TestItem.AddressA.Bytes
+            TestItem.AddressA.ToArray()
         };
 
         [Params(0, 1, 2, 3)]

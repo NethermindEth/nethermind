@@ -21,6 +21,11 @@ namespace Nethermind.State
         private static readonly ValueHash256[] Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
+        private ulong _outstandingWritesEstimate;
+
+        public ulong OutstandingWritesEstimate => _outstandingWritesEstimate;
+        public void ClearWritesEstimate() => _outstandingWritesEstimate = 0;
+
         private static ValueHash256[] CreateLookup()
         {
             const int LookupSize = 1024;
@@ -188,6 +193,7 @@ namespace Nethermind.State
 
         private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {
+            _outstandingWritesEstimate++;
             ReadOnlySpan<byte> rawKey = hash.Bytes;
             if (value.IsZero())
             {
@@ -199,5 +205,8 @@ namespace Nethermind.State
                 Set(rawKey, rlpEncoded);
             }
         }
+
+        internal void IncrementEstimate(ulong count = 1)
+            => _outstandingWritesEstimate += count;
     }
 }

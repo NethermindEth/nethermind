@@ -70,7 +70,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(TestItem.AddressC.Bytes)
+            .PushData(TestItem.AddressC.ToArray())
             .Op(Instruction.BALANCE)
             .Done;
 
@@ -87,7 +87,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
 
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(TestItem.AddressC.Bytes)
+            .PushData(TestItem.AddressC.ToArray())
             .Op(Instruction.BALANCE)
             .Done;
 
@@ -101,7 +101,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(SenderRecipientAndMiner.Default.Miner.Bytes)
+            .PushData(SenderRecipientAndMiner.Default.Miner.ToArray())
             .Op(Instruction.BALANCE)
             .Done;
 

@@ -43,31 +43,30 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
         TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
-        // Pop the first operand from the stack by reference to minimize copying.
-        ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        // Read the 256-bit vector from unaligned memory.
-        Word aVec = ReadUnaligned<Word>(ref bytesRef);
+        // Single bounds check: pop one and get ref to new top (popped is at top + WordSize)
+        ref byte top = ref stack.PopPeekBytesByRef();
+        if (IsNullRef(ref top)) goto StackUnderflow;
 
-        // Peek at the top of the stack for the second operand without removing it.
-        bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        Word bVec = ReadUnaligned<Word>(ref bytesRef);
+        // Read both 256-bit vectors (popped element is 32 bytes after top)
+        ref byte popped = ref Add(ref top, EvmStack.WordSize);
+        Word aVec = ReadUnaligned<Word>(ref popped);
+        Word bVec = ReadUnaligned<Word>(ref top);
 
-        // Write the result directly into the memory of the top stack element.
-        WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
+        // Write the result directly into the memory of the new top stack element
+        WriteUnaligned(ref top, TOpBitwise.Operation(aVec, bVec));
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        return new(programCounter);
+
+    // Forward jump - unpredicted by branch predictor for error path
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -75,6 +74,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(in Word a, in Word b) => Vector256.BitwiseAnd(a, b);
     }
 
@@ -83,6 +83,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(in Word a, in Word b) => Vector256.BitwiseOr(a, b);
     }
 
@@ -91,6 +92,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Word Operation(in Word a, in Word b) => Vector256.Xor(a, b);
     }
 
@@ -111,6 +113,7 @@ internal static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
-        public static Word Operation(in Word a, in Word b) => a == b ? One : default;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Word Operation(in Word a, in Word b) => Vector256.EqualsAll(a, b) ? One : default;
     }
 }

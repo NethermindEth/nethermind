@@ -15,7 +15,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public sealed class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
+    public sealed class JournalCollection<T> : ICollection<T>, IJournal<int>
     {
         private readonly List<T> _list = new();
         public int TakeSnapshot() => Count - 1;
