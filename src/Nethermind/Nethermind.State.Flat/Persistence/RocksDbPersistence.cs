@@ -78,7 +78,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
     {
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
         StateId currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
-        if (currentState != from)
+        if (from != StateId.Sync && currentState != from)
         {
             dbSnap.Dispose();
             throw new InvalidOperationException(
@@ -111,7 +111,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
+                if (to != StateId.Sync)
+                    SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
                 batch.Dispose();
                 dbSnap.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
