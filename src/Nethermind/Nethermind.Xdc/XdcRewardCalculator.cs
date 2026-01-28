@@ -25,18 +25,31 @@ namespace Nethermind.Xdc
     ///   When TIPUpgradeReward activates, protector/observer beneficiaries must be added.
     /// - Current split implemented here: 90% to masternode owner, 10% to foundation.
     /// </summary>
-    public class XdcRewardCalculator(
-        IEpochSwitchManager epochSwitchManager,
-        ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IMasternodeVotingContract masternodeVotingContract) : IRewardCalculator
+    public class XdcRewardCalculator : IRewardCalculator
     {
         private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
         private const long BlocksPerYear = 15768000;
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
-        private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
+        private readonly EthereumEcdsa _ethereumEcdsa;
+        private const long MergeSignRange = 15;
+        private readonly IEpochSwitchManager _epochSwitchManager;
+        private readonly ISpecProvider _specProvider;
+        private readonly IBlockTree _blockTree;
+        private readonly IMasternodeVotingContract _masternodeVotingContract;
 
+        public XdcRewardCalculator(
+            IEpochSwitchManager epochSwitchManager,
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IMasternodeVotingContract masternodeVotingContract)
+        {
+            _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
+            _epochSwitchManager = epochSwitchManager;
+            _specProvider = specProvider;
+            _blockTree = blockTree;
+            _masternodeVotingContract = masternodeVotingContract;
+        }
         /// <summary>
         /// Calculates block rewards according to XDPoS consensus rules.
         ///
@@ -56,16 +69,16 @@ namespace Nethermind.Xdc
                 return Array.Empty<BlockReward>();
 
             // Rewards in XDC are calculated only if it's an epoch switch block
-            if (!epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
+            if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
 
             var number = xdcHeader.Number;
-            IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
             if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
-            var (signers, count) = GetSigningTxCount(number, xdcHeader, spec);
+            var (signers, count) = GetSigningTxCount(xdcHeader, spec);
 
             UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers, count);
@@ -82,43 +95,41 @@ namespace Nethermind.Xdc
             return rewards.ToArray();
         }
 
-        private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(long number, XdcBlockHeader header, IXdcReleaseSpec spec)
+        private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
         {
             var signers = new Dictionary<Address, long>();
+            long number = epochHeader.Number;
             if (number == 0) return (signers, 0);
 
-            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
+            long startBlockNumber = 0, signingCount = 0;
+            long endBlockNumber = epochHeader.Number;
+
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
             var mergeSignRange = spec.MergeSignRange;
 
-            XdcBlockHeader h = header;
+            XdcBlockHeader h = epochHeader;
             for (long i = number - 1; i >= 0; i--)
             {
                 Hash256 parentHash = h.ParentHash;
-                h = blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
+                h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
-                if (epochSwitchManager.IsEpochSwitchAtBlock(h) && i != spec.SwitchBlock + 1)
+                if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && i != spec.SwitchBlock + 1)
                 {
-                    epochCount++;
-                    if (epochCount == signEpochCount) endBlockNumber = i;
-                    if (epochCount == rewardEpochCount)
-                    {
-                        startBlockNumber = i + 1;
-                        // Get masternodes from epoch switch header
-                        masternodes = new HashSet<Address>(h.ValidatorsAddress!);
-                        // TIPUpgradeReward path (protector/observer selection) is currently ignored,
-                        // because on mainnet the upgrade height is set to an effectively unreachable block.
-                        // If/when that changes, we must compute protector/observer sets here.
-                        break;
-                    }
+                    startBlockNumber = i + 1;
+                    // Get masternodes from epoch switch header
+                    masternodes = new HashSet<Address>(h.ValidatorsAddress!);
+                    // TIPUpgradeReward path (protector/observer selection) is currently ignored,
+                    // because on mainnet the upgrade height is set to an effectively unreachable block.
+                    // If/when that changes, we must compute protector/observer sets here.
+                    break;
                 }
 
                 blockNumberToHash[i] = h.Hash;
                 if (!_signingTxsCache.TryGet(h.Hash, out Transaction[] signingTxs))
                 {
-                    Block? block = blockTree.FindBlock(i);
+                    Block? block = _blockTree.FindBlock(h.Hash, h.Number);
                     if (block == null) throw new InvalidOperationException($"Block with number {i} not found");
                     Transaction[] txs = block.Transactions;
                     signingTxs = CacheSigningTxs(h.Hash!, txs, spec);
@@ -235,7 +246,7 @@ namespace Nethermind.Xdc
         private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
             Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
         {
-            Address owner = masternodeVotingContract.GetCandidateOwner(header, masternodeAddress);
+            Address owner = _masternodeVotingContract.GetCandidateOwner(header, masternodeAddress);
 
             // 90% of the reward goes to the masternode
             UInt256 masterReward = reward * 90 / 100;
