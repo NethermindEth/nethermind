@@ -25,4 +25,6 @@ public class PatriciaSnapStorageTree(StorageTree tree) : ISnapStorageTree
 
     public void Commit(WriteFlags writeFlags) =>
         tree.Commit(writeFlags: writeFlags);
+
+    public void Dispose() { } // No-op - Patricia doesn't own resources
 }

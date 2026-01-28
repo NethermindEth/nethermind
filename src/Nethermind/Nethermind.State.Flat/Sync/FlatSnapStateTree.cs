@@ -5,29 +5,49 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Sync;
 
 /// <summary>
-/// ISnapStateTree adapter wrapping StateTree for flat snap sync.
+/// ISnapStateTree adapter for flat snap sync.
+/// Owns reader (for IsPersisted) and writeBatch (for commits), disposing them on Dispose.
 /// </summary>
-public class FlatSnapStateTree(StateTree tree) : ISnapStateTree
+public class FlatSnapStateTree : ISnapStateTree
 {
-    public Hash256 RootHash { get => tree.RootHash; set => tree.RootHash = value; }
+    private readonly IPersistence.IPersistenceReader _reader;
+    private readonly IPersistence.IWriteBatch _writeBatch;
+    private readonly StateTree _tree;
 
-    public void SetRootFromProof(TrieNode root) => tree.RootRef = root;
+    public FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, ILogManager logManager)
+    {
+        _reader = reader;
+        _writeBatch = writeBatch;
+        _tree = new StateTree(new PersistenceTrieStoreAdapter(reader, writeBatch), logManager);
+    }
+
+    public Hash256 RootHash { get => _tree.RootHash; set => _tree.RootHash = value; }
+
+    public void SetRootFromProof(TrieNode root) => _tree.RootRef = root;
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        false; // Snap sync builds new state from scratch; force all nodes to be written
+        _reader.TryLoadStateRlp(path, ReadFlags.None) is not null;
 
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags) =>
-        tree.BulkSet(entries, flags);
+        _tree.BulkSet(entries, flags);
 
-    public void UpdateRootHash() => tree.UpdateRootHash();
+    public void UpdateRootHash() => _tree.UpdateRootHash();
 
-    public void Commit(bool skipRoot, WriteFlags writeFlags) => tree.Commit(skipRoot, writeFlags);
+    public void Commit(bool skipRoot, WriteFlags writeFlags) => _tree.Commit(skipRoot, writeFlags);
 
-    public bool Set(in ValueHash256 path, Account account) => tree.Set(path, account) is not null;
+    public bool Set(in ValueHash256 path, Account account) => _tree.Set(path, account) is not null;
+
+    public void Dispose()
+    {
+        _writeBatch.Dispose();
+        _reader.Dispose();
+    }
 }

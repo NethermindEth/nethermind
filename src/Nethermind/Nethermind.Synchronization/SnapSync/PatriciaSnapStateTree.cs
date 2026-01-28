@@ -29,4 +29,6 @@ public class PatriciaSnapStateTree(StateTree tree) : ISnapStateTree
 
     public bool Set(in ValueHash256 path, Account account) =>
         tree.Set(path, account) is not null;
+
+    public void Dispose() { } // No-op - Patricia doesn't own resources
 }
