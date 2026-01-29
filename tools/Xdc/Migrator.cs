@@ -28,6 +28,8 @@ public static class Migrator
         {
             // TODO: add more verifications
             VerifyNoMissingNodes(source.StateTree, target.StateTree);
+
+            Console.WriteLine("Verification successful.");
         }
 
         return new MigrationResult(copier.StateNodesCopied, copier.CodeNodesCopied);
