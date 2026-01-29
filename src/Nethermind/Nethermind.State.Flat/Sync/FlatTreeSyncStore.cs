@@ -55,7 +55,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         // StateId.Sync bypasses from/to validation, allows writing without state continuity
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
 
-        TrieNode node = new(NodeType.Unknown, data.ToArray(), isDirty: true);
+        TrieNode node = new(NodeType.Unknown, data.ToArray());
         node.ResolveNode(NullTrieNodeResolver.Instance, path);
 
         if (address is null)
@@ -300,7 +300,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             // Empty batch - just incrementing state
         }
         persistenceManager.ResetPersistedStateId();
-
         persistence.Flush();
     }
 

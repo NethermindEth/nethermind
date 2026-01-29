@@ -277,7 +277,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task FastSync()
     {
-        Console.Error.WriteLine("Fast sync start");
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
