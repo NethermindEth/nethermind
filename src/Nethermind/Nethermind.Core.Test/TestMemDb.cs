@@ -120,10 +120,16 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     public byte[]? LastKey => Keys.Max();
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
     {
-        ArrayPoolList<(byte[], byte[]?)> sortedValue = Keys
-            .Order(Bytes.Comparer)
-            .Select((key) => (key, this.Get(key)))
-            .ToPooledList(1);
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
+
+        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
+        {
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0) continue;
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, lastKeyExclusive) >= 0) continue;
+            sortedValue.Add((keyValuePair.Key, keyValuePair.Value));
+        }
+
+        sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
 
         return new FakeSortedView(sortedValue);
     }
