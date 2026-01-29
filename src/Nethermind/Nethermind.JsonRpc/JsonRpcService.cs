@@ -180,7 +180,7 @@ public class JsonRpcService : IJsonRpcService
         hasMissing = false;
         JsonElement providedParameters = request.Params;
 
-        if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
+        if (_logger.IsInfo) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
@@ -329,7 +329,7 @@ public class JsonRpcService : IJsonRpcService
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
+        if (_logger.IsInfo)
         {
             StringBuilder builder = new StringBuilder();
             builder.Append("Executing JSON RPC call ");
@@ -369,7 +369,7 @@ public class JsonRpcService : IJsonRpcService
             }
             builder.Append(']');
             string log = builder.ToString();
-            _logger.Trace(log);
+            _logger.Info(log);
         }
     }
 
