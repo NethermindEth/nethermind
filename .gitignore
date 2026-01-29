@@ -439,6 +439,9 @@ FodyWeavers.xsd
 .claude/
 .gemini/
 
+# Worktrees
+.worktrees/
+
 ## Nethermind
 keystore/
 /.githooks

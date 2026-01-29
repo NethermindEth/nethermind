@@ -13,13 +13,13 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
-[Parallelizable(ParallelScope.All)]
+[NonParallelizable]
 internal class ProposedBlockTests
 {
     [Test]
     public async Task TestShouldSendVoteMsgAndCommitGreatGrandparentBlockAsync()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
@@ -66,7 +66,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestShouldNotCommitIfRoundsNotContinousFor3Rounds()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlock();
 
@@ -93,7 +93,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestProposedBlockMessageHandlerSuccessfullyGenerateVote()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
@@ -143,7 +143,7 @@ internal class ProposedBlockTests
     [TestCase(30)]
     public async Task CanBuildAFinalizedChain(int count)
     {
-        var blockChain = await XdcTestBlockchain.Create(0, true);
+        using var blockChain = await XdcTestBlockchain.Create(0, true);
         blockChain.ChangeReleaseSpec((s) =>
         {
             s.EpochLength = 90;
@@ -168,7 +168,7 @@ internal class ProposedBlockTests
     [Test]
     public async Task TestProposedBlockMessageHandlerNotGenerateVoteIfSignerNotInMNlist()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using var blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
