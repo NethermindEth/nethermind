@@ -5,7 +5,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.State.Flat.Sync;
 
-public class FlatFullStateFinder(PersistenceManager persistenceManager): IFullStateFinder
+public class FlatFullStateFinder(PersistenceManager persistenceManager) : IFullStateFinder
 {
     public long FindBestFullState()
     {
