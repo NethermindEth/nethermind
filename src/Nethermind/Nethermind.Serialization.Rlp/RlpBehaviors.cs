@@ -30,5 +30,10 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
-    ExcludeHashes = 128
+    ExcludeHashes = 128,
+
+    /// <summary>
+    /// EIP-7778: Include GasSpent in receipt encoding
+    /// </summary>
+    Eip7778Receipts = 256
 }

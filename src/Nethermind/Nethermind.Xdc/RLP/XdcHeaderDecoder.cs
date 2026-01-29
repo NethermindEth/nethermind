@@ -31,9 +31,9 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         Hash256? receiptsRoot = decoderContext.DecodeKeccak();
         Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
-        long number = decoderContext.DecodeLong();
-        long gasLimit = decoderContext.DecodeLong();
-        long gasUsed = decoderContext.DecodeLong();
+        long number = decoderContext.DecodePositiveLong();
+        long gasLimit = decoderContext.DecodePositiveLong();
+        long gasUsed = decoderContext.DecodePositiveLong();
         ulong timestamp = decoderContext.DecodeULong();
         byte[]? extraData = decoderContext.DecodeByteArray();
 
@@ -95,9 +95,9 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         Hash256? receiptsRoot = rlpStream.DecodeKeccak();
         Bloom? bloom = rlpStream.DecodeBloom();
         UInt256 difficulty = rlpStream.DecodeUInt256();
-        long number = rlpStream.DecodeLong();
-        long gasLimit = rlpStream.DecodeLong();
-        long gasUsed = rlpStream.DecodeLong();
+        long number = rlpStream.DecodePositiveLong();
+        long gasLimit = rlpStream.DecodePositiveLong();
+        long gasUsed = rlpStream.DecodePositiveLong();
         ulong timestamp = rlpStream.DecodeULong();
         byte[]? extraData = rlpStream.DecodeByteArray();
 
@@ -237,4 +237,3 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
     }
 }
-

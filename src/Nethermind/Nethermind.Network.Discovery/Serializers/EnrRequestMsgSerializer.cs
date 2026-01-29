@@ -36,7 +36,7 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMes
         NettyRlpStream rlpStream = new(data);
 
         rlpStream.ReadSequenceLength();
-        long expirationTime = rlpStream.DecodeLong();
+        long expirationTime = rlpStream.DecodePositiveLong();
 
         EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);
         return msg;

@@ -107,13 +107,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                             block.Timestamp,
                             tx.GetGasInfo(spec, block.Header),
                             l1BlockGasInfo.GetTxGasInfo(tx),
-                            receipts.GetBlockLogFirstIndex(receipt.Index))
+                            receipts.GetBlockLogFirstIndex(receipt.Index),
+                            spec.IsEip7778Enabled)
                         : new OptimismReceiptForRpc(
                             tx.Hash!,
                             receipt,
                             block.Timestamp,
                             tx.GetGasInfo(spec, block.Header),
-                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
+                            receipts.GetBlockLogFirstIndex(receipt.Index),
+                            spec.IsEip7778Enabled))];
         return ResultWrapper<ReceiptForRpc[]?>.Success(result);
     }
 
@@ -164,6 +166,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         }
 
         Block block = foundBlock.Object;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, _opSpecHelper);
         OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
@@ -173,13 +176,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                         blockTimestamp,
                         gasInfo.Value,
                         l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)),
-                        logIndexStart)
+                        logIndexStart,
+                        spec.IsEip7778Enabled)
                 : new OptimismReceiptForRpc(
                         txHash,
                         receipt,
                         blockTimestamp,
                         gasInfo.Value,
-                        logIndexStart);
+                        logIndexStart,
+                        spec.IsEip7778Enabled);
         return ResultWrapper<ReceiptForRpc?>.Success(result);
     }
 

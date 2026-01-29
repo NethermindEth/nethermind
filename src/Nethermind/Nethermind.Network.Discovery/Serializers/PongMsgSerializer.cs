@@ -52,7 +52,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         rlp.DecodeInt(); // UDP port (we ignore and take it from Netty)
         rlp.DecodeInt(); // TCP port
         byte[] token = rlp.DecodeByteArray();
-        long expirationTime = rlp.DecodeLong();
+        long expirationTime = rlp.DecodePositiveLong();
 
         PongMsg msg = new(farPublicKey, expirationTime, token);
         return msg;

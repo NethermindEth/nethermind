@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -43,6 +44,44 @@ namespace Nethermind.JsonRpc.Test.Data
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Gas_spent_is_omitted_when_not_enabled()
+        {
+            Hash256 txHash = Keccak.OfAnEmptyString;
+            TxReceipt receipt = new()
+            {
+                GasUsed = 21000,
+                GasUsedTotal = 21000,
+                GasSpent = 20000,
+                Logs = []
+            };
+
+            ReceiptForRpc receiptForRpc = new(txHash, receipt, 0, new(), includeGasSpent: false);
+
+            Assert.That(receiptForRpc.GasSpent, Is.Null);
+            string json = new EthereumJsonSerializer().Serialize(receiptForRpc);
+            Assert.That(json, Does.Not.Contain("gasSpent"));
+        }
+
+        [Test]
+        public void Gas_spent_is_included_when_enabled()
+        {
+            Hash256 txHash = Keccak.OfAnEmptyString;
+            TxReceipt receipt = new()
+            {
+                GasUsed = 21000,
+                GasUsedTotal = 21000,
+                GasSpent = 20000,
+                Logs = []
+            };
+
+            ReceiptForRpc receiptForRpc = new(txHash, receipt, 0, new(), includeGasSpent: true);
+
+            Assert.That(receiptForRpc.GasSpent, Is.EqualTo(20000));
+            string json = new EthereumJsonSerializer().Serialize(receiptForRpc);
+            Assert.That(json, Does.Contain("gasSpent"));
         }
     }
 }

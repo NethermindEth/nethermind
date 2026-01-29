@@ -14,9 +14,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             GetAccountRangeMessage message = new();
             rlpStream.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
+            message.RequestId = rlpStream.DecodePositiveLong();
             message.AccountRange = new(rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak());
-            message.ResponseBytes = rlpStream.DecodeLong();
+            message.ResponseBytes = rlpStream.DecodePositiveLong();
 
             return message;
         }

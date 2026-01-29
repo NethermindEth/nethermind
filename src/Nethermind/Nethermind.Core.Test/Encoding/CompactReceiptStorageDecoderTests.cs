@@ -268,5 +268,79 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(deserialized.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
             Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
         }
+
+        [Test]
+        public void Compact_receipt_storage_decoder_encodes_gas_spent_when_eip7778_enabled()
+        {
+            TxReceipt txReceipt = Build.A.Receipt
+                .WithGasUsedTotal(1000)
+                .WithGasSpent(800)
+                .WithStatusCode(1)
+                .WithCalculatedBloom()
+                .TestObject;
+
+            CompactReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7778Receipts);
+            TxReceipt? deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+            Assert.That(deserialized?.GasSpent, Is.EqualTo(800), "gas spent");
+            Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(1000), "gas used total");
+        }
+
+        [Test]
+        public void Compact_receipt_storage_decoder_ignores_gas_spent_when_eip7778_disabled()
+        {
+            TxReceipt txReceipt = Build.A.Receipt
+                .WithGasUsedTotal(1000)
+                .WithGasSpent(800)
+                .WithStatusCode(1)
+                .WithCalculatedBloom()
+                .TestObject;
+
+            CompactReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            TxReceipt? deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+            Assert.That(deserialized?.GasSpent, Is.Null, "gas spent should be null when EIP-7778 is disabled");
+            Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(1000), "gas used total");
+        }
+
+        [Test]
+        public void Compact_receipt_storage_decoder_roundtrip_with_gas_spent(
+            [Values(true, false)] bool valueDecoder)
+        {
+            TxReceipt txReceipt = Build.A.Receipt
+                .WithSender(TestItem.AddressA)
+                .WithGasUsedTotal(21000)
+                .WithGasSpent(18000)
+                .WithStatusCode(1)
+                .WithLogs(Build.A.LogEntry
+                    .WithTopics(new Hash256("0x00000000000000000000000000000000000000000000000000000000000000ab"))
+                    .WithData(Bytes.FromHexString("0xdeadbeef"))
+                    .TestObject)
+                .WithCalculatedBloom()
+                .TestObject;
+
+            CompactReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7778Receipts);
+
+            TxReceipt? deserialized;
+            if (valueDecoder)
+            {
+                Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
+                deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
+            }
+            else
+            {
+                deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
+            }
+
+            Assert.That(deserialized?.GasSpent, Is.EqualTo(18000), "gas spent");
+            Assert.That(deserialized?.GasUsedTotal, Is.EqualTo(21000), "gas used total");
+            Assert.That(deserialized?.StatusCode, Is.EqualTo(1), "status code");
+            Assert.That(deserialized?.Sender, Is.EqualTo(TestItem.AddressA), "sender");
+            Assert.That(deserialized?.Logs?.Length, Is.EqualTo(1), "logs count");
+            Assert.That(deserialized?.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
+        }
     }
 }

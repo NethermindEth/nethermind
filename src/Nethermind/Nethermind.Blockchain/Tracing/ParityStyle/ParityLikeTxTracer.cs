@@ -192,7 +192,7 @@ public class ParityLikeTxTracer : TxTracer
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
         if (_currentAction is not null)
@@ -208,7 +208,7 @@ public class ParityLikeTxTracer : TxTracer
         _trace.Action!.Result!.Output = output;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
         if (_currentAction is not null)

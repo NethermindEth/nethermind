@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,7 +34,8 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         TxReceipt txReceipt = new();
 
-        _ = ctx.ReadSequenceLength();
+        int sequenceLength = ctx.ReadSequenceLength();
+        int receiptEnd = ctx.Position + sequenceLength;
 
         txReceipt.TxType = (TxType)ctx.DecodeByte();
 
@@ -40,16 +43,16 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
         }
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
@@ -64,7 +67,30 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         txReceipt.Logs = entries;
 
+        // EIP-7778: Read GasSpent if present (after logs sequence)
+        bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+        if (ctx.Position < receiptEnd)
+        {
+            txReceipt.GasSpent = ctx.DecodePositiveLong();
+        }
+
+        if (ctx.Position != receiptEnd)
+        {
+            if (allowExtraBytes)
+            {
+                ctx.Position = receiptEnd;
+            }
+            else
+            {
+                ThrowUnexpectedReceiptField();
+            }
+        }
+
         return txReceipt;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedReceiptField()
+            => throw new RlpException("Unexpected receipt field");
     }
 
     private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -88,6 +114,13 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
                 : Rlp.LengthOf(item.PostTransactionState);
+        }
+
+        // EIP-7778: Include GasSpent in content length if flag is set and value is present
+        bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
+        if (isEip7778Receipts && item.GasSpent.HasValue)
+        {
+            contentLength += Rlp.LengthOf(item.GasSpent.Value);
         }
 
         return (contentLength, logsLength);
@@ -143,6 +176,12 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         for (var i = 0; i < logs.Length; i++)
         {
             rlpStream.Encode(logs[i]);
+        }
+
+        // EIP-7778: Encode GasSpent after logs if flag is set and value is present
+        if ((rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts && item.GasSpent.HasValue)
+        {
+            rlpStream.Encode(item.GasSpent.Value);
         }
     }
 }
