@@ -70,8 +70,11 @@ public class FlatTrieVerifier
         ArgumentNullException.ThrowIfNull(_persistence);
         ArgumentNullException.ThrowIfNull(_flatDbManager);
 
+        StateId stateId = new StateId(stateAtBlock);
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(new StateId(stateAtBlock));
+        if (reader.CurrentState != stateId) throw new InvalidOperationException($"With flat, only the persisted state can be verified. Current persisted state {reader.CurrentState}");
+
+        using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId);
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
         Hash256 stateRoot = stateAtBlock.StateRoot!;
 

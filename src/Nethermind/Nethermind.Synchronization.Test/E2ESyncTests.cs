@@ -361,11 +361,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken,
                 (h) => blockTree.BlockAddedToMain += h,
                 (h) => blockTree.BlockAddedToMain -= h,
-                (e) =>
-                {
-                    Console.Error.WriteLine($"Got num {e.Block.Number}");
-                    return e.Block.Number == serverHead?.Number;
-                });
+                (e) => e.Block.Number == serverHead?.Number);
         }
 
         public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
@@ -657,7 +653,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            bool stateVerified = worldStateManager.VerifyTrie(blockTree.Head?.Header!, cancellationToken);
+            // On flat, verify trie only work with persistence
+            worldStateManager.FlushCache(cancellationToken);
+
+            BlockHeader? head = blockTree.Head?.Header;
+            Console.Error.WriteLine($"On {head?.ToString(BlockHeader.Format.Short)}");
+            bool stateVerified = worldStateManager.VerifyTrie(head!, cancellationToken);
             Assert.That(stateVerified, Is.True);
         }
     }

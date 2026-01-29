@@ -132,6 +132,36 @@ namespace Nethermind.Core.Extensions
 
                 return y.Length > x.Length ? 1 : 0;
             }
+
+            public static int CompareWithCorrectLength(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+            {
+                if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                    x.Length == y.Length)
+                {
+                    return 0;
+                }
+
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : -1;  // empty < non-empty
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return 1;  // x is longer, so x > y
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
         }
 
         public static readonly byte[] Zero32 = new byte[32];
