@@ -25,15 +25,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
 
+[Parallelizable(ParallelScope.All)]
 public class ParallelBlockValidationTransactionsExecutorTests
 {
     private static readonly EthereumEcdsa Ecdsa = new(BlockchainIds.Mainnet);
 
-    public class ParallelTestBlockchain(IBlocksConfig blocksConfig) : TestBlockchain
+    public class ParallelTestBlockchain(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec) : TestBlockchain
     {
-        public static async Task<ParallelTestBlockchain> Create(IBlocksConfig blocksConfig, Action<ContainerBuilder> configurer = null)
+        public static async Task<ParallelTestBlockchain> Create(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec = null, Action<ContainerBuilder> configurer = null)
         {
-            ParallelTestBlockchain chain = new(blocksConfig);
+            ParallelTestBlockchain chain = new(blocksConfig, releaseSpec ?? Osaka.Instance);
             await chain.Build(configurer);
             return chain;
         }
@@ -44,7 +45,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance));
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec));
     }
 
     public static IEnumerable<TestCaseData> SimpleBlocksTests
@@ -52,18 +53,58 @@ public class ParallelBlockValidationTransactionsExecutorTests
         get
         {
             yield return Test("1 Transaction", [Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0)]);
+
             yield return Test("3 Transactions, nonce dependency",
             [
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
             ]);
+
+            yield return Test("5 Transactions, nonce dependency",
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1, 2.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressD, 2, 3.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressE, 3, 4.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressF, 4, 5.Ether()),
+            ]);
+
             yield return Test("Balance changes across transactions",
             [
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 10.Ether()),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1, 5.Ether()),
                 Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 3.Ether()),
             ]);
+
+            yield return Test("Balance transfers from multiple senders",
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 500.Ether()),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 500.Ether()),
+                Tx(TestItem.PrivateKeyC, TestItem.AddressD, 0, 500.Ether()),
+            ]);
+
+            // Stress test with 15 transactions from 3 senders
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            Transaction[] manyTxs = new Transaction[15];
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 5; j++)
+                {
+                    manyTxs[i * 5 + j] = Build.A.Transaction
+                        .WithType(TxType.EIP1559)
+                        .To(TestItem.AddressD)
+                        .WithNonce((UInt256)j)
+                        .WithChainId(BlockchainIds.Mainnet)
+                        .WithMaxFeePerGas(2.GWei())
+                        .WithMaxPriorityFeePerGas(1.GWei())
+                        .WithValue(1.Wei())
+                        .WithGasLimit(21000)
+                        .SignedAndResolved(senders[i], false)
+                        .TestObject;
+                }
+            }
+            yield return Test("15 Transactions from 3 senders", manyTxs);
         }
     }
 
@@ -160,6 +201,29 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 TxToContract(TestItem.PrivateKeyB, storeCallerAddress, 0, []),
                 TxToContract(TestItem.PrivateKeyC, storeCallerAddress, 0, []),
             ]);
+
+            // Contract deployment and immediate call
+            byte[] simpleCode = Prepare.EvmCode
+                .Op(Instruction.CALLVALUE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .STOP()
+                .Done;
+            byte[] simpleInitCode = Prepare.EvmCode.ForInitOf(simpleCode).Done;
+            Address simpleAddress = ContractAddress.From(TestItem.AddressA, 0);
+            yield return Test("Contract deployment and immediate call",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, simpleInitCode),
+                Build.A.Transaction
+                    .To(simpleAddress)
+                    .WithNonce(1)
+                    .WithChainId(BlockchainIds.Mainnet)
+                    .WithGasLimit(100_000)
+                    .WithData([])
+                    .SignedAndResolved(TestItem.PrivateKeyA, false)
+                    .WithValue(5.Ether())
+                    .TestObject
+            ]);
         }
     }
 
@@ -184,6 +248,26 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 TxSetCode(TestItem.PrivateKeyA, TestItem.AddressD, 1, [authD]),
                 TxSetCode(TestItem.PrivateKeyA, TestItem.AddressE, 2, [authE]),
             ]);
+
+            // Authorization chain B→C, C→D, D→E
+            AuthorizationTuple authB2 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            AuthorizationTuple authC2 = Ecdsa.Sign(TestItem.PrivateKeyC, BlockchainIds.Mainnet, TestItem.AddressD, 0);
+            AuthorizationTuple authD2 = Ecdsa.Sign(TestItem.PrivateKeyD, BlockchainIds.Mainnet, TestItem.AddressE, 0);
+            yield return Test("Authorization chain",
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authB2]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressC, 1, [authC2]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressD, 2, [authD2]),
+            ]);
+
+            // Re-delegation: delegate B to C, then B to D
+            AuthorizationTuple authB3 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            AuthorizationTuple authB4 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressD, 1);
+            yield return Test("Re-delegation in same block",
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authB3]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 1, [authB4]),
+            ]);
         }
     }
 
@@ -203,7 +287,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithValue(value ?? 1.Ether())
             .WithGasLimit(gasLimit)
-            .WithCode(data)
+            .WithCode(data ?? [])
             .SignedAndResolved(from, false)
             .TestObject;
 
@@ -525,6 +609,135 @@ public class ParallelBlockValidationTransactionsExecutorTests
         Block txBlock = await parallel.AddBlock(txFromB);
 
         Assert.That(txBlock.Transactions, Has.Length.EqualTo(1), "Transaction from delegated account should be included");
+    }
+
+    [Test]
+    public async Task Empty_block_parallel()
+    {
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+
+        Block block = await parallel.AddBlock();
+        Block singleBlock = await single.AddBlock();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(0));
+            Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
+        });
+    }
+
+    [Test]
+    public async Task Storage_conflicts_with_setup_block()
+    {
+        // Tests WAW (Write-After-Write) conflicts requiring re-execution
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+
+        // Contract that increments slot 0
+        byte[] incrementerCode = Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SLOAD)
+            .PushData(1)
+            .Op(Instruction.ADD)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] incrementerInitCode = Prepare.EvmCode.ForInitOf(incrementerCode).Done;
+
+        Transaction createIncrementer = TxCreateContract(TestItem.PrivateKeyA, 0, incrementerInitCode);
+        await parallel.AddBlock(createIncrementer);
+        await single.AddBlock(createIncrementer);
+
+        Address incrementerAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+        // 3 transactions from different senders all incrementing the same counter
+        PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < 3; i++)
+        {
+            int nonce = i == 0 ? 1 : 0;
+            transactions[i] = Build.A.Transaction
+                .To(incrementerAddress)
+                .WithNonce((UInt256)nonce)
+                .WithChainId(BlockchainIds.Mainnet)
+                .WithGasLimit(100_000)
+                .WithData([])
+                .SignedAndResolved(senders[i], false)
+                .WithValue(0)
+                .TestObject;
+        }
+
+        Block block = await parallel.AddBlock(transactions);
+        Block singleBlock = await single.AddBlock(transactions);
+
+        Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
+    }
+
+    [Test]
+    public async Task CREATE2_collision_with_setup_block()
+    {
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+
+        byte[] simpleCode = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(simpleCode).Done;
+        byte[] salt = new UInt256(12345).ToBigEndian();
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create2(initCode, salt, 0)
+            .STOP()
+            .Done;
+        byte[] factoryInitCode = Prepare.EvmCode.ForInitOf(factoryCode).Done;
+
+        Transaction deployFactory1 = TxCreateContract(TestItem.PrivateKeyA, 0, factoryInitCode);
+        Transaction deployFactory2 = TxCreateContract(TestItem.PrivateKeyB, 0, factoryInitCode);
+
+        await parallel.AddBlock(deployFactory1, deployFactory2);
+        await single.AddBlock(deployFactory1, deployFactory2);
+
+        Address factory1 = ContractAddress.From(TestItem.AddressA, 0);
+        Address factory2 = ContractAddress.From(TestItem.AddressB, 0);
+
+        Transaction callFactory1 = TxToContract(TestItem.PrivateKeyA, factory1, 1, []);
+        Transaction callFactory2 = TxToContract(TestItem.PrivateKeyB, factory2, 1, []);
+
+        Transaction[] transactions = [callFactory1, callFactory2];
+        Block block = await parallel.AddBlock(transactions);
+        Block singleBlock = await single.AddBlock(transactions);
+
+        Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
+    }
+
+    [Test]
+    public async Task SelfDestruct_with_Shanghai_spec()
+    {
+        // Shanghai spec where SELFDESTRUCT still clears storage for pre-existing contracts
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), Shanghai.Instance);
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), Shanghai.Instance);
+
+        byte[] selfDestructCode = Prepare.EvmCode
+            .SELFDESTRUCT(TestItem.AddressB)
+            .Done;
+        byte[] selfDestructInitCode = Prepare.EvmCode.ForInitOf(selfDestructCode).Done;
+
+        Transaction deployDestructor = TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether());
+        await parallel.AddBlock(deployDestructor);
+        await single.AddBlock(deployDestructor);
+
+        Address destructorAddress = ContractAddress.From(TestItem.AddressA, 0);
+        Transaction callDestructor = TxToContract(TestItem.PrivateKeyA, destructorAddress, 1, []);
+
+        Block block = await parallel.AddBlock(callDestructor);
+        Block singleBlock = await single.AddBlock(callDestructor);
+
+        Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
     }
 
     private static IBlocksConfig BuildConfig(bool parallel) =>

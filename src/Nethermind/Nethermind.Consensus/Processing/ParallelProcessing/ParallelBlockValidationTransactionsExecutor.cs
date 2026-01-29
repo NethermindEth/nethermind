@@ -125,15 +125,9 @@ public class ParallelTransactionProcessor(
         try
         {
             TransactionResult result = transactionProcessor.Execute(transaction, tracer);
+            // TODO: How to handle transaction errors?
             if (!result)
             {
-                // blockingTx = FindNonceDependency(result, txIndex, transaction);
-                //
-                // if (blockingTx is not null)
-                // {
-                //     return Status.ReadError;
-                // }
-
                 InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transaction, txIndex);
             }
 
@@ -171,31 +165,5 @@ public class ParallelTransactionProcessor(
             blockReceiptsTracer.StartNewBlockTrace(block);
             return blockReceiptsTracer.StartNewTxTrace(transaction);
         }
-    }
-
-    private int? FindNonceDependency(TransactionResult result, int txIndex, Transaction tx)
-    {
-        for (int i = txIndex - 1; i >= 0; i--)
-        {
-            Transaction prevTx = block.Transactions[i];
-            if (prevTx.SenderAddress == tx.SenderAddress)
-            {
-                return prevTx.Nonce + 1 == tx.Nonce ? i : null;
-            }
-
-            if (prevTx.HasAuthorizationList)
-            {
-                foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
-                {
-                    // how to handle wrong authorizations?
-                    if (tuple.Authority == tx.SenderAddress)
-                    {
-                        return tuple.Nonce + 1 == tx.Nonce ? i : null;
-                    }
-                }
-            }
-        }
-
-        return null;
     }
 }
