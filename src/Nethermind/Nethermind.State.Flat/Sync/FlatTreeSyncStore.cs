@@ -19,6 +19,7 @@ namespace Nethermind.State.Flat.Sync;
 public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
 {
     ILogger _logger = logManager.GetClassLogger<FlatTreeSyncStore>();
+    private bool _wasFinalized = false;
 
     /// <summary>
     /// Represents a deletion range with from/to bounds.
@@ -42,6 +43,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
     {
+        if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
+
         byte[]? existingData;
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
@@ -291,6 +294,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
+        if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
+
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         StateId from = reader.CurrentState;
         StateId to = new StateId(pivotHeader);
