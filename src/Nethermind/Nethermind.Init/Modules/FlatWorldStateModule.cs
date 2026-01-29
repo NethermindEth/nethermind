@@ -25,6 +25,7 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -70,6 +71,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .Add<FlatOverridableWorldScope>()
 
             // Sync components
+            .AddSingleton<ISnapTrieFactory, FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))

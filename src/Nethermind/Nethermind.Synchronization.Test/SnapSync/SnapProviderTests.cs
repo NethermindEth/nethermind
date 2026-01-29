@@ -21,21 +21,46 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Sync;
 using Nethermind.State.SnapServer;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
-public class SnapProviderTests
+[TestFixture(true)]
+[TestFixture(false)]
+public class SnapProviderTests(bool useFlat)
 {
+
+    private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null)
+    {
+        TestSyncConfig testConfig = testSyncConfig ?? new TestSyncConfig();
+
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(testConfig));
+
+        if (useFlat)
+        {
+            builder = builder
+                .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new TestMemColumnsDb<FlatDbColumns>())
+                .AddSingleton<IPersistence, RocksDbPersistence>()
+                .AddSingleton<ISnapTrieFactory, FlatSnapTrieFactory>();
+        }
+
+        return builder;
+    }
+
+    private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null)
+    {
+        return CreateContainerBuilder(testSyncConfig).Build();
+    }
+
     [Test]
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
     {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-            .Build();
+        using IContainer container = CreateContainer();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
@@ -51,9 +76,7 @@ public class SnapProviderTests
     [Test]
     public void AddAccountRange_ResponseHasEmptyListOfAccountsAndOneProof_ReturnsExpiredRootHash()
     {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-            .Build();
+        using IContainer container = CreateContainer();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
@@ -68,9 +91,7 @@ public class SnapProviderTests
     [Test]
     public void AddStorageRange_ResponseReversedOrderedListOfAccounts_ReturnsInvalidOrder()
     {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-            .Build();
+        using IContainer container = CreateContainer();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
@@ -101,9 +122,7 @@ public class SnapProviderTests
     [Test]
     public void AddStorageRange_EmptySlotsList_ReturnsEmptySlots()
     {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-            .Build();
+        using IContainer container = CreateContainer();
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
@@ -141,11 +160,10 @@ public class SnapProviderTests
 
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 1
-            }))
+            })
             .WithSuggestedHeaderOfStateRoot(root)
             .Build();
 
@@ -183,11 +201,10 @@ public class SnapProviderTests
 
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(new TestSyncConfig()
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig()
             {
                 SnapSyncAccountRangePartitionCount = 2
-            }))
+            })
             .WithSuggestedHeaderOfStateRoot(root)
             .Build();
 
@@ -197,6 +214,7 @@ public class SnapProviderTests
         (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, Keccak.MaxValue, 1.MB(), default);
 
+        // The range given out here should be half.
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
@@ -205,7 +223,25 @@ public class SnapProviderTests
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 
-        container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(6);
+        if (useFlat)
+        {
+            IPersistence persistence = container.Resolve<IPersistence>();
+            using var reader = persistence.CreateReader();
+            int accountCount = 0;
+            using (var accountIterator = reader.CreateAccountIterator())
+            {
+                while (accountIterator.MoveNext())
+                {
+                    accountCount++;
+                }
+            }
+
+            Assert.That(accountCount, Is.EqualTo(6));
+        }
+        else
+        {
+            container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(6);
+        }
     }
 
     [TestCase("badreq-roothash.zip")]
