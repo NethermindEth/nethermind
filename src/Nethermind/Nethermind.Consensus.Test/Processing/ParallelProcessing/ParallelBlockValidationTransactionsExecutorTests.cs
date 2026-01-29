@@ -297,6 +297,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     .WithValue(5.Ether())
                     .TestObject
             ]);
+
         }
     }
 
@@ -804,5 +805,105 @@ public class ParallelBlockValidationTransactionsExecutorTests
         }
 
         Assert.That(result, Is.EqualTo(TransactionResult.SenderHasDeployedCode));
+    }
+
+    [Test]
+    public async Task Reexecution_when_slow_contract_provides_balance()
+    {
+        // Test that demonstrates Block-STM re-execution mechanism:
+        // tx0: Deploy contract that does expensive work then transfers balance to recipient
+        // tx1: Call contract with 10 ETH, recipient = F (slow, expensive hashing)
+        // tx2: Simple transfer from F to B (fast, but F has no initial balance)
+        // Expected: tx2 initially sees F's balance = 0, after tx1 completes F has balance, tx2 re-executes and succeeds
+
+        // Build the expensive transfer contract with 100 keccak operations
+        Prepare slowTransferBuilder = Prepare.EvmCode
+            .MSTORE(0, new byte[32]);
+        for (int i = 0; i < 100; i++)
+        {
+            slowTransferBuilder
+                .KECCAK256(0, 32)
+                .MSTORE(0);
+        }
+        byte[] transferCode = slowTransferBuilder
+            .PushData(0)        // retLength
+            .PushData(0)        // retOffset
+            .PushData(0)        // argsLength
+            .PushData(0)        // argsOffset
+            .SELFBALANCE()      // value = contract balance
+            .CALLDATALOAD(0)    // addr = recipient from calldata
+            .GAS()              // gas = remaining gas
+            .Op(Instruction.CALL)
+            .STOP()
+            .Done;
+        byte[] transferInitCode = Prepare.EvmCode.ForInitOf(transferCode).Done;
+        Address transferContract = ContractAddress.From(TestItem.AddressB, 0);
+
+        // Setup block: Deploy the contract
+        Transaction deployTx = TxCreateContract(TestItem.PrivateKeyB, 0, transferInitCode);
+
+        // Test block transactions:
+        // tx0: Call contract with 10 ETH, transfers to F after expensive work
+        Transaction callContractTx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .To(transferContract)
+            .WithNonce(0)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(2.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithGasLimit(1_000_000)
+            .WithData(TestItem.AddressF.Bytes.PadLeft(32))
+            .SignedAndResolved(TestItem.PrivateKeyA, false)
+            .WithValue(10.Ether())
+            .TestObject;
+
+        // tx1: Simple transfer from F (initially unfunded, gets balance from tx0)
+        Transaction transferFromF = Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0, 5.Ether());
+
+        // Test with parallel processing
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        // Test with single-threaded processing for comparison
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+
+        // Setup: Deploy contract in both chains
+        await parallel.AddBlock(deployTx);
+        await single.AddBlock(TxCreateContract(TestItem.PrivateKeyB, 0, transferInitCode));
+
+        // Build test block with both transactions, bypassing tx pool
+        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
+        BlockHeader singleHead = single.BlockTree.Head!.Header;
+
+        Block parallelBlock = Build.A.Block
+            .WithTransactions(callContractTx, transferFromF)
+            .WithParent(parallelHead)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+
+        Block singleBlock = Build.A.Block
+            .WithTransactions(callContractTx, transferFromF)
+            .WithParent(singleHead)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+
+        IReleaseSpec parallelSpec = parallel.SpecProvider.GetSpec(parallelBlock.Header);
+        IReleaseSpec singleSpec = single.SpecProvider.GetSpec(singleBlock.Header);
+
+        // Process blocks directly
+        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
+        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
+
+        (_, TxReceipt[] parallelReceipts) = parallel.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec);
+        (_, TxReceipt[] singleReceipts) = single.MainProcessingContext.BlockProcessor.ProcessOne(singleBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, singleSpec);
+
+        // Both should succeed with 2 transactions
+        Assert.Multiple(() =>
+        {
+            Assert.That(parallelReceipts, Has.Length.EqualTo(2), "Parallel should process 2 transactions");
+            Assert.That(singleReceipts, Has.Length.EqualTo(2), "Single should process 2 transactions");
+            Assert.That(parallelReceipts[0].StatusCode, Is.EqualTo(1), "Parallel tx0 should succeed");
+            Assert.That(parallelReceipts[1].StatusCode, Is.EqualTo(1), "Parallel tx1 should succeed");
+            Assert.That(singleReceipts[0].StatusCode, Is.EqualTo(1), "Single tx0 should succeed");
+            Assert.That(singleReceipts[1].StatusCode, Is.EqualTo(1), "Single tx1 should succeed");
+        });
     }
 }
