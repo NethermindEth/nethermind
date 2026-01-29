@@ -220,6 +220,12 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
+    public void ResetPersistedStateId()
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        _currentPersistedStateId = reader.CurrentState;
+    }
+
     internal void PersistSnapshot(Snapshot snapshot)
     {
         long compactLength = snapshot.To.BlockNumber! - snapshot.From.BlockNumber!;

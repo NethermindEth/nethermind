@@ -24,6 +24,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -73,6 +74,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
             .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
+            .Intercept<ISyncConfig>((syncConfig) =>
+            {
+                syncConfig.SnapServingEnabled = true;
+            })
+            .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
