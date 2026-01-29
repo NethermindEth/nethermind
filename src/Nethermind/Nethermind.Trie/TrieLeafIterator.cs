@@ -56,7 +56,15 @@ public ref struct TrieLeafIterator
             ref StackFrame frame = ref _stack[_stackDepth - 1];
 
             // Resolve the node if needed
-            frame.Node.ResolveNode(_resolver, frame.Path);
+            try
+            {
+                frame.Node.ResolveNode(_resolver, frame.Path);
+            }
+            catch (TrieNodeException)
+            {
+                Pop();
+                continue;
+            }
 
             switch (frame.Node.NodeType)
             {

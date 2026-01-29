@@ -12,6 +12,7 @@ public interface ISnapStorageTree : ISnapTree
 {
     Hash256 RootHash { get; }
 
+    void Clear();
     void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags);
     void UpdateRootHash();
     void Commit(WriteFlags writeFlags);

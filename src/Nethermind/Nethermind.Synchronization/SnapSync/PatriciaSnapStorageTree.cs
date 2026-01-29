@@ -15,6 +15,8 @@ public class PatriciaSnapStorageTree(StorageTree tree) : ISnapStorageTree
 
     public void SetRootFromProof(TrieNode root) => tree.RootRef = root;
 
+    public void Clear() => tree.RootHash = Keccak.EmptyTreeHash;
+
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         tree.TrieStore.IsPersisted(path, keccak);
 

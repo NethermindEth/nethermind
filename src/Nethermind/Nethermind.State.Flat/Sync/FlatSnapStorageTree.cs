@@ -36,6 +36,12 @@ public class FlatSnapStorageTree : ISnapStorageTree
 
     public void SetRootFromProof(TrieNode root) => _tree.RootRef = root;
 
+    public void Clear()
+    {
+        _writeBatch.Clear();
+        _tree.RootHash = Keccak.EmptyTreeHash;
+    }
+
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None) is not null;
 

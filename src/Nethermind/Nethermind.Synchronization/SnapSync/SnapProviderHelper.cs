@@ -185,10 +185,26 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true, tree.RootHash);
             }
 
+            ValueHash256 effectiveLimitHash = limitHash ?? Keccak.MaxValue;
+            ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
+
+            bool hasEarlierEntries = false;
+            int hasExtraSlotIdx = -1;
+
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
             for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
+
+                if (slot.Path >= effectiveLimitHash && hasExtraSlotIdx == -1)
+                {
+                    hasExtraSlotIdx = index;
+                }
+                else if (slot.Path < effectiveStartingHash)
+                {
+                    hasEarlierEntries = true;
+                }
+
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
                 entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             }
@@ -206,7 +222,32 @@ namespace Nethermind.Synchronization.SnapSync
             // That lock object should be shared between all other StorageRange requests for the same account.
             lock (account.Account)
             {
-                StitchBoundaries(sortedBoundaryList, tree);
+                if (hasExtraSlotIdx != -1 && !hasEarlierEntries)
+                {
+                    // Extra slots beyond limit - rebuild without them, skip stitching
+                    tree.Clear();
+                    entries.Truncate(hasExtraSlotIdx);
+                    tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
+                }
+                else if (hasEarlierEntries)
+                {
+                    // Slots outside range - rebuild filtered, skip stitching
+                    tree.Clear();
+                    using ArrayPoolListRef<PatriciaTree.BulkSetEntry> filteredEntries = new(slots.Count);
+                    for (var index = 0; index < slots.Count; index++)
+                    {
+                        PathWithStorageSlot slot = slots[index];
+                        if (slot.Path >= effectiveLimitHash) continue;
+                        if (slot.Path < effectiveStartingHash) continue;
+                        filteredEntries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
+                    }
+                    tree.BulkSet(filteredEntries, PatriciaTree.Flags.WasSorted);
+                }
+                else
+                {
+                    StitchBoundaries(sortedBoundaryList, tree);
+                }
+
                 tree.Commit(writeFlags: WriteFlags.DisableWAL);
             }
 

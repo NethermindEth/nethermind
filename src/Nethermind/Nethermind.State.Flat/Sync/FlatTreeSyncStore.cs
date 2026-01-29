@@ -18,6 +18,8 @@ namespace Nethermind.State.Flat.Sync;
 
 public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
 {
+    ILogger _logger = logManager.GetClassLogger<FlatTreeSyncStore>();
+
     /// <summary>
     /// Represents a deletion range with from/to bounds.
     /// </summary>
