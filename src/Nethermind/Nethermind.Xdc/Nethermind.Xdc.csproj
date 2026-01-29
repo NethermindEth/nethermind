@@ -6,12 +6,6 @@
 
   <ItemGroup>
     <None Remove="Contracts\MasternodeVotingContract.json" />
-    <None Update="leveldb-snappy.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="libleveldb-snappy.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
   <ItemGroup>
@@ -23,10 +17,6 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="LevelDB.Standard" />
   </ItemGroup>
 
 </Project>
