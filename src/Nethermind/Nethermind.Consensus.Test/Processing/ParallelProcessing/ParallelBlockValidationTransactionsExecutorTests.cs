@@ -164,17 +164,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             {
                 for (int j = 0; j < 5; j++)
                 {
-                    manyTxs[i * 5 + j] = Build.A.Transaction
-                        .WithType(TxType.EIP1559)
-                        .To(TestItem.AddressD)
-                        .WithNonce((UInt256)j)
-                        .WithChainId(BlockchainIds.Mainnet)
-                        .WithMaxFeePerGas(2.GWei())
-                        .WithMaxPriorityFeePerGas(1.GWei())
-                        .WithValue(1.Wei())
-                        .WithGasLimit(21000)
-                        .SignedAndResolved(senders[i], false)
-                        .TestObject;
+                    manyTxs[i * 5 + j] = Tx(senders[i], TestItem.AddressD, (UInt256)j, 1.Wei(), 21000);
                 }
             }
             yield return Test("15 Transactions from 3 senders", manyTxs);
@@ -287,15 +277,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             yield return Test("Contract deployment and immediate call",
             [
                 TxCreateContract(TestItem.PrivateKeyA, 0, simpleInitCode),
-                Build.A.Transaction
-                    .To(simpleAddress)
-                    .WithNonce(1)
-                    .WithChainId(BlockchainIds.Mainnet)
-                    .WithGasLimit(100_000)
-                    .WithData([])
-                    .SignedAndResolved(TestItem.PrivateKeyA, false)
-                    .WithValue(5.Ether())
-                    .TestObject
+                TxToContract(TestItem.PrivateKeyA, simpleAddress, 1, [], 5.Ether())
             ]);
 
         }
@@ -361,7 +343,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithValue(value ?? 1.Ether())
             .WithGasLimit(gasLimit)
-            .WithCode(data ?? [])
+            .WithData(data ?? [])
             .SignedAndResolved(from, false)
             .TestObject;
 
@@ -404,15 +386,15 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .WithValue(1.Wei())
             .TestObject;
 
-    private static Transaction TxToContract(PrivateKey from, Address to, UInt256 nonce, byte[] data) =>
+    private static Transaction TxToContract(PrivateKey from, Address to, UInt256 nonce, byte[] data, UInt256? value = null, long gasLimit = 100_000) =>
         Build.A.Transaction
             .To(to)
             .WithNonce(nonce)
             .WithChainId(BlockchainIds.Mainnet)
-            .WithGasLimit(100_000)
+            .WithGasLimit(gasLimit)
             .WithData(data)
             .SignedAndResolved(from, false)
-            .WithValue(0)
+            .WithValue(value ?? 0)
             .TestObject;
 
     private static Transaction TxCreateContract(PrivateKey from, UInt256 nonce, byte[] initCode, UInt256? value = null) =>
@@ -502,14 +484,13 @@ public class ParallelBlockValidationTransactionsExecutorTests
             yield return Test([Tx1559WithNegativePremium(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
                 TransactionResult.MinerPremiumNegative);
 
-            // TransactionSizeOverMaxInitCodeSize - EIP-3860
-            yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, gasLimit: 10_000_000, data: new byte[50000])],
+            // TransactionSizeOverMaxInitCodeSize - EIP-3860 (init code > 49152 bytes)
+            yield return Test([TxCreateContract(TestItem.PrivateKeyA, 0, new byte[50000])],
                 TransactionResult.TransactionSizeOverMaxInitCodeSize);
 
-            // B has 1000 ETH. tx2 sends 999.5 ETH leaving ~0.5 ETH. tx3 tries to send 1 ETH and fails.
+            // B has 1000 ETH. tx1 sends 999.5 ETH leaving ~0.5 ETH. tx2 tries to send 1 ETH and fails.
             yield return Test(
             [
-                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether()),
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 999.Ether() + 500000000.GWei()),
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
             ], TransactionResult.InsufficientSenderBalance, "on dependent transaction");
@@ -535,7 +516,9 @@ public class ParallelBlockValidationTransactionsExecutorTests
         TransactionResult result = TransactionResult.Ok;
         try
         {
-            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, releaseSpec);
+            // Use NoValidation to skip block header validation (gas, state root, etc.)
+            // since we're testing transaction validation, not block validation
+            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, releaseSpec);
         }
         catch (InvalidTransactionException e)
         {
@@ -622,14 +605,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         BlockPair blocks = await chains.AddBlock(
             TxCreateContract(TestItem.PrivateKeyA, 0, receiverInitCode),
             TxCreateContract(TestItem.PrivateKeyB, 0, callerInitCode, 5.Ether()),
-            Build.A.Transaction
-                .To(ContractAddress.From(TestItem.AddressB, 0))
-                .WithNonce(1)
-                .WithChainId(BlockchainIds.Mainnet)
-                .WithGasLimit(100_000)
-                .SignedAndResolved(TestItem.PrivateKeyB, false)
-                .WithValue(2.Ether())
-                .TestObject
+            TxToContract(TestItem.PrivateKeyB, ContractAddress.From(TestItem.AddressB, 0), 1, [], 2.Ether())
         );
         blocks.AssertFullMatch(3);
     }
@@ -647,17 +623,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         Assert.That(setCodeBlock.Transactions, Has.Length.EqualTo(1), "SetCode transaction should be included");
 
         // Second block: Transaction from the delegated account (PrivateKeyB with nonce=1 after authorization)
-        Transaction txFromB = Build.A.Transaction
-            .WithType(TxType.EIP1559)
-            .To(TestItem.AddressC)
-            .WithNonce(1)
-            .WithChainId(BlockchainIds.Mainnet)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithGasLimit(100_000)
-            .WithValue(1.Ether())
-            .SignedAndResolved(TestItem.PrivateKeyB, false)
-            .TestObject;
+        Transaction txFromB = Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether(), 100_000);
 
         Block txBlock = await parallel.AddBlock(txFromB);
 
@@ -700,15 +666,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         for (int i = 0; i < 3; i++)
         {
             int nonce = i == 0 ? 1 : 0;
-            transactions[i] = Build.A.Transaction
-                .To(incrementerAddress)
-                .WithNonce((UInt256)nonce)
-                .WithChainId(BlockchainIds.Mainnet)
-                .WithGasLimit(100_000)
-                .WithData([])
-                .SignedAndResolved(senders[i], false)
-                .WithValue(0)
-                .TestObject;
+            transactions[i] = TxToContract(senders[i], incrementerAddress, (UInt256)nonce, []);
         }
 
         BlockPair blocks = await chains.AddBlock(transactions);
@@ -813,43 +771,13 @@ public class ParallelBlockValidationTransactionsExecutorTests
         // Using different senders to test parallel execution without nonce dependencies
         BlockPair blocks = await chains.AddBlock(
             // tx0 (sender A): Factory creates contract with 5 ETH (stored in slot 0)
-            Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .To(factoryAddress)
-                .WithNonce(1)
-                .WithChainId(BlockchainIds.Mainnet)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
-                .WithGasLimit(500_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, false)
-                .WithValue(5.Ether())
-                .TestObject,
+            Tx(TestItem.PrivateKeyA, factoryAddress, 1, 5.Ether(), 500_000),
             // tx1 (sender B): Self-destruct the contract (calldata = 1)
             // Different sender - no nonce dependency, tests parallel state tracking
-            Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .To(create2Address)
-                .WithNonce(0)
-                .WithChainId(BlockchainIds.Mainnet)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
-                .WithGasLimit(100_000)
-                .WithData(new UInt256(1).ToBigEndian())
-                .SignedAndResolved(TestItem.PrivateKeyB, false)
-                .TestObject,
+            Tx(TestItem.PrivateKeyB, create2Address, 0, 0, 100_000, new UInt256(1).ToBigEndian()),
             // tx2 (sender C): Factory re-creates contract with 7 ETH (should have fresh storage)
             // Different sender - tests that re-creation sees the self-destructed state
-            Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .To(factoryAddress)
-                .WithNonce(0)
-                .WithChainId(BlockchainIds.Mainnet)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
-                .WithGasLimit(500_000)
-                .SignedAndResolved(TestItem.PrivateKeyC, false)
-                .WithValue(7.Ether())
-                .TestObject
+            Tx(TestItem.PrivateKeyC, factoryAddress, 0, 7.Ether(), 500_000)
         );
         blocks.AssertStateRootsMatch();
     }
@@ -930,18 +858,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
         // Test block transactions:
         // tx0: Call contract with 10 ETH, transfers to F after expensive work
-        Transaction callContractTx = Build.A.Transaction
-            .WithType(TxType.EIP1559)
-            .To(transferContract)
-            .WithNonce(0)
-            .WithChainId(BlockchainIds.Mainnet)
-            .WithMaxFeePerGas(2.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithGasLimit(1_000_000)
-            .WithData(TestItem.AddressF.Bytes.PadLeft(32))
-            .SignedAndResolved(TestItem.PrivateKeyA, false)
-            .WithValue(10.Ether())
-            .TestObject;
+        Transaction callContractTx = Tx(TestItem.PrivateKeyA, transferContract, 0, 10.Ether(), 1_000_000, TestItem.AddressF.Bytes.PadLeft(32));
 
         // tx1: Simple transfer from F (initially unfunded, gets balance from tx0)
         Transaction transferFromF = Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0, 5.Ether());
