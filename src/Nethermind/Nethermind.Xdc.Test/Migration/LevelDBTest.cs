@@ -3,17 +3,23 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using LevelDB;
+using Nethermind.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test.Migration;
 
 public class LevelDBTest: TestWithLevelDbFix
 {
-    [TestCase(@"D:\.lighthouse\mainnet 1\beacon\freezer_db")]
-    [TestCase(@"D:\Nethermind\xdc\chaindata")]
-    public void EnumerateKeys(string dbPath)
+    [TestCase(@"D:\.lighthouse\mainnet 1\beacon\freezer_db", "Windows")]
+    [TestCase(@"D:\Nethermind\xdc\chaindata", "Windows")]
+    [TestCase(@"/mnt/d/Nethermind/xdc/chaindata", "Linux")]
+    public void EnumerateKeys(string dbPath, string platform)
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create(platform)))
+            Assert.Ignore();
+
         var fileName = $"keys-{Guid.NewGuid():N}.txt";
         using var file = new StreamWriter(fileName);
         var options = new Options { CreateIfMissing = false };

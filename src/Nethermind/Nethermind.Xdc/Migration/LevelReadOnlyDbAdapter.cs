@@ -14,10 +14,22 @@ namespace Nethermind.Xdc.Migration;
 public sealed class LevelReadOnlyDbAdapter(DB levelDb) : IDb
 {
     // TODO: create a "fixed" nuget package and remove this
-    private static IntPtr Resolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath) =>
-        string.Equals(libraryName, "leveldb.dll", StringComparison.OrdinalIgnoreCase) && NativeLibrary.TryLoad("leveldb-snappy.dll", out var handle)
-            ? handle
-            : IntPtr.Zero;
+    private static IntPtr Resolver(string name, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (!name.Equals("leveldb.dll", StringComparison.Ordinal))
+            return nint.Zero;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            name = "libleveldb-snappy.so";
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            name = "libleveldb-snappy.dylib";
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            name = "leveldb-snappy.dll";
+        else
+            throw new PlatformNotSupportedException();
+
+        return NativeLibrary.Load(name, assembly, null);
+    }
 
     static LevelReadOnlyDbAdapter()
     {
