@@ -76,8 +76,10 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
+    private const int MaxBatchLookupBlocks = 192 * 1024;
 
     private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
+    private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
@@ -418,9 +420,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     /// Traverses the blockchain backwards to find the last Shasta block of the given batch ID.
     /// </summary>
     /// <param name="batchId">The Shasta batch identifier for which to find the last corresponding block.</param>
+    /// <returns>The block ID if found, or null if not found or lookback limit exceeded.</returns>
     private UInt256? GetLastBlockByBatchId(UInt256 batchId)
     {
         Block? currentBlock = blockFinder.Head;
+        int lookbackCount = 0;
 
         while (currentBlock is not null &&
                currentBlock.Transactions.Length > 0 &&
@@ -429,6 +433,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             if (currentBlock.Number == 0)
             {
                 break;
+            }
+
+            lookbackCount++;
+            if (lookbackCount > MaxBatchLookupBlocks)
+            {
+                return null;
             }
 
             UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
