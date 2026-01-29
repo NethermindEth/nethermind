@@ -27,6 +27,11 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
 
+        releaseSpec.LimitPenaltyEpoch = chainSpecEngineParameters.LimitPenaltyEpoch;
+        releaseSpec.LimitPenaltyEpochV2 = chainSpecEngineParameters.LimitPenaltyEpochV2;
+
+        releaseSpec.RangeReturnSigner = chainSpecEngineParameters.RangeReturnSigner;
+
         releaseSpec.ApplyV2Config(0);
 
         return releaseSpec;
