@@ -28,12 +28,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         Name = name;
 
         _iteratorManager = new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, _mainDb._readAheadReadOptions);
-        _reader = new RocksDbReader(mainDb, () =>
-        {
-            ReadOptions readOptions = new ReadOptions();
-            readOptions.SetVerifyChecksums(mainDb.VerifyChecksum);
-            return readOptions;
-        }, _iteratorManager, _columnFamily);
+        _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
     public void Dispose()
@@ -188,9 +183,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         get
         {
-            ReadOptions readOptions = new();
-            readOptions.SetVerifyChecksums(_mainDb.VerifyChecksum);
-            using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+            using Iterator iterator = _mainDb.CreateIterator(_mainDb.CreateReadOptions(), ch: _columnFamily);
             iterator.SeekToFirst();
             return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
         }
@@ -200,9 +193,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         get
         {
-            ReadOptions readOptions = new();
-            readOptions.SetVerifyChecksums(_mainDb.VerifyChecksum);
-            using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+            using Iterator iterator = _mainDb.CreateIterator(_mainDb.CreateReadOptions(), ch: _columnFamily);
             iterator.SeekToLast();
             return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
         }
@@ -221,8 +212,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             _mainDb,
             () =>
             {
-                ReadOptions readOptions = new();
-                readOptions.SetVerifyChecksums(_mainDb.VerifyChecksum);
+                ReadOptions readOptions = _mainDb.CreateReadOptions();
                 readOptions.SetSnapshot(snapshot);
                 return readOptions;
             },
