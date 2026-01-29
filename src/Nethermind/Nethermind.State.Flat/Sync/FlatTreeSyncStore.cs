@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -17,6 +18,12 @@ namespace Nethermind.State.Flat.Sync;
 
 public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
 {
+    /// <summary>
+    /// Represents a deletion range with from/to bounds.
+    /// </summary>
+    /// <param name="From">Inclusive lower bound of the range.</param>
+    /// <param name="To">Inclusive upper bound of the range.</param>
+    internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -53,6 +60,11 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         if (address is null)
         {
+            if (needsDelete)
+            {
+                RequestStateDeletion(writeBatch, path, node);
+            }
+
             writeBatch.SetStateTrieNode(path, node);
 
             // For leaf nodes, also write the flat account entry
@@ -62,14 +74,14 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                 Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
                 writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
             }
-
-            if (needsDelete)
-            {
-                RequestStateDeletion(writeBatch, path, node);
-            }
         }
         else
         {
+            if (needsDelete)
+            {
+                RequestStorageDeletion(writeBatch, address, path, node);
+            }
+
             writeBatch.SetStorageTrieNode(address, path, node);
 
             // For leaf nodes, also write the flat storage entry
@@ -82,199 +94,133 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                     : value.AsRlpValueContext().DecodeByteArray();
                 writeBatch.SetStorageRaw(address, fullPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
             }
-
-            if (needsDelete)
-            {
-                RequestStorageDeletion(writeBatch, address, path, node);
-            }
         }
     }
 
     private static void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode node)
     {
-        switch (node.NodeType)
+        RefList16<DeletionRange> ranges = new();
+        ComputeDeletionRanges(path, node, ref ranges);
+        foreach (DeletionRange range in ranges.AsSpan())
         {
-            case NodeType.Branch:
-                RequestStateDeletionForBranch(writeBatch, path, node);
-                break;
-            case NodeType.Leaf:
-                RequestStateDeletionForLeaf(writeBatch, path, node);
-                break;
-            case NodeType.Extension:
-                RequestStateDeletionForExtension(writeBatch, path, node);
-                break;
+            writeBatch.DeleteAccountRange(range.From, range.To);
+            writeBatch.DeleteStateTrieNodeRange(ComputeTreePathForHash(range.From, 64), ComputeTreePathForHash(range.To, 64));
         }
     }
 
     private static void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode node)
     {
+        ValueHash256 addressHash = address.ValueHash256;
+        RefList16<DeletionRange> ranges = new();
+        ComputeDeletionRanges(path, node, ref ranges);
+        foreach (DeletionRange range in ranges.AsSpan())
+        {
+            writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
+            writeBatch.DeleteStorageTrieNodeRange(addressHash, ComputeTreePathForHash(range.From, 64), ComputeTreePathForHash(range.To, 64));
+        }
+    }
+
+    /// <summary>
+    /// Computes the deletion ranges for a trie node at a given path.
+    /// Populates ranges with ValueHash256 ranges that should be deleted.
+    /// </summary>
+    internal static void ComputeDeletionRanges(in TreePath path, TrieNode node, ref RefList16<DeletionRange> ranges)
+    {
         switch (node.NodeType)
         {
             case NodeType.Branch:
-                RequestStorageDeletionForBranch(writeBatch, address, path, node);
+                ComputeBranchDeletionRanges(path, node, ref ranges);
                 break;
             case NodeType.Leaf:
-                RequestStorageDeletionForLeaf(writeBatch, address, path, node);
+                ComputeLeafDeletionRanges(path, node, ref ranges);
                 break;
             case NodeType.Extension:
-                RequestStorageDeletionForExtension(writeBatch, address, path, node);
+                ComputeExtensionDeletionRanges(path, node, ref ranges);
                 break;
         }
     }
 
-    private static void RequestStateDeletionForBranch(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode node)
+    /// <summary>
+    /// For each group of consecutive null children in the branch, adds a single range covering their subtrees.
+    /// </summary>
+    private static void ComputeBranchDeletionRanges(TreePath path, TrieNode node, ref RefList16<DeletionRange> ranges)
     {
-        // For each null child in the branch, delete the subtree under that child
+        int? rangeStart = null;
+
         for (int i = 0; i < 16; i++)
         {
-            if (!node.IsChildNull(i)) continue;
-
-            TreePath childPath = path.Append(i);
-            (ValueHash256 fromPath, ValueHash256 toPath) = ComputeSubtreeRange(childPath);
-            (TreePath fromTreePath, TreePath toTreePath) = ComputeTreePathRange(childPath);
-
-            writeBatch.DeleteAccountRange(fromPath, toPath);
-            writeBatch.DeleteStateTrieNodeRange(fromTreePath, toTreePath);
-        }
-    }
-
-    private static void RequestStateDeletionForLeaf(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode node)
-    {
-        // A leaf at this path represents a single account. The presence of a leaf here means
-        // any paths between the current position and the leaf's full path (exclusive of the leaf itself)
-        // should be deleted. The leaf value itself is being written, so we don't delete it.
-
-        // For healing purposes, we need to delete entries in the gap between path and the full leaf path.
-        // The gap is: paths that share the prefix 'path' but are lexicographically before the leaf's full path.
-        // Also delete paths that come after the leaf's full path but still share the 'path' prefix.
-
-        TreePath fullPath = path.Append(node.Key);
-
-        // Delete from path.Append(0,0,0...) to fullPath (exclusive)
-        // and from fullPath+1 to path.Append(F,F,F...) (exclusive)
-        // Simplification: Delete the range [path prefix padded with 0s, path prefix padded with Fs]
-        // but exclude the fullPath itself which is being written
-
-        // For the gap before the leaf
-        if (fullPath.Path != path.Append(0, 64 - path.Length).Path)
-        {
-            ValueHash256 gapFrom = path.Append(0, 64 - path.Length).Path;
-            // Compute path just before fullPath
-            ValueHash256 gapTo = DecrementPath(fullPath.Path);
-            if (gapTo.CompareTo(gapFrom) >= 0)
+            if (node.IsChildNull(i))
             {
-                writeBatch.DeleteAccountRange(gapFrom, gapTo);
-                writeBatch.DeleteStateTrieNodeRange(path.Append(0, 64 - path.Length), ComputeTreePathForHash(gapTo, 64));
+                rangeStart ??= i;
+            }
+            else if (rangeStart.HasValue)
+            {
+                AddMergedRange(path, rangeStart.Value, i - 1, ref ranges);
+                rangeStart = null;
             }
         }
 
-        // For the gap after the leaf
-        ValueHash256 afterLeaf = IncrementPath(fullPath.Path);
-        ValueHash256 endOfSubtree = path.Append(0xF, 64 - path.Length).Path;
-        if (afterLeaf.CompareTo(endOfSubtree) <= 0)
+        // Handle trailing null children
+        if (rangeStart.HasValue)
         {
-            writeBatch.DeleteAccountRange(afterLeaf, endOfSubtree);
-            writeBatch.DeleteStateTrieNodeRange(ComputeTreePathForHash(afterLeaf, 64), path.Append(0xF, 64 - path.Length));
+            AddMergedRange(path, rangeStart.Value, 15, ref ranges);
         }
     }
 
-    private static void RequestStateDeletionForExtension(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode node)
+    private static void AddMergedRange(TreePath path, int startChild, int endChild, ref RefList16<DeletionRange> ranges)
     {
-        // Extension node: the extension key covers a range of paths.
-        // Similar logic to leaf - delete paths in the gap before and after the extension's path.
-
-        TreePath extendedPath = path.Append(node.Key);
-
-        // Delete from path.Append(0,0,0...) to extendedPath prefix (exclusive of extension's subtree)
-        if (extendedPath.Path != path.Append(0, 64 - path.Length).Path)
-        {
-            ValueHash256 gapFrom = path.Append(0, 64 - path.Length).Path;
-            ValueHash256 gapTo = DecrementPath(extendedPath.Append(0, 64 - extendedPath.Length).Path);
-            if (gapTo.CompareTo(gapFrom) >= 0)
-            {
-                writeBatch.DeleteAccountRange(gapFrom, gapTo);
-                writeBatch.DeleteStateTrieNodeRange(path.Append(0, 64 - path.Length), ComputeTreePathForHash(gapTo, 64));
-            }
-        }
-
-        // Delete from end of extension's subtree to end of current subtree
-        ValueHash256 afterExtension = IncrementPath(extendedPath.Append(0xF, 64 - extendedPath.Length).Path);
-        ValueHash256 endOfSubtree = path.Append(0xF, 64 - path.Length).Path;
-        if (afterExtension.CompareTo(endOfSubtree) <= 0)
-        {
-            writeBatch.DeleteAccountRange(afterExtension, endOfSubtree);
-            writeBatch.DeleteStateTrieNodeRange(ComputeTreePathForHash(afterExtension, 64), path.Append(0xF, 64 - path.Length));
-        }
+        TreePath startPath = path.Append(startChild);
+        TreePath endPath = path.Append(endChild);
+        ValueHash256 from = startPath.Append(0, 64 - startPath.Length).Path;
+        ValueHash256 to = endPath.Append(0xF, 64 - endPath.Length).Path;
+        ranges.Add(new DeletionRange(from, to));
     }
 
-    private static void RequestStorageDeletionForBranch(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode node)
+    /// <summary>
+    /// A leaf at this path represents a single entry. Adds ranges for the gaps
+    /// before and after the leaf within the current subtree.
+    /// </summary>
+    private static void ComputeLeafDeletionRanges(TreePath path, TrieNode node, ref RefList16<DeletionRange> ranges)
     {
-        ValueHash256 addressHash = address.ValueHash256;
-        for (int i = 0; i < 16; i++)
-        {
-            if (!node.IsChildNull(i)) continue;
-
-            TreePath childPath = path.Append(i);
-            (ValueHash256 fromPath, ValueHash256 toPath) = ComputeSubtreeRange(childPath);
-            (TreePath fromTreePath, TreePath toTreePath) = ComputeTreePathRange(childPath);
-
-            writeBatch.DeleteStorageRange(addressHash, fromPath, toPath);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, fromTreePath, toTreePath);
-        }
-    }
-
-    private static void RequestStorageDeletionForLeaf(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode node)
-    {
-        ValueHash256 addressHash = address.ValueHash256;
         TreePath fullPath = path.Append(node.Key);
 
-        // Delete from path.Append(0,0,0...) to fullPath (exclusive)
+        // Gap before the leaf
         if (fullPath.Path != path.Append(0, 64 - path.Length).Path)
         {
             ValueHash256 gapFrom = path.Append(0, 64 - path.Length).Path;
             ValueHash256 gapTo = DecrementPath(fullPath.Path);
             if (gapTo.CompareTo(gapFrom) >= 0)
-            {
-                writeBatch.DeleteStorageRange(addressHash, gapFrom, gapTo);
-                writeBatch.DeleteStorageTrieNodeRange(addressHash, path.Append(0, 64 - path.Length), ComputeTreePathForHash(gapTo, 64));
-            }
+                ranges.Add(new DeletionRange(gapFrom, gapTo));
         }
 
-        // Delete from fullPath+1 to end of subtree
+        // Gap after the leaf
         ValueHash256 afterLeaf = IncrementPath(fullPath.Path);
         ValueHash256 endOfSubtree = path.Append(0xF, 64 - path.Length).Path;
         if (afterLeaf.CompareTo(endOfSubtree) <= 0)
-        {
-            writeBatch.DeleteStorageRange(addressHash, afterLeaf, endOfSubtree);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, ComputeTreePathForHash(afterLeaf, 64), path.Append(0xF, 64 - path.Length));
-        }
+            ranges.Add(new DeletionRange(afterLeaf, endOfSubtree));
     }
 
-    private static void RequestStorageDeletionForExtension(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode node)
+    /// <summary>
+    /// Extension node: adds ranges for the gaps before and after the extension's subtree.
+    /// </summary>
+    private static void ComputeExtensionDeletionRanges(TreePath path, TrieNode node, ref RefList16<DeletionRange> ranges)
     {
-        ValueHash256 addressHash = address.ValueHash256;
         TreePath extendedPath = path.Append(node.Key);
 
-        // Delete from path.Append(0,0,0...) to extendedPath prefix
+        // Gap before the extension's subtree
         if (extendedPath.Path != path.Append(0, 64 - path.Length).Path)
         {
             ValueHash256 gapFrom = path.Append(0, 64 - path.Length).Path;
             ValueHash256 gapTo = DecrementPath(extendedPath.Append(0, 64 - extendedPath.Length).Path);
             if (gapTo.CompareTo(gapFrom) >= 0)
-            {
-                writeBatch.DeleteStorageRange(addressHash, gapFrom, gapTo);
-                writeBatch.DeleteStorageTrieNodeRange(addressHash, path.Append(0, 64 - path.Length), ComputeTreePathForHash(gapTo, 64));
-            }
+                ranges.Add(new DeletionRange(gapFrom, gapTo));
         }
 
-        // Delete from end of extension's subtree to end of current subtree
+        // Gap after the extension's subtree
         ValueHash256 afterExtension = IncrementPath(extendedPath.Append(0xF, 64 - extendedPath.Length).Path);
         ValueHash256 endOfSubtree = path.Append(0xF, 64 - path.Length).Path;
         if (afterExtension.CompareTo(endOfSubtree) <= 0)
-        {
-            writeBatch.DeleteStorageRange(addressHash, afterExtension, endOfSubtree);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, ComputeTreePathForHash(afterExtension, 64), path.Append(0xF, 64 - path.Length));
-        }
+            ranges.Add(new DeletionRange(afterExtension, endOfSubtree));
     }
 
     /// <summary>
@@ -290,16 +236,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     }
 
     /// <summary>
-    /// Compute the range of tree paths covered by a subtree.
-    /// </summary>
-    private static (TreePath fromTreePath, TreePath toTreePath) ComputeTreePathRange(in TreePath childPath)
-    {
-        TreePath fromTreePath = childPath.Append(0, 64 - childPath.Length);
-        TreePath toTreePath = childPath.Append(0xF, 64 - childPath.Length);
-        return (fromTreePath, toTreePath);
-    }
-
-    /// <summary>
     /// Create a TreePath from a ValueHash256 with specified length.
     /// </summary>
     private static TreePath ComputeTreePathForHash(in ValueHash256 hash, int length) =>
@@ -308,7 +244,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// <summary>
     /// Decrement a path by 1 (treating it as a 256-bit big-endian integer).
     /// </summary>
-    private static ValueHash256 DecrementPath(in ValueHash256 path)
+    internal static ValueHash256 DecrementPath(in ValueHash256 path)
     {
         ValueHash256 result = path;
         Span<byte> bytes = result.BytesAsSpan;
@@ -330,7 +266,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// <summary>
     /// Increment a path by 1 (treating it as a 256-bit big-endian integer).
     /// </summary>
-    private static ValueHash256 IncrementPath(in ValueHash256 path)
+    internal static ValueHash256 IncrementPath(in ValueHash256 path)
     {
         ValueHash256 result = path;
         Span<byte> bytes = result.BytesAsSpan;
