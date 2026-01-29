@@ -95,14 +95,7 @@ namespace Nethermind.Core
                 _storageRoot == other._storageRoot;
         }
         public override bool Equals(object? obj) => Equals(obj as Account);
-        public static bool operator ==(Account? left, Account? right)
-        {
-            if (left is not null)
-            {
-                return left.Equals(right);
-            }
-            return right is null;
-        }
+        public static bool operator ==(Account? left, Account? right) => left?.Equals(right) ?? right is null;
         public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
         public static bool operator !=(Account? left, Account? right) => !(left == right);
 

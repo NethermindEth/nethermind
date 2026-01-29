@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -16,13 +17,19 @@ namespace Nethermind.Core
     public readonly struct StorageCell : IEquatable<StorageCell>
     {
         private readonly UInt256 _index;
-        private readonly bool _isHash;
+        private readonly Type _type;
+
+        private enum Type : byte
+        {
+            Index,
+            Hash,
+            Address
+        }
 
         public Address Address { get; }
-        public bool IsHash => _isHash;
+        public bool IsHash => _type == Type.Hash;
         public UInt256 Index => _index;
-
-        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
+        public ValueHash256 Hash => IsHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
 
         private ValueHash256 GetHash()
         {
@@ -35,39 +42,40 @@ namespace Nethermind.Core
         {
             Address = address;
             _index = index;
+            _type = Type.Index;
         }
 
         public StorageCell(Address address, ValueHash256 hash)
         {
             Address = address;
             _index = Unsafe.As<ValueHash256, UInt256>(ref hash);
-            _isHash = true;
+            _type = Type.Hash;
+        }
+
+        public StorageCell(Address address)
+        {
+            Address = address;
+            _index = UInt256.Zero;
+            _type = Type.Address;
         }
 
         public bool Equals(StorageCell other) =>
-            _isHash == other._isHash &&
+            _type == other._type &&
             Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)) &&
             Address.Equals(other.Address);
 
-        public override bool Equals(object? obj)
-        {
-            if (obj is null)
-            {
-                return false;
-            }
+        public override bool Equals(object? obj) => obj is StorageCell address && Equals(address);
 
-            return obj is StorageCell address && Equals(address);
-        }
+        public override int GetHashCode() =>
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash() ^ Address.GetHashCode();
 
-        public override int GetHashCode()
-        {
-            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
-            return hash ^ Address.GetHashCode();
-        }
+        public override string ToString() => $"{Address}.{Index}";
 
-        public override string ToString()
+        public class OnlyAddressComparer : IEqualityComparer<StorageCell>
         {
-            return $"{Address}.{Index}";
+            public static readonly OnlyAddressComparer Instance = new();
+            public bool Equals(StorageCell x, StorageCell y) => x.Address.Equals(y.Address);
+            public int GetHashCode(StorageCell obj) => obj.Address.GetHashCode();
         }
     }
 }

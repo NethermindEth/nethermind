@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Nethermind.Core.Threading;
 
-public class InterlockedEx
+public static class InterlockedEx
 {
     /// <summary>
     /// Atomically sets a field to the maximum of the field's current value and a specified value.
@@ -22,7 +22,7 @@ public class InterlockedEx
             current = location;
             newValue = Math.Max(current, value);
 
-            // If current is already >= value, no need to update
+            // If the current is already >= value, no need to update
             if (current >= value)
                 return current;
         }
@@ -68,7 +68,7 @@ public class InterlockedEx
             current = location;
             newValue = Math.Min(current, value);
 
-            // If current is already <= value, no need to update
+            // If the current is already <= value, no need to update
             if (current <= value)
                 return current;
         }
@@ -99,4 +99,5 @@ public class InterlockedEx
 
         return current;
     }
+
 }

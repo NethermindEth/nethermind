@@ -1394,8 +1394,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
-        var scopeLockScope = _scopeLock.EnterScope();
-        var pruneLockScope = _pruningLock.EnterScope();
+        Lock.Scope scopeLockScope = _scopeLock.EnterScope();
+        Lock.Scope pruneLockScope = _pruningLock.EnterScope();
 
         try
         {
@@ -1437,12 +1437,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (stateRoot == Keccak.EmptyTreeHash) return true;
         TrieNode node = FindCachedOrUnknown(null, TreePath.Empty, stateRoot, true);
-        if (node.NodeType == NodeType.Unknown)
-        {
-            return TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
-        }
-
-        return true;
+        return node.NodeType != NodeType.Unknown || TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
     }
 
     private class BlockCommitter(

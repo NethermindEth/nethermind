@@ -1,0 +1,912 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
+
+namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
+
+[Parallelizable(ParallelScope.All)]
+public class ParallelBlockValidationTransactionsExecutorTests
+{
+    private static readonly EthereumEcdsa Ecdsa = new(BlockchainIds.Mainnet);
+
+    public class ParallelTestBlockchain(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec) : TestBlockchain
+    {
+        public static async Task<ParallelTestBlockchain> Create(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec = null, Action<ContainerBuilder> configurer = null)
+        {
+            ParallelTestBlockchain chain = new(blocksConfig, releaseSpec ?? Osaka.Instance);
+            await chain.Build(configurer);
+            return chain;
+        }
+
+        protected override Task AddBlocksOnStart() => Task.CompletedTask;
+
+        protected override IEnumerable<IConfig> CreateConfigs() => [blocksConfig];
+
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec));
+    }
+
+    /// <summary>
+    /// Helper that wraps parallel and single-threaded blockchains for comparison testing.
+    /// Executes operations on both chains and provides assertion helpers.
+    /// </summary>
+    public sealed class DualBlockchain : IAsyncDisposable
+    {
+        public ParallelTestBlockchain Parallel { get; }
+        public ParallelTestBlockchain Single { get; }
+
+        private DualBlockchain(ParallelTestBlockchain parallel, ParallelTestBlockchain single)
+        {
+            Parallel = parallel;
+            Single = single;
+        }
+
+        public static async Task<DualBlockchain> Create(IReleaseSpec releaseSpec = null)
+        {
+            ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), releaseSpec);
+            ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), releaseSpec);
+            return new DualBlockchain(parallel, single);
+        }
+
+        public async Task<(Block Parallel, Block Single)> AddBlock(params Transaction[] transactions)
+        {
+            Block parallel = await Parallel.AddBlock(transactions);
+            Block single = await Single.AddBlock(transactions);
+            return (parallel, single);
+        }
+
+        public async Task AddBlockNoReturn(params Transaction[] transactions)
+        {
+            await Parallel.AddBlock(transactions);
+            await Single.AddBlock(transactions);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Parallel.Dispose();
+            Single.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public readonly record struct BlockPair(Block Parallel, Block Single)
+    {
+        public static implicit operator BlockPair((Block Parallel, Block Single) tuple) => new(tuple.Parallel, tuple.Single);
+
+        public void AssertStateRootsMatch() => Assert.That(Parallel.Header.StateRoot, Is.EqualTo(Single.Header.StateRoot));
+
+        public void AssertFullMatch(int expectedTxCount)
+        {
+            Block p = Parallel, s = Single;
+            Assert.Multiple(() =>
+            {
+                Assert.That(p.Transactions, Has.Length.EqualTo(expectedTxCount));
+                Assert.That(s.Transactions, Has.Length.EqualTo(expectedTxCount));
+                Assert.That(p.Header.GasUsed, Is.EqualTo(s.Header.GasUsed));
+                Assert.That(p.Header.StateRoot, Is.EqualTo(s.Header.StateRoot));
+            });
+        }
+    }
+
+    private static IBlocksConfig BuildConfig(bool parallel) =>
+        new BlocksConfig
+        {
+            MinGasPrice = 0,
+            PreWarmStateOnBlockProcessing = !parallel,
+            ParallelBlockProcessing = parallel
+        };
+
+    public static IEnumerable<TestCaseData> SimpleBlocksTests
+    {
+        get
+        {
+            yield return Test("1 Transaction", [Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0)]);
+
+            yield return Test("3 Transactions, nonce dependency",
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
+            ]);
+
+            yield return Test("5 Transactions, nonce dependency",
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1, 2.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressD, 2, 3.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressE, 3, 4.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressF, 4, 5.Ether()),
+            ]);
+
+            yield return Test("Balance changes across transactions",
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 10.Ether()),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1, 5.Ether()),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 3.Ether()),
+            ]);
+
+            yield return Test("Balance transfers from multiple senders",
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 500.Ether()),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 500.Ether()),
+                Tx(TestItem.PrivateKeyC, TestItem.AddressD, 0, 500.Ether()),
+            ]);
+
+            // Stress test with 15 transactions from 3 senders
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            Transaction[] manyTxs = new Transaction[15];
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 5; j++)
+                {
+                    manyTxs[i * 5 + j] = Tx(senders[i], TestItem.AddressD, (UInt256)j, 1.Wei(), 21000);
+                }
+            }
+            yield return Test("15 Transactions from 3 senders", manyTxs);
+        }
+    }
+
+    public static IEnumerable<TestCaseData> ContractBlocksTests
+    {
+        get
+        {
+            // State write then read dependency
+            byte[] storeCode = Prepare.EvmCode
+                .PushData(42)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .STOP()
+                .Done;
+            byte[] storeInitCode = Prepare.EvmCode.ForInitOf(storeCode).Done;
+            Address storeContractAddress = ContractAddress.From(TestItem.AddressA, 0);
+            yield return Test("State write then read dependency",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, storeInitCode),
+                TxToContract(TestItem.PrivateKeyA, storeContractAddress, 1, [])
+            ]);
+
+            // SelfDestruct in transaction
+            byte[] selfDestructCode = Prepare.EvmCode
+                .SELFDESTRUCT(TestItem.AddressB)
+                .Done;
+            byte[] selfDestructInitCode = Prepare.EvmCode.ForInitOf(selfDestructCode).Done;
+            Address selfDestructAddress = ContractAddress.From(TestItem.AddressA, 0);
+            yield return Test("SelfDestruct in transaction",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether()),
+                TxToContract(TestItem.PrivateKeyA, selfDestructAddress, 1, [])
+            ]);
+
+            // Contract creation with value transfer
+            byte[] storeBalanceCode = Prepare.EvmCode
+                .Op(Instruction.SELFBALANCE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .STOP()
+                .Done;
+            byte[] storeBalanceInitCode = Prepare.EvmCode.ForInitOf(storeBalanceCode).Done;
+            yield return Test("Contract creation with value transfer",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, storeBalanceInitCode, 5.Ether()),
+                TxCreateContract(TestItem.PrivateKeyB, 0, storeBalanceInitCode, 3.Ether()),
+            ]);
+
+            // Transient storage across transactions
+            byte[] tStorageCode = Prepare.EvmCode
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.TLOAD)
+                .PushData(1)
+                .Op(Instruction.ADD)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.TSTORE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.TLOAD)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .STOP()
+                .Done;
+            byte[] tStorageInitCode = Prepare.EvmCode.ForInitOf(tStorageCode).Done;
+            Address tStorageAddress = ContractAddress.From(TestItem.AddressA, 0);
+            yield return Test("Transient storage across transactions",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, tStorageInitCode),
+                TxToContract(TestItem.PrivateKeyA, tStorageAddress, 1, []),
+                TxToContract(TestItem.PrivateKeyB, tStorageAddress, 0, []),
+            ]);
+
+            // Multiple senders with state dependencies
+            byte[] storeCallerCode = Prepare.EvmCode
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SLOAD)
+                .Op(Instruction.CALLER)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SLOAD)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SLOAD)
+                .PushData(1)
+                .Op(Instruction.ADD)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .STOP()
+                .Done;
+            byte[] storeCallerInitCode = Prepare.EvmCode.ForInitOf(storeCallerCode).Done;
+            Address storeCallerAddress = ContractAddress.From(TestItem.AddressA, 0);
+            yield return Test("Multiple senders with state dependencies",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, storeCallerInitCode),
+                TxToContract(TestItem.PrivateKeyA, storeCallerAddress, 1, []),
+                TxToContract(TestItem.PrivateKeyB, storeCallerAddress, 0, []),
+                TxToContract(TestItem.PrivateKeyC, storeCallerAddress, 0, []),
+            ]);
+
+            // Contract deployment and immediate call
+            byte[] simpleCode = Prepare.EvmCode
+                .Op(Instruction.CALLVALUE)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .STOP()
+                .Done;
+            byte[] simpleInitCode = Prepare.EvmCode.ForInitOf(simpleCode).Done;
+            Address simpleAddress = ContractAddress.From(TestItem.AddressA, 0);
+            yield return Test("Contract deployment and immediate call",
+            [
+                TxCreateContract(TestItem.PrivateKeyA, 0, simpleInitCode),
+                TxToContract(TestItem.PrivateKeyA, simpleAddress, 1, [], 5.Ether())
+            ]);
+
+        }
+    }
+
+    public static IEnumerable<TestCaseData> SetCodeBlocksTests
+    {
+        get
+        {
+            // SetCode authorization changes nonce
+            AuthorizationTuple authB = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            yield return Test("SetCode authorization changes nonce",
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authB]),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1),
+            ]);
+
+            // Multiple SetCode authorizations same block
+            AuthorizationTuple authD = Ecdsa.Sign(TestItem.PrivateKeyD, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            AuthorizationTuple authE = Ecdsa.Sign(TestItem.PrivateKeyE, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            yield return Test("Multiple SetCode authorizations same block",
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0)]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressD, 1, [authD]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressE, 2, [authE]),
+            ]);
+
+            // Authorization chain B→C, C→D, D→E
+            AuthorizationTuple authB2 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            AuthorizationTuple authC2 = Ecdsa.Sign(TestItem.PrivateKeyC, BlockchainIds.Mainnet, TestItem.AddressD, 0);
+            AuthorizationTuple authD2 = Ecdsa.Sign(TestItem.PrivateKeyD, BlockchainIds.Mainnet, TestItem.AddressE, 0);
+            yield return Test("Authorization chain",
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authB2]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressC, 1, [authC2]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressD, 2, [authD2]),
+            ]);
+
+            // Re-delegation: delegate B to C, then B to D
+            AuthorizationTuple authB3 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            AuthorizationTuple authB4 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressD, 1);
+            yield return Test("Re-delegation in same block",
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authB3]),
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 1, [authB4]),
+            ]);
+        }
+    }
+
+    private static Transaction Tx(
+        PrivateKey from,
+        Address to,
+        UInt256 nonce,
+        UInt256? value = null,
+        long gasLimit = 1_000_000,
+        byte[] data = null) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(2.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithValue(value ?? 1.Ether())
+            .WithGasLimit(gasLimit)
+            .WithData(data ?? [])
+            .SignedAndResolved(from, false)
+            .TestObject;
+
+    // MaxFeePerGas * GasLimit must exceed sender balance (1000 ETH)
+    // 50_000_000 GWei = 0.05 ETH per gas, * 21000 gas = 1050 ETH > 1000 ETH
+    private static Transaction Tx1559WithHighMaxFee(PrivateKey from, Address to, UInt256 nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(50_000_000.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithGasLimit(21000)
+            .SignedAndResolved(from, false)
+            .WithValue(1.Wei())
+            .TestObject;
+
+    // MinerPremiumNegative is triggered when MaxFeePerGas < BaseFee (1 GWei)
+    // Setting MaxFeePerGas to 0 makes it impossible to cover the base fee
+    private static Transaction Tx1559WithNegativePremium(PrivateKey from, Address to, UInt256 nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithGasLimit(21000)
+            .SignedAndResolved(from, false)
+            .WithValue(1.Wei())
+            .TestObject;
+
+    private static Transaction TxWithoutSender(Address to, UInt256 nonce) =>
+        Build.A.Transaction
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithGasLimit(21000)
+            .WithValue(1.Wei())
+            .TestObject;
+
+    private static Transaction TxToContract(PrivateKey from, Address to, UInt256 nonce, byte[] data, UInt256? value = null, long gasLimit = 100_000) =>
+        Build.A.Transaction
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithGasLimit(gasLimit)
+            .WithData(data)
+            .SignedAndResolved(from, false)
+            .WithValue(value ?? 0)
+            .TestObject;
+
+    private static Transaction TxCreateContract(PrivateKey from, UInt256 nonce, byte[] initCode, UInt256? value = null) =>
+        Build.A.Transaction
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithGasLimit(1_000_000)
+            .WithCode(initCode)
+            .SignedAndResolved(from, false)
+            .WithValue(value ?? 0)
+            .TestObject;
+
+    private static Transaction TxSetCode(PrivateKey from, Address to, UInt256 nonce, AuthorizationTuple[] authList) =>
+        Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(authList)
+            .SignedAndResolved(from, false)
+            .WithValue(0)
+            .TestObject;
+
+    private static TestCaseData Test(string name, Transaction[] transactions) => new([transactions]) { TestName = name };
+
+    private static TestCaseData Test(Transaction[] transactions, TransactionResult expected, string name = "", [CallerArgumentExpression(nameof(expected))] string error = "") =>
+        new([transactions, expected]) { TestName = $"{transactions.Length} Transactions, {error.Replace(nameof(TransactionResult) + ".", "")}:{name}" };
+
+    [TestCaseSource(nameof(SimpleBlocksTests))]
+    [TestCaseSource(nameof(ContractBlocksTests))]
+    [TestCaseSource(nameof(SetCodeBlocksTests))]
+    public async Task Successful_blocks(Transaction[] transactions)
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create();
+        BlockPair blocks = await chains.AddBlock(transactions);
+        blocks.AssertFullMatch(transactions.Length);
+    }
+
+    public static IEnumerable<TestCaseData> FailedBlocksTests
+    {
+        get
+        {
+            yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 1)],
+                TransactionResult.TransactionNonceTooHigh);
+
+            yield return Test(
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
+            ], TransactionResult.TransactionNonceTooHigh, "nonce gap on dependent transaction");
+
+            yield return Test(
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0)
+            ], TransactionResult.TransactionNonceTooLow, "nonce reuse on dependent transaction");
+
+            AuthorizationTuple auth = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            yield return Test(
+            [
+                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [auth]),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0),
+            ], TransactionResult.TransactionNonceTooLow, "nonce reuse of SetCode authorization");
+
+            yield return Test([Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0)],
+                TransactionResult.InsufficientSenderBalance);
+
+            yield return Test([
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
+                Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0)
+            ], TransactionResult.InsufficientSenderBalance, "insufficient balance on second transaction");
+
+            yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether(), 100)],
+                TransactionResult.GasLimitBelowIntrinsicGas);
+
+            yield return Test([TxWithoutSender(TestItem.AddressB, 0)],
+                TransactionResult.SenderNotSpecified);
+
+            // InsufficientMaxFeePerGasForSenderBalance - EIP-1559 tx
+            yield return Test([Tx1559WithHighMaxFee(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
+                TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
+
+            // MinerPremiumNegative - maxPriorityFeePerGas > maxFeePerGas
+            yield return Test([Tx1559WithNegativePremium(TestItem.PrivateKeyA, TestItem.AddressB, 0)],
+                TransactionResult.MinerPremiumNegative);
+
+            // TransactionSizeOverMaxInitCodeSize - EIP-3860 (init code > 49152 bytes)
+            yield return Test([TxCreateContract(TestItem.PrivateKeyA, 0, new byte[50000])],
+                TransactionResult.TransactionSizeOverMaxInitCodeSize);
+
+            // B has 1000 ETH. tx1 sends 999.5 ETH leaving ~0.5 ETH. tx2 tries to send 1 ETH and fails.
+            yield return Test(
+            [
+                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 999.Ether() + 500000000.GWei()),
+                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
+            ], TransactionResult.InsufficientSenderBalance, "on dependent transaction");
+
+            // NonceOverflow - contract creation with max nonce
+            yield return Test([TxCreateContract(TestItem.PrivateKeyA, ulong.MaxValue, [0x60, 0x00, 0x60, 0x00, 0xF3])],
+                TransactionResult.NonceOverflow);
+        }
+    }
+
+    [TestCaseSource(nameof(FailedBlocksTests))]
+    public async Task Failed_blocks(Transaction[] transactions, TransactionResult expected)
+    {
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        BlockHeader head = parallel.BlockTree.Head!.Header;
+        Block block = Build.A.Block
+            .WithTransactions(transactions)
+            .WithParent(head)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+        IReleaseSpec releaseSpec = parallel.SpecProvider.GetSpec(block.Header);
+        using IDisposable scope = parallel.MainProcessingContext.WorldState.BeginScope(head);
+        TransactionResult result = TransactionResult.Ok;
+        try
+        {
+            // Use NoValidation to skip block header validation (gas, state root, etc.)
+            // since we're testing transaction validation, not block validation
+            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, releaseSpec);
+        }
+        catch (InvalidTransactionException e)
+        {
+            result = e.Reason;
+        }
+
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Failed_block_gas_limit_exceeded()
+    {
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        BlockHeader head = parallel.BlockTree.Head!.Header;
+
+        Transaction tx = Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether(), 100_000);
+        Block block = Build.A.Block
+            .WithTransactions(tx)
+            .WithParent(head)
+            .WithGasLimit(21000)
+            .TestObject;
+
+        IReleaseSpec releaseSpec = parallel.SpecProvider.GetSpec(block.Header);
+        using IDisposable scope = parallel.MainProcessingContext.WorldState.BeginScope(head);
+        TransactionResult result = TransactionResult.Ok;
+        try
+        {
+            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, releaseSpec);
+        }
+        catch (InvalidTransactionException e)
+        {
+            result = e.Reason;
+        }
+
+        Assert.That(result, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
+    }
+
+    [Test]
+    public async Task SelfDestruct_recreate_in_same_transaction()
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        byte[] selfDestructCode = Prepare.EvmCode
+            .SELFDESTRUCT(TestItem.AddressB)
+            .Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(selfDestructCode).Done;
+
+        byte[] salt = new UInt256(123).ToBigEndian();
+        Address createAddress = ContractAddress.From(TestItem.AddressA, 0);
+        Address contractAddress = ContractAddress.From(createAddress, salt, initCode);
+
+        byte[] create2Code = Prepare.EvmCode
+            .Create2(initCode, salt, 1.Ether())
+            .Call(contractAddress, 50000)
+            .Create2(initCode, salt, 1.Ether())
+            .STOP()
+            .Done;
+        byte[] create2InitCode = Prepare.EvmCode.ForInitOf(create2Code).Done;
+
+        BlockPair blocks = await chains.AddBlock(TxCreateContract(TestItem.PrivateKeyA, 0, create2InitCode, 10.Ether()));
+        blocks.AssertFullMatch(1);
+    }
+
+    [Test]
+    public async Task Cross_contract_calls_with_value()
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        byte[] receiverCode = Prepare.EvmCode
+            .Op(Instruction.CALLVALUE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] receiverInitCode = Prepare.EvmCode.ForInitOf(receiverCode).Done;
+        Address receiverAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+        byte[] callerCode = Prepare.EvmCode
+            .CallWithValue(receiverAddress, 50000)
+            .STOP()
+            .Done;
+        byte[] callerInitCode = Prepare.EvmCode.ForInitOf(callerCode).Done;
+
+        BlockPair blocks = await chains.AddBlock(
+            TxCreateContract(TestItem.PrivateKeyA, 0, receiverInitCode),
+            TxCreateContract(TestItem.PrivateKeyB, 0, callerInitCode, 5.Ether()),
+            TxToContract(TestItem.PrivateKeyB, ContractAddress.From(TestItem.AddressB, 0), 1, [], 2.Ether())
+        );
+        blocks.AssertFullMatch(3);
+    }
+
+    [Test]
+    public async Task Delegated_account_can_send_transactions()
+    {
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+
+        // First block: SetCode authorization that delegates PrivateKeyB to AddressC
+        AuthorizationTuple auth = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+        Transaction setCodeTx = TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [auth]);
+        Block setCodeBlock = await parallel.AddBlock(setCodeTx);
+
+        Assert.That(setCodeBlock.Transactions, Has.Length.EqualTo(1), "SetCode transaction should be included");
+
+        // Second block: Transaction from the delegated account (PrivateKeyB with nonce=1 after authorization)
+        Transaction txFromB = Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether(), 100_000);
+
+        Block txBlock = await parallel.AddBlock(txFromB);
+
+        Assert.That(txBlock.Transactions, Has.Length.EqualTo(1), "Transaction from delegated account should be included");
+    }
+
+    [Test]
+    public async Task Empty_block_parallel()
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create();
+        BlockPair blocks = await chains.AddBlock();
+        blocks.AssertFullMatch(0);
+    }
+
+    [Test]
+    public async Task Storage_conflicts_with_setup_block()
+    {
+        // Tests WAW (Write-After-Write) conflicts requiring re-execution
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        // Contract that increments slot 0
+        byte[] incrementerCode = Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SLOAD)
+            .PushData(1)
+            .Op(Instruction.ADD)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] incrementerInitCode = Prepare.EvmCode.ForInitOf(incrementerCode).Done;
+
+        await chains.AddBlockNoReturn(TxCreateContract(TestItem.PrivateKeyA, 0, incrementerInitCode));
+
+        Address incrementerAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+        // 3 transactions from different senders all incrementing the same counter
+        PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < 3; i++)
+        {
+            int nonce = i == 0 ? 1 : 0;
+            transactions[i] = TxToContract(senders[i], incrementerAddress, (UInt256)nonce, []);
+        }
+
+        BlockPair blocks = await chains.AddBlock(transactions);
+        blocks.AssertStateRootsMatch();
+    }
+
+    [Test]
+    public async Task CREATE2_collision_with_setup_block()
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create();
+
+        byte[] simpleCode = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(simpleCode).Done;
+        byte[] salt = new UInt256(12345).ToBigEndian();
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create2(initCode, salt, 0)
+            .STOP()
+            .Done;
+        byte[] factoryInitCode = Prepare.EvmCode.ForInitOf(factoryCode).Done;
+
+        await chains.AddBlockNoReturn(
+            TxCreateContract(TestItem.PrivateKeyA, 0, factoryInitCode),
+            TxCreateContract(TestItem.PrivateKeyB, 0, factoryInitCode)
+        );
+
+        Address factory1 = ContractAddress.From(TestItem.AddressA, 0);
+        Address factory2 = ContractAddress.From(TestItem.AddressB, 0);
+
+        BlockPair blocks = await chains.AddBlock(
+            TxToContract(TestItem.PrivateKeyA, factory1, 1, []),
+            TxToContract(TestItem.PrivateKeyB, factory2, 1, [])
+        );
+        blocks.AssertStateRootsMatch();
+    }
+
+    [Test]
+    public async Task SelfDestruct_with_Shanghai_spec()
+    {
+        // Complex SELFDESTRUCT scenario in Shanghai spec:
+        // In a SINGLE block:
+        // tx0: Deploy factory contract
+        // tx1: Factory deploys contract via CREATE2 with storage
+        // tx2: Call contract to self-destruct
+        // tx3: Factory re-deploys contract at SAME address via CREATE2
+        // tx4: Verify the re-deployed contract has fresh storage
+        await using DualBlockchain chains = await DualBlockchain.Create(Shanghai.Instance);
+
+        // Contract that stores a value and can self-destruct
+        // Constructor stores CALLVALUE at slot 0
+        // When called, if calldata[0] == 1, self-destruct; otherwise return storage[0]
+        byte[] destructibleCode = Prepare.EvmCode
+            // Check if calldata[0] == 1
+            .CALLDATALOAD(0)
+            .PushData(1)
+            .Op(Instruction.EQ)
+            .PushData(20) // jump destination for self-destruct
+            .Op(Instruction.JUMPI)
+            // Return storage[0]
+            .SLOAD(0)
+            .MSTORE(0)
+            .RETURN(0, 32)
+            // Self-destruct path
+            .JUMPDEST()
+            .SELFDESTRUCT(TestItem.AddressB)
+            .Done;
+
+        // Init code stores CALLVALUE at slot 0, then deploys the code
+        byte[] destructibleInitCode = Prepare.EvmCode
+            .CALLVALUE()
+            .SSTORE(0)
+            .ForInitOf(destructibleCode)
+            .Done;
+
+        byte[] salt = new UInt256(42).ToBigEndian();
+
+        // Factory contract that creates the destructible contract via CREATE2
+        // Uses CALLVALUE so the ETH sent to factory is passed to the created contract
+        byte[] factoryCode = Prepare.EvmCode
+            .StoreDataInMemory(0, destructibleInitCode)
+            .PushData(salt)
+            .PushData(destructibleInitCode.Length)
+            .PushData(0) // memory position
+            .CALLVALUE()
+            .Op(Instruction.CREATE2)
+            .STOP()
+            .Done;
+        byte[] factoryInitCode = Prepare.EvmCode.ForInitOf(factoryCode).Done;
+
+        // Deploy factory in setup block
+        await chains.AddBlockNoReturn(TxCreateContract(TestItem.PrivateKeyA, 0, factoryInitCode));
+
+        Address factoryAddress = ContractAddress.From(TestItem.AddressA, 0);
+        Address create2Address = ContractAddress.From(factoryAddress, salt, Keccak.Compute(destructibleInitCode).Bytes);
+
+        // Test block with multiple operations on the same CREATE2 address:
+        // Using different senders to test parallel execution without nonce dependencies
+        BlockPair blocks = await chains.AddBlock(
+            // tx0 (sender A): Factory creates contract with 5 ETH (stored in slot 0)
+            Tx(TestItem.PrivateKeyA, factoryAddress, 1, 5.Ether(), 500_000),
+            // tx1 (sender B): Self-destruct the contract (calldata = 1)
+            // Different sender - no nonce dependency, tests parallel state tracking
+            Tx(TestItem.PrivateKeyB, create2Address, 0, 0, 100_000, new UInt256(1).ToBigEndian()),
+            // tx2 (sender C): Factory re-creates contract with 7 ETH (should have fresh storage)
+            // Different sender - tests that re-creation sees the self-destructed state
+            Tx(TestItem.PrivateKeyC, factoryAddress, 0, 7.Ether(), 500_000)
+        );
+        blocks.AssertStateRootsMatch();
+    }
+
+    [Test]
+    public async Task Failed_sender_has_deployed_code()
+    {
+        // EIP-3607: Reject transactions from senders with deployed code
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        BlockHeader head = parallel.BlockTree.Head!.Header;
+        IReleaseSpec releaseSpec = parallel.SpecProvider.GetSpec(head);
+
+        // Insert code at TestItem.AddressA (an EOA)
+        byte[] code = [0x60, 0x00, 0xF3]; // PUSH 0, RETURN - simple contract code
+        Hash256 codeHash = Keccak.Compute(code);
+
+        using IDisposable scope = parallel.MainProcessingContext.WorldState.BeginScope(head);
+        parallel.MainProcessingContext.WorldState.InsertCode(TestItem.AddressA, codeHash.ValueHash256, code, releaseSpec);
+        parallel.MainProcessingContext.WorldState.Commit(releaseSpec, NullStateTracer.Instance, commitRoots: true);
+
+        // Now try to send a transaction from that address
+        Transaction tx = Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether());
+        Block block = Build.A.Block
+            .WithTransactions(tx)
+            .WithParent(head)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+
+        TransactionResult result = TransactionResult.Ok;
+        try
+        {
+            OverridableReleaseSpec spec = (OverridableReleaseSpec)parallel.SpecProvider.GetSpec(block.Header);
+            spec.IsEip3607Enabled = true;
+            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec);
+        }
+        catch (InvalidTransactionException e)
+        {
+            result = e.Reason;
+        }
+
+        Assert.That(result, Is.EqualTo(TransactionResult.SenderHasDeployedCode));
+    }
+
+    [Test]
+    public async Task Reexecution_when_slow_contract_provides_balance()
+    {
+        // Test that demonstrates Block-STM re-execution mechanism:
+        // tx0: Deploy contract that does expensive work then transfers balance to recipient
+        // tx1: Call contract with 10 ETH, recipient = F (slow, expensive hashing)
+        // tx2: Simple transfer from F to B (fast, but F has no initial balance)
+        // Expected: tx2 initially sees F's balance = 0, after tx1 completes F has balance, tx2 re-executes and succeeds
+
+        // Build the expensive transfer contract with 100 keccak operations
+        Prepare slowTransferBuilder = Prepare.EvmCode
+            .MSTORE(0, new byte[32]);
+        for (int i = 0; i < 100; i++)
+        {
+            slowTransferBuilder
+                .KECCAK256(0, 32)
+                .MSTORE(0);
+        }
+        byte[] transferCode = slowTransferBuilder
+            .PushData(0)        // retLength
+            .PushData(0)        // retOffset
+            .PushData(0)        // argsLength
+            .PushData(0)        // argsOffset
+            .SELFBALANCE()      // value = contract balance
+            .CALLDATALOAD(0)    // addr = recipient from calldata
+            .GAS()              // gas = remaining gas
+            .Op(Instruction.CALL)
+            .STOP()
+            .Done;
+        byte[] transferInitCode = Prepare.EvmCode.ForInitOf(transferCode).Done;
+        Address transferContract = ContractAddress.From(TestItem.AddressB, 0);
+
+        // Setup block: Deploy the contract
+        Transaction deployTx = TxCreateContract(TestItem.PrivateKeyB, 0, transferInitCode);
+
+        // Test block transactions:
+        // tx0: Call contract with 10 ETH, transfers to F after expensive work
+        Transaction callContractTx = Tx(TestItem.PrivateKeyA, transferContract, 0, 10.Ether(), 1_000_000, TestItem.AddressF.Bytes.PadLeft(32));
+
+        // tx1: Simple transfer from F (initially unfunded, gets balance from tx0)
+        Transaction transferFromF = Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0, 5.Ether());
+
+        // Test with parallel processing
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        // Test with single-threaded processing for comparison
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+
+        // Setup: Deploy contract in both chains
+        await parallel.AddBlock(deployTx);
+        await single.AddBlock(TxCreateContract(TestItem.PrivateKeyB, 0, transferInitCode));
+
+        // Build test block with both transactions, bypassing tx pool
+        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
+        BlockHeader singleHead = single.BlockTree.Head!.Header;
+
+        Block parallelBlock = Build.A.Block
+            .WithTransactions(callContractTx, transferFromF)
+            .WithParent(parallelHead)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+
+        Block singleBlock = Build.A.Block
+            .WithTransactions(callContractTx, transferFromF)
+            .WithParent(singleHead)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+
+        IReleaseSpec parallelSpec = parallel.SpecProvider.GetSpec(parallelBlock.Header);
+        IReleaseSpec singleSpec = single.SpecProvider.GetSpec(singleBlock.Header);
+
+        // Process blocks directly
+        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
+        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
+
+        (_, TxReceipt[] parallelReceipts) = parallel.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec);
+        (_, TxReceipt[] singleReceipts) = single.MainProcessingContext.BlockProcessor.ProcessOne(singleBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, singleSpec);
+
+        // Both should succeed with 2 transactions
+        Assert.Multiple(() =>
+        {
+            Assert.That(parallelReceipts, Has.Length.EqualTo(2), "Parallel should process 2 transactions");
+            Assert.That(singleReceipts, Has.Length.EqualTo(2), "Single should process 2 transactions");
+            Assert.That(parallelReceipts[0].StatusCode, Is.EqualTo(1), "Parallel tx0 should succeed");
+            Assert.That(parallelReceipts[1].StatusCode, Is.EqualTo(1), "Parallel tx1 should succeed");
+            Assert.That(singleReceipts[0].StatusCode, Is.EqualTo(1), "Single tx0 should succeed");
+            Assert.That(singleReceipts[1].StatusCode, Is.EqualTo(1), "Single tx1 should succeed");
+        });
+    }
+}
