@@ -34,6 +34,8 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        private readonly HashSet<AddressAsKey> _deletedThisBlock = new();
+
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -448,6 +450,18 @@ namespace Nethermind.State
                     PushRecreateEmpty(address, account, value);
                 }
             }
+            else if (_deletedThisBlock.Contains(address))
+            {
+                // Cross-transaction zombie resurrection: the address was pruned by EIP-158 in a
+                // prior transaction's commit, so _intraTxCache has no record of it.
+                _needsStateRootUpdate = true;
+                if (_logger.IsTrace) Trace(address);
+
+                Account account = Account.TotallyEmpty;
+                StackList<int> stack = SetupCache(address);
+                PushRecreateEmpty(address, account, stack);
+                _deletedThisBlock.Remove(address);
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address)
@@ -564,6 +578,13 @@ namespace Nethermind.State
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
+                            }
+                            else
+                            {
+                                // EIP-158 is pruning this empty account -- it won't be persisted to the trie.
+                                // Record it so that CreateEmptyAccountIfDeletedOrNew can resurrect it
+                                // if a later transaction in this block needs it as a zombie account.
+                                _deletedThisBlock.Add(change.Address);
                             }
 
                             break;
@@ -839,6 +860,7 @@ namespace Nethermind.State
                 _blockCodeInsertFilter.Clear();
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
+                _deletedThisBlock.Clear();
             }
             _intraTxCache.ResetAndClear();
             _committedThisRound.Clear();
