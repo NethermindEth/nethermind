@@ -30,8 +30,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _iteratorManager = new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, _mainDb._readAheadReadOptions);
         _reader = new RocksDbReader(mainDb, () =>
         {
-            // TODO: Verify checksum not set here.
-            return new ReadOptions();
+            ReadOptions readOptions = new ReadOptions();
+            readOptions.SetVerifyChecksums(mainDb.VerifyChecksum);
+            return readOptions;
         }, _iteratorManager, _columnFamily);
     }
 
@@ -188,6 +189,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         get
         {
             ReadOptions readOptions = new();
+            readOptions.SetVerifyChecksums(_mainDb.VerifyChecksum);
             using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
             iterator.SeekToFirst();
             return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
@@ -199,6 +201,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         get
         {
             ReadOptions readOptions = new();
+            readOptions.SetVerifyChecksums(_mainDb.VerifyChecksum);
             using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
             iterator.SeekToLast();
             return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
@@ -219,6 +222,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             () =>
             {
                 ReadOptions readOptions = new();
+                readOptions.SetVerifyChecksums(_mainDb.VerifyChecksum);
                 readOptions.SetSnapshot(snapshot);
                 return readOptions;
             },
