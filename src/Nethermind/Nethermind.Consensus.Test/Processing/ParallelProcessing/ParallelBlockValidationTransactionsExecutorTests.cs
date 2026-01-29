@@ -48,6 +48,68 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec));
     }
 
+    /// <summary>
+    /// Helper that wraps parallel and single-threaded blockchains for comparison testing.
+    /// Executes operations on both chains and provides assertion helpers.
+    /// </summary>
+    public sealed class DualBlockchain : IAsyncDisposable
+    {
+        public ParallelTestBlockchain Parallel { get; }
+        public ParallelTestBlockchain Single { get; }
+
+        private DualBlockchain(ParallelTestBlockchain parallel, ParallelTestBlockchain single)
+        {
+            Parallel = parallel;
+            Single = single;
+        }
+
+        public static async Task<DualBlockchain> Create(IReleaseSpec releaseSpec = null)
+        {
+            ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), releaseSpec);
+            ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), releaseSpec);
+            return new DualBlockchain(parallel, single);
+        }
+
+        public async Task<(Block Parallel, Block Single)> AddBlock(params Transaction[] transactions)
+        {
+            Block parallel = await Parallel.AddBlock(transactions);
+            Block single = await Single.AddBlock(transactions);
+            return (parallel, single);
+        }
+
+        public async Task AddBlockNoReturn(params Transaction[] transactions)
+        {
+            await Parallel.AddBlock(transactions);
+            await Single.AddBlock(transactions);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Parallel.Dispose();
+            Single.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public readonly record struct BlockPair(Block Parallel, Block Single)
+    {
+        public static implicit operator BlockPair((Block Parallel, Block Single) tuple) => new(tuple.Parallel, tuple.Single);
+
+        public void AssertStateRootsMatch() => Assert.That(Parallel.Header.StateRoot, Is.EqualTo(Single.Header.StateRoot));
+
+        public void AssertFullMatch(int expectedTxCount)
+        {
+            Block p = Parallel, s = Single;
+            Assert.Multiple(() =>
+            {
+                Assert.That(p.Transactions, Has.Length.EqualTo(expectedTxCount));
+                Assert.That(s.Transactions, Has.Length.EqualTo(expectedTxCount));
+                Assert.That(p.Header.GasUsed, Is.EqualTo(s.Header.GasUsed));
+                Assert.That(p.Header.StateRoot, Is.EqualTo(s.Header.StateRoot));
+            });
+        }
+    }
+
     public static IEnumerable<TestCaseData> SimpleBlocksTests
     {
         get
@@ -375,18 +437,9 @@ public class ParallelBlockValidationTransactionsExecutorTests
     [TestCaseSource(nameof(SetCodeBlocksTests))]
     public async Task Successful_blocks(Transaction[] transactions)
     {
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
-        Block block = await parallel.AddBlock(transactions);
-        Block singleBlock = await single.AddBlock(transactions);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(block.Transactions, Has.Length.EqualTo(transactions.Length));
-            Assert.That(singleBlock.Transactions, Has.Length.EqualTo(transactions.Length));
-            Assert.That(block.Header.GasUsed, Is.EqualTo(singleBlock.Header.GasUsed));
-            Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
-        });
+        await using DualBlockchain chains = await DualBlockchain.Create();
+        BlockPair blocks = await chains.AddBlock(transactions);
+        blocks.AssertFullMatch(transactions.Length);
     }
 
     public static IEnumerable<TestCaseData> FailedBlocksTests
@@ -502,8 +555,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
     [Test]
     public async Task SelfDestruct_recreate_in_same_transaction()
     {
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+        await using DualBlockchain chains = await DualBlockchain.Create();
 
         byte[] selfDestructCode = Prepare.EvmCode
             .SELFDESTRUCT(TestItem.AddressB)
@@ -522,24 +574,14 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .Done;
         byte[] create2InitCode = Prepare.EvmCode.ForInitOf(create2Code).Done;
 
-        Transaction[] transactions = [TxCreateContract(TestItem.PrivateKeyA, 0, create2InitCode, 10.Ether())];
-
-        Block block = await parallel.AddBlock(transactions);
-        Block singleBlock = await single.AddBlock(transactions);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(block.Transactions, Has.Length.EqualTo(1));
-            Assert.That(singleBlock.Transactions, Has.Length.EqualTo(1));
-            Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
-        });
+        BlockPair blocks = await chains.AddBlock(TxCreateContract(TestItem.PrivateKeyA, 0, create2InitCode, 10.Ether()));
+        blocks.AssertFullMatch(1);
     }
 
     [Test]
     public async Task Cross_contract_calls_with_value()
     {
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+        await using DualBlockchain chains = await DualBlockchain.Create();
 
         byte[] receiverCode = Prepare.EvmCode
             .Op(Instruction.CALLVALUE)
@@ -556,8 +598,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .Done;
         byte[] callerInitCode = Prepare.EvmCode.ForInitOf(callerCode).Done;
 
-        Transaction[] transactions =
-        [
+        BlockPair blocks = await chains.AddBlock(
             TxCreateContract(TestItem.PrivateKeyA, 0, receiverInitCode),
             TxCreateContract(TestItem.PrivateKeyB, 0, callerInitCode, 5.Ether()),
             Build.A.Transaction
@@ -568,17 +609,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .SignedAndResolved(TestItem.PrivateKeyB, false)
                 .WithValue(2.Ether())
                 .TestObject
-        ];
-
-        Block block = await parallel.AddBlock(transactions);
-        Block singleBlock = await single.AddBlock(transactions);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(block.Transactions, Has.Length.EqualTo(3));
-            Assert.That(singleBlock.Transactions, Has.Length.EqualTo(3));
-            Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
-        });
+        );
+        blocks.AssertFullMatch(3);
     }
 
     [Test]
@@ -614,25 +646,16 @@ public class ParallelBlockValidationTransactionsExecutorTests
     [Test]
     public async Task Empty_block_parallel()
     {
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
-
-        Block block = await parallel.AddBlock();
-        Block singleBlock = await single.AddBlock();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(block.Transactions, Has.Length.EqualTo(0));
-            Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
-        });
+        await using DualBlockchain chains = await DualBlockchain.Create();
+        BlockPair blocks = await chains.AddBlock();
+        blocks.AssertFullMatch(0);
     }
 
     [Test]
     public async Task Storage_conflicts_with_setup_block()
     {
         // Tests WAW (Write-After-Write) conflicts requiring re-execution
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+        await using DualBlockchain chains = await DualBlockchain.Create();
 
         // Contract that increments slot 0
         byte[] incrementerCode = Prepare.EvmCode
@@ -646,9 +669,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .Done;
         byte[] incrementerInitCode = Prepare.EvmCode.ForInitOf(incrementerCode).Done;
 
-        Transaction createIncrementer = TxCreateContract(TestItem.PrivateKeyA, 0, incrementerInitCode);
-        await parallel.AddBlock(createIncrementer);
-        await single.AddBlock(createIncrementer);
+        await chains.AddBlockNoReturn(TxCreateContract(TestItem.PrivateKeyA, 0, incrementerInitCode));
 
         Address incrementerAddress = ContractAddress.From(TestItem.AddressA, 0);
 
@@ -669,17 +690,14 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .TestObject;
         }
 
-        Block block = await parallel.AddBlock(transactions);
-        Block singleBlock = await single.AddBlock(transactions);
-
-        Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
+        BlockPair blocks = await chains.AddBlock(transactions);
+        blocks.AssertStateRootsMatch();
     }
 
     [Test]
     public async Task CREATE2_collision_with_setup_block()
     {
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+        await using DualBlockchain chains = await DualBlockchain.Create();
 
         byte[] simpleCode = Prepare.EvmCode
             .PushData(1)
@@ -696,48 +714,37 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .Done;
         byte[] factoryInitCode = Prepare.EvmCode.ForInitOf(factoryCode).Done;
 
-        Transaction deployFactory1 = TxCreateContract(TestItem.PrivateKeyA, 0, factoryInitCode);
-        Transaction deployFactory2 = TxCreateContract(TestItem.PrivateKeyB, 0, factoryInitCode);
-
-        await parallel.AddBlock(deployFactory1, deployFactory2);
-        await single.AddBlock(deployFactory1, deployFactory2);
+        await chains.AddBlockNoReturn(
+            TxCreateContract(TestItem.PrivateKeyA, 0, factoryInitCode),
+            TxCreateContract(TestItem.PrivateKeyB, 0, factoryInitCode)
+        );
 
         Address factory1 = ContractAddress.From(TestItem.AddressA, 0);
         Address factory2 = ContractAddress.From(TestItem.AddressB, 0);
 
-        Transaction callFactory1 = TxToContract(TestItem.PrivateKeyA, factory1, 1, []);
-        Transaction callFactory2 = TxToContract(TestItem.PrivateKeyB, factory2, 1, []);
-
-        Transaction[] transactions = [callFactory1, callFactory2];
-        Block block = await parallel.AddBlock(transactions);
-        Block singleBlock = await single.AddBlock(transactions);
-
-        Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
+        BlockPair blocks = await chains.AddBlock(
+            TxToContract(TestItem.PrivateKeyA, factory1, 1, []),
+            TxToContract(TestItem.PrivateKeyB, factory2, 1, [])
+        );
+        blocks.AssertStateRootsMatch();
     }
 
     [Test]
     public async Task SelfDestruct_with_Shanghai_spec()
     {
         // Shanghai spec where SELFDESTRUCT still clears storage for pre-existing contracts
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), Shanghai.Instance);
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), Shanghai.Instance);
+        await using DualBlockchain chains = await DualBlockchain.Create(Shanghai.Instance);
 
         byte[] selfDestructCode = Prepare.EvmCode
             .SELFDESTRUCT(TestItem.AddressB)
             .Done;
         byte[] selfDestructInitCode = Prepare.EvmCode.ForInitOf(selfDestructCode).Done;
 
-        Transaction deployDestructor = TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether());
-        await parallel.AddBlock(deployDestructor);
-        await single.AddBlock(deployDestructor);
+        await chains.AddBlockNoReturn(TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether()));
 
         Address destructorAddress = ContractAddress.From(TestItem.AddressA, 0);
-        Transaction callDestructor = TxToContract(TestItem.PrivateKeyA, destructorAddress, 1, []);
-
-        Block block = await parallel.AddBlock(callDestructor);
-        Block singleBlock = await single.AddBlock(callDestructor);
-
-        Assert.That(block.Header.StateRoot, Is.EqualTo(singleBlock.Header.StateRoot));
+        BlockPair blocks = await chains.AddBlock(TxToContract(TestItem.PrivateKeyA, destructorAddress, 1, []));
+        blocks.AssertStateRootsMatch();
     }
 
     private static IBlocksConfig BuildConfig(bool parallel) =>
