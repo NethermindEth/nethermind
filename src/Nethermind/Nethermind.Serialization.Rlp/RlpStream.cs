@@ -432,8 +432,91 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                // todo: can avoid allocation here but benefit is rare
-                Encode(Encoding.ASCII.GetBytes(value));
+                ReadOnlySpan<char> chars = value.AsSpan();
+                int length = chars.Length;
+
+                if (length == 1)
+                {
+                    byte singleByte = AsAsciiByte(chars[0]);
+                    if (singleByte < 128)
+                    {
+                        WriteByte(singleByte);
+                        return;
+                    }
+                }
+
+                if (length < RlpHelpers.SmallPrefixBarrier)
+                {
+                    byte smallPrefix = (byte)(length + 128);
+                    WriteByte(smallPrefix);
+                }
+                else
+                {
+                    int lengthOfLength = Rlp.LengthOfLength(length);
+                    byte prefix = (byte)(183 + lengthOfLength);
+                    WriteByte(prefix);
+                    WriteEncodedLength(length);
+                }
+
+                for (int i = 0; i < length; i++)
+                {
+                    WriteByte(AsAsciiByte(chars[i]));
+                }
+            }
+        }
+
+        private static byte AsAsciiByte(char c)
+        {
+            return c <= 0x7F ? (byte)c : (byte)'?';
+        }
+
+        private static byte AsLowerAsciiByte(char c)
+        {
+            if ((uint)(c - 'A') <= ('Z' - 'A'))
+            {
+                c = (char)(c | 0x20);
+            }
+
+            return AsAsciiByte(c);
+        }
+
+        public void EncodeAsciiLowercase(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                WriteByte(128);
+                return;
+            }
+
+            ReadOnlySpan<char> chars = value.AsSpan();
+            int length = chars.Length;
+
+            if (length == 1)
+            {
+                byte singleByte = AsLowerAsciiByte(chars[0]);
+                if (singleByte < 128)
+                {
+                    WriteByte(singleByte);
+                    return;
+                }
+            }
+
+            if (length < RlpHelpers.SmallPrefixBarrier)
+            {
+                byte smallPrefix = (byte)(length + 128);
+                WriteByte(smallPrefix);
+            }
+            else
+            {
+                int lengthOfLength = Rlp.LengthOfLength(length);
+                byte prefix = (byte)(183 + lengthOfLength);
+                WriteByte(prefix);
+                WriteEncodedLength(length);
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                WriteByte(AsLowerAsciiByte(chars[i]));
             }
         }
 
