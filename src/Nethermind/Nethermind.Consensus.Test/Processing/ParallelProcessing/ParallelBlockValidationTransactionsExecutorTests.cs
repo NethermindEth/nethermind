@@ -753,18 +753,104 @@ public class ParallelBlockValidationTransactionsExecutorTests
     [Test]
     public async Task SelfDestruct_with_Shanghai_spec()
     {
-        // Shanghai spec where SELFDESTRUCT still clears storage for pre-existing contracts
+        // Complex SELFDESTRUCT scenario in Shanghai spec:
+        // In a SINGLE block:
+        // tx0: Deploy factory contract
+        // tx1: Factory deploys contract via CREATE2 with storage
+        // tx2: Call contract to self-destruct
+        // tx3: Factory re-deploys contract at SAME address via CREATE2
+        // tx4: Verify the re-deployed contract has fresh storage
         await using DualBlockchain chains = await DualBlockchain.Create(Shanghai.Instance);
 
-        byte[] selfDestructCode = Prepare.EvmCode
+        // Contract that stores a value and can self-destruct
+        // Constructor stores CALLVALUE at slot 0
+        // When called, if calldata[0] == 1, self-destruct; otherwise return storage[0]
+        byte[] destructibleCode = Prepare.EvmCode
+            // Check if calldata[0] == 1
+            .CALLDATALOAD(0)
+            .PushData(1)
+            .Op(Instruction.EQ)
+            .PushData(20) // jump destination for self-destruct
+            .Op(Instruction.JUMPI)
+            // Return storage[0]
+            .SLOAD(0)
+            .MSTORE(0)
+            .RETURN(0, 32)
+            // Self-destruct path
+            .JUMPDEST()
             .SELFDESTRUCT(TestItem.AddressB)
             .Done;
-        byte[] selfDestructInitCode = Prepare.EvmCode.ForInitOf(selfDestructCode).Done;
 
-        await chains.AddBlockNoReturn(TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether()));
+        // Init code stores CALLVALUE at slot 0, then deploys the code
+        byte[] destructibleInitCode = Prepare.EvmCode
+            .CALLVALUE()
+            .SSTORE(0)
+            .ForInitOf(destructibleCode)
+            .Done;
 
-        Address destructorAddress = ContractAddress.From(TestItem.AddressA, 0);
-        BlockPair blocks = await chains.AddBlock(TxToContract(TestItem.PrivateKeyA, destructorAddress, 1, []));
+        byte[] salt = new UInt256(42).ToBigEndian();
+
+        // Factory contract that creates the destructible contract via CREATE2
+        // Uses CALLVALUE so the ETH sent to factory is passed to the created contract
+        byte[] factoryCode = Prepare.EvmCode
+            .StoreDataInMemory(0, destructibleInitCode)
+            .PushData(salt)
+            .PushData(destructibleInitCode.Length)
+            .PushData(0) // memory position
+            .CALLVALUE()
+            .Op(Instruction.CREATE2)
+            .STOP()
+            .Done;
+        byte[] factoryInitCode = Prepare.EvmCode.ForInitOf(factoryCode).Done;
+
+        // Deploy factory in setup block
+        await chains.AddBlockNoReturn(TxCreateContract(TestItem.PrivateKeyA, 0, factoryInitCode));
+
+        Address factoryAddress = ContractAddress.From(TestItem.AddressA, 0);
+        Address create2Address = ContractAddress.From(factoryAddress, salt, Keccak.Compute(destructibleInitCode).Bytes);
+
+        // Test block with multiple operations on the same CREATE2 address:
+        // Using different senders to test parallel execution without nonce dependencies
+        BlockPair blocks = await chains.AddBlock(
+            // tx0 (sender A): Factory creates contract with 5 ETH (stored in slot 0)
+            Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .To(factoryAddress)
+                .WithNonce(1)
+                .WithChainId(BlockchainIds.Mainnet)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithGasLimit(500_000)
+                .SignedAndResolved(TestItem.PrivateKeyA, false)
+                .WithValue(5.Ether())
+                .TestObject,
+            // tx1 (sender B): Self-destruct the contract (calldata = 1)
+            // Different sender - no nonce dependency, tests parallel state tracking
+            Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .To(create2Address)
+                .WithNonce(0)
+                .WithChainId(BlockchainIds.Mainnet)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithGasLimit(100_000)
+                .WithData(new UInt256(1).ToBigEndian())
+                .SignedAndResolved(TestItem.PrivateKeyB, false)
+                .TestObject,
+            // tx2 (sender C): Factory re-creates contract with 7 ETH (should have fresh storage)
+            // Different sender - tests that re-creation sees the self-destructed state
+            Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .To(factoryAddress)
+                .WithNonce(0)
+                .WithChainId(BlockchainIds.Mainnet)
+                .WithMaxFeePerGas(2.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithGasLimit(500_000)
+                .SignedAndResolved(TestItem.PrivateKeyC, false)
+                .WithValue(7.Ether())
+                .TestObject
+        );
         blocks.AssertStateRootsMatch();
     }
 
