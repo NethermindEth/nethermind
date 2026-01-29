@@ -51,8 +51,6 @@ internal sealed class SignTransactionFilter(ISigner signer, IBlockTree blockTree
         {
             if (tx.IsSignTransaction(spec) && !ValidateSignTransaction(tx, headerNumber, spec))
             {
-                Console.WriteLine("Sign transaction validation failed.");
-
                 return AcceptTxResult.Invalid;
             }
 
