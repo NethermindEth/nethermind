@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -51,6 +52,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     if (blobTransaction.BlobVersionedHashes is null || blobTransaction.BlobVersionedHashes.Length == 0)
                         return AtLeastOneBlobInBlobTransactionError;
+
+                    foreach (byte[]? hash in blobTransaction.BlobVersionedHashes)
+                    {
+                        if (hash is null || hash.Length != Eip4844Constants.BytesPerBlobVersionedHash)
+                            return InvalidBlobVersionedHashSizeError;
+
+                        if (hash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                            return InvalidBlobVersionedHashVersionError;
+                    }
 
                     if (blobTransaction.To is null)
                         return MissingToInBlobTxError;
@@ -135,6 +145,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private const string GasPriceInEip1559Error = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
             private const string AtLeastOneBlobInBlobTransactionError = "need at least 1 blob for a blob transaction";
+            private const string InvalidBlobVersionedHashSizeError = "blob versioned hash must be 32 bytes";
+            private const string InvalidBlobVersionedHashVersionError = "blob versioned hash version must be 0x01";
             private const string MissingToInBlobTxError = "missing \"to\" in blob transaction";
             private const string ZeroMaxFeePerBlobGasError = "maxFeePerBlobGas, if specified, must be non-zero";
             private const string ZeroMaxFeePerGasError = "maxFeePerGas must be non-zero";
