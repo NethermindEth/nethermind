@@ -18,6 +18,7 @@ jobs:
         config: [release]
         project:
           - DocGen/DocGen.slnx
+          - EthProofValidator/src/EthProofValidator.slnx
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
