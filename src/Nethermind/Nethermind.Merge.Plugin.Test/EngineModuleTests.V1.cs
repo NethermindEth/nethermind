@@ -458,7 +458,8 @@ public partial class EngineModuleTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
+    [CancelAfter(5000)]
+    public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
@@ -478,7 +479,7 @@ public partial class EngineModuleTests
         };
         await chain.BlockTree.SuggestBlockAsync(block!);
 
-        await bestBlockProcessed.WaitAsync();
+        await bestBlockProcessed.WaitAsync(cancellationToken);
         ExecutionPayload blockRequest = ExecutionPayload.Create(block);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -818,7 +819,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_on_top_of_terminal_block()
+    [CancelAfter(5000)]
+    public async Task executePayloadV1_on_top_of_terminal_block(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -846,7 +848,7 @@ public partial class EngineModuleTests
                 bestBlockProcessed.Release(1);
         };
         await chain.BlockTree.SuggestBlockAsync(newBlock);
-        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
+        await bestBlockProcessed.WaitAsync(cancellationToken);
 
         oneMoreTerminalBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
@@ -863,7 +865,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block()
+    [CancelAfter(5000)]
+    public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -891,7 +894,7 @@ public partial class EngineModuleTests
                 bestBlockProcessed.Release(1);
         };
         await chain.BlockTree.SuggestBlockAsync(newBlock);
-        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
+        await bestBlockProcessed.WaitAsync(cancellationToken);
 
         oneMoreTerminalBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
