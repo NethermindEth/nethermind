@@ -29,7 +29,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
                 // Note: Need a small modification to have this work on all branch processor due to the shared
                 // NodeStorageCache and the FrozenDictionary and the fact that some processing does not have
-                // branch processor, and use block processor instead.
+                // a branch processor, and use block processor instead.
                 .AddSingleton<IMainProcessingModule, PrewarmerMainProcessingModule>();
         }
     }
@@ -40,12 +40,12 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         {
             builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
-                // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
+                // module, so the singleton here is like scoped but excludes inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
                 .Add<PrewarmerEnvFactory>()
 
-                // These are the actual decorated component that provide cached result
+                // These are the actual decorated components that provide a cached result
                 .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
                 {
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
@@ -60,7 +60,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
-                    // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
+                    // Note: The use of FrozenDictionary means that this cannot be used for another processing env also due to the risk of memory leak.
                     return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 });

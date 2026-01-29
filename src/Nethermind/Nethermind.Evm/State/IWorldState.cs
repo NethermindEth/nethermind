@@ -129,6 +129,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SetNonce(Address address, in UInt256 nonce);
 
+    void SetAccount(Address address, Account? account);
+
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 

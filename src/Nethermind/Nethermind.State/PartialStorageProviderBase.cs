@@ -262,6 +262,31 @@ namespace Nethermind.State
             public bool IsNull => ChangeType == ChangeType.Null;
         }
 
+        /*
+        protected struct ChangeTrace
+        {
+            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+            public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
+
+            public ChangeTrace(byte[]? before, byte[]? after)
+            {
+                After = after ?? StorageTree.ZeroBytes;
+                Before = before ?? StorageTree.ZeroBytes;
+            }
+
+            public ChangeTrace(byte[]? after)
+            {
+                After = after ?? StorageTree.ZeroBytes;
+                Before = StorageTree.ZeroBytes;
+                IsInitialValue = true;
+            }
+
+            public byte[] Before;
+            public byte[] After;
+            public bool IsInitialValue;
+        }
+        */
+
         /// <summary>
         /// Type of change to track
         /// </summary>

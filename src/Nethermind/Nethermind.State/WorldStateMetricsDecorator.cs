@@ -84,6 +84,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void SetNonce(Address address, in UInt256 nonce) => innerState.SetNonce(address, nonce);
 
+    public void SetAccount(Address address, Account? account) => innerState.SetAccount(address, account);
+
     public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();

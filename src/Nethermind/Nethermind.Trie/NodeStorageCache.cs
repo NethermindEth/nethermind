@@ -9,27 +9,16 @@ namespace Nethermind.Trie;
 
 public sealed class NodeStorageCache
 {
-    private ConcurrentDictionary<NodeKey, byte[]> _cache = new();
+    private readonly ConcurrentDictionary<NodeKey, byte[]> _cache = new();
 
-    private volatile bool _enabled = false;
+    private bool _enabled;
 
-    public bool Enabled
+    public byte[]? GetOrAdd(NodeKey nodeKey, Func<NodeKey, byte[]> tryLoadRlp) =>
+        _enabled ? _cache.GetOrAdd(nodeKey, tryLoadRlp) : tryLoadRlp(nodeKey);
+
+    public bool ClearCaches(bool enabled)
     {
-        get => _enabled;
-        set => _enabled = value;
-    }
-
-    public byte[]? GetOrAdd(NodeKey nodeKey, Func<NodeKey, byte[]> tryLoadRlp)
-    {
-        if (!_enabled)
-        {
-            return tryLoadRlp(nodeKey);
-        }
-        return _cache.GetOrAdd(nodeKey, tryLoadRlp);
-    }
-
-    public bool ClearCaches()
-    {
+        _enabled = enabled;
         return _cache.NoResizeClear();
     }
 }

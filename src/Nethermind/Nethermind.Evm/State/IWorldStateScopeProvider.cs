@@ -44,7 +44,7 @@ public interface IWorldStateScopeProvider
         ICodeDb CodeDb { get; }
 
         /// <summary>
-        /// Create a per address storage tree. Multiple call to the same
+        /// Create a per address storage tree. Multiple calls to the same
         /// address yield the same <see cref="IStorageTree"/>. The returned object
         /// must not be used after <see cref="Commit"/>, and should be re-created.
         /// </summary>
@@ -61,7 +61,7 @@ public interface IWorldStateScopeProvider
 
         /// <summary>
         /// A commit will traverse the dirty nodes in the tree, calculate the hash and save
-        /// the tree to underlying store.
+        /// the tree to the underlying store.
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>
@@ -101,15 +101,15 @@ public interface IWorldStateScopeProvider
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
     }
 
-    public class AccountUpdated(Address Address, Account? Account) : EventArgs
+    public class AccountUpdated(Address address, Account? account) : EventArgs
     {
-        public Address Address { get; init; } = Address;
-        public Account? Account { get; init; } = Account;
+        public Address Address { get; } = address;
+        public Account? Account { get; } = account;
 
-        public void Deconstruct(out Address Address, out Account? Account)
+        public void Deconstruct(out Address address, out Account? account)
         {
-            Address = this.Address;
-            Account = this.Account;
+            address = Address;
+            account = Account;
         }
     }
 

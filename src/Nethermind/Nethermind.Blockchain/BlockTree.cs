@@ -527,10 +527,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult SuggestHeader(BlockHeader header)
-        {
-            return Suggest(null, header);
-        }
+        public AddBlockResult SuggestHeader(BlockHeader header) => Suggest(null, header);
 
         public async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess)
         {
@@ -542,15 +539,10 @@ namespace Nethermind.Blockchain
             return SuggestBlock(block, suggestOptions);
         }
 
-        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
-        {
-            if (Genesis is null && !block.IsGenesis)
-            {
-                throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
-            }
-
-            return Suggest(block, block.Header, options);
-        }
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
+            Genesis is null && !block.IsGenesis
+                ? throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.")
+                : Suggest(block, block.Header, options);
 
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
         {
@@ -568,6 +560,12 @@ namespace Nethermind.Blockchain
             {
                 // TODO: would be great to check why this is still needed (maybe it is something archaic)
                 return null;
+            }
+
+            Block? head = Head;
+            if (head?.Hash == blockHash)
+            {
+                return head.Header;
             }
 
             BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);

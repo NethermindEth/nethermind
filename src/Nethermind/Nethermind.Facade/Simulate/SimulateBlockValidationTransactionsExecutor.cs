@@ -31,7 +31,10 @@ public class SimulateBlockValidationTransactionsExecutor(
         );
     }
 
-    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
+    public TxReceipt[] ProcessTransactions(
+        Block block,
+        ProcessingOptions processingOptions,
+        BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
     {
         long startingGasLeft = simulateState.TotalGasLeft;
@@ -40,9 +43,9 @@ public class SimulateBlockValidationTransactionsExecutor(
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
-        var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token: token);
 
-        // Many gas calculation not done with skip validation, but needed for response
+        // Many gas calculations not done with skip validation but needed for response
         long currentGasUsedTotal = 0;
         foreach (TxReceipt txReceipt in result)
         {
@@ -52,7 +55,7 @@ public class SimulateBlockValidationTransactionsExecutor(
 
         block.Header.GasUsed = startingGasLeft - simulateState.TotalGasLeft;
 
-        // SimulateTransactionProcessorAdapter change gas limit as block is processed. So need to recalculate.
+        // SimulateTransactionProcessorAdapter change gas limit as the block is processed. So need to recalculate.
         block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
 
         return result;

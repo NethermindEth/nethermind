@@ -36,6 +36,12 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
+        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+        IReceiptConfig receiptConfig = configProvider.GetConfig<IReceiptConfig>();
+        ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
         builder
             .AddServiceStopper()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
@@ -72,8 +78,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 
-            .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
-            .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
+            .AddSingleton<ITimestamper>(_ => Timestamper.Default)
+            .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new FileSystem())
             ;
 

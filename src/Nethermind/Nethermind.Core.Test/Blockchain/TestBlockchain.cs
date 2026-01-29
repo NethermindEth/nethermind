@@ -207,7 +207,7 @@ public class TestBlockchain : IDisposable
         IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
-        ConfigureContainer(builder, configProvider);
+        // ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
 
         Container = builder.Build();

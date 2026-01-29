@@ -15,8 +15,8 @@ public static class Wait
         Action<EventHandler<T>> unregister,
         Func<T, bool> condition)
     {
-        TaskCompletionSource completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void handler(object? sender, T t)
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Handler(object? sender, T t)
         {
             if (condition(t))
             {
@@ -24,7 +24,7 @@ public static class Wait
             }
         }
 
-        register(handler);
+        register(Handler);
 
         try
         {
@@ -35,7 +35,7 @@ public static class Wait
         }
         finally
         {
-            unregister(handler);
+            unregister(Handler);
         }
     }
 
@@ -44,13 +44,13 @@ public static class Wait
         Action<EventHandler> register,
         Action<EventHandler> unregister)
     {
-        TaskCompletionSource completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void handler(object? sender, EventArgs e)
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Handler(object? sender, EventArgs e)
         {
             completion.TrySetResult();
         }
 
-        register(handler);
+        register(Handler);
 
         try
         {
@@ -61,7 +61,7 @@ public static class Wait
         }
         finally
         {
-            unregister(handler);
+            unregister(Handler);
         }
     }
 }
