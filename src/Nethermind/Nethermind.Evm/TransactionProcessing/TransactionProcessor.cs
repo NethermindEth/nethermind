@@ -1012,10 +1012,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? substateError = null)
-        {
-            return new TransactionResult(ErrorType.None, evmExceptionType) { SubstateError = substateError };
-        }
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? substateError = null) =>
+            new(ErrorType.None, evmExceptionType) { SubstateError = substateError };
 
         public static readonly TransactionResult Ok = new();
 

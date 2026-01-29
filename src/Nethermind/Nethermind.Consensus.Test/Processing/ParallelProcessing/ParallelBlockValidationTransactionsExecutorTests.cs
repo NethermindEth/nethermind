@@ -11,16 +11,19 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
@@ -109,6 +112,14 @@ public class ParallelBlockValidationTransactionsExecutorTests
             });
         }
     }
+
+    private static IBlocksConfig BuildConfig(bool parallel) =>
+        new BlocksConfig
+        {
+            MinGasPrice = 0,
+            PreWarmStateOnBlockProcessing = !parallel,
+            ParallelBlockProcessing = parallel
+        };
 
     public static IEnumerable<TestCaseData> SimpleBlocksTests
     {
@@ -471,6 +482,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
             yield return Test([Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0)],
                 TransactionResult.InsufficientSenderBalance);
 
+            yield return Test([
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
+                Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0)
+            ], TransactionResult.InsufficientSenderBalance, "insufficient balance on second transaction");
+
             yield return Test([Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether(), 100)],
                 TransactionResult.GasLimitBelowIntrinsicGas);
 
@@ -496,6 +512,10 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0, 999.Ether() + 500000000.GWei()),
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
             ], TransactionResult.InsufficientSenderBalance, "on dependent transaction");
+
+            // NonceOverflow - contract creation with max nonce
+            yield return Test([TxCreateContract(TestItem.PrivateKeyA, ulong.MaxValue, [0x60, 0x00, 0x60, 0x00, 0xF3])],
+                TransactionResult.NonceOverflow);
         }
     }
 
@@ -747,11 +767,42 @@ public class ParallelBlockValidationTransactionsExecutorTests
         blocks.AssertStateRootsMatch();
     }
 
-    private static IBlocksConfig BuildConfig(bool parallel) =>
-        new BlocksConfig
+    [Test]
+    public async Task Failed_sender_has_deployed_code()
+    {
+        // EIP-3607: Reject transactions from senders with deployed code
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
+        BlockHeader head = parallel.BlockTree.Head!.Header;
+        IReleaseSpec releaseSpec = parallel.SpecProvider.GetSpec(head);
+
+        // Insert code at TestItem.AddressA (an EOA)
+        byte[] code = [0x60, 0x00, 0xF3]; // PUSH 0, RETURN - simple contract code
+        Hash256 codeHash = Keccak.Compute(code);
+
+        using IDisposable scope = parallel.MainProcessingContext.WorldState.BeginScope(head);
+        parallel.MainProcessingContext.WorldState.InsertCode(TestItem.AddressA, codeHash.ValueHash256, code, releaseSpec);
+        parallel.MainProcessingContext.WorldState.Commit(releaseSpec, NullStateTracer.Instance, commitRoots: true);
+
+        // Now try to send a transaction from that address
+        Transaction tx = Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 1.Ether());
+        Block block = Build.A.Block
+            .WithTransactions(tx)
+            .WithParent(head)
+            .WithBaseFeePerGas(1.GWei())
+            .TestObject;
+
+        TransactionResult result = TransactionResult.Ok;
+        try
         {
-            MinGasPrice = 0,
-            PreWarmStateOnBlockProcessing = !parallel,
-            ParallelBlockProcessing = parallel
-        };
+            OverridableReleaseSpec spec = (OverridableReleaseSpec)parallel.SpecProvider.GetSpec(block.Header);
+            spec.IsEip3607Enabled = true;
+            parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, spec);
+        }
+        catch (InvalidTransactionException e)
+        {
+            result = e.Reason;
+        }
+
+        Assert.That(result, Is.EqualTo(TransactionResult.SenderHasDeployedCode));
+    }
 }
