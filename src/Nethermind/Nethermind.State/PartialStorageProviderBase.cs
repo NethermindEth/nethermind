@@ -10,6 +10,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
+using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State
 {
@@ -49,6 +50,8 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
+            // Track storage write for execution metrics
+            EvmMetrics.ThreadExecutionMetrics.StorageWrites++;
             PushUpdate(in storageCell, newValue);
         }
 

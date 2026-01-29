@@ -400,6 +400,10 @@ internal static partial class EvmInstructions
         if (!newSameAsCurrent)
         {
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            if (newIsZero)
+            {
+                Metrics.ThreadExecutionMetrics.StorageDeleted++;
+            }
         }
 
         // Report storage changes for tracing if enabled.
@@ -562,6 +566,10 @@ internal static partial class EvmInstructions
         if (!newSameAsCurrent)
         {
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            if (newIsZero)
+            {
+                Metrics.ThreadExecutionMetrics.StorageDeleted++;
+            }
         }
 
         // Report storage changes for tracing if enabled.

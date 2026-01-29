@@ -12,6 +12,8 @@ using Nethermind.Core.Threading;
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain")]
+[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
 namespace Nethermind.Db
 {
     public static class Metrics
@@ -20,6 +22,8 @@ namespace Nethermind.Db
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
         private static readonly ZeroContentionCounter _stateTreeCacheHits = new();
+        [Description("Number of State Trie cache hits on thread.")]
+        internal static long ThreadLocalStateTreeCacheHits => _stateTreeCacheHits.ThreadLocalValue;
         internal static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Increment();
 
         [CounterMetric]
@@ -57,6 +61,8 @@ namespace Nethermind.Db
         [Description("Number of storage trie cache hits.")]
         public static long StorageTreeCache => _storageTreeCache.GetTotalValue();
         private static readonly ZeroContentionCounter _storageTreeCache = new();
+        [Description("Number of storage trie cache hits on thread.")]
+        internal static long ThreadLocalStorageTreeCacheHits => _storageTreeCache.ThreadLocalValue;
         internal static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
 
         [CounterMetric]

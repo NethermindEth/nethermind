@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
@@ -48,7 +49,10 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     {
         long start = Stopwatch.GetTimestamp();
         innerState.RecalculateStateRoot();
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+        StateMerkleizationTime += elapsed.TotalMilliseconds;
+        // Pipe to cross-client execution metrics
+        EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
     }
 
     public Hash256 StateRoot => innerState.StateRoot;
@@ -88,23 +92,41 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     {
         long start = Stopwatch.GetTimestamp();
         innerState.Commit(releaseSpec, isGenesis, commitRoots);
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
         if (commitRoots)
-            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        {
+            StateMerkleizationTime += elapsed.TotalMilliseconds;
+            EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
+        }
+        else
+        {
+            EvmMetrics.ThreadExecutionMetrics.CommitTimeTicks += elapsed.Ticks;
+        }
     }
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();
         innerState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
         if (commitRoots)
-            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        {
+            StateMerkleizationTime += elapsed.TotalMilliseconds;
+            EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
+        }
+        else
+        {
+            EvmMetrics.ThreadExecutionMetrics.CommitTimeTicks += elapsed.Ticks;
+        }
     }
 
     public void CommitTree(long blockNumber)
     {
         long start = Stopwatch.GetTimestamp();
         innerState.CommitTree(blockNumber);
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+        StateMerkleizationTime += elapsed.TotalMilliseconds;
+        EvmMetrics.ThreadExecutionMetrics.StateHashTimeTicks += elapsed.Ticks;
     }
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
