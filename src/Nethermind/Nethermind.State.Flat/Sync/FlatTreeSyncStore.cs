@@ -15,7 +15,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync;
 
-public class FlatTreeSyncStore(IPersistence persistence, ILogManager logManager) : ITreeSyncStore
+public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
 {
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
@@ -363,6 +363,7 @@ public class FlatTreeSyncStore(IPersistence persistence, ILogManager logManager)
         {
             // Empty batch - just incrementing state
         }
+        persistenceManager.ResetPersistedStateId();
 
         persistence.Flush();
     }

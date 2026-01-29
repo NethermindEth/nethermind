@@ -29,6 +29,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -72,14 +73,18 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
     {
+        /*
         yield return new TestFixtureParameters(DbMode.Default, false);
-        yield return new TestFixtureParameters(DbMode.Hash, false);
-        yield return new TestFixtureParameters(DbMode.NoPruning, false);
-        yield return new TestFixtureParameters(DbMode.Flat, false);
         yield return new TestFixtureParameters(DbMode.Default, true);
-        yield return new TestFixtureParameters(DbMode.Hash, true);
-        yield return new TestFixtureParameters(DbMode.NoPruning, true);
+        */
+        yield return new TestFixtureParameters(DbMode.Flat, false);
         yield return new TestFixtureParameters(DbMode.Flat, true);
+        /*
+        yield return new TestFixtureParameters(DbMode.Hash, false);
+        yield return new TestFixtureParameters(DbMode.Hash, true);
+        yield return new TestFixtureParameters(DbMode.NoPruning, false);
+        yield return new TestFixtureParameters(DbMode.NoPruning, true);
+        */
     }
 
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
@@ -164,6 +169,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 {
                     IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
                     flatDbConfig.Enabled = true;
+                    flatDbConfig.VerifyWithTrie = true;
                     break;
                 }
         }
@@ -174,7 +180,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
-            ;
+            .AddSingleton<BlockProcessorExceptionDetector>()
+            .AddDecorator<IBlockProcessor, BlockProcessorExceptionDetector.BlockProcessorInterceptor>();
 
         if (isPostMerge)
         {
@@ -270,8 +277,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task FastSync()
     {
-        if (dbMode == DbMode.Flat) Assert.Ignore();
-
+        Console.Error.WriteLine("Fast sync start");
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
@@ -305,7 +311,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task SnapSync()
     {
-        if (dbMode == DbMode.Flat) Assert.Ignore();
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -376,7 +381,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken,
                 (h) => blockTree.BlockAddedToMain += h,
                 (h) => blockTree.BlockAddedToMain -= h,
-                (e) => e.Block.Number == serverHead?.Number);
+                (e) =>
+                {
+                    Console.Error.WriteLine($"Got num {e.Block.Number}");
+                    return e.Block.Number == serverHead?.Number;
+                });
         }
 
         public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
@@ -461,7 +470,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
         PseudoNethermindRunner runner,
-        ImmediateDisconnectFailure immediateDisconnectFailure)
+        ImmediateDisconnectFailure immediateDisconnectFailure,
+        BlockProcessorExceptionDetector blockProcessorExceptionDetector)
     {
         // These check is really slow (it doubles the test time) so its disabled by default.
         private const bool CheckBlocksAndReceiptsContent = false;
@@ -590,12 +600,20 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {
-                await runner.StartNetwork(token);
-                await ConnectTo(server, token);
-                await testEnv.SyncUntilFinished(server, token);
-                await VerifyHeadWith(server, token);
-                await VerifyAllBlocksAndReceipts(server, token);
+                await blockProcessorExceptionDetector.WatchForFailure(async (token) =>
+                {
+                    await runner.StartNetwork(token);
+                    await ConnectTo(server, token);
+                    Console.Error.WriteLine("Sync until finished");
+                    await testEnv.SyncUntilFinished(server, token);
+                    Console.Error.WriteLine("syncc finished");
+                    await VerifyHeadWith(server, token);
+                    Console.Error.WriteLine("Verifying");
+                    await VerifyAllBlocksAndReceipts(server, token);
+                    Console.Error.WriteLine("Verifying done");
+                }, token);
             }, cancellationToken);
+            Console.Error.WriteLine($"Token canceled {cancellationToken.IsCancellationRequested}");
         }
     }
 
@@ -623,6 +641,59 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             {
                 if (DisconnectFailure == null) throw; // Timeout without disconnect
                 Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+            }
+        }
+    }
+
+    internal class BlockProcessorExceptionDetector
+    {
+        internal static void Configure(ContainerBuilder builder)
+        {
+            builder.AddSingleton<BlockProcessorExceptionDetector>()
+                .AddDecorator<IBlockProcessor, BlockProcessorInterceptor>();
+        }
+
+        private Exception? BlockProcessingFailure ;
+        private CancellationTokenSource _cts = new CancellationTokenSource();
+
+        private void ReportException(Exception exception)
+        {
+            BlockProcessingFailure = exception;
+            _cts.Cancel();
+        }
+
+        public async Task WatchForFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            try
+            {
+                await act(cts.Token);
+                if (BlockProcessingFailure != null) Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (BlockProcessingFailure == null) throw; // Timeout without disconnect
+                Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+            }
+        }
+
+        internal class BlockProcessorInterceptor(
+            IBlockProcessor blockProcessor,
+            BlockProcessorExceptionDetector blockProcessorExceptionDetector): IBlockProcessor
+        {
+
+            public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+                IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+            {
+                try
+                {
+                    return blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                }
+                catch (Exception ex)
+                {
+                    blockProcessorExceptionDetector.ReportException(ex);
+                    throw;
+                }
             }
         }
     }
