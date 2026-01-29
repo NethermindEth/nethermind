@@ -197,7 +197,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NethermindEth/gas-benchmarks
-          ref: main
+          ref: feat/hash-comparision
           lfs: true
 
       - name: Set up Docker
