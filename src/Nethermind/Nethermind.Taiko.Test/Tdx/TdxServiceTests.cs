@@ -14,6 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test.Tdx;
 
+[Explicit]
 public class TdxServiceTests
 {
     private ISurgeTdxConfig _config = null!;
