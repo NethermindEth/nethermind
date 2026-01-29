@@ -434,7 +434,7 @@ public class StorageProviderTests
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
@@ -603,7 +603,7 @@ public class StorageProviderTests
         PreBlockCaches preBlockCaches = new PreBlockCaches();
         Context ctx = new(preBlockCaches);
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
-        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
 
         WorldState provider = BuildStorageProvider(ctx);
         provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);

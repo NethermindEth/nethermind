@@ -20,8 +20,8 @@ public class PreBlockCaches
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
+    private readonly PreWarmCache<StorageCell, byte[]> _storageCache = new();
+    private readonly PreWarmCache<AddressAsKey, Account> _stateCache = new();
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
@@ -29,14 +29,14 @@ public class PreBlockCaches
     {
         _clearCaches =
         [
-            () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
-            () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
+            () => { _storageCache.Clear(); return CacheType.None; },
+            () => { _stateCache.Clear(); return CacheType.None; },
             () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
         ];
     }
 
-    public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
-    public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
+    public PreWarmCache<StorageCell, byte[]> StorageCache => _storageCache;
+    public PreWarmCache<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 

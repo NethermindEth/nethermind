@@ -120,8 +120,7 @@ public class Bloom : IEquatable<Bloom>
         for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
         {
             LogEntry logEntry = logEntries[entryIndex];
-            byte[] addressBytes = logEntry.Address.Bytes;
-            Set(addressBytes);
+            Set(logEntry.Address.Bytes);
             Hash256[] topics = logEntry.Topics;
             for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
             {
@@ -136,8 +135,7 @@ public class Bloom : IEquatable<Bloom>
         for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
         {
             LogEntry logEntry = logEntries[entryIndex];
-            byte[] addressBytes = logEntry.Address.Bytes;
-            Set(addressBytes, blockBloom);
+            Set(logEntry.Address.Bytes, blockBloom);
             Hash256[] topics = logEntry.Topics;
             for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
             {
