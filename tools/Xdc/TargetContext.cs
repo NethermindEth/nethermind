@@ -17,7 +17,7 @@ public sealed class TargetContext: IDisposable
     public IScopedTrieStore TrieStore { get; }
     public StateTree StateTree { get; }
 
-    public TargetContext(MemDb stateDb, MemDb codeDb, Hash256 stateRoot)
+    public TargetContext(IDb stateDb, IDb codeDb, Hash256 stateRoot)
     {
         StateDb = stateDb;
         CodeDb = codeDb;

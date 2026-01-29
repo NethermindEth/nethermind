@@ -1,11 +1,12 @@
 ﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
-using LevelDB;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -56,9 +57,11 @@ public static class Migrator
 
     private static TargetContext OpenTargetDatabase(string dbPath, Hash256 stateRoot)
     {
-        // TODO: use an actual RocksDB instance!
-        var stateDb = new MemDb(DbNames.State);
-        var codeDb = new MemDb(DbNames.Code);
+        var configFactory = new RocksDbConfigFactory(DbConfig.Default, new PruningConfig {Enabled = false}, new HardwareInfo(), NullLogManager.Instance);
+        var dbFactory = new RocksDbFactory(configFactory, DbConfig.Default, new HyperClockCacheWrapper(), NullLogManager.Instance, dbPath);
+
+        IDb stateDb = dbFactory.CreateDb(new DbSettings(DbNames.State, "state"));
+        IDb codeDb = dbFactory.CreateDb(new DbSettings(DbNames.State, "code"));
 
         return new TargetContext(stateDb, codeDb, stateRoot);
     }
