@@ -78,21 +78,21 @@
       }
     ],
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
-    "eip2537TransitionTimestamp": "0x67e41118",
-    "eip2935TransitionTimestamp": "0x67e41118",
-    "eip6110TransitionTimestamp": "0x67e41118",
-    "eip7002TransitionTimestamp": "0x67e41118",
-    "eip7251TransitionTimestamp": "0x67e41118",
-    "eip7702TransitionTimestamp": "0x67e41118",
-    "eip7623TransitionTimestamp": "0x67e41118",
-    "eip7594TransitionTimestamp": "0x69011118",
-    "eip7823TransitionTimestamp": "0x69011118",
-    "eip7825TransitionTimestamp": "0x69011118",
-    "eip7883TransitionTimestamp": "0x69011118",
-    "eip7918TransitionTimestamp": "0x69011118",
-    "eip7934TransitionTimestamp": "0x69011118",
-    "eip7939TransitionTimestamp": "0x69011118",
-    "eip7951TransitionTimestamp": "0x69011118"
+    "eip2537TransitionTimestamp": "0x0",
+    "eip2935TransitionTimestamp": "0x0",
+    "eip6110TransitionTimestamp": "0x0",
+    "eip7002TransitionTimestamp": "0x0",
+    "eip7251TransitionTimestamp": "0x0",
+    "eip7702TransitionTimestamp": "0x0",
+    "eip7623TransitionTimestamp": "0x0",
+    "eip7594TransitionTimestamp": "0x0",
+    "eip7823TransitionTimestamp": "0x0",
+    "eip7825TransitionTimestamp": "0x0",
+    "eip7883TransitionTimestamp": "0x0",
+    "eip7918TransitionTimestamp": "0x0",
+    "eip7934TransitionTimestamp": "0x0",
+    "eip7939TransitionTimestamp": "0x0",
+    "eip7951TransitionTimestamp": "0x0"
   },
   "genesis": {
     "seal": {
@@ -109,6 +109,9 @@
     "gasLimit": "0x2255100"
   },
   "accounts": {
+    "0xd51a7e12997f6f1d04accc2b4053307a62b373cb": {
+      "balance": "1000000000000000000000000"
+    },
     "0x0000000000000000000000000000000000000000": {
       "balance": "1"
     },

@@ -1,0 +1,5 @@
+###
+POST {{server}}
+Content-Type: application/json
+
+{"jsonrpc":"2.0","id":4,"method":"eth_pendingTransactions", "params": []}
