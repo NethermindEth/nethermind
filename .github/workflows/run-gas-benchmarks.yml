@@ -200,9 +200,6 @@ jobs:
           ref: feat/hash-comparision
           lfs: true
 
-      - name: Set up Docker
-        uses: docker/setup-docker-action@v4
-
       - name: Run gas-benchmarks composite action
         uses: ./.github/actions/gas-benchmark-action
         with:
