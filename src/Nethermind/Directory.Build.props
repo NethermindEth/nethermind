@@ -16,17 +16,4 @@
     </AssemblyAttribute>
   </ItemGroup>
 
-  <PropertyGroup>
-    <DefineConstants>$(DefineConstants);NOT_ZKVM</DefineConstants>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="$(DefineConstants.Contains('ZKVM'))">
-    <DefineConstants>
-      $([System.String]::Copy('$(DefineConstants)')
-      .Replace('NOT_ZKVM;', '')
-      .Replace(';NOT_ZKVM', '')
-      .Replace('NOT_ZKVM', '')
-      .Trim(';'))
-    </DefineConstants>
-  </PropertyGroup>
 </Project>
