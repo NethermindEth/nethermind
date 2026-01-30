@@ -49,8 +49,13 @@ internal sealed class StateTrieStoreWarmerAdapter(
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        using RefCounterTrieNodeRlp? rlp = bundle.TryLoadStateRlpForWarming(path, hash);
+        if (rlp is null)
+        {
+            return new TrieNode(NodeType.Unknown, hash);
+        }
+
+        return new TrieNode(NodeType.Unknown, hash, rlp.Span);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -98,8 +103,13 @@ internal sealed class StorageTrieStoreWarmerAdapter(
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        using RefCounterTrieNodeRlp? rlp = bundle.TryLoadStorageRlpForWarming(addressHash, path, hash);
+        if (rlp is null)
+        {
+            return new TrieNode(NodeType.Unknown, hash);
+        }
+
+        return new TrieNode(NodeType.Unknown, hash, rlp.Span);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
