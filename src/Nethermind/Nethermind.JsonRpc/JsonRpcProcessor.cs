@@ -69,6 +69,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             => throw new JsonException("Invalid");
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private JsonRpcRequest DeserializeObject(JsonElement element)
     {
         string? jsonRpc = null;
