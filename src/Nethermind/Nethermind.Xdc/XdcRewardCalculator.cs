@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Xdc
 {
@@ -37,18 +38,21 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IMasternodeVotingContract _masternodeVotingContract;
+        private readonly ITransactionProcessor _transactionProcessor;
 
         public XdcRewardCalculator(
             IEpochSwitchManager epochSwitchManager,
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IMasternodeVotingContract masternodeVotingContract)
+            IMasternodeVotingContract masternodeVotingContract,
+            ITransactionProcessor transactionProcessor)
         {
             _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
             _epochSwitchManager = epochSwitchManager;
             _specProvider = specProvider;
             _blockTree = blockTree;
             _masternodeVotingContract = masternodeVotingContract;
+            _transactionProcessor = transactionProcessor;
         }
         /// <summary>
         /// Calculates block rewards according to XDPoS consensus rules.
@@ -246,7 +250,7 @@ namespace Nethermind.Xdc
         private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
             Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
         {
-            Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(header, masternodeAddress);
+            Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(_transactionProcessor, header, masternodeAddress);
 
             // 90% of the reward goes to the masternode
             UInt256 masterReward = reward * 90 / 100;

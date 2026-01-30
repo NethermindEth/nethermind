@@ -68,8 +68,7 @@ public class XdcModule : Module
                 IMasternodeVotingContract,
                 IAbiEncoder,
                 ISpecProvider,
-                IReadOnlyTxProcessingEnvFactory,
-                ITransactionProcessor>(CreateVotingContract)
+                IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
 
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
@@ -77,8 +76,7 @@ public class XdcModule : Module
             // penalty handler
 
             // reward handler
-            .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
-
+            .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
             .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
@@ -133,10 +131,9 @@ public class XdcModule : Module
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,
         ISpecProvider specProvider,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv,
-        ITransactionProcessor transactionProcessor)
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv)
     {
         IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
-        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv, transactionProcessor);
+        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
 }

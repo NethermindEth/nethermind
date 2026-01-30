@@ -22,17 +22,14 @@ namespace Nethermind.Xdc.Contracts;
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
     private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory;
-    private readonly ITransactionProcessor transactionProcessor;
 
     public MasternodeVotingContract(
         IAbiEncoder abiEncoder,
         Address contractAddress,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        ITransactionProcessor transactionProcessor)
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
         : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
     {
         this.readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
-        this.transactionProcessor = transactionProcessor;
     }
 
     private static AbiDefinition CreateAbiDefinition()
@@ -63,12 +60,12 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         return (Address)result[0]!;
     }
 
-    public Address GetCandidateOwnerDuringProcessing(BlockHeader blockHeader, Address candidate)
+    public Address GetCandidateOwnerDuringProcessing(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
         byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateOwner", GenerateTransaction<Transaction>(ContractAddress, "getCandidateOwner", Address.SystemUser, candidate), true);
-        if (result.Length != 20)
+        if (result.Length != 32)
             throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
-        return new Address(result);
+        return new Address(result.AsSpan().Slice(32 - Address.Size));
     }
 
     public Address[] GetCandidates(BlockHeader blockHeader)

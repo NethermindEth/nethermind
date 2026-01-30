@@ -14,5 +14,5 @@ public interface IMasternodeVotingContract
     Address[] GetCandidates(BlockHeader blockHeader);
     UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(BlockHeader blockHeader, Address candidate);
-    Address GetCandidateOwnerDuringProcessing(BlockHeader blockHeader, Address candidate);
+    Address GetCandidateOwnerDuringProcessing(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate);
 }
