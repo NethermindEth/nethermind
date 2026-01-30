@@ -32,7 +32,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
-    public long BlackListHFNumber { get; set; }
     public long MergeSignRange { get; set; }
     public HashSet<Address> BlackListedAddresses { get; set; }
     public Address BlockSignerContract { get; set; }

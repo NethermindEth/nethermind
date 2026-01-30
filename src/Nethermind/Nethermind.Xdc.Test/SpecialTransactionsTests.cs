@@ -223,16 +223,18 @@ internal class SpecialTransactionsTests
         Assert.Pass();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Tx_With_With_BlackListed_Sender_Fails_Validation(bool blackListingActivated)
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, false)]
+    public async Task Tx_With_With_BlackListed_Sender_Fails_Validation(bool blackListingActivated, bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.BlackListedAddresses = [blockChain.Signer.Address];
-            spec.IsEip1559Enabled = false;
-            spec.BlackListHFNumber = blackListingActivated ? 0 : long.MaxValue;
+            spec.IsEip1559Enabled = enableEip1559;
+            spec.IsBlackListingEnabled = blackListingActivated;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -284,7 +286,7 @@ internal class SpecialTransactionsTests
         {
             spec.BlackListedAddresses = [TestItem.AddressA];
             spec.IsEip1559Enabled = enableEip1559;
-            spec.BlackListHFNumber = blackListingActivated ? 0 : long.MaxValue;
+            spec.IsBlackListingEnabled = blackListingActivated;
         });
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
@@ -298,7 +300,12 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        Transaction tx = Build.A.Transaction.WithSenderAddress(blockChain.Signer.Address).WithTo(TestItem.AddressA).TestObject;
+        var nonce = blockChain.ReadOnlyState.GetNonce(blockChain.Signer.Address);
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(nonce)
+            .WithSenderAddress(blockChain.Signer.Address)
+            .WithTo(TestItem.AddressA).TestObject;
         await blockChain.Signer.Sign(tx);
 
         TransactionResult? result = null;
