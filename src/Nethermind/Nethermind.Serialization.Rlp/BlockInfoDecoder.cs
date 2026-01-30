@@ -4,12 +4,16 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
     public sealed class BlockInfoDecoder : RlpValueDecoder<BlockInfo>
     {
         public static BlockInfoDecoder Instance { get; } = new();
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
+        public BlockInfoDecoder() { }
 
         protected override BlockInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
