@@ -170,7 +170,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     bool isCompleted = readResult.IsCompleted || readResult.IsCanceled;
                     JsonRpcResult? result = null;
-                    buffer = buffer.TrimStart();
+                    if (readerState.BytesConsumed == 0)
+                    {
+                        buffer = buffer.TrimStart();
+                    }
                     if (!buffer.IsEmpty)
                     {
                         try
