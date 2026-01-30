@@ -530,4 +530,123 @@ public class DeletionRangeCalculationTests
                 Is.False, "Level 2: 56... survives for child to handle");
         });
     }
+
+    // === Optimized deletion tests (using both existing and new nodes) ===
+
+    private static FlatTreeSyncStore.DeletionRange[] ComputeRangesOptimized(TreePath path, TrieNode newNode, TrieNode existingNode)
+    {
+        RefList16<FlatTreeSyncStore.DeletionRange> ranges = new();
+        FlatTreeSyncStore.ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
+        return ranges.AsSpan().ToArray();
+    }
+
+    private static IEnumerable<TestCaseData> OptimizedDeletionTestCases()
+    {
+        static byte[] Nibbles(string hex) =>
+            hex.Select(c => (byte)(c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0')).ToArray();
+
+        TrieNode CreateBranchWith(params int[] childIndices)
+        {
+            TrieNode branch = TrieNodeFactory.CreateBranch();
+            foreach (int i in childIndices)
+                branch[i] = TrieNodeFactory.CreateLeaf([0], DummyValue);
+            return branch;
+        }
+
+        // === Branch to Branch: Only deleted removed children ===
+
+        // Existing: children at 0, 1 (null at 2-15); New: children at 0, 3 (null at 1-2, 4-15)
+        // Only position 1 needs deletion (went from non-null to null)
+        yield return new TestCaseData(
+            "", CreateBranchWith(0, 3), CreateBranchWith(0, 1),
+            new (string, string)[] { ("0x1000000000000000000000000000000000000000000000000000000000000000", "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") },
+            new[] { "0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Branch→Branch: Existing(0,1) to New(0,3) deletes only child 1");
+
+        // Same children structure - no deletions
+        yield return new TestCaseData(
+            "", CreateBranchWith(5), CreateBranchWith(5),
+            Array.Empty<(string, string)>(),
+            new[] { "0x5000000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Branch→Branch: Same structure yields no deletions");
+
+        // All children to single child - deletes 0-4, 6-15
+        yield return new TestCaseData(
+            "", CreateBranchWith(5), CreateBranchWith(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+            new (string, string)[]
+            {
+                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0x4fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+                ("0x6000000000000000000000000000000000000000000000000000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            },
+            new[] { "0x5000000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Branch→Branch: All children to single child deletes 0-4, 6-15");
+
+        // === Same type, same key: No deletion ===
+
+        // Leaf → Leaf with same key
+        yield return new TestCaseData(
+            "", TrieNodeFactory.CreateLeaf(Nibbles("5000000000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            TrieNodeFactory.CreateLeaf(Nibbles("5000000000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            Array.Empty<(string, string)>(),
+            new[] { "0x5000000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Leaf→Leaf: Same key yields no deletions");
+
+        // Extension → Extension with same key
+        yield return new TestCaseData(
+            "", TrieNodeFactory.CreateExtension([0x5, 0x6], TrieNodeFactory.CreateBranch()),
+            TrieNodeFactory.CreateExtension([0x5, 0x6], TrieNodeFactory.CreateBranch()),
+            Array.Empty<(string, string)>(),
+            new[] { "0x5600000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Extension→Extension: Same key yields no deletions");
+
+        // === Cross-type transitions ===
+
+        // Leaf at 5abc... → Branch with child 5 non-null: Leaf survives (handled by child sync)
+        yield return new TestCaseData(
+            "", CreateBranchWith(5),
+            TrieNodeFactory.CreateLeaf(Nibbles("5abc000000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            Array.Empty<(string, string)>(),
+            new[] { "0x5abc000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Leaf→Branch: Leaf at 5abc... survives when branch has child 5");
+
+        // Leaf at 5abc... → Branch with child 6 non-null: Leaf deleted (falls under null child 5)
+        yield return new TestCaseData(
+            "", CreateBranchWith(6),
+            TrieNodeFactory.CreateLeaf(Nibbles("5abc000000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            new (string, string)[] { ("0x5abc000000000000000000000000000000000000000000000000000000000000", "0x5abc000000000000000000000000000000000000000000000000000000000000") },
+            new[] { "0x6000000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Leaf→Branch: Leaf at 5abc... deleted when branch has null at child 5");
+
+        // Extension("56") → Leaf at 5678...: Deletes extension subtree except leaf path
+        yield return new TestCaseData(
+            "", TrieNodeFactory.CreateLeaf(Nibbles("5678000000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            TrieNodeFactory.CreateExtension([0x5, 0x6], TrieNodeFactory.CreateBranch()),
+            new (string, string)[]
+            {
+                ("0x5600000000000000000000000000000000000000000000000000000000000000", "0x5677ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+                ("0x5678000000000000000000000000000000000000000000000000000000000001", "0x56ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            },
+            new[] { "0x5678000000000000000000000000000000000000000000000000000000000000" }
+        ).SetDescription("Extension→Leaf: Extension subtree deleted except leaf path");
+    }
+
+    [TestCaseSource(nameof(OptimizedDeletionTestCases))]
+    public void ComputeDeletionRanges_WithExistingNode_ReturnsOptimizedRanges(
+        string hexPath, TrieNode newNode, TrieNode existingNode,
+        (string From, string To)[] expectedRanges, string[] survivingPaths)
+    {
+        TreePath path = hexPath == "" ? TreePath.Empty : TreePath.FromHexString(hexPath);
+        FlatTreeSyncStore.DeletionRange[] ranges = ComputeRangesOptimized(path, newNode, existingNode);
+
+        Assert.That(ranges, Has.Length.EqualTo(expectedRanges.Length), $"Expected {expectedRanges.Length} range(s)");
+
+        for (int i = 0; i < expectedRanges.Length; i++)
+        {
+            Assert.That(ranges[i].From, Is.EqualTo(new ValueHash256(expectedRanges[i].From)), $"Range[{i}].From mismatch");
+            Assert.That(ranges[i].To, Is.EqualTo(new ValueHash256(expectedRanges[i].To)), $"Range[{i}].To mismatch");
+        }
+
+        foreach (string survivingPath in survivingPaths)
+            Assert.That(IsDeleted(ranges, survivingPath), Is.False, $"Path {survivingPath} should NOT be deleted");
+    }
 }
