@@ -140,9 +140,9 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in path1, hash1, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(null, in path2, hash2, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(null, in path3, hash3, out TrieNode? _), Is.True);
     }
 
     [Test]
@@ -161,8 +161,8 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
-        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in statePath, stateHash, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out TrieNode? _), Is.True);
     }
 
     [Test]
@@ -201,8 +201,8 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource2);
 
-        Assert.That(_cache.TryGet(null, in path, hash1, out _), Is.False);
-        Assert.That(_cache.TryGet(null, in path, hash2, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in path, hash1, out TrieNode? _), Is.False);
+        Assert.That(_cache.TryGet(null, in path, hash2, out TrieNode? _), Is.True);
     }
 
     [Test]
@@ -219,8 +219,8 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in path1, hash1, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(null, in path2, hash2, out TrieNode? _), Is.True);
     }
 
     [Test]
@@ -238,8 +238,8 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(address1, in path, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(address2, in path, hash2, out _), Is.True);
+        Assert.That(_cache.TryGet(address1, in path, hash1, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(address2, in path, hash2, out TrieNode? _), Is.True);
     }
 
     [Test]
@@ -262,17 +262,17 @@ public class TrieNodeCacheTests
         _cache.Add(transientResource);
 
         // Verify nodes are cached
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in path1, hash1, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(null, in path2, hash2, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(null, in path3, hash3, out TrieNode? _), Is.True);
 
         // Clear the cache
         _cache.Clear();
 
         // Verify all nodes are removed
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.False);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.False);
-        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.False);
+        Assert.That(_cache.TryGet(null, in path1, hash1, out TrieNode? _), Is.False);
+        Assert.That(_cache.TryGet(null, in path2, hash2, out TrieNode? _), Is.False);
+        Assert.That(_cache.TryGet(null, in path3, hash3, out TrieNode? _), Is.False);
     }
 
     [Test]
@@ -292,15 +292,15 @@ public class TrieNodeCacheTests
         _cache.Add(transientResource);
 
         // Verify nodes are cached
-        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
-        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+        Assert.That(_cache.TryGet(null, in statePath, stateHash, out TrieNode? _), Is.True);
+        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out TrieNode? _), Is.True);
 
         // Clear the cache
         _cache.Clear();
 
         // Verify all nodes are removed
-        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.False);
-        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.False);
+        Assert.That(_cache.TryGet(null, in statePath, stateHash, out TrieNode? _), Is.False);
+        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out TrieNode? _), Is.False);
     }
 }
 
@@ -429,7 +429,7 @@ public class ChildCacheTests
         _cache.Reset();
 
         Assert.That(_cache.Count, Is.EqualTo(0));
-        bool found = _cache.TryGet(null, in path, hash, out _);
+        bool found = _cache.TryGet(null, in path, hash, out TrieNode? _);
         Assert.That(found, Is.False);
     }
 

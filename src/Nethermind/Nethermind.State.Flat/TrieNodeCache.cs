@@ -96,6 +96,16 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return false;
     }
 
+    /// <inheritdoc />
+    public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out RefCounterTrieNodeRlp? rlp)
+    {
+        // RLP caching is not implemented in this version of TrieNodeCache.
+        // This method exists to satisfy the interface contract but always returns false.
+        // TODO: Implement RLP caching as part of Task #3.
+        rlp = null;
+        return false;
+    }
+
     public void Add(TransientResource transientResource)
     {
         if (_maxCacheMemoryThreshold == 0)

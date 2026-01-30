@@ -13,6 +13,16 @@ namespace Nethermind.State.Flat;
 public interface ITrieNodeCache
 {
     /// <summary>
+    /// Tries to get a cached trie node.
+    /// </summary>
+    /// <param name="address">The account address (null for state trie).</param>
+    /// <param name="path">The tree path to the node.</param>
+    /// <param name="hash">The hash of the node.</param>
+    /// <param name="node">When successful, the cached trie node.</param>
+    /// <returns>True if the node was found in cache; otherwise false.</returns>
+    bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node);
+
+    /// <summary>
     /// Tries to get cached RLP data for a trie node.
     /// </summary>
     /// <param name="address">The account address (null for state trie).</param>
