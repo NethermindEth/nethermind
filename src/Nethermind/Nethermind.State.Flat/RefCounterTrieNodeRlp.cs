@@ -44,6 +44,12 @@ public sealed class RefCounterTrieNodeRlp : RefCountingDisposable
     public byte[] ToArray() => Span.ToArray();
 
     /// <summary>
+    /// Tries to acquire a lease on this RLP data. Returns true if successful, false if already disposed.
+    /// Caller must call Dispose() to release the lease when done.
+    /// </summary>
+    public new bool TryAcquireLease() => base.TryAcquireLease();
+
+    /// <summary>
     /// Creates a new <see cref="RefCounterTrieNodeRlp"/> by renting an array and copying the RLP data.
     /// </summary>
     /// <param name="rlp">The RLP data to copy.</param>
