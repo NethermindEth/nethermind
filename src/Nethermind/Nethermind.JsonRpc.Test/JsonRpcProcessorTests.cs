@@ -416,7 +416,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         Pipe pipe = new();
         JsonRpcProcessor processor = Initialize();
-        JsonRpcContext context = new(RpcEndpoint.Http);
+        JsonRpcContext context = new(RpcEndpoint.Ws);
 
         // Create 5 large JSON-RPC requests (~10KB each)
         List<string> requests = Enumerable.Range(0, 5)
