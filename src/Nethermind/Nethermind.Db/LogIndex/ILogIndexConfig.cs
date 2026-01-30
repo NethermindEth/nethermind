@@ -10,7 +10,7 @@ public interface ILogIndexConfig : IConfig
 {
     [ConfigItem(
         Description = "Whether log index should be enabled.",
-        DefaultValue = "true"
+        DefaultValue = "false"
     )]
     public bool Enabled { get; set; }
 

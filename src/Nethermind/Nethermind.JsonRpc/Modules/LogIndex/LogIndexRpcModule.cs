@@ -22,7 +22,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (GetBlockNumber(logFilter.FromBlock) is not { } from)
             return ResultWrapper<IEnumerable<int>>.Fail($"Block {logFilter.FromBlock} is not found.", ErrorCodes.UnknownBlockError);
 
-        if (GetBlockNumber(logFilter.FromBlock) is not { } to)
+        if (GetBlockNumber(logFilter.ToBlock) is not { } to)
             return ResultWrapper<IEnumerable<int>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
         return ResultWrapper<IEnumerable<int>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
