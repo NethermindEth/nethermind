@@ -222,7 +222,7 @@ public class PersistenceManager(
 
     public void ResetPersistedStateId()
     {
-        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         _currentPersistedStateId = reader.CurrentState;
     }
 

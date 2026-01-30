@@ -119,7 +119,7 @@ public static class BasePersistence
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
-        public void Clear() => flatWriteBatch.Clear();
+        public void Clear() => _flatWriteBatch.Clear();
 
         public void SetAccount(Address addr, Account? account)
         {
@@ -150,10 +150,10 @@ public static class BasePersistence
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
-            flatWriteBatch.DeleteAccountRange(fromPath, toPath);
+            _flatWriteBatch.DeleteAccountRange(fromPath, toPath);
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
-            flatWriteBatch.DeleteStorageRange(addressHash, fromPath, toPath);
+            _flatWriteBatch.DeleteStorageRange(addressHash, fromPath, toPath);
     }
 
     public struct ToHashedFlatReader<TFlatReader>(
