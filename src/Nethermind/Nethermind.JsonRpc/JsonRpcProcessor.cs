@@ -146,7 +146,23 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             while (!shouldExit)
             {
                 long startTime = Stopwatch.GetTimestamp();
-                ReadResult readResult = await reader.ReadAsync(timeoutSource.Token);
+
+                ReadResult readResult;
+                try
+                {
+                    readResult = await reader.ReadAsync(timeoutSource.Token);
+                }
+                catch (BadHttpRequestException e)
+                {
+                    Handle(e);
+                    break;
+                }
+                catch (ConnectionResetException e)
+                {
+                    Handle(e);
+                    break;
+                }
+                
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
                 bool advanced = false;
 
@@ -174,13 +190,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         }
                         catch (BadHttpRequestException e)
                         {
-                            Metrics.JsonRpcRequestDeserializationFailures++;
-                            if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                            Handle(e);
                             shouldExit = true;
                         }
                         catch (ConnectionResetException e)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
+                            Handle(e);
                             shouldExit = true;
                         }
                         catch (JsonException ex)
@@ -210,6 +225,17 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         {
             await reader.CompleteAsync();
         }
+    }
+
+    private void Handle(ConnectionResetException e)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
+    }
+
+    private void Handle(BadHttpRequestException e)
+    {
+        Metrics.JsonRpcRequestDeserializationFailures++;
+        if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
     }
 
     private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, bool isFinalBlock, ref JsonReaderState readerState, [NotNullWhen(true)] out JsonDocument? jsonDocument)
