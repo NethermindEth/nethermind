@@ -142,7 +142,7 @@ public class BlockAccessListDecoderTests
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        var storageChanges = new SortedList<ushort, StorageChange> { { 10, storageChange }, { 10, storageChange } };
+        var storageChanges = new SortedList<ushort, StorageChange> { { 10, storageChange }};
         SlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
