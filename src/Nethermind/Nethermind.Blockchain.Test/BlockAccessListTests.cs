@@ -93,7 +93,7 @@ public class BlockAccessListTests()
     {
         // Note: UInt256 constructor from bytes needs isBigEndian: true to match RLP encoding
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, [parentHashStorageChange]);
+        SlotChanges expected = new(0, new SortedList<ushort, StorageChange>{{0, parentHashStorageChange}});
 
         // Generate expected RLP from the object (uses variable-length encoding per EIP-7928)
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
@@ -171,7 +171,8 @@ public class BlockAccessListTests()
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SlotChanges slotChanges = new(0xbad, [storageChange, storageChange]);
+        var storageChanges = new SortedList<ushort, StorageChange>{{ 10, storageChange}, {10, storageChange}};
+        SlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
@@ -456,7 +457,7 @@ public class BlockAccessListTests()
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange>{{0, parentHashStorageChange}}) } },
                 [],
                 [],
                 [],
@@ -469,7 +470,7 @@ public class BlockAccessListTests()
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
                 Eip4788Constants.BeaconRootsAddress,
                 new SortedDictionary<UInt256, SlotChanges>() {
-                    { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }
+                    { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange>{{0, timestampStorageChange}}) }
                 },
                 [new(eip4788Slot2)],
                 [],
@@ -543,7 +544,7 @@ public class BlockAccessListTests()
 
             AccountChanges storageChangesExpected = new(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange>{{0, new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))}}) } },
                 [],
                 [],
                 [],
@@ -585,7 +586,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip2935Constants.BlockHashHistoryAddress, new(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange>{{0, parentHashStorageChange}}) } },
                     [],
                     [],
                     [],
@@ -593,7 +594,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip4788Constants.BeaconRootsAddress, new(
                     Eip4788Constants.BeaconRootsAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange>{{0, timestampStorageChange}}) } },
                     [new(0x200b)],
                     [],
                     [],

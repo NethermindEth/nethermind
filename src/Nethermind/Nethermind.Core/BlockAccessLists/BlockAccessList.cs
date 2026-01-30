@@ -218,15 +218,13 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            // byte[] newValue = new byte[32];
-            // after.CopyTo(newValue.AsSpan()[(32 - after.Length)..]);
             StorageChange storageChange = new()
             {
                 BlockAccessIndex = Index,
                 NewValue = after
             };
 
-            slotChanges.Changes.Add(storageChange);
+            slotChanges.Changes.Add(Index, storageChange);
             accountChanges.RemoveStorageRead(key);
         }
         else
@@ -283,7 +281,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     slotChanges.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
-                        slotChanges.Changes.Add(previousStorage.Value);
+                        slotChanges.Changes.Add(previousStorage.Value.BlockAccessIndex, previousStorage.Value);
                         accountChanges.RemoveStorageRead(change.Slot.Value);
                     }
 
@@ -343,7 +341,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             return beforeInstr != afterInstr;
         }
 
-        foreach (StorageChange storageChange in slotChanges.Changes.AsEnumerable().Reverse())
+        foreach (StorageChange storageChange in slotChanges.Changes.Values.AsEnumerable().Reverse())
         {
             if (storageChange.BlockAccessIndex != Index)
             {
