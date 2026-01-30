@@ -138,12 +138,6 @@ public partial class BlockProcessor
         Task stateApplication = _balBuilder.ParallelExecutionEnabled ? ApplyBlockAccessListToState(spec, shouldComputeStateRoot) : Task.CompletedTask;
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        // if (_parallelWorldState is not null)
-        // {
-        //     _parallelWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
-        //     _parallelWorldState.BlockAccessList.ResetBlockAccessIndex();
-        // }
-
         StoreBeaconRoot(block, spec);
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
@@ -199,8 +193,6 @@ public partial class BlockProcessor
                 _balBuilder.GenerateBlockAccessList();
                 block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
-                // block.GeneratedBlockAccessList = _parallelWorldState.BlockAccessList;
-                // block.EncodedBlockAccessList = Rlp.Encode(_parallelWorldState.BlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }
