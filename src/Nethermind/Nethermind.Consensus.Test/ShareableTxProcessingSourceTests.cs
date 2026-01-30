@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
@@ -20,8 +21,8 @@ public class ShareableTxProcessingSourceTests
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         IShareableTxProcessorSource shareableSource = container.Resolve<IShareableTxProcessorSource>();
 
-        var scope1 = shareableSource.Build(Build.A.BlockHeader.TestObject);
-        var scope2 = shareableSource.Build(Build.A.BlockHeader.TestObject);
+        var scope1 = shareableSource.Build(IWorldState.PreGenesis);
+        var scope2 = shareableSource.Build(IWorldState.PreGenesis);
 
         scope1.WorldState.Should().NotBeSameAs(scope2.WorldState);
     }
@@ -32,9 +33,9 @@ public class ShareableTxProcessingSourceTests
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         IShareableTxProcessorSource shareableSource = container.Resolve<IShareableTxProcessorSource>();
 
-        var scope1 = shareableSource.Build(Build.A.BlockHeader.TestObject);
+        var scope1 = shareableSource.Build(IWorldState.PreGenesis);
         scope1.Dispose();
-        var scope2 = shareableSource.Build(Build.A.BlockHeader.TestObject);
+        var scope2 = shareableSource.Build(IWorldState.PreGenesis);
 
         scope1.WorldState.Should().BeSameAs(scope2.WorldState);
     }
