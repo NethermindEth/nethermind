@@ -88,8 +88,9 @@ internal class SpecialTransactionsTests
     }
 
 
-    [Test]
-    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -98,7 +99,7 @@ internal class SpecialTransactionsTests
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.MergeSignRange = mergeSignBlockRange;
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         blockChain.StartHotStuffModule();
@@ -127,8 +128,9 @@ internal class SpecialTransactionsTests
         Assert.That(blockTarget, Is.EqualTo(mergeSignBlockRange));
     }
 
-    [Test]
-    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -137,7 +139,7 @@ internal class SpecialTransactionsTests
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.MergeSignRange = mergeSignBlockRange;
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         blockChain.StartHotStuffModule();
@@ -157,8 +159,9 @@ internal class SpecialTransactionsTests
                        || r.To == spec.RandomizeSMCBinary).Should().BeFalse();
     }
 
-    [Test]
-    public async Task Special_Tx_Is_Executed_Before_Normal_Txs()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Special_Tx_Is_Executed_Before_Normal_Txs(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -167,7 +170,7 @@ internal class SpecialTransactionsTests
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.MergeSignRange = mergeSignBlockRange;
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         blockChain.StartHotStuffModule();
@@ -269,16 +272,18 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Tx_With_With_BlackListed_Receiver_Fails_Validation(bool blackListingActivated)
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public async Task Tx_With_With_BlackListed_Receiver_Fails_Validation(bool blackListingActivated, bool enableEip1559)
     {
 
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.BlackListedAddresses = [TestItem.AddressA];
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
             spec.BlackListHFNumber = blackListingActivated ? 0 : long.MaxValue;
         });
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -317,13 +322,14 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [Test]
-    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -349,13 +355,14 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [Test]
-    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -396,13 +403,14 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().Be(XdcTransactionResult.NonceTooLowError);
     }
 
-    [Test]
-    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -444,8 +452,9 @@ internal class SpecialTransactionsTests
     }
 
 
-    [Test]
-    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -491,14 +500,15 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooLowError);
     }
 
-    [Test]
-    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation(bool enableEip1559)
     {
         var epochLength = 10;
         var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
             spec.EpochLength = epochLength;
         });
 
@@ -522,14 +532,15 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [Test]
-    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation(bool enableEip1559)
     {
         var epochLength = 10;
         var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
             spec.EpochLength = epochLength;
         });
 
@@ -554,14 +565,15 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [Test]
-    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation(bool enableEip1559)
     {
         var epochLength = 10;
         var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
             spec.EpochLength = epochLength;
         });
 
@@ -592,13 +604,14 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
-    [Test]
-    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -649,13 +662,14 @@ internal class SpecialTransactionsTests
         Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(spec.BlockSignerContract));
     }
 
-    [Test]
-    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
 
             spec.IsTIPXDCXMiner = true;
 
@@ -729,10 +743,17 @@ internal class SpecialTransactionsTests
         Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(addresses.Length));
     }
 
-    [Test]
-    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted(bool enableEip1559)
     {
         var chain = await XdcTestBlockchain.Create();
+
+        chain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = enableEip1559;
+        });
+
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         var rc = new XdcRewardCalculator(
             chain.EpochSwitchManager,
@@ -774,13 +795,14 @@ internal class SpecialTransactionsTests
         receipts.Any(r => r.Recipient == spec.BlockSignerContract).Should().BeTrue();
     }
 
-    [Test]
-    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -841,13 +863,14 @@ internal class SpecialTransactionsTests
     }
 
 
-    [Test]
-    public async Task RandomizeTx_From_ZeroBalance_Account()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task RandomizeTx_From_ZeroBalance_Account(bool enableEip1559)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.IsEip1559Enabled = false;
+            spec.IsEip1559Enabled = enableEip1559;
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
