@@ -112,7 +112,7 @@ public static class XdcSort
         }
     }
 
-    private static void DoPivot_func<T>(LessSwap<T> data, int low, int high, out int midlow, out int midhigh)
+    private static void DoPivot_func<T>(LessSwap<T> data, int low, int high, out int middleLow, out int middleHigh)
     {
         int m = (int)((uint)(low + high) >> 1);
         if (high - low > 40)
@@ -152,25 +152,25 @@ public static class XdcSort
         bool protect = high - c < 5;
         if (!protect && high - c < (high - low) / 4)
         {
-            int dups = 0;
+            int d = 0;
             if (!data.Less(data.Data[pivot], data.Data[high - 1]))
             {
                 data.Swap(c, high - 1);
                 c++;
-                dups++;
+                d++;
             }
             if (!data.Less(data.Data[b - 1], data.Data[pivot]))
             {
                 b--;
-                dups++;
+                d++;
             }
             if (!data.Less(data.Data[m], data.Data[pivot]))
             {
                 data.Swap(m, b - 1);
                 b--;
-                dups++;
+                d++;
             }
-            protect = dups > 1;
+            protect = d > 1;
         }
         if (protect)
         {
@@ -194,8 +194,8 @@ public static class XdcSort
             }
         }
         data.Swap(pivot, b - 1);
-        midlow = b - 1;
-        midhigh = c;
+        middleLow = b - 1;
+        middleHigh = c;
     }
 
     private static void InsertionSort_func<T>(LessSwap<T> data, int a, int b)
