@@ -74,7 +74,7 @@ internal class SpecialTransactionsTests
 
         tx.Hash = tx.CalculateHash();
 
-        var result = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
 
         return tx;
     }
