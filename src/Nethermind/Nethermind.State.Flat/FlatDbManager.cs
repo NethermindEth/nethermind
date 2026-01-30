@@ -398,6 +398,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
 
+        ClearReadOnlyBundleCache();
         _cancelTokenSource.Cancel();
 
         _compactorJobs.Writer.Complete();
