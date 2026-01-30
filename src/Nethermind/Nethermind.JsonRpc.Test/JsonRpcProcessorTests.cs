@@ -25,7 +25,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 {
     private readonly JsonRpcErrorResponse _errorResponse = new();
 
-    private JsonRpcProcessor Initialize(JsonRpcConfig? config = null)
+    private JsonRpcProcessor Initialize(JsonRpcConfig? config = null, RpcRecorderState recorderState = RpcRecorderState.All)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => returnErrors ? new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
@@ -34,11 +34,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
-        /* we enable recorder always to have an easy smoke test for recording
-         * and this is fine because recorder is non-critical component
-         */
+        // we enable recorder always to have an easy smoke test for recording and this is fine because recorder is a non-critical component
         config ??= new JsonRpcConfig();
-        config.RpcRecorderState = RpcRecorderState.All;
+        config.RpcRecorderState = recorderState;
 
         return new JsonRpcProcessor(service, config, fileSystem, LimboLogs.Instance);
     }
@@ -415,7 +413,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()
     {
         Pipe pipe = new();
-        JsonRpcProcessor processor = Initialize();
+        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
         JsonRpcContext context = new(RpcEndpoint.Ws);
 
         // Create 5 large JSON-RPC requests (~10KB each)
