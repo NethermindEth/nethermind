@@ -15,6 +15,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Address}->{Index}")]
     public readonly struct StorageCell : IEquatable<StorageCell>
     {
+        public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
+
         private readonly UInt256 _index;
         private readonly bool _isHash;
 

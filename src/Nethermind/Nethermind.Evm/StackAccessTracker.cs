@@ -105,12 +105,12 @@ public struct StackAccessTracker : IDisposable
             _trackerPool.Enqueue(state);
         }
 
-        public JournalSet<Address> AccessedAddresses { get; } = new();
-        public JournalSet<StorageCell> AccessedStorageCells { get; } = new();
+        public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer);
+        public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = new();
-        public JournalSet<Address> DestroyList { get; } = new();
-        public HashSet<AddressAsKey> CreateList { get; } = new();
-        public JournalSet<AddressAsKey> LargeContractList { get; } = new();
+        public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
+        public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public JournalSet<AddressAsKey> LargeContractList { get; } = new(AddressAsKey.EqualityComparer);
 
         private void Clear()
         {
