@@ -28,21 +28,22 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
     [Test]
     public async Task HealTreeWithoutBoundaryProofs()
     {
-        DbContext dbContext = new DbContext(_logger, _logManager);
-        TestItem.Tree.FillStateTreeWithTestAccounts(dbContext.RemoteStateTree);
+        LocalDbContext local = new(_logManager);
+        RemoteDbContext remote = new(_logManager);
+        TestItem.Tree.FillStateTreeWithTestAccounts(remote.StateTree);
 
-        Hash256 rootHash = dbContext.RemoteStateTree.RootHash;
+        Hash256 rootHash = remote.StateTree.RootHash;
 
-        ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
+        ProcessAccountRange(remote.StateTree, local.StateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
-        await using IContainer container = PrepareDownloader(dbContext);
+        await using IContainer container = PrepareDownloader(local, remote);
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
-        dbContext.CompareTrees("END");
-        Assert.That(dbContext.LocalStateTree.RootHash, Is.EqualTo(dbContext.RemoteStateTree.RootHash));
+        CompareTrees(local, remote, _logger, "END");
+        Assert.That(local.StateTree.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
         // I guess state root will be requested regardless
         Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
@@ -51,7 +52,8 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
     [Test]
     public async Task HealBigSqueezedRandomTree()
     {
-        DbContext dbContext = new DbContext(_logger, _logManager);
+        LocalDbContext local = new(_logManager);
+        RemoteDbContext remote = new(_logManager);
 
         int pathPoolCount = 100_000;
         Hash256[] pathPool = new Hash256[pathPoolCount];
@@ -72,11 +74,11 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             Account account = TestItem.GenerateRandomAccount();
             Hash256 path = pathPool[TestItem.Random.Next(pathPool.Length - 1)];
 
-            dbContext.RemoteStateTree.Set(path, account);
+            remote.StateTree.Set(path, account);
             accounts[path] = account;
         }
 
-        dbContext.RemoteStateTree.Commit();
+        remote.StateTree.Commit();
 
         int startingHashIndex = 0;
         int endHashIndex;
@@ -87,7 +89,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             {
                 endHashIndex = startingHashIndex + 1000;
 
-                ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, blockNumber, dbContext.RemoteStateTree.RootHash,
+                ProcessAccountRange(remote.StateTree, local.StateTree, blockNumber, remote.StateTree.RootHash,
                    accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
                 startingHashIndex = endHashIndex + 1;
@@ -102,12 +104,12 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                 {
                     if (TestItem.Random.NextSingle() > 0.5)
                     {
-                        dbContext.RemoteStateTree.Set(path, account);
+                        remote.StateTree.Set(path, account);
                         accounts[path] = account;
                     }
                     else
                     {
-                        dbContext.RemoteStateTree.Set(path, null);
+                        remote.StateTree.Set(path, null);
                         accounts.Remove(path);
                     }
 
@@ -115,12 +117,12 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                 }
                 else
                 {
-                    dbContext.RemoteStateTree.Set(path, account);
+                    remote.StateTree.Set(path, account);
                     accounts[path] = account;
                 }
             }
 
-            dbContext.RemoteStateTree.Commit();
+            remote.StateTree.Commit();
         }
 
         endHashIndex = startingHashIndex + 1000;
@@ -132,23 +134,23 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, blockJumps, dbContext.RemoteStateTree.RootHash,
+            ProcessAccountRange(remote.StateTree, local.StateTree, blockJumps, remote.StateTree.RootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
 
             startingHashIndex += 1000;
         }
 
-        dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
+        local.StateTree.RootHash = remote.StateTree.RootHash;
 
-        await using IContainer container = PrepareDownloader(dbContext, syncDispatcherAllocateTimeoutMs: 1000);
+        await using IContainer container = PrepareDownloader(local, remote, syncDispatcherAllocateTimeoutMs: 1000);
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, timeout: 20000);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
-        dbContext.LocalStateTree.UpdateRootHash();
-        dbContext.CompareTrees("END");
+        local.StateTree.UpdateRootHash();
+        CompareTrees(local, remote, _logger, "END");
         _logger.Info($"REQUESTED NODES TO HEAL: {data.RequestedNodesCount}");
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));
     }
