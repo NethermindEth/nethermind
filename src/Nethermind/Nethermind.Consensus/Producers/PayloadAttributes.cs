@@ -198,8 +198,8 @@ public static class PayloadAttributesExtensions
 
 public static class PayloadAttributesVersions
 {
-    public const int Paris = 1;
-    public const int Shanghai = 2;
-    public const int Cancun = 3;
-    public const int Amsterdam = 4;
+    public const int Paris = EngineApiVersions.Paris;
+    public const int Shanghai = EngineApiVersions.Shanghai;
+    public const int Cancun = EngineApiVersions.Cancun;
+    public const int Amsterdam = EngineApiVersions.Amsterdam;
 }

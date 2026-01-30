@@ -398,11 +398,12 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                // how to validate at fork boundary?
-                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber != parent.SlotNumber + 1)
+                // Slot numbers must be strictly increasing but NOT necessarily consecutive
+                // (missed slots are valid in Ethereum - no block is produced for empty slots)
+                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
                 {
                     error = BlockErrorMessages.InvalidSlotNumber;
-                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number does not increment parent ({parent.SlotNumber})");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must be greater than parent ({parent.SlotNumber})");
                     return false;
                 }
             }
