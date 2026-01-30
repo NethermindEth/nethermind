@@ -41,8 +41,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Disable some pruning trie store specific  components
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
-            .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new Exception($"{nameof(MainPruningTrieStoreFactory)} disabled."))
-            .AddSingleton<PruningTrieStateFactory>(_ => throw new Exception($"{nameof(PruningTrieStateFactory)} disabled."))
+            .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new NotSupportedException($"{nameof(MainPruningTrieStoreFactory)} disabled."))
+            .AddSingleton<PruningTrieStateFactory>(_ => throw new NotSupportedException($"{nameof(PruningTrieStateFactory)} disabled."))
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
@@ -82,7 +82,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
-                    _ => throw new Exception($"Unsupported layout {flatDbConfig.Layout}")
+                    _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
                 if (flatDbConfig.EnablePreimageRecording)
@@ -119,18 +119,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
     }
 
     /// <summary>
-    /// Need to stub out or it will register trie store specific module
+    /// Need to stub out, or it will register trie store specific module
     /// </summary>
     private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
-        public ResultWrapper<PruningStatus> admin_prune()
-        {
-            return ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
-        }
+        public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
 
-        public ResultWrapper<string> admin_verifyTrie(BlockParameter block)
-        {
-            return ResultWrapper<string>.Success("disable");
-        }
+        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disable");
     }
 }

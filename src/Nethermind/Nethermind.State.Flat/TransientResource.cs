@@ -23,8 +23,8 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
-    public BloomFilter PrewarmedAddresses = new BloomFilter(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probe, which the SIMD instruction do.
-    public TrieNodeCache.ChildCache Nodes = new TrieNodeCache.ChildCache(size.NodesCacheSize);
+    public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
+    public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
     public Size GetSize() => new(PrewarmedAddresses.Capacity, Nodes.Capacity);
 
@@ -38,16 +38,10 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         {
             long newCapacity = (long)BitOperations.RoundUpToPowerOf2((ulong)PrewarmedAddresses.Count);
             double bitsPerKey = PrewarmedAddresses.BitsPerKey;
-            BloomFilter oldFilter = PrewarmedAddresses;
-            PrewarmedAddresses = null!;
-            try
-            {
-                oldFilter.Dispose();
-            }
-            finally
-            {
-                PrewarmedAddresses = new BloomFilter(newCapacity, bitsPerKey);
-            }
+            // Create new filter before disposing old one to avoid null ref race condition
+            BloomFilter newFilter = new BloomFilter(newCapacity, bitsPerKey);
+            BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
+            oldFilter.Dispose();
         }
         else
         {

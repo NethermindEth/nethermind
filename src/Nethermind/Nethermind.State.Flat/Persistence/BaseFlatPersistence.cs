@@ -38,7 +38,7 @@ public static class BaseFlatPersistence
 {
     private const int AccountKeyLength = 20;
 
-    private const int StoragePrefixPortion = 4;
+    private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int StorageSlotKeySize = 32;
     private const int StoragePostfixPortion = 16;
     private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
@@ -53,9 +53,9 @@ public static class BaseFlatPersistence
 
     private static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
     {
-        // So we store the key with only small part of the addr early then put the rest at the end.
-        // This helps with rocksdb comparator skipping 16 byte during comparison, and with index shortening, which reduces
-        // memory usage. The downside is that during selfdestruct, it will need to double check the 16 byte postfix.
+        // So we store the key with only a small part of the addr early then put the rest at the end.
+        // This helps with rocksdb comparator skipping 16 bytes during comparison, and with index shortening, which reduces
+        // memory usage. The downside is that during selfdestruct, it will need to double-check the 16 byte postfix.
         // <4-byte-address><32-byte-slot><16-byte-address>
         addrHash.Bytes[..StoragePrefixPortion].CopyTo(buffer);
         slotHash.Bytes.CopyTo(buffer[StoragePrefixPortion..(StoragePrefixPortion + StorageSlotKeySize)]);
@@ -64,7 +64,7 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
-    public struct Reader(
+    public readonly struct Reader(
         ISortedKeyValueStore state,
         ISortedKeyValueStore storage,
         bool isPreimageMode = false
@@ -90,48 +90,41 @@ public static class BaseFlatPersistence
 
             // AI said: Use Unsafe to bypass the 'Slice' bounds check and property access
             // This writes the variable-length DB value into the end of the 32-byte struct
-            unsafe
+            int len = value.Length;
+            if (len == SlotValue.ByteCount)
             {
-                int len = value.Length;
-                if (len == SlotValue.ByteCount)
-                {
-                    outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-                }
-                else
-                {
-                    ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-
-                    // Zero-initialize the leading bytes before copying the value
-                    Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-
-                    ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-
-                    Unsafe.CopyBlockUnaligned(
-                        ref destPtr,
-                        ref MemoryMarshal.GetReference(value),
-                        (uint)len);
-                }
+                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
             }
+            else
+            {
+                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+
+                // Zero-initialize the leading bytes before copying the value
+                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+
+                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+
+                Unsafe.CopyBlockUnaligned(
+                    ref destPtr,
+                    ref MemoryMarshal.GetReference(value),
+                    (uint)len);
+            }
+
             return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
 
-        public IPersistence.IFlatIterator CreateAccountIterator()
-        {
-            return new AccountIterator(state.GetViewBetween([], AccountIteratorUpperBound));
-        }
+        public IPersistence.IFlatIterator CreateAccountIterator() => new AccountIterator(state.GetViewBetween([], AccountIteratorUpperBound));
 
+        [SkipLocalsInit]
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
         {
             // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
             // We need to iterate all keys with the same 4-byte prefix and 16-byte suffix
             Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
-            firstKey.Fill(0x00);
-            lastKey.Fill(0xff);
-            accountKey.Bytes[..StoragePrefixPortion].CopyTo(firstKey);
-            accountKey.Bytes[..StoragePrefixPortion].CopyTo(lastKey);
+            BasePersistence.CreateStorageRange(accountKey.Bytes, firstKey, lastKey);
 
             return new StorageIterator(
                 storage.GetViewBetween(firstKey, lastKey),
@@ -139,68 +132,51 @@ public static class BaseFlatPersistence
         }
     }
 
-    public struct AccountIterator : IPersistence.IFlatIterator
+    public struct AccountIterator(ISortedView view) : IPersistence.IFlatIterator
     {
-        private readonly ISortedView _view;
-        private ValueHash256 _currentKey;
-        private byte[]? _currentValue;
-
-        public AccountIterator(ISortedView view)
-        {
-            _view = view;
-            _currentKey = default;
-            _currentValue = null;
-        }
+        private ValueHash256 _currentKey = default;
+        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
-            if (!_view.MoveNext()) return false;
+            if (!view.MoveNext()) return false;
 
             // Account keys are 20 bytes (truncated hash)
-            if (_view.CurrentKey.Length != AccountKeyLength) return MoveNext();
+            if (view.CurrentKey.Length != AccountKeyLength) return MoveNext();
 
             // Build 32-byte ValueHash256 from 20-byte key (zero-padded)
             _currentKey = ValueKeccak.Zero;
-            _view.CurrentKey.CopyTo(_currentKey.BytesAsSpan);
-            _currentValue = _view.CurrentValue.ToArray();
+            view.CurrentKey.CopyTo(_currentKey.BytesAsSpan);
+            _currentValue = view.CurrentValue.ToArray();
             return true;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
         public ReadOnlySpan<byte> CurrentValue => _currentValue;
 
-        public void Dispose() => _view.Dispose();
+        public void Dispose() => view.Dispose();
     }
 
-    public struct StorageIterator : IPersistence.IFlatIterator
+    public struct StorageIterator(ISortedView view, byte[] addressSuffix) : IPersistence.IFlatIterator
     {
-        private readonly ISortedView _view;
-        private readonly byte[] _addressSuffix; // 16-byte suffix to match
-        private ValueHash256 _currentKey;
-        private byte[]? _currentValue;
-
-        public StorageIterator(ISortedView view, byte[] addressSuffix)
-        {
-            _view = view;
-            _addressSuffix = addressSuffix;
-            _currentKey = default;
-            _currentValue = null;
-        }
+        // 16-byte suffix to match
+        private ValueHash256 _currentKey = default;
+        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
-            while (_view.MoveNext())
+            while (view.MoveNext())
             {
                 // Storage keys are 52 bytes: <4-byte-addr><32-byte-slot><16-byte-addr>
-                if (_view.CurrentKey.Length != StorageKeyLength) continue;
+                if (view.CurrentKey.Length != StorageKeyLength) continue;
 
                 // Verify the 16-byte address suffix matches
-                if (!Bytes.AreEqual(_view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], _addressSuffix))
+                if (!Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], addressSuffix))
                     continue;
 
                 // Extract the 32-byte slot hash from the middle of the key
-                _currentKey = new ValueHash256(_view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
-                _currentValue = _view.CurrentValue.ToArray();
+                _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
+                _currentValue = view.CurrentValue.ToArray();
                 return true;
             }
             return false;
@@ -209,38 +185,34 @@ public static class BaseFlatPersistence
         public ValueHash256 CurrentKey => _currentKey;
         public ReadOnlySpan<byte> CurrentValue => _currentValue;
 
-        public void Dispose() => _view.Dispose();
+        public void Dispose() => view.Dispose();
     }
 
-    public struct WriteBatch(
+    public readonly struct WriteBatch(
         ISortedKeyValueStore storageSnap,
         IWriteOnlyKeyValueStore state,
         IWriteOnlyKeyValueStore storage,
         WriteFlags flags
     ) : BasePersistence.IHashedFlatWriteBatch
     {
+        [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1]; // The +1 is because upper bound is exclusive
-            firstKey.Fill(0x00);
-            lastKey.Fill(0xff);
-            accountPath.Bytes[..StoragePrefixPortion].CopyTo(firstKey);
-            accountPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey);
+            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion]; // Because slot 0 is a thing, it's just the address prefix.
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1]; // The +1 is because the upper bound is exclusive
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
 
-            using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
+            using ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey);
+            IWriteOnlyKeyValueStore storageWriter = storage;
+            while (storageReader.MoveNext())
             {
-                IWriteOnlyKeyValueStore? storageWriter = storage;
-                while (storageReader.MoveNext())
-                {
-                    // FlatInTrie
-                    if (storageReader.CurrentKey.Length != StorageKeyLength) continue;
+                // FlatInTrie
+                if (storageReader.CurrentKey.Length != StorageKeyLength) continue;
 
-                    // If we have storage prefix portion, we need to double check that the last 16 byte match.
-                    if (Bytes.AreEqual(storageReader.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
-                    {
-                        storageWriter.Remove(storageReader.CurrentKey);
-                    }
+                // If we have a storage prefix portion, we need to double-check that the last 16 bytes match.
+                if (Bytes.AreEqual(storageReader.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
+                {
+                    storageWriter.Remove(storageReader.CurrentKey);
                 }
             }
         }

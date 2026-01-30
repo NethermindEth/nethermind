@@ -101,7 +101,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        SlotValue outSlotValue = new SlotValue();
+        SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(address, index, ref outSlotValue);

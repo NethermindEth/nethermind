@@ -35,7 +35,7 @@ public class SnapshotCompactor : ISnapshotCompactor
         _logger = logManager.GetClassLogger<SnapshotCompactor>();
     }
 
-    public bool DoCompactSnapshot(StateId stateId)
+    public bool DoCompactSnapshot(in StateId stateId)
     {
         if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
         {
@@ -94,9 +94,9 @@ public class SnapshotCompactor : ISnapshotCompactor
             }
         }
 
-        // So the compact size change if its midCompact or fullCompact. The reason being mid compaction is much smaller
-        // and therefore faster and use less memory however, it increase the average snapshot count per bundle.
-        // Hard to know if its better or now.
+        // So the compact size change if its midCompact or fullCompact. The reason being mid-compaction is much smaller
+        // and therefore faster and use less memory however, it increases the average snapshot count per bundle.
+        // Hard to know if it's better or not now.
         int compactSize = isMidCompaction ? _midCompactSize : _compactSize;
         long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
@@ -114,7 +114,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                 return SnapshotPooledList.Empty();
             }
 
-            // Nothing to combine if its just one
+            // Nothing to combine if it's just one
             if (snapshots.Count == 1) return SnapshotPooledList.Empty();
 
             snapshotsOk = true;
@@ -142,8 +142,8 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
-        HashSet<Address> addressToClear = new HashSet<Address>();
-        HashSet<Hash256AsKey> addressHashToClear = new HashSet<Hash256AsKey>();
+        HashSet<Address> addressToClear = new();
+        HashSet<Hash256AsKey> addressHashToClear = new();
 
         for (int i = 0; i < snapshots.Count; i++)
         {
@@ -153,13 +153,11 @@ public class SnapshotCompactor : ISnapshotCompactor
             addressToClear.Clear();
             addressHashToClear.Clear();
 
-            foreach (KeyValuePair<AddressAsKey, bool> addrK in knownState.SelfDestructedStorageAddresses)
+            foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
             {
-                AddressAsKey address = addrK.Key;
-                bool isNewAccount = addrK.Value;
                 if (isNewAccount)
                 {
-                    // Note, if its already false, we should not set it to true, hence the TryAdd
+                    // Note, if it's already false, we should not set it to true, hence the TryAdd
                     selfDestructedStorageAddresses.TryAdd(address, true);
                 }
                 else
@@ -173,19 +171,19 @@ public class SnapshotCompactor : ISnapshotCompactor
             if (addressToClear.Count > 0)
             {
                 // Clear
-                foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in storages)
+                foreach (((AddressAsKey Address, UInt256) key, SlotValue? _) in storages)
                 {
-                    if (addressToClear.Contains(kv.Key.Item1))
+                    if (addressToClear.Contains(key.Address))
                     {
-                        storages.Remove(kv.Key, out _);
+                        storages.Remove(key, out _);
                     }
                 }
 
-                foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in storageNodes)
+                foreach (((Hash256AsKey Hash, TreePath) key, TrieNode _) in storageNodes)
                 {
-                    if (addressHashToClear.Contains(kv.Key.Item1))
+                    if (addressHashToClear.Contains(key.Hash))
                     {
-                        storageNodes.Remove(kv.Key, out _);
+                        storageNodes.Remove(key, out _);
                     }
                 }
             }
