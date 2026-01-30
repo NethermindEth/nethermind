@@ -348,9 +348,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null ? this : new FlatSyncStorageTrieStore(reader, address);
-
-        public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            throw new NotSupportedException("Read-only");
     }
 
     private class FlatSyncStorageTrieStore(IPersistence.IPersistenceReader reader, Hash256 address) : AbstractMinimalTrieStore
@@ -360,9 +357,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStorageRlp(address, path, flags);
-
-        public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            throw new NotSupportedException("Read-only");
     }
 
     /// <summary>
