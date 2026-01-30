@@ -731,7 +731,7 @@ public partial class EngineModuleTests
     [Test]
     [CancelAfter(5000)]
     [Retry(3)]
-    public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
+    public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -818,8 +818,8 @@ public partial class EngineModuleTests
         };
         await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
 
-        await bestBlockProcessed.WaitAsync();
-        await chain.BlockProcessingQueue.WaitForBlockProcessing();
+        await bestBlockProcessed.WaitAsync(cancellationToken);
+        await chain.BlockProcessingQueue.WaitForBlockProcessing(cancellationToken);
 
         // beacon sync should be finished, eventually
         bestBeaconBlockRequest = CreateBlockRequest(chain, bestBeaconBlockRequest, Address.Zero);

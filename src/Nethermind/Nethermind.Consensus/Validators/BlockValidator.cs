@@ -71,10 +71,10 @@ public class BlockValidator(
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
-               ValidateEip4844Fields(block, spec, ref errorMessage) &&
-               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
+               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
+               ValidateEip4844Fields(block, spec, ref errorMessage) &&
                ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
     }
 

@@ -663,6 +663,7 @@
         "dependencies": {
           "Nethermind.Core": "[1.37.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
+          "PierTwo.Lantern.Discv5.WireProtocol": "[1.0.0-preview.7, )",
           "System.Configuration.ConfigurationManager": "[10.0.1, )"
         }
       },

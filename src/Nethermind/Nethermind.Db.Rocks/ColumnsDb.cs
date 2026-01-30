@@ -169,6 +169,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 () =>
                 {
                     ReadOptions options = new ReadOptions();
+                    options.SetVerifyChecksums(columnsDb.VerifyChecksum);
                     options.SetSnapshot(snapshot);
                     return options;
                 },
