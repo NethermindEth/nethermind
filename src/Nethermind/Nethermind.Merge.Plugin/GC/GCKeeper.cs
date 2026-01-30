@@ -6,7 +6,7 @@ using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
