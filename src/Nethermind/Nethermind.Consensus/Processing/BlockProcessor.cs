@@ -3,8 +3,10 @@
 
 using System;
 using System.Numerics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -25,7 +28,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -37,13 +42,16 @@ public partial class BlockProcessor(
     IWorldState stateProvider,
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
+#pragma warning disable CS9113 // Parameter is unread.
     IBlockhashStore blockHashStore,
+#pragma warning restore CS9113 // Parameter is unread.
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
+
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
 
@@ -100,13 +108,22 @@ public partial class BlockProcessor(
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
+
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr1 = _stateProvider.StateRoot;
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr2 = _stateProvider.StateRoot;
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
-
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr3 = _stateProvider.StateRoot;
         CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)
@@ -116,19 +133,31 @@ public partial class BlockProcessor(
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
+
+
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr4 = _stateProvider.StateRoot;
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr5 = _stateProvider.StateRoot;
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        _stateProvider.Commit(spec, commitRoots: false);
+
+        _stateProvider.Commit(spec, commitRoots: true);
+        _stateProvider.RecalculateStateRoot();
+        var sr6 = _stateProvider.StateRoot;
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitRoots: true);
-
+        _stateProvider.RecalculateStateRoot();
+        var sr7 = _stateProvider.StateRoot;
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             // Get the accounts that have been changed
@@ -143,7 +172,169 @@ public partial class BlockProcessor(
 
         header.Hash = header.CalculateHash();
 
+        //LogWatchedAccounts(block);
+
         return receipts;
+    }
+
+    private void LogWatchedAccounts(Block block)
+    {
+        if (!_logger.IsInfo || WatchedAddresses.Length == 0) return;
+
+        IWorldStateScopeProvider scopeProvider = _stateProvider.ScopeProvider;
+        bool ownsScope = false;
+        IWorldStateScopeProvider.IScope? scope = TryGetActiveScopeFromState(_stateProvider);
+
+        if (scope is null)
+        {
+            if (!scopeProvider.HasRoot(block.Header))
+            {
+                _logger.Info($"[watched] {block.ToString(Block.Format.Short)}: state root not available, skipping watched dump");
+                return;
+            }
+
+            scope = scopeProvider.BeginScope(block.Header);
+            ownsScope = true;
+        }
+
+        try
+        {
+            foreach (Address address in WatchedAddresses)
+            {
+                Account? account;
+                try
+                {
+                    account = scope.Get(address);
+                }
+                catch (Exception e)
+                {
+                    _logger.Warn($"[watched] {address}: failed to read account ({e.Message})");
+                    continue;
+                }
+
+                if (account is null)
+                {
+                    _logger.Info($"[watched] {address}: missing (no account)");
+                    continue;
+                }
+
+                byte[]? code = null;
+                if (account.HasCode)
+                {
+                    try
+                    {
+                        code = scope.CodeDb.GetCode(account.CodeHash.ValueHash256);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.Warn($"[watched] {address}: failed to read code ({e.Message})");
+                    }
+                }
+
+                string codeDump = DumpCode(code, maxChars: 4000);
+                string storageDump = DumpStorage(scope, address, maxLines: 128, maxChars: 8000);
+
+                _logger.Info($"[watched] {address}: nonce={account.Nonce} balance={account.Balance} codeHash={account.CodeHash} codeSize={(code?.Length ?? 0)} storageRoot={account.StorageRoot}\n{codeDump}\n{storageDump}");
+            }
+        }
+        finally
+        {
+            if (ownsScope)
+            {
+                scope.Dispose();
+            }
+        }
+    }
+
+    private static IWorldStateScopeProvider.IScope? TryGetActiveScopeFromState(WorldStateMetricsDecorator state)
+    {
+        // Attempt to reuse the currently open world-state scope to avoid re-opening (and re-hydrating) the trie.
+        object? current = state;
+        while (current is not null)
+        {
+            FieldInfo? scopeField = current.GetType().GetField("_currentScope", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (scopeField?.GetValue(current) is IWorldStateScopeProvider.IScope scope)
+            {
+                return scope;
+            }
+
+            // Walk any nested IWorldState fields to reach the concrete WorldState implementation.
+            FieldInfo? innerStateField = current.GetType().GetField("innerState", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? current.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+                    .FirstOrDefault(f => typeof(IWorldState).IsAssignableFrom(f.FieldType));
+
+            if (innerStateField is null)
+            {
+                break;
+            }
+
+            current = innerStateField.GetValue(current);
+
+            if (current is null)
+            {
+                break;
+            }
+        }
+
+        return null;
+    }
+
+    private static string DumpCode(byte[]? code, int maxChars)
+    {
+        if (code is null || code.Length == 0)
+        {
+            return "code: empty";
+        }
+
+        string codeHex = code.ToHexString(withZeroX: true);
+        if (codeHex.Length > maxChars)
+        {
+            codeHex = codeHex[..maxChars] + "...";
+        }
+
+        return $"code(len={code.Length}): {codeHex}";
+    }
+
+    private static string DumpStorage(IWorldStateScopeProvider.IScope scope, Address address, int maxLines, int maxChars)
+    {
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(address);
+        if (storageTree.RootHash == Keccak.EmptyTreeHash)
+        {
+            return "storage: empty";
+        }
+
+        TreeDumper dumper = new(expectAccounts: false) { IsFullDbScan = true };
+
+        try
+        {
+            // Cast to StorageTree to access Accept for traversal
+            if (storageTree is StorageTree concreteTree)
+            {
+                concreteTree.Accept(dumper, storageTree.RootHash);
+            }
+            else
+            {
+                return "storage: cannot traverse";
+            }
+        }
+        catch (Exception e)
+        {
+            return $"storage: traversal failed ({e.Message})";
+        }
+
+        string dump = dumper.ToString();
+        if (dump.Length > maxChars)
+        {
+            dump = dump[..maxChars] + "...";
+        }
+
+        string[] lines = dump.Split('\n');
+        if (lines.Length > maxLines)
+        {
+            lines = lines.Take(maxLines).Append($"... trimmed {dump.Length} chars").ToArray();
+        }
+
+        return string.Join('\n', lines);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

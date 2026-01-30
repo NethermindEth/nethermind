@@ -6,7 +6,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -57,6 +56,12 @@ namespace Nethermind.State
         }
 
         public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)
+        {
+            TreeDumper dumper = new();
+            stateReader.RunTreeVisitor(dumper, baseBlock);
+            return dumper.ToString();
+        }
+        public static string DumpStorage(this IStateReader stateReader, BlockHeader? baseBlock)
         {
             TreeDumper dumper = new();
             stateReader.RunTreeVisitor(dumper, baseBlock);

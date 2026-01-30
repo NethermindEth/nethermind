@@ -56,6 +56,7 @@
     "eip211Transition": "0x0",
     "eip214Transition": "0x0",
     "eip658Transition": "0x0",
+    "eip1559BaseFeeInitialValue": "0x3b9aca00",
     "eip145Transition": 1604400,
     "eip1014Transition": 1604400,
     "eip1052Transition": 1604400,

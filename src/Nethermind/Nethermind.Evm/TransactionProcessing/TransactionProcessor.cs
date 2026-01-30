@@ -880,7 +880,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
             {
-                collectedFees += blobBaseFee;
+                collectedFees += 2 * blobBaseFee;
             }
 
             if (spec.FeeCollector is not null && !collectedFees.IsZero)

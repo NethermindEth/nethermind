@@ -114,6 +114,9 @@ public interface IDebugRpcModule : IRpcModule
         IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
 
+    [JsonRpcMethod(Description = "Returns the entire state of the database: all accounts with nonce, balance, code, and storage.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IDictionary<string, object>> debug_state();
+
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 

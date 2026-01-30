@@ -1,46 +1,219 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core.Specs;
+using Nethermind.Facade;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
+using System;
 using System.Collections.Generic;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Core.Specs;
-using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Config;
-using Nethermind.TxPool;
-using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Facade;
-using Nethermind.Facade.Simulate;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugRpcModule(
+
     ILogManager logManager,
     IDebugBridge debugBridge,
     IJsonRpcConfig jsonRpcConfig,
     ISpecProvider specProvider,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
-    IBlockFinder blockFinder)
+    IBlockFinder blockFinder,
+    IStateReader stateReader)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
+    private readonly IStateReader _stateReader = stateReader;
 
+    public ResultWrapper<IDictionary<string, object>> debug_state()
+    {
+        var header = blockchainBridge.HeadBlock?.Header;
+        if (header is null)
+        {
+            return ResultWrapper<IDictionary<string, object>>.Fail("No head block", ErrorCodes.ResourceUnavailable);
+        }
+
+        var result = new Dictionary<string, object>();
+
+        foreach (var address in WatchedAddresses)
+        {
+            ITrieStore _trieStore = (ITrieStore)_stateReader.GetType().GetField("_trieStore", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(_stateReader);
+            if (!_stateReader.TryGetAccount(header, address, out var account))
+            {
+                result[address.ToString()] = null;
+                continue;
+            }
+
+            var storage = new Dictionary<string, string>();
+
+            if (!account.IsStorageEmpty)
+            {
+                StorageTree storageTree = new(_trieStore.GetTrieStore(address), new Hash256(account.StorageRoot), logManager);
+                StorageDumpVisitor storageVisitor = new(storage);
+                storageTree.Accept(storageVisitor, new Hash256(account.StorageRoot), VisitingOptions.Default, new Hash256(account.StorageRoot), new Hash256(account.StorageRoot));
+            }
+
+            result[address.ToString()] = new
+            {
+                nonce = "0x" + account.Nonce.ToString("x"),
+                balance = "0x" + account.Balance.ToString("x"),
+                code = _stateReader.GetCode(account.CodeHash),
+                storage
+            };
+        }
+
+        return ResultWrapper<IDictionary<string, object>>.Success(result);
+    }
+
+    private static readonly Address[] WatchedAddresses = new[]
+    {
+        new Address("0xbabe2bed00000000000000000000000000000003"),
+        new Address("0x00000961ef480eb55e80d19ad83579a64c007002"),
+        new Address("0x0000bbddc7ce488642fb579f8b00f3a590007251"),
+        new Address("0x0000f90827f1c53a10cb7a02335b175320002935"),
+        new Address("0x000f3df6d732807ef1319fb7b8bb8522d0beac02"),
+        new Address("0x2000000000000000000000000000000000000001"),
+        new Address("0xfffffffffffffffffffffffffffffffffffffffe"),
+        new Address("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b"),
+        new Address("0x1000000000000000000000000000000000001000"),
+        new Address("0x1559000000000000000000000000000000000000")
+    };
+
+    private class StorageDumpVisitor(Dictionary<string, string> storage) : ITreeVisitor<OldStyleTrieVisitContext>
+    {
+        private readonly Dictionary<string, string> _storage = storage;
+
+        public bool IsFullDbScan => true;
+
+        public bool ShouldVisit(in OldStyleTrieVisitContext context, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in OldStyleTrieVisitContext context, in ValueHash256 rootHash) { }
+
+        public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash) { }
+
+        public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node) { }
+
+        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) { }
+
+        public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
+        {
+            UInt256 key = new(node.Key, isBigEndian: true);
+            Rlp.ValueDecoderContext decoder = new(node.Value.Span);
+            byte[] valueBytes = decoder.DecodeByteArray();
+            string valueHex = valueBytes.Length == 0 ? "0x" : "0x" + valueBytes.ToHexString();
+            _storage["0x" + key.ToString("x")] = valueHex;
+        }
+
+        public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account) { }
+    }
+
+    public class TreeDumper(bool expectAccounts = true) : ITreeVisitor<OldStyleTrieVisitContext>
+    {
+        private readonly StringBuilder _builder = new();
+        public bool ExpectAccounts => expectAccounts;
+
+        public void Reset()
+        {
+            _builder.Clear();
+        }
+
+        public bool IsFullDbScan { get; init; } = true;
+
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
+        {
+            return true;
+        }
+
+        public void VisitTree(in OldStyleTrieVisitContext context, in ValueHash256 rootHash)
+        {
+            if (rootHash == Keccak.EmptyTreeHash)
+            {
+                _builder.AppendLine("EMPTY TREE");
+            }
+            else
+            {
+                _builder.AppendLine(context.IsStorage ? "STORAGE TREE" : "STATE TREE");
+            }
+        }
+
+        private static string GetPrefix(in OldStyleTrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
+
+        private static string GetIndent(int level) => new('+', level * 2);
+        private static string GetChildIndex(in OldStyleTrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
+
+        public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash)
+        {
+            _builder.AppendLine($"{GetIndent(context.Level)}{GetChildIndex(context)}MISSING {nodeHash}");
+        }
+
+        public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node)
+        {
+            _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
+        }
+
+        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node)
+        {
+            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+        }
+
+        public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
+        {
+            if (!expectAccounts)
+            {
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            }
+        }
+
+        public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
+        {
+            string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.Span);
+            if (!context.IsStorage)
+            {
+                _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
+                _builder.AppendLine($"{GetPrefix(context)}  BALANCE: {account.Balance}");
+                _builder.AppendLine($"{GetPrefix(context)}  IS_CONTRACT: {account.IsContract}");
+            }
+            else
+            {
+                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
+            }
+        }
+
+        public override string ToString()
+        {
+            return _builder.ToString();
+        }
+
+        private static string? KeccakOrRlpStringOfNode(TrieNode node)
+        {
+            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.Span.ToHexString();
+        }
+    }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
@@ -369,7 +542,7 @@ public class DebugRpcModule(
             return ResultWrapper<string?>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
         }
 
-        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
+        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.NetworkWrapper is not null ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
         using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));

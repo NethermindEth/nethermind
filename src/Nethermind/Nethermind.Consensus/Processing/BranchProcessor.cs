@@ -22,7 +22,9 @@ public class BranchProcessor(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
     IWorldState stateProvider,
+#pragma warning disable CS9113 // Parameter is unread.
     IBeaconBlockRootHandler beaconBlockRootHandler,
+#pragma warning restore CS9113 // Parameter is unread.
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
@@ -200,14 +202,11 @@ public class BranchProcessor(
         }
     }
 
-    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        suggestedBlock.Transactions.Length < 3
-            ? null
-            : preWarmer?.PreWarmCaches(suggestedBlock,
-                preBlockBaseBlock,
-                spec,
-                token,
-                beaconBlockRootHandler);
+    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token)
+    {
+        // Prewarming disabled per request to avoid background cache warm-up overhead.
+        return null;
+    }
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
