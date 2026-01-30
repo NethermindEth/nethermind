@@ -121,7 +121,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         return releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 | expLength > ModExpMaxInputSizeEip7823 | modulusLength > ModExpMaxInputSizeEip7823)
-            : (baseLength | modulusLength) >= uint.MaxValue;
+            : baseLength == uint.MaxValue || modulusLength == uint.MaxValue;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
