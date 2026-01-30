@@ -348,7 +348,7 @@ public sealed class SnapshotBundle : IDisposable
         if (!isNewAccount)
         {
             // Collect keys first to avoid modifying during iteration
-            using ArrayPoolListRef<(Hash256AsKey, TreePath)> storageKeysToRemove = new(0);
+            using ArrayPoolListRef<(Hash256AsKey, TreePath)> storageKeysToRemove = new(16);
             foreach (KeyValuePair<(Hash256AsKey, TreePath), TrieNode> kv in _changedStorageNodes)
             {
                 if (kv.Key.Item1.Value == addressHash)
@@ -362,7 +362,7 @@ public sealed class SnapshotBundle : IDisposable
                 _changedStorageNodes.TryRemove(key, out _);
             }
 
-            ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new(0);
+            using ArrayPoolListRef<(AddressAsKey, UInt256)> slotKeysToRemove = new(16);
             foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in _changedSlots)
             {
                 if (kv.Key.Item1.Value == address)

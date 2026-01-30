@@ -1533,8 +1533,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void Dispose()
     {
-        if (_isDisposing) return;
-        _isDisposing = true;
+        if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
 
