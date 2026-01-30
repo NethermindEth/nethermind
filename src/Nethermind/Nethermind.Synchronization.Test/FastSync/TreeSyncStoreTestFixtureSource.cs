@@ -4,18 +4,18 @@
 using System;
 using System.Collections;
 using Autofac;
-using Nethermind.Logging;
+using Nethermind.Core;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
 public class TreeSyncStoreTestFixtureSource : IEnumerable
 {
-    public static void RegisterPatriciaStore(ContainerBuilder builder) =>
-        builder.Register(ctx => new PatriciaTreeSyncStore(ctx.Resolve<INodeStorage>(), ctx.Resolve<ILogManager>()))
-            .As<ITreeSyncStore>().SingleInstance();
+    public static void RegisterPatriciaStore(ContainerBuilder builder) => builder
+        .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
+        .AddSingleton<ITestOperation, PatriciaTreeTestOperation>()
+        ;
 
     // Future:
     // public static void RegisterFlatStore(ContainerBuilder builder) =>
@@ -26,6 +26,16 @@ public class TreeSyncStoreTestFixtureSource : IEnumerable
         yield return new TestFixtureData((Action<ContainerBuilder>)RegisterPatriciaStore)
             .SetArgDisplayNames("Patricia");
         // Future: yield return for Flat
+    }
+
+    private interface ITestOperation
+    {
+        // Add here
+    }
+
+    private class PatriciaTreeTestOperation: ITestOperation
+    {
+
     }
 }
 
