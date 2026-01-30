@@ -212,7 +212,7 @@ public class XdcTestBlockchain : TestBlockchain
                     compoundPolicy.Policies.Add(gossipPolicy);
                 }
 
-                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider));
+                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
 
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
@@ -263,7 +263,6 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.LimitPenaltyEpoch = 2;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
-        xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
 
         xdcSpec.BlackListedAddresses =
             [

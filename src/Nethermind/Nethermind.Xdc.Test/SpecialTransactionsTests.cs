@@ -640,7 +640,7 @@ internal class SpecialTransactionsTests
 
         TransactionResult? result = transactionProcessor.Execute(tx, receiptsTracer);
 
-        Assert.That(result.Value.EvmExceptionType, Is.EqualTo(EvmExceptionType.None), $"specialTx to {address} should succeed");
+        Assert.That(result.Value.EvmExceptionType, Is.EqualTo(EvmExceptionType.None), $"specialTx to {spec.BlockSignerContract} should succeed");
 
 
         receiptsTracer.EndTxTrace();

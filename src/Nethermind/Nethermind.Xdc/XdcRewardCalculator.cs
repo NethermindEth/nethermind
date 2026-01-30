@@ -61,7 +61,7 @@ namespace Nethermind.Xdc
             if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
-            if (foundationWalletAddr == default) throw new InvalidOperationException("Foundation wallet address cannot be empty");
+            if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
             var (signers, count) = GetSigningTxCount(number, xdcHeader, spec);
 
