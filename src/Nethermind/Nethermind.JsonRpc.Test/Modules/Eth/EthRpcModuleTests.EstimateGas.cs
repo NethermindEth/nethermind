@@ -8,7 +8,6 @@ using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -288,7 +287,9 @@ public partial class EthRpcModuleTests
             }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        LegacyTransactionForRpc transaction = new LegacyTransactionForRpc(tx, 1, Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new LegacyTransactionForRpc(
+            tx,
+            new(tx.ChainId ?? BlockchainIds.Mainnet))
         {
             To = TestItem.AddressB,
             GasPrice = 0
@@ -406,12 +407,13 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
          .Op(Instruction.STOP)
          .Done;
-        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithNonce(123)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
@@ -426,12 +428,13 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         byte[] code = [];
-        EIP1559TransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(100000)
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
 
         transaction.GasPrice = null;
 

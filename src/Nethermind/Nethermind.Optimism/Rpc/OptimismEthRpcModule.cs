@@ -185,17 +185,22 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
+        TransactionLookupResult result = transactionResult!.Value;
+        Transaction transaction = result.Transaction!;
+
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: baseFee, chainId: _specProvider.ChainId);
+        TransactionForRpcContext extraData = result.ExtraData;
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transaction,
+            extraData: extraData);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
-            depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
+            depositTx.DepositReceiptVersion = (extraData.Receipt as OptimismTxReceipt)?.DepositReceiptVersion;
         }
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
@@ -222,7 +227,16 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             .Get(block)
             .FirstOrDefault(r => r.TxHash == transaction.Hash);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: block.BaseFeePerGas, chainId: _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction,
+            new(
+                chainId: _specProvider.ChainId,
+                blockHash: block.Hash!,
+                blockNumber: block.Number,
+                txIndex: (int)positionIndex,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
@@ -264,10 +278,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                 {
                     Transaction tx = transactions[i];
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
-                        transaction: tx,
-                        blockHash: block.Hash,
-                        blockNumber: block.Number,
-                        txIndex: i);
+                        tx,
+                        new(
+                            chainId: _specProvider.ChainId,
+                            blockHash: block.Hash!,
+                            blockNumber: block.Number,
+                            txIndex: i,
+                            blockTimestamp: block.Timestamp,
+                            baseFee: block.BaseFeePerGas,
+                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {
