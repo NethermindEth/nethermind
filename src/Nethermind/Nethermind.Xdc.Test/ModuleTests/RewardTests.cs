@@ -35,8 +35,6 @@ public class RewardTests
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
 
-        var signTxManager = chain.Container.Resolve<ISignTransactionManager>();
-
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = 50;
