@@ -98,7 +98,7 @@ public class TrieNodeCacheTests
         Hash256 hash = trieNode.Keccak!;
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
+        transientResource.UpdateStateNode(in path, trieNode);
 
         _cache.Add(transientResource);
 
@@ -118,7 +118,7 @@ public class TrieNodeCacheTests
         Hash256 hash = trieNode.Keccak!;
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address, in path, trieNode);
+        transientResource.UpdateStorageNode(address, in path, trieNode);
 
         _cache.Add(transientResource);
 
@@ -141,7 +141,7 @@ public class TrieNodeCacheTests
         Hash256 hash = trieNode.Keccak!;
 
         TransientResource transientResource = zeroResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
+        transientResource.UpdateStateNode(in path, trieNode);
 
         zeroCache.Add(transientResource);
 
@@ -168,9 +168,9 @@ public class TrieNodeCacheTests
         TrieNode node2 = CreateNodeWithRlp(rlp2);
         TrieNode node3 = CreateNodeWithRlp(rlp3);
 
-        transientResource.Nodes.Set(null, in path1, node1);
-        transientResource.Nodes.Set(null, in path2, node2);
-        transientResource.Nodes.Set(null, in path3, node3);
+        transientResource.UpdateStateNode(in path1, node1);
+        transientResource.UpdateStateNode(in path2, node2);
+        transientResource.UpdateStateNode(in path3, node3);
 
         _cache.Add(transientResource);
 
@@ -194,8 +194,8 @@ public class TrieNodeCacheTests
         TrieNode stateNode = CreateNodeWithRlp(stateRlp);
         TrieNode storageNode = CreateNodeWithRlp(storageRlp);
 
-        transientResource.Nodes.Set(null, in statePath, stateNode);
-        transientResource.Nodes.Set(storageAddress, in storagePath, storageNode);
+        transientResource.UpdateStateNode(in statePath, stateNode);
+        transientResource.UpdateStorageNode(storageAddress, in storagePath, storageNode);
 
         _cache.Add(transientResource);
 
@@ -212,7 +212,7 @@ public class TrieNodeCacheTests
         Hash256 queryHash = Keccak.Compute([4, 5, 6]); // Different hash
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
+        transientResource.UpdateStateNode(in path, trieNode);
 
         _cache.Add(transientResource);
 
@@ -234,12 +234,12 @@ public class TrieNodeCacheTests
         TrieNode node2 = CreateNodeWithRlp(rlp2);
 
         TransientResource transientResource1 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource1.Nodes.Set(null, in path, node1);
+        transientResource1.UpdateStateNode(in path, node1);
 
         _cache.Add(transientResource1);
 
         TransientResource transientResource2 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource2.Nodes.Set(null, in path, node2);
+        transientResource2.UpdateStateNode(in path, node2);
 
         _cache.Add(transientResource2);
 
@@ -260,8 +260,8 @@ public class TrieNodeCacheTests
         TrieNode node2 = CreateNodeWithRlp(rlp2);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path1, node1);
-        transientResource.Nodes.Set(null, in path2, node2);
+        transientResource.UpdateStateNode(in path1, node1);
+        transientResource.UpdateStateNode(in path2, node2);
 
         _cache.Add(transientResource);
 
@@ -283,8 +283,8 @@ public class TrieNodeCacheTests
         TrieNode node2 = CreateNodeWithRlp(rlp2);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address1, in path, node1);
-        transientResource.Nodes.Set(address2, in path, node2);
+        transientResource.UpdateStorageNode(address1, in path, node1);
+        transientResource.UpdateStorageNode(address2, in path, node2);
 
         _cache.Add(transientResource);
 
@@ -310,9 +310,9 @@ public class TrieNodeCacheTests
         TrieNode node2 = CreateNodeWithRlp(rlp2);
         TrieNode node3 = CreateNodeWithRlp(rlp3);
 
-        transientResource.Nodes.Set(null, in path1, node1);
-        transientResource.Nodes.Set(null, in path2, node2);
-        transientResource.Nodes.Set(null, in path3, node3);
+        transientResource.UpdateStateNode(in path1, node1);
+        transientResource.UpdateStateNode(in path2, node2);
+        transientResource.UpdateStateNode(in path3, node3);
 
         _cache.Add(transientResource);
 
@@ -345,8 +345,8 @@ public class TrieNodeCacheTests
         TrieNode stateNode = CreateNodeWithRlp(stateRlp);
         TrieNode storageNode = CreateNodeWithRlp(storageRlp);
 
-        transientResource.Nodes.Set(null, in statePath, stateNode);
-        transientResource.Nodes.Set(storageAddress, in storagePath, storageNode);
+        transientResource.UpdateStateNode(in statePath, stateNode);
+        transientResource.UpdateStorageNode(storageAddress, in storagePath, storageNode);
 
         _cache.Add(transientResource);
 
@@ -371,7 +371,7 @@ public class TrieNodeCacheTests
         Hash256 hash = trieNode.Keccak!;
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
+        transientResource.UpdateStateNode(in path, trieNode);
 
         _cache.Add(transientResource);
 
@@ -394,7 +394,8 @@ public class TrieNodeCacheTests
         TrieNode trieNode = new TrieNode(NodeType.Leaf, hash);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, trieNode);
+        // UpdateStateNode will skip nodes without RLP, so nothing is added
+        transientResource.UpdateStateNode(in path, trieNode);
 
         _cache.Add(transientResource);
 
@@ -417,121 +418,151 @@ public class ChildCacheTests
         _cache = new TrieNodeCache.ChildCache(1024);
     }
 
+    /// <summary>
+    /// Creates RLP data with padding to ensure it's at least 32 bytes (required for hash verification).
+    /// </summary>
+    private static byte[] CreateRlpData(int seed)
+    {
+        // Create at least 32 bytes of RLP data so the hash can be computed
+        byte[] data = new byte[40];
+        data[0] = 0xf8; // RLP list prefix for length > 55
+        data[1] = 38;   // Length of inner content
+        for (int i = 2; i < data.Length; i++)
+        {
+            data[i] = (byte)((seed + i) & 0xFF);
+        }
+        return data;
+    }
+
+    private static RefCounterTrieNodeRlp CreateRlp(int seed) => RefCounterTrieNodeRlp.CreateFromRlp(CreateRlpData(seed));
+
     [Test]
     public void TryGet_ReturnsNotFound_WhenCacheEmpty()
     {
         TreePath path = TreePath.FromHexString("1234");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
+        Hash256 hash = Keccak.Compute(CreateRlpData(1));
 
-        bool found = _cache.TryGet(null, in path, hash, out TrieNode? node);
+        bool found = _cache.TryGet(null, in path, hash, out RefCounterTrieNodeRlp? rlp);
 
         Assert.That(found, Is.False);
-        Assert.That(node, Is.Null);
+        Assert.That(rlp, Is.Null);
     }
 
     [Test]
-    public void Set_ThenTryGet_ReturnsNode()
+    public void Set_ThenTryGet_ReturnsRlp()
     {
         TreePath path = TreePath.FromHexString("abcd");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode trieNode = new TrieNode(NodeType.Leaf, hash);
+        byte[] rlpData = CreateRlpData(1);
+        Hash256 hash = Keccak.Compute(rlpData);
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
 
-        _cache.Set(null, in path, trieNode);
+        _cache.Set(null, in path, rlp);
 
-        bool found = _cache.TryGet(null, in path, hash, out TrieNode? retrievedNode);
+        bool found = _cache.TryGet(null, in path, hash, out RefCounterTrieNodeRlp? retrievedRlp);
 
         Assert.That(found, Is.True);
-        Assert.That(retrievedNode, Is.SameAs(trieNode));
+        Assert.That(retrievedRlp!.Span.ToArray(), Is.EqualTo(rlpData));
+
+        retrievedRlp.Dispose();
     }
 
     [Test]
-    public void Set_WithStorageAddress_ThenTryGet_ReturnsNode()
+    public void Set_WithStorageAddress_ThenTryGet_ReturnsRlp()
     {
         Hash256 address = Keccak.Compute([0xaa, 0xbb]);
         TreePath path = TreePath.FromHexString("1234");
-        Hash256 hash = Keccak.Compute([3, 4, 5]);
-        TrieNode trieNode = new TrieNode(NodeType.Branch, hash);
+        byte[] rlpData = CreateRlpData(2);
+        Hash256 hash = Keccak.Compute(rlpData);
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
 
-        _cache.Set(address, in path, trieNode);
+        _cache.Set(address, in path, rlp);
 
-        bool found = _cache.TryGet(address, in path, hash, out TrieNode? retrievedNode);
+        bool found = _cache.TryGet(address, in path, hash, out RefCounterTrieNodeRlp? retrievedRlp);
 
         Assert.That(found, Is.True);
-        Assert.That(retrievedNode, Is.SameAs(trieNode));
+        Assert.That(retrievedRlp!.Span.ToArray(), Is.EqualTo(rlpData));
+
+        retrievedRlp.Dispose();
     }
 
     [Test]
     public void TryGet_ReturnsNotFound_WhenHashMismatch()
     {
         TreePath path = TreePath.FromHexString("abcd");
-        Hash256 storedHash = Keccak.Compute([1, 2, 3]);
-        Hash256 queryHash = Keccak.Compute([4, 5, 6]);
-        TrieNode trieNode = new TrieNode(NodeType.Leaf, storedHash);
+        byte[] storedRlpData = CreateRlpData(1);
+        byte[] queryRlpData = CreateRlpData(2);
+        Hash256 queryHash = Keccak.Compute(queryRlpData); // Different hash
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(storedRlpData);
 
-        _cache.Set(null, in path, trieNode);
+        _cache.Set(null, in path, rlp);
 
-        bool found = _cache.TryGet(null, in path, queryHash, out TrieNode? retrievedNode);
+        bool found = _cache.TryGet(null, in path, queryHash, out RefCounterTrieNodeRlp? retrievedRlp);
 
         Assert.That(found, Is.False);
-        Assert.That(retrievedNode, Is.Null);
+        Assert.That(retrievedRlp, Is.Null);
     }
 
     [Test]
-    public void GetOrAdd_ReturnsExistingNode_WhenPresent()
+    public void GetOrAdd_ReturnsExistingRlp_WhenPresent()
     {
         TreePath path = TreePath.FromHexString("abcd");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode existingNode = new TrieNode(NodeType.Leaf, hash);
-        TrieNode newNode = new TrieNode(NodeType.Leaf, hash);
+        byte[] rlpData = CreateRlpData(1);
+        RefCounterTrieNodeRlp existingRlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
+        RefCounterTrieNodeRlp newRlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
 
-        _cache.Set(null, in path, existingNode);
-        TrieNode result = _cache.GetOrAdd(null, in path, newNode);
+        _cache.Set(null, in path, existingRlp);
+        RefCounterTrieNodeRlp result = _cache.GetOrAdd(null, in path, newRlp);
 
-        Assert.That(result, Is.SameAs(existingNode));
+        // The result should be the existing RLP (newRlp should have been disposed by GetOrAdd)
+        Assert.That(result.Span.ToArray(), Is.EqualTo(rlpData));
+        result.Dispose();
     }
 
     [Test]
-    public void GetOrAdd_AddsAndReturnsNewNode_WhenNotPresent()
+    public void GetOrAdd_AddsAndReturnsNewRlp_WhenNotPresent()
     {
         TreePath path = TreePath.FromHexString("abcd");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode newNode = new TrieNode(NodeType.Leaf, hash);
+        byte[] rlpData = CreateRlpData(1);
+        RefCounterTrieNodeRlp newRlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
 
-        TrieNode result = _cache.GetOrAdd(null, in path, newNode);
+        RefCounterTrieNodeRlp result = _cache.GetOrAdd(null, in path, newRlp);
 
-        Assert.That(result, Is.SameAs(newNode));
+        Assert.That(ReferenceEquals(result, newRlp), Is.True);
         Assert.That(_cache.Count, Is.EqualTo(1));
     }
 
     [Test]
-    public void GetOrAdd_WithStorageAddress_ReturnsExistingNode()
+    public void GetOrAdd_WithStorageAddress_ReturnsExistingRlp()
     {
         Hash256 address = Keccak.Compute([0xaa, 0xbb]);
         TreePath path = TreePath.FromHexString("1234");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode existingNode = new TrieNode(NodeType.Branch, hash);
-        TrieNode newNode = new TrieNode(NodeType.Branch, hash);
+        byte[] rlpData = CreateRlpData(1);
+        RefCounterTrieNodeRlp existingRlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
+        RefCounterTrieNodeRlp newRlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
 
-        _cache.Set(address, in path, existingNode);
-        TrieNode result = _cache.GetOrAdd(address, in path, newNode);
+        _cache.Set(address, in path, existingRlp);
+        RefCounterTrieNodeRlp result = _cache.GetOrAdd(address, in path, newRlp);
 
-        Assert.That(result, Is.SameAs(existingNode));
+        // The result should be the existing RLP
+        Assert.That(result.Span.ToArray(), Is.EqualTo(rlpData));
+        result.Dispose();
     }
 
     [Test]
     public void Reset_ClearsCache()
     {
         TreePath path = TreePath.FromHexString("abcd");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode trieNode = new TrieNode(NodeType.Leaf, hash);
+        byte[] rlpData = CreateRlpData(1);
+        Hash256 hash = Keccak.Compute(rlpData);
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpData);
 
-        _cache.Set(null, in path, trieNode);
+        _cache.Set(null, in path, rlp);
         Assert.That(_cache.Count, Is.EqualTo(1));
 
         _cache.Reset();
 
         Assert.That(_cache.Count, Is.EqualTo(0));
-        bool found = _cache.TryGet(null, in path, hash, out TrieNode? _);
+        bool found = _cache.TryGet(null, in path, hash, out RefCounterTrieNodeRlp? _);
         Assert.That(found, Is.False);
     }
 
@@ -542,13 +573,11 @@ public class ChildCacheTests
 
         TreePath path1 = TreePath.FromHexString("1111");
         TreePath path2 = TreePath.FromHexString("2222");
-        Hash256 hash1 = Keccak.Compute([1]);
-        Hash256 hash2 = Keccak.Compute([2]);
 
-        _cache.Set(null, in path1, new TrieNode(NodeType.Leaf, hash1));
+        _cache.Set(null, in path1, CreateRlp(1));
         Assert.That(_cache.Count, Is.EqualTo(1));
 
-        _cache.Set(null, in path2, new TrieNode(NodeType.Leaf, hash2));
+        _cache.Set(null, in path2, CreateRlp(2));
         Assert.That(_cache.Count, Is.EqualTo(2));
     }
 
@@ -568,8 +597,7 @@ public class ChildCacheTests
         for (int i = 0; i < initialCapacity * 3; i++)
         {
             TreePath path = TreePath.FromHexString(i.ToString("x8"));
-            Hash256 hash = Keccak.Compute([(byte)i]);
-            smallCache.Set(null, in path, new TrieNode(NodeType.Leaf, hash));
+            smallCache.Set(null, in path, CreateRlp(i));
         }
 
         smallCache.Reset();
@@ -582,21 +610,26 @@ public class ChildCacheTests
     public void StateNodes_AndStorageNodes_AreSeparate()
     {
         TreePath path = TreePath.FromHexString("abcd");
-        Hash256 stateHash = Keccak.Compute([1, 2, 3]);
-        Hash256 storageHash = Keccak.Compute([4, 5, 6]);
+        byte[] stateRlpData = CreateRlpData(1);
+        byte[] storageRlpData = CreateRlpData(2);
+        Hash256 stateHash = Keccak.Compute(stateRlpData);
+        Hash256 storageHash = Keccak.Compute(storageRlpData);
         Hash256 storageAddress = Keccak.Compute([0xaa]);
-        TrieNode stateNode = new TrieNode(NodeType.Leaf, stateHash);
-        TrieNode storageNode = new TrieNode(NodeType.Branch, storageHash);
+        RefCounterTrieNodeRlp stateRlp = RefCounterTrieNodeRlp.CreateFromRlp(stateRlpData);
+        RefCounterTrieNodeRlp storageRlp = RefCounterTrieNodeRlp.CreateFromRlp(storageRlpData);
 
-        _cache.Set(null, in path, stateNode);
-        _cache.Set(storageAddress, in path, storageNode);
+        _cache.Set(null, in path, stateRlp);
+        _cache.Set(storageAddress, in path, storageRlp);
 
-        bool foundState = _cache.TryGet(null, in path, stateHash, out TrieNode? retrievedState);
-        bool foundStorage = _cache.TryGet(storageAddress, in path, storageHash, out TrieNode? retrievedStorage);
+        bool foundState = _cache.TryGet(null, in path, stateHash, out RefCounterTrieNodeRlp? retrievedState);
+        bool foundStorage = _cache.TryGet(storageAddress, in path, storageHash, out RefCounterTrieNodeRlp? retrievedStorage);
 
         Assert.That(foundState, Is.True);
         Assert.That(foundStorage, Is.True);
-        Assert.That(retrievedState, Is.SameAs(stateNode));
-        Assert.That(retrievedStorage, Is.SameAs(storageNode));
+        Assert.That(retrievedState!.Span.ToArray(), Is.EqualTo(stateRlpData));
+        Assert.That(retrievedStorage!.Span.ToArray(), Is.EqualTo(storageRlpData));
+
+        retrievedState.Dispose();
+        retrievedStorage.Dispose();
     }
 }

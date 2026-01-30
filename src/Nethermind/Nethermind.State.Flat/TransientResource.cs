@@ -71,15 +71,115 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void Dispose() => PrewarmedAddresses.Dispose();
 
-    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
+    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        if (Nodes.TryGet(null, path, hash, out RefCounterTrieNodeRlp? rlp))
+        {
+            try
+            {
+                node = new TrieNode(NodeType.Unknown, hash, rlp.ToArray());
+                return true;
+            }
+            finally
+            {
+                rlp.Dispose();
+            }
+        }
 
-    public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(null, path, trieNode);
+        node = null;
+        return false;
+    }
 
-    public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
+    public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode)
+    {
+        // Only cache nodes with RLP data
+        if (trieNode.FullRlp.IsNull) return trieNode;
 
-    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(trieNode.FullRlp.Span);
+        RefCounterTrieNodeRlp result = Nodes.GetOrAdd(null, path, rlp);
 
-    public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
+        if (ReferenceEquals(result, rlp))
+        {
+            // We added our RLP, return the original trieNode
+            return trieNode;
+        }
+        else
+        {
+            // An existing RLP was found, dispose our new one and return node from existing RLP
+            rlp.Dispose();
+            try
+            {
+                return new TrieNode(NodeType.Unknown, trieNode.Keccak!, result.ToArray());
+            }
+            finally
+            {
+                result.Dispose();
+            }
+        }
+    }
 
-    public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
+    public void UpdateStateNode(in TreePath path, TrieNode node)
+    {
+        // Only cache nodes with RLP data
+        if (node.FullRlp.IsNull) return;
+
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(node.FullRlp.Span);
+        Nodes.Set(null, path, rlp);
+    }
+
+    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        if (Nodes.TryGet(address, path, hash, out RefCounterTrieNodeRlp? rlp))
+        {
+            try
+            {
+                node = new TrieNode(NodeType.Unknown, hash, rlp.ToArray());
+                return true;
+            }
+            finally
+            {
+                rlp.Dispose();
+            }
+        }
+
+        node = null;
+        return false;
+    }
+
+    public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode)
+    {
+        // Only cache nodes with RLP data
+        if (trieNode.FullRlp.IsNull) return trieNode;
+
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(trieNode.FullRlp.Span);
+        RefCounterTrieNodeRlp result = Nodes.GetOrAdd(address, path, rlp);
+
+        if (ReferenceEquals(result, rlp))
+        {
+            // We added our RLP, return the original trieNode
+            return trieNode;
+        }
+        else
+        {
+            // An existing RLP was found, dispose our new one and return node from existing RLP
+            rlp.Dispose();
+            try
+            {
+                return new TrieNode(NodeType.Unknown, trieNode.Keccak!, result.ToArray());
+            }
+            finally
+            {
+                result.Dispose();
+            }
+        }
+    }
+
+    public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node)
+    {
+        // Only cache nodes with RLP data
+        if (node.FullRlp.IsNull) return;
+
+        RefCounterTrieNodeRlp rlp = RefCounterTrieNodeRlp.CreateFromRlp(node.FullRlp.Span);
+        Nodes.Set(address, path, rlp);
+    }
 }

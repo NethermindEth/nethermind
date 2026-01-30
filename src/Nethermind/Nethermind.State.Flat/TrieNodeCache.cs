@@ -139,20 +139,17 @@ public sealed class TrieNodeCache : ITrieNodeCache
     {
         if (_maxCacheMemoryThreshold == 0)
         {
-            // When cache is disabled, just reset the child cache - no need to dispose RLP entries
-            // as the child cache still holds TrieNodes that don't need disposing
+            // When cache is disabled, the child cache entries are not transferred
+            // The child cache will be reset when TransientResource is returned to pool
             return;
         }
 
-        void AddToCacheWithHashCode(int shardIdx, int hashCode, TrieNode newNode)
+        void AddToCacheWithHashCode(int shardIdx, int hashCode, RefCounterTrieNodeRlp childRlp)
         {
-            // Only cache nodes with RLP data
-            if (newNode.FullRlp.IsNull) return;
-
             int bucketIdx = hashCode & _bucketMask;
 
-            // Create RefCounterTrieNodeRlp from TrieNode.FullRlp
-            RefCounterTrieNodeRlp newRlp = RefCounterTrieNodeRlp.CreateFromRlp(newNode.FullRlp.Span);
+            // Create a new RefCounterTrieNodeRlp for the main cache (child cache owns the original)
+            RefCounterTrieNodeRlp newRlp = RefCounterTrieNodeRlp.CreateFromRlp(childRlp.Span);
 
             Interlocked.Add(ref _shardMemoryUsages[shardIdx], newRlp.MemorySize);
 
@@ -168,10 +165,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         Parallel.For(0, ShardCount, (i) =>
         {
-            (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
+            (int hashCode, RefCounterTrieNodeRlp? rlp)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                if (shard[j].rlp is { } childRlp) AddToCacheWithHashCode(i, shard[j].hashCode, childRlp);
             }
         });
 
@@ -229,19 +226,19 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     public class ChildCache
     {
-        private readonly (int hashCode, TrieNode? node)[][] _shards;
+        private readonly (int hashCode, RefCounterTrieNodeRlp? rlp)[][] _shards;
         private int _count = 0;
         private int _mask;
         private int _shardSize;
 
         public int Count => _count;
         public int Capacity => _shards.Length * _shardSize;
-        public (int hashCode, TrieNode? node)[][] Shards => _shards;
+        public (int hashCode, RefCounterTrieNodeRlp? rlp)[][] Shards => _shards;
 
         public ChildCache(int size)
         {
             int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(size + ShardCount - 1) / ShardCount);
-            _shards = new (int, TrieNode?)[ShardCount][];
+            _shards = new (int, RefCounterTrieNodeRlp?)[ShardCount][];
             _mask = powerOfTwoSize - 1;
             _shardSize = powerOfTwoSize;
             CreateCacheArray(_shardSize);
@@ -249,11 +246,21 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         private void CreateCacheArray(int size)
         {
-            for (int i = 0; i < ShardCount; i++) _shards[i] = new (int, TrieNode?)[size];
+            for (int i = 0; i < ShardCount; i++) _shards[i] = new (int, RefCounterTrieNodeRlp?)[size];
         }
 
         public void Reset()
         {
+            // Dispose all entries before clearing
+            for (int i = 0; i < ShardCount; i++)
+            {
+                (int hashCode, RefCounterTrieNodeRlp? rlp)[] shard = _shards[i];
+                for (int j = 0; j < shard.Length; j++)
+                {
+                    shard[j].rlp?.Dispose();
+                }
+            }
+
             if (_count / UtilRatio > ShardCount * _shardSize)
             {
                 int newTarget = (int)(_count / UtilRatio);
@@ -273,57 +280,99 @@ public sealed class TrieNodeCache : ITrieNodeCache
             _count = 0;
         }
 
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out RefCounterTrieNodeRlp? rlp)
         {
             (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
-            (int hashCode, TrieNode? node) entry = _shards[shardIdx][idx]; // Copy struct once
+            (int hashCode, RefCounterTrieNodeRlp? rlp) entry = _shards[shardIdx][idx]; // Copy struct once
 
             if (entry.hashCode != hashCode)
             {
-                node = null;
+                rlp = null;
                 return false;
             }
 
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is null || maybeNode.Keccak != hash)
+            RefCounterTrieNodeRlp? maybeRlp = entry.rlp; // Store it to prevent concurrency issue
+            if (maybeRlp is null || !maybeRlp.TryAcquireLease())
             {
-                node = null;
+                rlp = null;
                 return false;
             }
 
-            node = maybeNode;
+            // Verify hash for non-inline nodes (length >= 32)
+            if (maybeRlp.Length >= 32)
+            {
+                Hash256 computedHash = Keccak.Compute(maybeRlp.Span);
+                if (computedHash != hash)
+                {
+                    maybeRlp.Dispose(); // Release the lease
+                    rlp = null;
+                    return false;
+                }
+            }
+            else
+            {
+                // For inline nodes (length < 32), cannot verify by hash - treat as cache miss
+                maybeRlp.Dispose();
+                rlp = null;
+                return false;
+            }
+
+            rlp = maybeRlp;
             return true;
         }
 
-        public void Set(Hash256? address, in TreePath path, TrieNode node)
+        public void Set(Hash256? address, in TreePath path, RefCounterTrieNodeRlp rlp)
         {
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
             _count++; // Track count
 
-            _shards[shard][idx] = (hashCode, node);
+            ref (int hashCode, RefCounterTrieNodeRlp? rlp) entry = ref _shards[shard][idx];
+
+            // Dispose old entry when replacing
+            entry.rlp?.Dispose();
+
+            entry = (hashCode, rlp);
         }
 
-        public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
+        public RefCounterTrieNodeRlp GetOrAdd(Hash256? address, in TreePath path, RefCounterTrieNodeRlp rlp)
         {
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
-            ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is not null)
+            ref (int hashCode, RefCounterTrieNodeRlp? rlp) entry = ref _shards[shard][idx];
+            RefCounterTrieNodeRlp? maybeRlp = entry.rlp; // Store it to prevent concurrency issue
+            if (maybeRlp is not null && maybeRlp.TryAcquireLease())
             {
-                if (maybeNode.Keccak == trieNode.Keccak) return maybeNode;
+                // We got a lease - verify it's the same RLP by hash
+                if (maybeRlp.Length >= 32 && rlp.Length >= 32)
+                {
+                    Hash256 existingHash = Keccak.Compute(maybeRlp.Span);
+                    Hash256 newHash = Keccak.Compute(rlp.Span);
+                    if (existingHash == newHash)
+                    {
+                        // Same RLP, dispose the new one and return existing
+                        rlp.Dispose();
+                        return maybeRlp;
+                    }
+                }
+                // Hash mismatch or inline node - release the lease and replace
+                maybeRlp.Dispose();
+            }
+
+            if (entry.rlp is null)
+            {
+                _count++; // Track count for new entries
             }
             else
             {
-                _count++; // Track count
+                entry.rlp.Dispose(); // Dispose old entry being replaced
             }
 
-            entry = (hashCode, trieNode);
-            return trieNode;
+            entry = (hashCode, rlp);
+            return rlp;
         }
     }
 }
