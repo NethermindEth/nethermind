@@ -64,7 +64,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Slot);
-        stream.EncodeArray([.. item.Changes], rlpBehaviors);
+        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
     }
 
     public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
