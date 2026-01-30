@@ -1121,6 +1121,7 @@
       "nethermind.state.flat": {
         "type": "Project",
         "dependencies": {
+          "Nethermind.Blockchain": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Db": "[1.37.0-unstable, )",
           "Nethermind.Evm": "[1.37.0-unstable, )",
