@@ -208,7 +208,7 @@ public class RewardTests
         UInt256 signerAReward = totalRewards / 3;
         UInt256 ownerAReward = signerAReward * 90 / 100;
         UInt256 foundationReward = signerAReward / 10;
-        UInt256 signerBReward = totalRewards * 2 / 3;
+        UInt256 signerBReward = totalRewards / 3 * 2;
         UInt256 ownerBReward = signerBReward * 90 / 100;
         foundationReward += signerBReward / 10;
 
@@ -300,6 +300,32 @@ public class RewardTests
         Assert.That(aOwnerReward, Is.EqualTo(aOwnerExpected));
         Assert.That(bOwnerReward, Is.EqualTo(bOwnerExpected));
 
+    }
+
+    [Test]
+    public void RewardCalculator_CalculateRewardsForSignersAndHolders_MatchesExpectedValues()
+    {
+        IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        var rewardCalculator = new XdcRewardCalculator(
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<IBlockTree>(),
+            masternodeVotingContract
+            );
+        var totalReward = UInt256.Parse("171000000000000000000");
+        long totalSigner = 177, sign = 59;
+        var expectedReward = UInt256.Parse("56999999999999999983");
+        Assert.That(rewardCalculator.CalculateProportionalReward(sign, totalSigner, totalReward), Is.EqualTo(expectedReward));
+
+        var expectedAmountOwner = UInt256.Parse(("51299999999999999984"));
+        var expectedAmountFoundationWallet = UInt256.Parse(("5699999999999999998"));
+        bool ok = Address.TryParse("0x68d1e2F85e4583BeCc610b47Dd1b857850a4025A", out Address? signer);
+        Assert.That(ok, Is.True);
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        masternodeVotingContract.GetCandidateOwner(header, signer!).Returns(signer!);
+        (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer!, expectedReward, header);
+        Assert.That(holderReward.Value, Is.EqualTo(expectedAmountOwner));
+        Assert.That(foundationWalletReward, Is.EqualTo(expectedAmountFoundationWallet));
     }
 
 
