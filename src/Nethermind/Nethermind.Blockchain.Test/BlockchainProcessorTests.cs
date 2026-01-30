@@ -67,7 +67,7 @@ public class BlockchainProcessorTests
                 _allowedToFail.Add(hash);
             }
 
-            public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+            public Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
             {
                 if (blockTracer != NullBlockTracer.Instance)
                 {
@@ -108,7 +108,7 @@ public class BlockchainProcessorTests
                     {
                         _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
-                        return suggestedBlocks.ToArray();
+                        return Task.FromResult(suggestedBlocks.ToArray());
                     }
                 }
             }

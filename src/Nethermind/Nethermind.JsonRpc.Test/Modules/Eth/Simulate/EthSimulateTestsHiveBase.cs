@@ -84,7 +84,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
         Console.WriteLine($"current test: {name}");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+            await chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
 
         Console.WriteLine();
         if (shouldSucceed)
@@ -147,8 +147,9 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
-        BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data;
-        SimulateBlockResult<SimulateCallResult> simulated = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data[0];
+        var blockParameter = new BlockParameter(blockNumber);
+        var parent = chain.EthRpcModule.eth_getBlockByNumber(blockParameter).Data;
+        var simulated = (await chain.EthRpcModule.eth_simulateV1(payload, blockParameter)).Data[0];
 
         simulated.ParentHash.Should().Be(parent.Hash);
         (simulated.Number - parent.Number).Should().Be(1);

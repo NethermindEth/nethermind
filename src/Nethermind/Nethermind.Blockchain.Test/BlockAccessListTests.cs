@@ -26,6 +26,7 @@ using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 //move all to correct folder
@@ -91,9 +92,8 @@ public class BlockAccessListTests()
     [Test]
     public void Can_decode_then_encode_slot_change()
     {
-        // Note: UInt256 constructor from bytes needs isBigEndian: true to match RLP encoding
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, [parentHashStorageChange]);
+        SlotChanges expected = new(0, new SortedList<int, StorageChange>{{0, parentHashStorageChange}});
 
         // Generate expected RLP from the object (uses variable-length encoding per EIP-7928)
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
@@ -171,7 +171,8 @@ public class BlockAccessListTests()
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SlotChanges slotChanges = new(0xbad, [storageChange, storageChange]);
+        var storageChanges = new SortedList<int, StorageChange>{{ 10, storageChange}, {10, storageChange}};
+        SlotChanges slotChanges = new(0xbad, storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
@@ -224,19 +225,19 @@ public class BlockAccessListTests()
             { slotChanges.Slot, slotChanges }
         };
 
-        SortedList<ushort, BalanceChange> balanceChangesList = new()
+        SortedList<int, BalanceChange> balanceChangesList = new()
         {
             { balanceChange.BlockAccessIndex, balanceChange },
             { balanceChange2.BlockAccessIndex, balanceChange2 }
         };
 
-        SortedList<ushort, NonceChange> nonceChangesList = new()
+        SortedList<int, NonceChange> nonceChangesList = new()
         {
             { nonceChange.BlockAccessIndex, nonceChange },
             { nonceChange2.BlockAccessIndex, nonceChange2 }
         };
 
-        SortedList<ushort, CodeChange> codeChangesList = new()
+        SortedList<int, CodeChange> codeChangesList = new()
         {
             { codeChange.BlockAccessIndex, codeChange },
         };
@@ -274,6 +275,7 @@ public class BlockAccessListTests()
         ParallelWorldState? tracedWorldState = mainWorldState as ParallelWorldState;
         Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be ParallelWorldState");
 
+        // (worldState as IBlockAccessListBuilder)!.GeneratedBlockAccessList = new();
         // Begin scope and initialize state
         using IDisposable _ = mainWorldState.BeginScope(IWorldState.PreGenesis);
         InitWorldState(mainWorldState);
@@ -356,7 +358,7 @@ public class BlockAccessListTests()
             .WithWithdrawals([withdrawal])
             .WithHeader(header).TestObject;
 
-        (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
+        (Block processedBlock, TxReceipt[] _) = await testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
         // Block processedBlock = testBlockchain.BlockchainProcessor.Process(block, ProcessingOptions.None, NullBlockTracer.Instance)!;
         // Block[] res = testBlockchain.BranchProcessor.Process(header, [block], ProcessingOptions.None, NullBlockTracer.Instance, CancellationToken.None);
         // Blockchain.AddBlockResult res = testBlockchain.BlockTree.SuggestBlock(block);
@@ -404,8 +406,8 @@ public class BlockAccessListTests()
                 TestItem.AddressA,
                 [],
                 [],
-                new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
-                new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
+                new SortedList<int, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
+                new SortedList<int, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
                 []
             )));
 
@@ -422,7 +424,7 @@ public class BlockAccessListTests()
                 TestItem.AddressC,
                 [],
                 [],
-                new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
+                new SortedList<int, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
                 [],
                 []
             )));
@@ -431,7 +433,7 @@ public class BlockAccessListTests()
                 TestItem.AddressD,
                 [],
                 [],
-                new SortedList<ushort, BalanceChange> { { 4, new(4, 1.GWei()) } },
+                new SortedList<int, BalanceChange> { { 4, new(4, 1.GWei()) } },
                 [],
                 []
             )));
@@ -441,8 +443,8 @@ public class BlockAccessListTests()
                 [],
                 [],
                 [],
-                new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
-                new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
+                new SortedList<int, NonceChange> { { 2, new(2, 1) } },
+                new SortedList<int, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
             )));
 
             Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges(
@@ -456,7 +458,7 @@ public class BlockAccessListTests()
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<int, StorageChange>{{0, parentHashStorageChange}}) } },
                 [],
                 [],
                 [],
@@ -468,10 +470,8 @@ public class BlockAccessListTests()
             // slot1 is not a separate read since it's already a change, only slot2 is read
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
                 Eip4788Constants.BeaconRootsAddress,
-                new SortedDictionary<UInt256, SlotChanges>() {
-                    { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }
-                },
-                [new(eip4788Slot2)],
+                new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<int, StorageChange>{{0, timestampStorageChange}}) } },
+                [new(eip4788Slot1), new(eip4788Slot2)],
                 [],
                 [],
                 []
@@ -543,7 +543,7 @@ public class BlockAccessListTests()
 
             AccountChanges storageChangesExpected = new(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<int, StorageChange>{{0, new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")))}}) } },
                 [],
                 [],
                 [],
@@ -585,7 +585,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip2935Constants.BlockHashHistoryAddress, new(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<int, StorageChange>{{0, parentHashStorageChange}}) } },
                     [],
                     [],
                     [],
@@ -593,7 +593,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip4788Constants.BeaconRootsAddress, new(
                     Eip4788Constants.BeaconRootsAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<int, StorageChange>{{0, timestampStorageChange}}) } },
                     [new(0x200b)],
                     [],
                     [],
@@ -603,7 +603,7 @@ public class BlockAccessListTests()
                     new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"),
                     [],
                     [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, 0x1319718811c8) } },
+                    new SortedList<int, BalanceChange> { { 1, new(1, 0x1319718811c8) } },
                     [],
                     []
                 )},
@@ -611,15 +611,15 @@ public class BlockAccessListTests()
                     new("0xaccc7d92b051544a255b8a899071040739bada75"),
                     [],
                     [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(Bytes.FromHexString("0x3635c99aac6d15af9c"), isBigEndian: true)) } },
-                    new SortedList<ushort, NonceChange> { { 1, new(1, 1) } },
+                    new SortedList<int, BalanceChange> { { 1, new(1, new UInt256(Bytes.FromHexString("0x3635c99aac6d15af9c"), isBigEndian: true)) } },
+                    new SortedList<int, NonceChange> { { 1, new(1, 1) } },
                     []
                 )},
                 {new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"), new(
                     new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"),
                     [],
                     [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, 0x64) } },
+                    new SortedList<int, BalanceChange> { { 1, new(1, 0x64) } },
                     [],
                     []
                 )},

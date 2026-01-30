@@ -42,7 +42,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
-        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
+        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0, 0));
 
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
@@ -54,7 +54,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             value: 0,
             inputData: default);
 
-        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot(blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex)))
         {
             vm.VmState = vmState;
             vm._worldState = state;

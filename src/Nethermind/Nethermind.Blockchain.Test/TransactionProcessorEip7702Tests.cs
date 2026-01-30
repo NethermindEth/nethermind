@@ -969,7 +969,7 @@ internal class TransactionProcessorEip7702Tests
         actual = _stateProvider.GetCode(authority.Address);
 
         Assert.That(actual, Is.EqualTo(Array.Empty<byte>()));
-        Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
+        Assert.That(_stateProvider.HasCode(authority.Address, int.MaxValue), Is.False);
     }
 
     [TestCase(true)]

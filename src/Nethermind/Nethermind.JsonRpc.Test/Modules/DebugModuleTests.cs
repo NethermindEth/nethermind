@@ -248,7 +248,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void Debug_traceCall_test()
+    public async Task Debug_traceCall_test()
     {
         GethTxTraceEntry entry = new();
 
@@ -286,7 +286,7 @@ public class DebugModuleTests
         blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
+        ResultWrapper<GethLikeTxTrace> debugTraceCall = await rpcModule.debug_traceCall(txForRpc, null, gtOptions);
         var expected = ResultWrapper<GethLikeTxTrace>.Success(
             new GethLikeTxTrace()
             {
