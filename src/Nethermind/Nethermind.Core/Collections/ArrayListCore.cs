@@ -266,13 +266,17 @@ internal static class ArrayPoolListCore<T>
         if (localArray is not null)
         {
             ClearToCount(localArray, count);
-#if !ZKVM
-            pool.Return(localArray);
-#endif
+            Return(pool, localArray);
         }
 
         count = 0;
         capacity = 0;
+
+        [Conditional("NOT_ZKVM")]
+        static void Return(ArrayPool<T> pool, T[] localArray)
+        {
+            pool.Return(localArray);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
