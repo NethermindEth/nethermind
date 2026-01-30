@@ -54,7 +54,7 @@ internal class XdcTransactionProcessor(
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
-        if (xdcSpec.BlackListHFNumber <= header.Number)
+        if (xdcSpec.IsBlackListingEnabled)
         {
             if (IsBlackListed(xdcSpec, sender) || IsBlackListed(xdcSpec, target))
             {

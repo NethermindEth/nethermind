@@ -642,6 +642,9 @@ internal class SpecialTransactionsTests
 
         TransactionResult? result = transactionProcessor.Execute(tx, receiptsTracer);
 
+        Assert.That(result.Value.EvmExceptionType, Is.EqualTo(EvmExceptionType.None), $"specialTx to {address} should succeed");
+
+
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
@@ -719,6 +722,8 @@ internal class SpecialTransactionsTests
 
             TransactionResult? result = transactionProcessor.Execute(tx, receiptsTracer);
 
+            Assert.That(result.Value.EvmExceptionType, Is.EqualTo(EvmExceptionType.None), $"specialTx to {address} should succeed");
+
             receiptsTracer.EndTxTrace();
 
             UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
@@ -754,13 +759,6 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = enableEip1559;
         });
 
-        var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-        var rc = new XdcRewardCalculator(
-            chain.EpochSwitchManager,
-            chain.SpecProvider,
-            chain.BlockTree,
-            masternodeVotingContract
-        );
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
         var epochLength = spec.EpochLength;
@@ -771,10 +769,9 @@ internal class SpecialTransactionsTests
         Assert.That(header915, Is.Not.Null);
         PrivateKey signer915 = chain.Signer.Key!;
         Address owner = signer915.Address;
-        masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signer915.Address).Returns(owner);
 
         // Ensure signer has 0 balance BEFORE the block that includes the SignTx is committed
-        using (var _ = chain.MainWorldState.BeginScope(header915!))
+        using (chain.MainWorldState.BeginScope(header915!))
         {
             chain.MainWorldState.CreateAccountIfNotExists(chain.Signer.Address, UInt256.Zero);
             chain.MainWorldState.Commit((IReleaseSpec)spec, NullStateTracer.Instance);
@@ -813,7 +810,7 @@ internal class SpecialTransactionsTests
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec((XdcBlockHeader)head.Header);
 
         // Ensure signer has 0 balance BEFORE the block that includes the SignTx is committed
-        using (var _ = blockChain.MainWorldState.BeginScope(head.Header!))
+        using (blockChain.MainWorldState.BeginScope(head.Header!))
         {
             byte[] dummyRuntimeCode = [0x60, 0x00, 0x60, 0x00, 0x01, 0x50, 0x00]; // PUSH1 PUSH1 ADD POP STOP
             blockChain.MainWorldState.CreateAccountIfNotExists(spec.RandomizeSMCBinary, UInt256.Zero);
@@ -882,7 +879,7 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
 
-        using (var _ = blockChain.MainWorldState.BeginScope(head.Header!))
+        using (blockChain.MainWorldState.BeginScope(head.Header!))
         {
             blockChain.MainWorldState.CreateAccountIfNotExists(blockChain.Signer.Address, UInt256.Zero);
             blockChain.MainWorldState.Commit((IReleaseSpec)spec, NullStateTracer.Instance);

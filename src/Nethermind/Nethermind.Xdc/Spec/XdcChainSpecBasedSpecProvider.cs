@@ -34,7 +34,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
-        releaseSpec.BlackListedAddresses = new HashSet<Address>(chainSpecEngineParameters.BlackListedAddresses);
+        releaseSpec.BlackListedAddresses = new(chainSpecEngineParameters.BlackListedAddresses ?? []);
 
         releaseSpec.RandomizeSMCBinary = chainSpecEngineParameters.RandomizeSMCBinary;
 
