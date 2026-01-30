@@ -15,7 +15,9 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
     public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
 
     public abstract byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-    public abstract ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+
+    public virtual ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+        throw new NotSupportedException("Commit not supported");
 
 
     public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
