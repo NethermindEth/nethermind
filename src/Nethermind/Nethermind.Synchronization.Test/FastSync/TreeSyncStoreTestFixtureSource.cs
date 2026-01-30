@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using Autofac;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
@@ -12,16 +13,17 @@ namespace Nethermind.Synchronization.Test.FastSync;
 
 public class TreeSyncStoreTestFixtureSource : IEnumerable
 {
-    public static ITreeSyncStore CreatePatriciaStore(INodeStorage nodeStorage, ILogManager logManager) =>
-        new PatriciaTreeSyncStore(nodeStorage, logManager);
+    public static void RegisterPatriciaStore(ContainerBuilder builder) =>
+        builder.Register(ctx => new PatriciaTreeSyncStore(ctx.Resolve<INodeStorage>(), ctx.Resolve<ILogManager>()))
+            .As<ITreeSyncStore>().SingleInstance();
 
     // Future:
-    // public static ITreeSyncStore CreateFlatStore(INodeStorage nodeStorage, ILogManager logManager) =>
-    //     new FlatTreeSyncStore(nodeStorage, logManager);
+    // public static void RegisterFlatStore(ContainerBuilder builder) =>
+    //     builder.Register(ctx => new FlatTreeSyncStore(...)).As<ITreeSyncStore>().SingleInstance();
 
     public IEnumerator GetEnumerator()
     {
-        yield return new TestFixtureData((Func<INodeStorage, ILogManager, ITreeSyncStore>)CreatePatriciaStore)
+        yield return new TestFixtureData((Action<ContainerBuilder>)RegisterPatriciaStore)
             .SetArgDisplayNames("Patricia");
         // Future: yield return for Flat
     }
@@ -42,7 +44,7 @@ public class StateSyncFeedTestsFixtureSource : IEnumerable
         foreach (var (peerCount, maxLatency) in PeerConfigs)
         {
             yield return new TestFixtureData(
-                (Func<INodeStorage, ILogManager, ITreeSyncStore>)TreeSyncStoreTestFixtureSource.CreatePatriciaStore,
+                (Action<ContainerBuilder>)TreeSyncStoreTestFixtureSource.RegisterPatriciaStore,
                 peerCount,
                 maxLatency
             ).SetArgDisplayNames($"Patricia-{peerCount}peers-{maxLatency}ms");

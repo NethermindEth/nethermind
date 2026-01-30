@@ -22,8 +22,8 @@ namespace Nethermind.Synchronization.Test.FastSync;
 
 [TestFixtureSource(typeof(TreeSyncStoreTestFixtureSource))]
 [Parallelizable(ParallelScope.All)]
-public class StateSyncFeedHealingTests(Func<INodeStorage, ILogManager, ITreeSyncStore> createTreeSyncStore)
-    : StateSyncFeedTestsBase(createTreeSyncStore)
+public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSyncStore)
+    : StateSyncFeedTestsBase(registerTreeSyncStore)
 {
     [Test]
     public async Task HealTreeWithoutBoundaryProofs()
