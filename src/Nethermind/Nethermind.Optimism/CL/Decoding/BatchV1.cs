@@ -32,7 +32,7 @@ public sealed class BatchV1
         public required BigInteger YParityBits;
         public required IReadOnlyList<(UInt256 R, UInt256 S)> Signatures; // TODO: Do we want to use `Nethermind.Core.Crypto.Signature`?
         public required IReadOnlyList<Address> Tos;
-        public required IReadOnlyList<ReadOnlyMemory<byte>> Datas;
+        public required IReadOnlyList<ReadOnlyMemory<byte>> Data;
         public required IReadOnlyList<TxType> Types;
         public required ulong TotalLegacyTxCount;
         public required IReadOnlyList<ulong> Nonces;
@@ -115,20 +115,20 @@ public sealed class BatchV1
                             v = 27u + (parityBit ? 1u : 0u);
                         }
 
-                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Datas[(int)txIdx].Span);
+                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Data[(int)txIdx].Span);
                         break;
                     }
                 case TxType.AccessList:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Datas[(int)txIdx].Span);
+                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Data[(int)txIdx].Span);
                         break;
                     }
                 case TxType.EIP1559:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
                         (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) =
-                            DecodeEip1559Transaction(Txs.Datas[(int)txIdx].Span);
+                            DecodeEip1559Transaction(Txs.Data[(int)txIdx].Span);
                         break;
                     }
                 default:

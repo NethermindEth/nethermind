@@ -132,9 +132,18 @@ public class BlockValidator(
 
         if (spec.BlockLevelAccessListsEnabled)
         {
-            if (block.BlockAccessList is null || block.BlockAccessListHash is null)
+            // Genesis blocks don't have a BlockAccessList (only the hash of an empty list)
+            bool isGenesis = block.IsGenesis;
+            if (!isGenesis && (block.BlockAccessList is null || block.BlockAccessListHash is null))
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Block-level access list was missing or empty");
+                errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
+                return false;
+            }
+
+            if (isGenesis && block.BlockAccessListHash is null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Genesis block missing BlockAccessListHash");
                 errorMessage = BlockErrorMessages.InvalidBlockLevelAccessList;
                 return false;
             }
@@ -484,19 +493,18 @@ public class BlockValidator(
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
-    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? blockLevelAccessListRoot)
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
     {
-        BlockBody body = block.Body;
         BlockHeader header = block.Header;
-        if (body.BlockAccessList is null)
+        if (block.BlockAccessList is null)
         {
-            blockLevelAccessListRoot = null;
+            balRoot = null;
             return header.BlockAccessListHash is null;
         }
 
-        blockLevelAccessListRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+        balRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
 
-        return blockLevelAccessListRoot == header.BlockAccessListHash;
+        return balRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";

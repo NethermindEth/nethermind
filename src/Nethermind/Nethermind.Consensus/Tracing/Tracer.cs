@@ -34,12 +34,12 @@ namespace Nethermind.Consensus.Tracing
 
         public async void Execute(Block block, IBlockTracer tracer) => await Process(block, tracer, executeProcessor, executeOptions);
 
-        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {
             ArgumentNullException.ThrowIfNull(visitor);
-            ArgumentNullException.ThrowIfNull(stateRoot);
+            ArgumentNullException.ThrowIfNull(baseBlock);
 
-            stateReader.RunTreeVisitor(visitor, stateRoot);
+            stateReader.RunTreeVisitor(visitor, baseBlock);
         }
     }
 }

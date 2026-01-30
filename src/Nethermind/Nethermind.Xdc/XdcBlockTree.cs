@@ -12,6 +12,8 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
@@ -27,19 +29,20 @@ internal class XdcBlockTree : BlockTree
         [KeyFilter("blockInfos")] IDb? blockInfoDb,
         [KeyFilter("metadata")] IDb? metadataDb,
         IBadBlockStore? badBlockStore,
+        IBlockAccessListStore? balStore,
         IChainLevelInfoRepository? chainLevelInfoRepository,
         ISpecProvider? specProvider,
         IBloomStorage? bloomStorage,
         ISyncConfig? syncConfig,
         ILogManager? logManager,
-        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         _xdcConsensus = xdcConsensus;
     }
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
-        Types.BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
+        BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
             return base.Suggest(block, header, options);
         if (finalizedBlockInfo.Hash == header.Hash)
@@ -53,7 +56,7 @@ internal class XdcBlockTree : BlockTree
         }
         if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
         {
-            //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
+            //Theoretically very deep reorgs could happen, if the chain doesn't finalize for a long time
             //TODO Maybe this needs to be revisited later
             Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
             return AddBlockResult.InvalidBlock;

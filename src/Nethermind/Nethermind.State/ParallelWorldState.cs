@@ -531,13 +531,13 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         }
     }
 
-    public override void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
-    {
-        if (!ParallelExecutionEnabled)
-        {
-            _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
-        }
-    }
+    // public override void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
+    // {
+    //     if (!ParallelExecutionEnabled)
+    //     {
+    //         _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
+    //     }
+    // }
 
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {

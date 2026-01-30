@@ -24,6 +24,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -37,6 +39,7 @@ public class DebugBridge : IDebugBridge
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
+    private readonly IBlockAccessListStore _balStore;
     private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
 
@@ -49,7 +52,8 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore)
+        IBadBlockStore badBlockStore,
+        IBlockAccessListStore balStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -59,6 +63,7 @@ public class DebugBridge : IDebugBridge
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        _balStore = balStore;
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -188,11 +193,14 @@ public class DebugBridge : IDebugBridge
     public Block? GetBlock(BlockParameter param)
         => _blockTree.FindBlock(param);
 
+    public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
+        => _balStore.Get(blockHash);
+
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
-    public SyncReportSymmary GetCurrentSyncStage()
+    public SyncReportSummary GetCurrentSyncStage()
     {
-        return new SyncReportSymmary
+        return new SyncReportSummary
         {
             CurrentStage = _syncModeSelector.Current.ToString()
         };

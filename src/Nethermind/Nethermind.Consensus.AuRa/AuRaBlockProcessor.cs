@@ -81,11 +81,7 @@ namespace Nethermind.Consensus.AuRa
         protected override async Task<TxReceipt[]> ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             ValidateAuRa(block);
-            bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
-            if (wereChanges)
-            {
-                _stateProvider.Commit(spec, commitRoots: true);
-            }
+            RewriteContracts(block, spec);
             AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = await base.ProcessBlock(block, blockTracer, options, spec, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
@@ -93,9 +89,25 @@ namespace Nethermind.Consensus.AuRa
             return receipts;
         }
 
+        private void RewriteContracts(Block block, IReleaseSpec spec)
+        {
+            bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
+            BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+            if (parent is not null)
+            {
+                wereChanges |= _contractRewriter?.RewriteContracts(block.Timestamp, parent.Timestamp, _stateProvider, spec) ?? false;
+            }
+
+            if (wereChanges)
+            {
+                _stateProvider.Commit(spec, commitRoots: true);
+            }
+        }
+
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
         protected Task<TxReceipt[]> PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
+            RewriteContracts(block, spec);
             return base.ProcessBlock(block, blockTracer, options, spec, token);
         }
 

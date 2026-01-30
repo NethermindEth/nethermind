@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -27,6 +28,7 @@ public interface IDebugBridge
     Task<IReadOnlyCollection<GethLikeTxTrace>> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     Block? GetBlock(BlockParameter param);
     byte[] GetBlockRlp(BlockParameter param);
+    BlockAccessList? GetBlockAccessList(Hash256 blockHash);
     byte[] GetDbValue(string dbName, byte[] key);
     object GetConfigValue(string category, string name);
     ChainLevelInfo GetLevelInfo(long number);
@@ -34,7 +36,7 @@ public interface IDebugBridge
     void UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(long from, long to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
-    SyncReportSymmary GetCurrentSyncStage();
+    SyncReportSummary GetCurrentSyncStage();
     bool HaveNotSyncedHeadersYet();
     Task<IEnumerable<string>> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     Task<IEnumerable<string>> TraceBadBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);

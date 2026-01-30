@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
+using Nethermind.State.Healing;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -33,7 +34,10 @@ namespace Nethermind.Consensus.Producers
 
         public IBlockProducerEnv Create()
         {
-            IWorldState worldState = new ParallelWorldState(worldStateManager.CreateResettableWorldState(), blocksConfig.ParallelExecution);
+            // IWorldState worldState = new ParallelWorldState(worldStateManager.CreateResettableWorldState(), blocksConfig.ParallelExecution);
+            IWorldStateScopeProvider worldState = blocksConfig.ParallelExecution ?
+                new ParallelWorldStateScopeProvider(worldStateManager.CreateResettableWorldState()) :
+                worldStateManager.CreateResettableWorldState();
             ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
                 ConfigureBuilder(builder)
                     .AddScoped(worldState));

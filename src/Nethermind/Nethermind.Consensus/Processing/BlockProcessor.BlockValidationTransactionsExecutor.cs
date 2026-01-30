@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.Processing
                     var transactionProcessors = new ITransactionProcessorAdapter[len];
                     for (int i = 0; i < len; i++)
                     {
-                        TransactionProcessor transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                        TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
                         ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                         transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
                         transactionProcessors[i] = transactionProcessorAdapter;
@@ -85,7 +86,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (_transactionProcessor is null)
                     {
-                        TransactionProcessor transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                        TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
                         _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
                     }
 

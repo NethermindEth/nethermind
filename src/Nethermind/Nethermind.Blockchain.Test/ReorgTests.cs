@@ -92,11 +92,11 @@ public class ReorgTests
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
         ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(stateProvider);
-        VirtualMachine virtualMachine = new(
+        EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
             LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,

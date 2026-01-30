@@ -22,17 +22,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -96,17 +92,24 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public async Task Should_rewrite_contracts()
+        public async Task Should_rewrite_contracts([Values] bool isPostMerge)
         {
-            static async Task<BlockHeader> Process(BranchProcessor auRaBlockProcessor, BlockHeader parent)
+            static async Task<BlockHeader> Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge)
             {
-                BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(parent).TestObject;
+                BlockHeader header = Build.A.BlockHeader
+                    .WithAuthor(TestItem.AddressD)
+                    .WithParent(parent)
+                    .WithTimestamp(parent.Timestamp + 12)
+                    .WithTotalDifficulty(0).TestObject;
+                header.IsPostMerge = isPostMerge;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
-                return (await auRaBlockProcessor.Process(
+                BlockHeader res = (await auRaBlockProcessor.Process(
                     parent,
                     new List<Block> { block },
                     ProcessingOptions.None,
                     NullBlockTracer.Instance))[0].Header;
+                blockTree.Insert(res);
+                return res;
             }
 
             Dictionary<long, IDictionary<Address, byte[]>> contractOverrides = new()
@@ -129,8 +132,15 @@ namespace Nethermind.AuRa.Test
                 },
             };
 
-            (BranchProcessor processor, IWorldState stateProvider) =
-                CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
+            (ulong, Address, byte[])[] contractOverridesTimestamp = [
+                (1000024, TestItem.AddressC, Bytes.FromHexString("0x123")),
+                (1000024, TestItem.AddressD, Bytes.FromHexString("0x321")),
+                (1000036, TestItem.AddressC, Bytes.FromHexString("0x456")),
+                (1000036, TestItem.AddressD, Bytes.FromHexString("0x654"))
+            ];
+
+            (BranchProcessor processor, IWorldState stateProvider, IBlockTree blockTree) =
+                CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides, contractOverridesTimestamp));
 
             Hash256 stateRoot;
 
@@ -138,6 +148,8 @@ namespace Nethermind.AuRa.Test
             {
                 stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
                 stateProvider.CreateAccount(TestItem.AddressB, UInt256.One);
+                stateProvider.CreateAccount(TestItem.AddressC, UInt256.One);
+                stateProvider.CreateAccount(TestItem.AddressD, UInt256.One);
                 stateProvider.Commit(London.Instance);
                 stateProvider.CommitTree(0);
                 stateProvider.RecalculateStateRoot();
@@ -145,37 +157,44 @@ namespace Nethermind.AuRa.Test
             }
 
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
-            currentBlock = await Process(processor, currentBlock);
+            currentBlock = await Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
                 stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
+                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Array.Empty<byte>());
+                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Array.Empty<byte>());
             }
 
-            currentBlock = await Process(processor, currentBlock);
+            currentBlock = await Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
                 stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
+                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
+                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
             }
 
-            currentBlock = await Process(processor, currentBlock);
+            currentBlock = await Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
                 stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
+                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
+                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
             }
         }
 
-        private (BranchProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            AuRaBlockProcessor processor = new AuRaBlockProcessor(
-                HoodiSpecProvider.Instance,
+            AuRaBlockProcessor processor = new(
+                GnosisSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -189,22 +208,22 @@ namespace Nethermind.AuRa.Test
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 LimboLogs.Instance,
-                Substitute.For<IBlockTree>(),
+                blockTree,
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
 
-            BranchProcessor branchProcessor = new BranchProcessor(
+            BranchProcessor branchProcessor = new(
                 processor,
-                HoodiSpecProvider.Instance,
+                GnosisSpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 Substitute.For<IBlockhashProvider>(),
                 LimboLogs.Instance);
 
-            return (branchProcessor, stateProvider);
+            return (branchProcessor, stateProvider, blockTree);
         }
     }
 }

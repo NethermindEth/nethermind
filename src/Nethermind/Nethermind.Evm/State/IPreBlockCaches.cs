@@ -5,6 +5,6 @@ namespace Nethermind.Evm.State;
 
 public interface IPreBlockCaches
 {
-    PreBlockCaches Caches { get; }
+    PreBlockCaches? Caches { get; }
     bool IsWarmWorldState { get; }
 }

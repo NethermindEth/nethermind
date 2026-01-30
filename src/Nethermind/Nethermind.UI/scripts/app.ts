@@ -202,7 +202,7 @@ function updateTxPool(txPool: TxPool) {
 const logWindow = new LogWindow("nodeLog");
 const gasInfo = new GasInfo("minGas", "medianGas", "aveGas", "maxGas", "gasLimit", "gasLimitDelta");
 
-const sse = new EventSource("/data/events");
+const sse = new EventSource("data/events");
 
 sse.addEventListener("log", (e) => logWindow.receivedLog(e));
 sse.addEventListener("processed", (e) => gasInfo.parseEvent(e));
@@ -246,7 +246,7 @@ sse.addEventListener("forkChoice", (e) => {
   const number = parseInt(data.head.number, 16);
   if (!setActiveBlock && number !== 0) {
     setActiveBlock = true;
-    document.getElementById("lastestBlock").classList.remove("not-active");
+    document.getElementById("latestBlock").classList.remove("not-active");
     setTimeout(resize, 10);
   }
   const safe = parseInt(data.safe, 16);

@@ -27,6 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
         IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -34,7 +35,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<Hash256[], IEnumerable<byte[]?>> getBALsByHashV1Handler,
+        IAsyncHandler<(long, long), IEnumerable<byte[]>?> getBALsByRangeV1Handler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -46,6 +49,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getPayloadHandlerV3 = getPayloadHandlerV3;
         _getPayloadHandlerV4 = getPayloadHandlerV4;
         _getPayloadHandlerV5 = getPayloadHandlerV5;
+        _getPayloadHandlerV6 = getPayloadHandlerV6;
         _newPayloadV1Handler = newPayloadV1Handler;
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
@@ -53,6 +57,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _getBlobsHandler = getBlobsHandler;
         _getBlobsHandlerV2 = getBlobsHandlerV2;
+        _getBALSByHashV1Handler = getBALsByHashV1Handler;
+        _getBALSByRangeV1Handler = getBALsByRangeV1Handler;
         _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;

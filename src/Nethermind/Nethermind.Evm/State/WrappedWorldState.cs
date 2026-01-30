@@ -16,7 +16,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     public bool IsInScope => _innerWorldState.IsInScope;
-    // todo: need to pass through bal index
+    public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
 
     public Hash256 StateRoot => _innerWorldState.StateRoot;
 
@@ -40,9 +40,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public virtual void ClearStorage(Address address, int? blockAccessIndex = null)
         => _innerWorldState.ClearStorage(address, blockAccessIndex);
-
-    public virtual void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
-        => _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
 
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => _innerWorldState.Commit(releaseSpec, tracer, isGenesis, commitRoots);

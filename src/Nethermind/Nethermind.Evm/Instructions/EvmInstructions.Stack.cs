@@ -8,10 +8,11 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-using Int256;
 using Word = Vector256<byte>;
 using static Unsafe;
 
@@ -23,15 +24,16 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the minimal gas cost for a POP operation.
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // Pop from the stack; if nothing to pop, signal a stack underflow.
         return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
     }
@@ -114,14 +116,15 @@ internal static partial class EvmInstructions
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPush2<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush2<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
 
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
@@ -141,12 +144,12 @@ internal static partial class EvmInstructions
 
             if (nextInstruction == Instruction.JUMP)
             {
-                gasAvailable -= GasCostOf.Jump;
+                TGasPolicy.Consume(ref gas, GasCostOf.Jump);
                 vm.OpCodeCount++;
             }
             else
             {
-                gasAvailable -= GasCostOf.JumpI;
+                TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
                 vm.OpCodeCount++;
                 bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
                 if (isOverflow) goto StackUnderflow;
@@ -159,7 +162,7 @@ internal static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, in vm.EvmState.Env))
+            if (!Jump((int)destination, ref programCounter, vm.VmState.Env))
                 goto InvalidJumpDestination;
 
             goto Success;
@@ -482,14 +485,15 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush0<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
         stack.PushZero<TTracingInst>();
         return EvmExceptionType.None;
     }
@@ -498,21 +502,24 @@ internal static partial class EvmInstructions
     /// Executes a PUSH instruction.
     /// Reads immediate data of a fixed length from the code and pushes it onto the stack.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCount">The push operation implementation defining the byte count.</typeparam>
+    /// <typeparam name="TTracingInst">The tracing flag.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter, which will be advanced.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpCount : IOpCount
+    public static EvmExceptionType InstructionPush<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
         TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
         // Advance the program counter by the number of bytes consumed.
@@ -523,18 +530,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes a DUP operation which duplicates the nth stack element.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCount">The duplicate operation implementation that defines which element to duplicate.</typeparam>
+    /// <typeparam name="TTracingInst">The tracing flag.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDup<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpCount : IOpCount
+    public static EvmExceptionType InstructionDup<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         return stack.Dup<TTracingInst>(TOpCount.Count);
     }
@@ -542,18 +552,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes a SWAP operation which swaps the top element with the (n+1)th element.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCount">The swap operation implementation that defines the swap depth.</typeparam>
+    /// <typeparam name="TTracingInst">The tracing flag.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwap<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpCount : IOpCount
+    public static EvmExceptionType InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
         return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
@@ -563,20 +576,22 @@ internal static partial class EvmInstructions
     /// Pops data offset and length, then pops a fixed number of topics from the stack.
     /// Validates memory expansion and deducts gas accordingly.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCount">Specifies the number of log topics (as defined by its Count property).</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the log is successfully recorded; otherwise, an appropriate exception type such as
     /// <see cref="EvmExceptionType.StackUnderflow"/>, <see cref="EvmExceptionType.StaticCallViolation"/>, or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionLog<TGasPolicy, TOpCount>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
     {
-        EvmState vmState = vm.EvmState;
+        VmState<TGasPolicy> vmState = vm.VmState;
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic) goto StaticCallViolation;
 
@@ -587,14 +602,15 @@ internal static partial class EvmInstructions
         long topicsCount = TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, vmState)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        if (!EvmCalculations.UpdateGas(
-                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
+        long dataSize = (long)length;
+        if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
         // Load the log data from memory.
-        ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
+        if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
+            goto OutOfGas;
+
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
@@ -625,4 +641,3 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 }
-

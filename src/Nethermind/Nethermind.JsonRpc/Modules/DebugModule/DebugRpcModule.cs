@@ -24,6 +24,7 @@ using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -415,9 +416,9 @@ public class DebugRpcModule(
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
     }
 
-    public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
+    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage()
     {
-        return ResultWrapper<SyncReportSymmary>.Success(debugBridge.GetCurrentSyncStage());
+        return ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
     }
 
     public async Task<ResultWrapper<IEnumerable<string>>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
@@ -449,6 +450,9 @@ public class DebugRpcModule(
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
+
+    public ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash)
+        => ResultWrapper<BlockAccessList?>.Success(debugBridge.GetBlockAccessList(blockHash));
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         jsonRpcConfig.BuildTimeoutCancellationToken();

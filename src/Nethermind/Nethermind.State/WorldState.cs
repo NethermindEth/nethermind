@@ -15,7 +15,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
@@ -27,16 +26,14 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IPreBlockCaches
+    public class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private readonly ITrieStore _trieStore;
-        private bool _isInScope = false;
+        private IWorldStateScopeProvider.IScope? _currentScope;
+        private bool _isInScope;
         private readonly ILogger _logger;
-        private PreBlockCaches? PreBlockCaches { get; }
-        public bool IsWarmWorldState { get; }
 
         public Hash256 StateRoot
         {
@@ -45,52 +42,31 @@ namespace Nethermind.State
                 GuardInScope();
                 return _stateProvider.StateRoot;
             }
-            private set
-            {
-                _stateProvider.StateRoot = value;
-                _persistentStorageProvider.StateRoot = value;
-            }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager)
-            : this(trieStore, codeDb, logManager, null, null)
+        public WorldState(
+            IWorldStateScopeProvider scopeProvider,
+            ILogManager? logManager)
         {
-        }
-
-        internal WorldState(
-            ITrieStore trieStore,
-            IKeyValueStoreWithBatching? codeDb,
-            ILogManager? logManager,
-            StateTree? stateTree = null,
-            IStorageTreeFactory? storageTreeFactory = null,
-            PreBlockCaches? preBlockCaches = null,
-            bool populatePreBlockCache = true)
-        {
-            PreBlockCaches = preBlockCaches;
-            IsWarmWorldState = !populatePreBlockCache;
-            _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
+            ScopeProvider = scopeProvider;
+            _stateProvider = new StateProvider(logManager);
+            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
-        }
-
-        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
-            : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
-        {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void GuardInScope()
         {
-            if (!_isInScope) ThrowOutOfScope();
+            if (_currentScope is null) ThrowOutOfScope();
         }
 
+        [Conditional("DEBUG")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DebugGuardInScope()
         {
 #if DEBUG
-            if (!_isInScope) ThrowOutOfScope();
+            if (_currentScope is null) ThrowOutOfScope();
 #endif
         }
 
@@ -108,7 +84,11 @@ namespace Nethermind.State
 
         public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null)
         {
-            account = _stateProvider.GetAccount(address).ToStruct();
+            // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
+            account = _stateProvider.GetAccount(address)
+                .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
+                .ToStruct();
+
             return !account.IsTotallyEmpty;
         }
 
@@ -177,7 +157,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.RecalculateStateRoot();
         }
-        public void DeleteAccount(Address address, int? _)
+        public void DeleteAccount(Address address, int? _ = null)
         {
             DebugGuardInScope();
             _stateProvider.DeleteAccount(address);
@@ -219,11 +199,11 @@ namespace Nethermind.State
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
             => SubtractFromBalance(address, balanceChange, spec, out UInt256 oldBalance);
-        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        {
-            DebugGuardInScope();
-            _stateProvider.UpdateStorageRoot(address, storageRoot);
-        }
+        // public void UpdateStorageRoot(Address address, Hash256 storageRoot)
+        // {
+        //     DebugGuardInScope();
+        //     _stateProvider.UpdateStorageRoot(address, storageRoot);
+        // }
         public void IncrementNonce(Address address, UInt256 delta, int? _ = null)
             => IncrementNonce(address, delta, out UInt256 oldNonce);
         public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? _ = null)
@@ -240,12 +220,9 @@ namespace Nethermind.State
         public void CommitTree(long blockNumber)
         {
             DebugGuardInScope();
-            using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
-            {
-                _persistentStorageProvider.CommitTrees(committer);
-                _stateProvider.CommitTree();
-            }
-            _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
+            _stateProvider.UpdateStateRootIfNeeded();
+            _currentScope.Commit(blockNumber);
+            _persistentStorageProvider.ClearStorageMap();
         }
 
         public UInt256 GetNonce(Address address, int? _)
@@ -263,20 +240,23 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
-            StateRoot = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
-            IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
+            _currentScope = ScopeProvider.BeginScope(baseBlock);
+            _stateProvider.SetScope(_currentScope);
+            _persistentStorageProvider.SetBackendScope(_currentScope);
 
             return new Reactive.AnonymousDisposable(() =>
             {
                 Reset();
-                StateRoot = Keccak.EmptyTreeHash;
-                trieStoreCloser.Dispose();
+                _stateProvider.SetScope(null);
+                _currentScope.Dispose();
+                _currentScope = null;
                 _isInScope = false;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
         }
 
-        public bool IsInScope => _isInScope;
+        public bool IsInScope => _currentScope is not null;
+        public IWorldStateScopeProvider ScopeProvider { get; }
 
         public UInt256 GetBalance(Address address, int? _ = null)
         {
@@ -288,7 +268,7 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             ArgumentNullException.ThrowIfNull(address);
-            return _stateProvider.GetStorageRoot(address);
+            return _persistentStorageProvider.GetStorageRoot(address);
         }
 
         public byte[] GetCode(Address address, int? _ = null)
@@ -328,23 +308,23 @@ namespace Nethermind.State
 
         public bool HasStateForBlock(BlockHeader? header)
         {
-            return _trieStore.HasRoot(header?.StateRoot ?? Keccak.EmptyTreeHash);
-        }
-
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
-        {
-            DebugGuardInScope();
-            _persistentStorageProvider.Commit(commitRoots);
-            _transientStorageProvider.Commit(commitRoots);
-            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
+            return ScopeProvider.HasRoot(header);
         }
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
-            _persistentStorageProvider.Commit(tracer, commitRoots);
-            _transientStorageProvider.Commit(tracer, commitRoots);
+            _transientStorageProvider.Commit(tracer);
+            _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+
+            if (commitRoots)
+            {
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                _persistentStorageProvider.FlushToTree(writeBatch);
+                _stateProvider.FlushToTree(writeBatch);
+            }
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null)
@@ -394,7 +374,5 @@ namespace Nethermind.State
             DebugGuardInScope();
             _transientStorageProvider.Reset();
         }
-
-        PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
     }
 }

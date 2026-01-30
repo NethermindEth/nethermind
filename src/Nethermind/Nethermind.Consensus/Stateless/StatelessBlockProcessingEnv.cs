@@ -1,31 +1,22 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -45,8 +36,8 @@ public class StatelessBlockProcessingEnv(
     public IWorldState WorldState
     {
         get => _worldState ??= new WorldState(
-            new RawTrieStore(witness.NodeStorage),
-            witness.CodeDb, logManager);
+            new TrieStoreScopeProvider(new RawTrieStore(witness.NodeStorage),
+                witness.CodeDb, logManager), logManager);
     }
 
     private IBlockProcessor GetProcessor()
@@ -86,7 +77,7 @@ public class StatelessBlockProcessingEnv(
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
+        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

@@ -143,6 +143,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
+            BlockAdded?.Invoke(this, new BlockEventArgs(block));
+
             _lastProcessedBlock = DateTime.UtcNow;
             try
             {
@@ -425,6 +427,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public event EventHandler? ProcessingQueueEmpty;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
+    public event EventHandler<BlockEventArgs>? BlockAdded;
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 

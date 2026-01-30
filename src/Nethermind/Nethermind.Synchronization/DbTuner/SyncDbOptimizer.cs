@@ -39,7 +39,7 @@ public class SyncDbTuner
 
         // Only these three make sense as they are write heavy
         // Headers is used everywhere, so slowing read might slow the whole sync.
-        // Statesync is read heavy, Forward sync is just plain too slow to saturate IO.
+        // State sync is read heavy, Forward sync is just plain too slow to saturate IO.
         if (snapSyncFeed is not NoopSyncFeed<SnapSyncBatch>)
         {
             snapSyncFeed.StateChanged += SnapStateChanged;

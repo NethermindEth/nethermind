@@ -506,6 +506,7 @@ namespace Nethermind.Evm.Test.Tracing
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
+                .WithGasPrice(0)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(0) // No value transfer - should work even with zero balance
                 .TestObject;
@@ -604,7 +605,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             if (shouldSucceed)
             {
-                result.Should().BeGreaterThan(1_000_000, "Gas estimation should account for the gas threshold in the contract");
+                result.Should().BeGreaterThan(1_000_000,
+                    "Gas estimation should account for the gas threshold in the contract");
                 err.Should().BeNull();
             }
             else
@@ -613,11 +615,66 @@ namespace Nethermind.Evm.Test.Tracing
             }
         }
 
+        [Test]
+        public void Should_succeed_with_internal_revert()
+        {
+            using TestEnvironment testEnvironment = new();
+            long gasLimit = 100_000;
+            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            long gasLeft = gasLimit - 22000;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+
+            gasLeft = 63 * gasLeft / 64;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.CALL, false);
+
+            gasLeft = 63 * gasLeft / 64;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.CALL, false);
+
+            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(gasLeft - 500, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(gasLeft, Array.Empty<byte>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 25000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            result.Should().BeGreaterThan(0);
+            err.Should().BeNull();
+            testEnvironment.tracer.TopLevelRevert.Should().BeFalse();
+            testEnvironment.tracer.OutOfGas.Should().BeFalse();
+        }
+
+        [Test]
+        public void Should_fail_with_top_level_revert()
+        {
+            using TestEnvironment testEnvironment = new();
+            long gasLimit = 100_000;
+            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            long gasLeft = gasLimit - 22000;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+
+            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 25000, Array.Empty<byte>(), "execution reverted");
+
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            result.Should().Be(0);
+            err.Should().Be("execution reverted");
+            testEnvironment.tracer.TopLevelRevert.Should().BeTrue();
+        }
+
         private class TestEnvironment : IDisposable
         {
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
-            public TransactionProcessor _transactionProcessor;
+            public EthereumTransactionProcessor _transactionProcessor;
             public IWorldState _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
@@ -633,8 +690,8 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
 
                 EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-                VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-                _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+                EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+                _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
 
                 tracer = new();

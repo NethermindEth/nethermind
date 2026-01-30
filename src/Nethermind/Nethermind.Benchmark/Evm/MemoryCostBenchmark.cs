@@ -35,7 +35,7 @@ namespace Nethermind.Benchmarks.Evm
         public long Current()
         {
             UInt256 dest = _location;
-            return _current.CalculateMemoryCost(in dest, _length);
+            return _current.CalculateMemoryCost(in dest, _length, out _);
         }
     }
 }

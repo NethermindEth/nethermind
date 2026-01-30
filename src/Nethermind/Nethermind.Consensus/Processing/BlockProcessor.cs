@@ -138,6 +138,12 @@ public partial class BlockProcessor
         Task stateApplication = _balBuilder.ParallelExecutionEnabled ? ApplyBlockAccessListToState(spec, shouldComputeStateRoot) : Task.CompletedTask;
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
+        // if (_parallelWorldState is not null)
+        // {
+        //     _parallelWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
+        //     _parallelWorldState.BlockAccessList.ResetBlockAccessIndex();
+        // }
+
         StoreBeaconRoot(block, spec);
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
@@ -191,10 +197,10 @@ public partial class BlockProcessor
             else
             {
                 _balBuilder.GenerateBlockAccessList();
-                // body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
-                // block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
                 block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
+                // block.GeneratedBlockAccessList = _parallelWorldState.BlockAccessList;
+                // block.EncodedBlockAccessList = Rlp.Encode(_parallelWorldState.BlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }
@@ -275,7 +281,10 @@ public partial class BlockProcessor
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.WithReplacedHeader(headerForProcessing);
+        Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
+        block.BlockAccessList = suggestedBlock.BlockAccessList;
+
+        return block;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)

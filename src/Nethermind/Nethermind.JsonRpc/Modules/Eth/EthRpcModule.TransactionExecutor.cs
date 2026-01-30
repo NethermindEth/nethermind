@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         return ZeroMaxFeePerGasError;
 
                     if (eip1559Transaction.MaxFeePerGas < eip1559Transaction.MaxPriorityFeePerGas)
-                        return MaxFeePerGasSmallerThenMaxPriorityFeePerGasError(
+                        return MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
                             eip1559Transaction.MaxFeePerGas,
                             eip1559Transaction.MaxPriorityFeePerGas);
                 }
@@ -139,7 +139,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private const string MissingToInBlobTxError = "missing \"to\" in blob transaction";
             private const string ZeroMaxFeePerBlobGasError = "maxFeePerBlobGas, if specified, must be non-zero";
             private const string ZeroMaxFeePerGasError = "maxFeePerGas must be non-zero";
-            private static string MaxFeePerGasSmallerThenMaxPriorityFeePerGasError(
+            private static string MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
                 UInt256? maxFeePerGas,
                 UInt256? maxPriorityFeePerGas)
                 => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
