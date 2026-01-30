@@ -1,0 +1,378 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Test;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
+
+namespace Nethermind.Blockchain.Test;
+
+[TestFixture]
+public class BlockAccessListTests() : VirtualMachineTestsBase
+{
+    private static readonly IReleaseSpec _spec = Amsterdam.Instance;
+
+    private static readonly ISpecProvider _specProvider = new TestSpecProvider(_spec);
+    private static readonly EthereumEcdsa _ecdsa = new(0);
+    private static readonly UInt256 _accountBalance = 10.Ether();
+    private static readonly long _gasLimit = 100000;
+    private static readonly Address _testAddress = ContractAddress.From(TestItem.AddressA, 0);
+
+    [Test]
+    public async Task Constructs_BAL_when_processing_block()
+    {
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
+
+        // Get the main world state which should be a ParallelWorldState after DI fix
+        IWorldState mainWorldState = testBlockchain.MainWorldState;
+        ParallelWorldState? tracedWorldState = mainWorldState as ParallelWorldState;
+        Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be ParallelWorldState");
+
+        // Begin scope and initialize state
+        using IDisposable _ = mainWorldState.BeginScope(IWorldState.PreGenesis);
+        InitWorldState(mainWorldState);
+
+        tracedWorldState!.GeneratedBlockAccessList = new();
+
+        const long gasUsed = 167340;
+        const long gasUsedBeforeFinal = 92100;
+        const ulong gasPrice = 2;
+        const long gasLimit = 100000;
+        const ulong timestamp = 1000000;
+        Hash256 parentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c");
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .TestObject;
+
+        Transaction tx2 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(1)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(Eip2935TestConstants.InitCode)
+            .TestObject;
+
+        /*
+        Store followed by revert should undo storage change
+        PUSH1 1
+        PUSH1 1
+        SSTORE
+        PUSH0
+        PUSH0
+        REVERT
+        */
+        byte[] code = Bytes.FromHexString("0x60016001555f5ffd");
+        Transaction tx3 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(2)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(code)
+            .TestObject;
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithBaseFee(1)
+            .WithNumber(1)
+            .WithGasUsed(gasUsed)
+            .WithReceiptsRoot(new("0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569"))
+            .WithStateRoot(new("0x9399acd9f2603778c11646f05f7827509b5319815da74b5721a07defb6285c8d"))
+            .WithBlobGasUsed(0)
+            .WithBeneficiary(TestItem.AddressC)
+            .WithParentBeaconBlockRoot(Hash256.Zero)
+            .WithRequestsHash(new("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+            .WithBlockAccessListHash(new("0xa19f3798cdc08ff0bdee830bb5daf6954ecbd8723c810285fef3240d06d2bf18"))
+            .WithTimestamp(timestamp)
+            .WithParentHash(parentHash)
+            .TestObject;
+
+        Withdrawal withdrawal = new()
+        {
+            Index = 0,
+            ValidatorIndex = 0,
+            Address = TestItem.AddressD,
+            AmountInGwei = 1
+        };
+
+        Block block = Build.A.Block
+            .WithTransactions([tx, tx2, tx3])
+            .WithBaseFeePerGas(1)
+            .WithWithdrawals([withdrawal])
+            .WithHeader(header).TestObject;
+
+        (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
+
+        // GeneratedBlockAccessList is set by the block processor during execution
+        BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList!.Value;
+        Assert.That(blockAccessList.AccountChanges.Count, Is.EqualTo(10));
+
+        Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
+        Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
+
+        AccountChanges addressAChanges = blockAccessList.GetAccountChanges(TestItem.AddressA)!;
+        AccountChanges addressBChanges = blockAccessList.GetAccountChanges(TestItem.AddressB)!;
+        AccountChanges addressCChanges = blockAccessList.GetAccountChanges(TestItem.AddressC)!;
+        AccountChanges addressDChanges = blockAccessList.GetAccountChanges(TestItem.AddressD)!;
+        AccountChanges newContractChanges = blockAccessList.GetAccountChanges(newContractAddress)!;
+        AccountChanges newContractChanges2 = blockAccessList.GetAccountChanges(newContractAddress2)!;
+        AccountChanges eip2935Changes = blockAccessList.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress)!;
+        AccountChanges eip4788Changes = blockAccessList.GetAccountChanges(Eip4788Constants.BeaconRootsAddress)!;
+        AccountChanges eip7002Changes = blockAccessList.GetAccountChanges(Eip7002Constants.WithdrawalRequestPredeployAddress)!;
+        AccountChanges eip7251Changes = blockAccessList.GetAccountChanges(Eip7251Constants.ConsolidationRequestPredeployAddress)!;
+
+        UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+
+        // UInt256 from bytes needs isBigEndian: true to match EVM storage encoding
+        StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
+        StorageChange calldataStorageChange = new(0, 0);
+        StorageChange timestampStorageChange = new(0, 0xF4240);
+        StorageChange zeroStorageChangeEnd = new(3, 0);
+
+        UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
+        UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;
+        UInt256 addressABalance3 = _accountBalance - gasPrice * gasUsed;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressAChanges, Is.EqualTo(new AccountChanges(
+                TestItem.AddressA,
+                [],
+                [],
+                new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
+                new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
+                []
+            )));
+
+            Assert.That(addressBChanges, Is.EqualTo(new AccountChanges(
+                TestItem.AddressB,
+                [],
+                [],
+                [],
+                [],
+                []
+            )));
+
+            Assert.That(addressCChanges, Is.EqualTo(new AccountChanges(
+                TestItem.AddressC,
+                [],
+                [],
+                new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
+                [],
+                []
+            )));
+
+            Assert.That(addressDChanges, Is.EqualTo(new AccountChanges(
+                TestItem.AddressD,
+                [],
+                [],
+                new SortedList<ushort, BalanceChange> { { 4, new(4, 1.GWei()) } },
+                [],
+                []
+            )));
+
+            Assert.That(newContractChanges, Is.EqualTo(new AccountChanges(
+                newContractAddress,
+                [],
+                [],
+                [],
+                new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
+                new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
+            )));
+
+            Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges(
+                newContractAddress2,
+                [],
+                [new(1)],
+                [],
+                [],
+                []
+            )));
+
+            Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
+                Eip2935Constants.BlockHashHistoryAddress,
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange> { { 0, parentHashStorageChange } }) } },
+                [],
+                [],
+                [],
+                []
+            )));
+
+            // eip4788 stores timestamp at slot1 and beacon root (0) at slot2
+            // beacon root 0→0 is not a change, so only slot1 has a storage change
+            // slot1 is not a separate read since it's already a change, only slot2 is read
+            Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
+                Eip4788Constants.BeaconRootsAddress,
+                new SortedDictionary<UInt256, SlotChanges>() {
+                    { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange>{{0, timestampStorageChange}}) }
+                },
+                [new(eip4788Slot2)],
+                [],
+                [],
+                []
+            )));
+
+            // storage reads make no changes
+            Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges(
+                Eip7002Constants.WithdrawalRequestPredeployAddress,
+                [],
+                [new(0), new(1), new(2), new(3)],
+                [],
+                [],
+                []
+            )));
+
+            // storage reads make no changes
+            Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges(
+                Eip7251Constants.ConsolidationRequestPredeployAddress,
+                [],
+                [new(0), new(1), new(2), new(3)],
+                [],
+                [],
+                []
+            )));
+        }
+    }
+
+    [TestCaseSource(nameof(CodeTestSource))]
+    public async Task Constructs_BAL_when_processing_code(byte[] code, AccountChanges expected)
+    {
+        InitWorldState(TestState);
+        ParallelWorldState worldState = TestState as ParallelWorldState;
+        worldState.TracingEnabled = true;
+
+        Transaction createTx = Build.A.Transaction.WithCode(code).WithGasLimit(_gasLimit).WithValue(0).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.TestObject;
+
+        _processor.SetBlockExecutionContext( new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
+        CallOutputTracer callOutputTracer = new();
+        TransactionResult res = _processor.Execute(createTx, callOutputTracer);
+        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted);
+            Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(new AccountChanges(
+                TestItem.AddressA,
+                [],
+                [],
+                new SortedList<ushort, BalanceChange> { { 0, new(0, _accountBalance - gasUsed) } },
+                new SortedList<ushort, NonceChange> { { 0, new(0, 1) } },
+                []
+            )));
+            Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(new AccountChanges(
+                Address.Zero,
+                [],
+                [],
+                new SortedList<ushort, BalanceChange> { { 0, new(0, gasUsed) } },
+                [],
+                []
+            )));
+            Assert.That(bal.GetAccountChanges(_testAddress), Is.EqualTo(expected));
+        }
+    }
+
+    private static Action<ContainerBuilder> BuildContainer()
+        => containerBuilder => containerBuilder.AddSingleton(_specProvider);
+
+    private static void InitWorldState(IWorldState worldState)
+    {
+        worldState.CreateAccount(TestItem.AddressA, _accountBalance);
+
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, _specProvider.GenesisSpec);
+
+        worldState.Commit(_specProvider.GenesisSpec);
+        worldState.CommitTree(0);
+        worldState.RecalculateStateRoot();
+    }
+
+    private static IEnumerable<TestCaseData> CodeTestSource
+    {
+        get
+        {
+            UInt256 slot = 10;
+            byte[] code = Prepare.EvmCode
+                .PushData(slot)
+                .Op(Instruction.SLOAD)
+                .Done;
+
+            AccountChanges readAccount = new(
+                _testAddress,
+                [],
+                [new StorageRead(slot)],
+                [],
+                [],
+                []
+            );
+            yield return new TestCaseData(code, readAccount) { TestName = "storage_read" };
+
+            code = Prepare.EvmCode
+                .PushData(slot)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .Done;
+            yield return new TestCaseData(code, new AccountChanges(
+                _testAddress,
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(slot, new SortedList<ushort, StorageChange> { { 0, new StorageChange(0, slot) } }) } },
+                [],
+                [],
+                [],
+                []
+            )) { TestName = "storage_write" };
+
+            code = Prepare.EvmCode
+                .PushData(slot)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .Done;
+            yield return new TestCaseData(code, readAccount) { TestName = "storage_write_return_to_original" };
+        }
+    }
+}
