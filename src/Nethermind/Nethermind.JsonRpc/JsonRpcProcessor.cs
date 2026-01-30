@@ -55,18 +55,19 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     public CancellationToken ProcessExit
         => _processExitSource?.Token ?? default;
 
-    private (JsonRpcRequest? Model, ArrayPoolList<JsonRpcRequest>? Collection) DeserializeObjectOrArray(JsonDocument doc)
+    private void DeserializeObjectOrArray(JsonDocument doc, out JsonRpcRequest? model, out ArrayPoolList<JsonRpcRequest>? collection)
     {
-        return doc.RootElement.ValueKind switch
+        collection = null;
+        model = null;
+        switch (doc.RootElement.ValueKind)
         {
-            JsonValueKind.Array => (null, DeserializeArray(doc.RootElement)),
-            JsonValueKind.Object => (DeserializeObject(doc.RootElement), null),
-            _ => ThrowInvalid()
-        };
-
-        [DoesNotReturn, StackTraceHidden]
-        static (JsonRpcRequest? Model, ArrayPoolList<JsonRpcRequest>? Collection) ThrowInvalid()
-            => throw new JsonException("Invalid");
+            case JsonValueKind.Array:
+                collection = DeserializeArray(doc.RootElement);
+                break;
+            case JsonValueKind.Object:
+                model = DeserializeObject(doc.RootElement);
+                break;
+        }
     }
 
     private JsonRpcRequest DeserializeObject(JsonElement element)
@@ -140,6 +141,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
         JsonReaderState readerState = new(_jsonReaderOptions);
+        bool freshState = true;
         bool shouldExit = false;
         try
         {
@@ -170,15 +172,17 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     bool isCompleted = readResult.IsCompleted || readResult.IsCanceled;
                     JsonRpcResult? result = null;
-                    if (readerState.BytesConsumed == 0)
+                    if (freshState)
                     {
                         buffer = buffer.TrimStart();
                     }
+
                     if (!buffer.IsEmpty)
                     {
                         try
                         {
-                            if (TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument))
+                            freshState = TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument);
+                            if (freshState)
                             {
                                 result = await ProcessJsonDocument(jsonDocument, context, startTime);
                             }
@@ -257,7 +261,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         try
         {
-            (JsonRpcRequest? model, ArrayPoolList<JsonRpcRequest>? collection) = DeserializeObjectOrArray(jsonDocument);
+            DeserializeObjectOrArray(jsonDocument, out JsonRpcRequest? model, out ArrayPoolList<JsonRpcRequest>? collection);
 
             // Handles a single JSON RPC request
             if (model is not null)

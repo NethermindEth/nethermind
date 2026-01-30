@@ -437,7 +437,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             int size = Math.Min(chunkSize, bytes.Length - i);
             await pipe.Writer.WriteAsync(new ReadOnlyMemory<byte>(bytes, i, size));
-            await Task.Delay(1);
+            await pipe.Writer.FlushAsync();
+            await Task.Yield();
         }
         await pipe.Writer.CompleteAsync();
 
