@@ -201,7 +201,8 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (certificateTarget.Number == spec.SwitchBlock)
         {
             //Do not check round info on genesis block
-            if (qc.ProposedBlockInfo.BlockNumber != certificateTarget.Number || qc.ProposedBlockInfo.Hash != certificateTarget.Hash)
+            //Should check that round == 0
+            if (qc.ProposedBlockInfo.BlockNumber != certificateTarget.Number || qc.ProposedBlockInfo.Hash != certificateTarget.Hash || qc.ProposedBlockInfo.Round != 0)
             {
                 error = "QC genesis block data does not match header data.";
                 return false;
