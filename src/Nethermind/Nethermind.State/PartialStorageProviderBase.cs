@@ -16,26 +16,16 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase
+    internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
-        protected readonly ILogger _logger;
+        protected readonly ILogger _logger = logManager?.GetTypeLogger(nameof(PartialStorageProviderBase)) ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
-
-        protected PartialStorageProviderBase(ILogManager? logManager)
-        {
-#if ZKVM
-            // Avoid generic logger instantiation under NativeAOT/ZKVM (can trigger GVM lookup / type loader paths).
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-#else
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
-#endif
-        }
 
         /// <summary>
         /// Get the storage value at the specified storage cell

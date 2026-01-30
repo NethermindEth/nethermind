@@ -18,13 +18,13 @@ namespace Nethermind.Logging.NLog
 
         private readonly global::NLog.Logger _logger;
 
-        public NLogLogger(Type type) : this(GetTypeName(type.FullName))
+        public NLogLogger(Type type) : this(ILogger.GetTypeName(type.FullName))
         {
         }
 
         public NLogLogger(string loggerName = null)
         {
-            loggerName = string.IsNullOrEmpty(loggerName) ? GetTypeName(StackTraceUsageUtils.GetClassFullName()) : loggerName;
+            loggerName = string.IsNullOrEmpty(loggerName) ? ILogger.GetTypeName(StackTraceUsageUtils.GetClassFullName()) : loggerName;
             _logger = LogManager.GetLogger(loggerName);
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
@@ -36,8 +36,6 @@ namespace Nethermind.Logging.NLog
             IsError = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
             Name = _logger.Name;
         }
-
-        private static string GetTypeName(string typeName) => typeName.Replace("Nethermind.", string.Empty);
 
         public void Info(string text)
         {

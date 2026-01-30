@@ -26,7 +26,7 @@ namespace Nethermind.Trie
     public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
-        private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
+        private static readonly byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
 
         private readonly ILogger _logger;
 
@@ -114,13 +114,7 @@ namespace Nethermind.Trie
             ILogManager? logManager,
             ICappedArrayPool? bufferPool = null)
         {
-#if ZKVM
-            // Avoid generic interface dispatch (ILogManager.GetClassLogger<T>) under ZKVM/bflat AOT:
-            // it can trigger a GVM lookup failure at runtime.
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-#else
-            _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
-#endif
+            _logger = logManager?.GetTypeLogger(nameof(PatriciaTree)) ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _allowCommits = allowCommits;
             RootHash = rootHash;

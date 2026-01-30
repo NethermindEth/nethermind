@@ -27,7 +27,7 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    internal class StateProvider(ILogManager logManager)
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -43,7 +43,7 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
         private readonly List<Change> _keptInCache = new();
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager?.GetTypeLogger(nameof(StateProvider)) ?? throw new ArgumentNullException(nameof(logManager));
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
@@ -52,18 +52,6 @@ namespace Nethermind.State
 
         private bool _needsStateRootUpdate;
         private IWorldStateScopeProvider.ICodeDb? _codeDb;
-
-        public StateProvider(
-            ILogManager logManager)
-        {
-#if ZKVM
-            // Avoid generic interface dispatch (ILogManager.GetClassLogger<T>) under ZKVM/bflat AOT:
-            // it can trigger a GVM lookup failure at runtime.
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-#else
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-#endif
-        }
 
         public void RecalculateStateRoot()
         {

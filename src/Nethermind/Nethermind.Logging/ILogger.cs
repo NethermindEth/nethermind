@@ -95,4 +95,6 @@ public readonly struct ILogger : IEquatable<ILogger>
         Warn = 8,
         Error = 16
     }
+
+    public static string GetTypeName(string typeName) => typeName.Replace("Nethermind.", string.Empty);
 }

@@ -18,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NonBlocking;
 
 namespace Nethermind.State;
 
@@ -26,7 +25,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore;
     private readonly ILogManager _logManager;
-    protected StateTree _backingStateTree;
+    protected readonly StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
     public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
@@ -61,11 +60,17 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
     }
 
-    private class TrieStoreWorldStateBackendScope : IWorldStateScopeProvider.IScope
+    private class TrieStoreWorldStateBackendScope(
+        StateTree backingStateTree,
+        TrieStoreScopeProvider scopeProvider,
+        IWorldStateScopeProvider.ICodeDb codeDb,
+        IDisposable trieStoreCloser,
+        ILogManager logManager)
+        : IWorldStateScopeProvider.IScope
     {
         public void Dispose()
         {
-            _trieStoreCloser.Dispose();
+            trieStoreCloser.Dispose();
             _backingStateTree.RootHash = Keccak.EmptyTreeHash;
             _storages.Clear();
         }
@@ -89,39 +94,18 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _loadedAccounts.TryAdd(address, account);
         }
 
-        public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
+        public IWorldStateScopeProvider.ICodeDb CodeDb => codeDb;
 
-        internal StateTree _backingStateTree;
+        internal StateTree _backingStateTree = backingStateTree;
         private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
         private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = new();
-        private readonly TrieStoreScopeProvider _scopeProvider;
-        private readonly IWorldStateScopeProvider.ICodeDb _codeDb1;
-        private readonly IDisposable _trieStoreCloser;
-        private readonly ILogManager _logManager;
 
-        public TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager)
-        {
-            _backingStateTree = backingStateTree;
-            _logManager = logManager;
-            _scopeProvider = scopeProvider;
-            _codeDb1 = codeDb;
-            _trieStoreCloser = trieStoreCloser;
-        }
-
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
-        {
-#if ZKVM
-            // NativeAOT/ZKVM: avoid generic logger lookup which can trigger GVM lookup/type loader paths.
-            // `ILogManager.GetClassLogger` takes an optional filePath string; use non-generic overload.
-            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger());
-#else
-            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<WorldStateWriteBatch>());
-#endif
-        }
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) =>
+            new WorldStateWriteBatch(this, estimatedAccountNumber, logManager.GetTypeLogger(nameof(WorldStateWriteBatch)));
 
         public void Commit(long blockNumber)
         {
-            using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
+            using var blockCommitter = scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
             // may make it worst. Always check on mainnet.
@@ -155,7 +139,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 return storageTree;
             }
 
-            storageTree = _scopeProvider.CreateStorageTree(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
+            storageTree = scopeProvider.CreateStorageTree(address, Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash);
             _storages[address] = storageTree;
             return storageTree;
         }

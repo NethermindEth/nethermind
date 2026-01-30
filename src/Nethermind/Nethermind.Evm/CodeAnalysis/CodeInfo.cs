@@ -17,10 +17,7 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPool
 
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
 
-    public bool ValidateJump(int destination)
-    {
-        return _analyzer.ValidateJump(destination);
-    }
+    public bool ValidateJump(int destination) => _analyzer.ValidateJump(destination);
 
     void IThreadPoolWorkItem.Execute()
     {

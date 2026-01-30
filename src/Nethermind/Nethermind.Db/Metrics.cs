@@ -92,14 +92,14 @@ namespace Nethermind.Db
 #if ZKVM
         // Under NativeAOT/ZKVM we avoid initializing NonBlocking dictionaries (can trigger runtime generic type construction).
         // Provide no-op placeholders so callers still compile.
-        public static IReadOnlyDictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
-        public static IReadOnlyDictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
-        public static IReadOnlyDictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
-        public static IReadOnlyDictionary<string, long> DbMemtableSize { get; } = new Dictionary<string, long>();
-        public static IReadOnlyDictionary<string, long> DbBlockCacheSize { get; } = new Dictionary<string, long>();
-        public static IReadOnlyDictionary<string, long> DbIndexFilterSize { get; } = new Dictionary<string, long>();
-        public static IReadOnlyDictionary<(string, string), double> DbStats { get; } = new Dictionary<(string, string), double>();
-        public static IReadOnlyDictionary<(string, int, string), double> DbCompactionStats { get; } = new Dictionary<(string, int, string), double>();
+        public static Dictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbMemtableSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbBlockCacheSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbIndexFilterSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<(string, string), double> DbStats { get; } = new Dictionary<(string, string), double>();
+        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = new Dictionary<(string, int, string), double>();
 #else
         [GaugeMetric]
         [Description("Database reads per database")]

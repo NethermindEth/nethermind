@@ -1936,13 +1936,7 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
-#if ZKVM
-        // Under ZKVM/bflat AOT, some generic virtual method / reflection paths in logger initialization can fail.
-        // Use a null logger to avoid triggering runtime type loader issues during static initialization.
-        private static ILogger _logger = Nethermind.Logging.NullLogger.Instance;
-#else
-        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
-#endif
+        private static readonly ILogger _logger = Static.LogManager.GetTypeLogger(nameof(Rlp));
 
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
