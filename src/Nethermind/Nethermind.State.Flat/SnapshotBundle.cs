@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
@@ -282,6 +283,118 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    /// <summary>
+    /// Loads state trie node RLP for warming purposes.
+    /// Checks transient cache, main cache, snapshots, and finally the database.
+    /// </summary>
+    /// <param name="path">The tree path to the node.</param>
+    /// <param name="hash">The hash of the node.</param>
+    /// <returns>A leased RLP if found; null otherwise. Caller must dispose the returned RLP.</returns>
+    public RefCounterTrieNodeRlp? TryLoadStateRlpForWarming(in TreePath path, Hash256 hash)
+    {
+        GuardDispose();
+
+        // 1. Check transient cache
+        if (_transientResource.Nodes.TryGet(null, path, hash, out RefCounterTrieNodeRlp? rlp))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return rlp;
+        }
+
+        // 2. Check main cache
+        if (_trieNodeCache.TryGet(null, path, hash, out rlp))
+        {
+            // Cache result in transient cache
+            CacheRlpInTransient(null, path, rlp);
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return rlp;
+        }
+
+        // 3. Check snapshots for nodes committed during block processing
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStateNode(path, out TrieNode? node) && !node.FullRlp.IsNull)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                rlp = RefCounterTrieNodeRlp.CreateFromRlp(node.FullRlp.Span);
+                CacheRlpInTransient(null, path, rlp);
+                return rlp;
+            }
+        }
+
+        // 4. Load from DB
+        byte[]? rlpBytes = _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, ReadFlags.None);
+        if (rlpBytes is not null)
+        {
+            rlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpBytes);
+            CacheRlpInTransient(null, path, rlp);
+            return rlp;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Loads storage trie node RLP for warming purposes.
+    /// Checks transient cache, main cache, snapshots, and finally the database.
+    /// </summary>
+    /// <param name="address">The address hash for the storage trie.</param>
+    /// <param name="path">The tree path to the node.</param>
+    /// <param name="hash">The hash of the node.</param>
+    /// <returns>A leased RLP if found; null otherwise. Caller must dispose the returned RLP.</returns>
+    public RefCounterTrieNodeRlp? TryLoadStorageRlpForWarming(Hash256 address, in TreePath path, Hash256 hash)
+    {
+        GuardDispose();
+
+        // 1. Check transient cache
+        if (_transientResource.Nodes.TryGet(address, path, hash, out RefCounterTrieNodeRlp? rlp))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return rlp;
+        }
+
+        // 2. Check main cache
+        if (_trieNodeCache.TryGet(address, path, hash, out rlp))
+        {
+            // Cache result in transient cache
+            CacheRlpInTransient(address, path, rlp);
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return rlp;
+        }
+
+        // 3. Check snapshots for nodes committed during block processing
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorageNode(address, path, out TrieNode? node) && !node.FullRlp.IsNull)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                rlp = RefCounterTrieNodeRlp.CreateFromRlp(node.FullRlp.Span);
+                CacheRlpInTransient(address, path, rlp);
+                return rlp;
+            }
+        }
+
+        // 4. Load from DB
+        byte[]? rlpBytes = _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, ReadFlags.None);
+        if (rlpBytes is not null)
+        {
+            rlp = RefCounterTrieNodeRlp.CreateFromRlp(rlpBytes);
+            CacheRlpInTransient(address, path, rlp);
+            return rlp;
+        }
+
+        return null;
+    }
+
+    private void CacheRlpInTransient(Hash256? address, in TreePath path, RefCounterTrieNodeRlp rlp)
+    {
+        // Create a copy for the transient cache (caller owns the original lease)
+        if (rlp.TryAcquireLease())
+        {
+            _transientResource.Nodes.Set(address, path, rlp);
+        }
     }
 
     // This is called only during trie commit
