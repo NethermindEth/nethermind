@@ -111,9 +111,9 @@ namespace Nethermind.Core.Test
         public void Spin_through_all()
         {
             Span<byte> span = stackalloc byte[4];
-            for (int i = 0; i < KeccakCache.Count; i++)
+            for (nuint i = 0; i < KeccakCache.Count; i++)
             {
-                BinaryPrimitives.WriteInt32LittleEndian(span, i);
+                BinaryPrimitives.WriteInt32LittleEndian(span, (int)i);
                 KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
             }
         }
