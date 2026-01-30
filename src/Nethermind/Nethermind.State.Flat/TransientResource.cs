@@ -105,8 +105,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         }
         else
         {
-            // An existing RLP was found, dispose our new one and return node from existing RLP
-            rlp.Dispose();
+            // An existing RLP was found (GetOrAdd already disposed our new rlp), return node from existing RLP
             try
             {
                 return new TrieNode(NodeType.Unknown, trieNode.Keccak!, result.ToArray());
@@ -161,8 +160,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         }
         else
         {
-            // An existing RLP was found, dispose our new one and return node from existing RLP
-            rlp.Dispose();
+            // An existing RLP was found (GetOrAdd already disposed our new rlp), return node from existing RLP
             try
             {
                 return new TrieNode(NodeType.Unknown, trieNode.Keccak!, result.ToArray());
