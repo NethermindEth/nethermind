@@ -74,7 +74,7 @@ internal class SpecialTransactionsTests
 
         tx.Hash = tx.CalculateHash();
 
-        var result = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
 
         return tx;
     }
@@ -333,8 +333,6 @@ internal class SpecialTransactionsTests
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
-
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);

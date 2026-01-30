@@ -14,7 +14,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -158,7 +157,7 @@ internal class XdcTransactionProcessor(
 
         // maybe a better approach would be adding an XdcGasPolicy 
         TransactionResult result;
-        bool _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
+        _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))

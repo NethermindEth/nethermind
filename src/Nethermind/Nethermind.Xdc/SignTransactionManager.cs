@@ -8,17 +8,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.TxPool;
-using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Logging;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -28,7 +21,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
     public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignerContract, signer.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
 
         await signer.Sign(transaction);
 
