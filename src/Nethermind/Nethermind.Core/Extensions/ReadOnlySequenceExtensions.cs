@@ -41,5 +41,4 @@ public static class ReadOnlySequenceExtensions
         // The entire sequence was trimmed chars
         return sequence.Slice(sequence.End);
     }
-    }
 }

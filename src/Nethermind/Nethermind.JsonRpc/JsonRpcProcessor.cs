@@ -162,7 +162,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     Handle(e);
                     break;
                 }
-                
+
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
                 bool advanced = false;
 
