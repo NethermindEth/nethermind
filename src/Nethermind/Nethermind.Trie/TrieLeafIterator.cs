@@ -25,14 +25,16 @@ public ref struct TrieLeafIterator
     }
 
     private readonly ITrieNodeResolver _resolver;
+    private readonly Action<TrieNodeException>? _onException;
     private readonly StackFrame[] _stack;
     private int _stackDepth;
     private TreePath _currentPath;
     private TrieNode? _currentLeaf;
 
-    public TrieLeafIterator(ITrieNodeResolver resolver, Hash256? rootHash)
+    public TrieLeafIterator(ITrieNodeResolver resolver, Hash256? rootHash, Action<TrieNodeException>? onException = null)
     {
         _resolver = resolver;
+        _onException = onException;
         _stack = new StackFrame[MaxStackDepth];
         _stackDepth = 0;
         _currentPath = default;
@@ -60,8 +62,9 @@ public ref struct TrieLeafIterator
             {
                 frame.Node.ResolveNode(_resolver, frame.Path);
             }
-            catch (TrieNodeException)
+            catch (TrieNodeException ex)
             {
+                _onException?.Invoke(ex);
                 Pop();
                 continue;
             }

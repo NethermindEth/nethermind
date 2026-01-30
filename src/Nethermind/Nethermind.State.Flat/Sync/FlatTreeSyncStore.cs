@@ -102,24 +102,28 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         }
     }
 
-    private static void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode node)
+    private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode node)
     {
+        _logger.Warn($"Deleting path {path}. New node is a {node.NodeType}");
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, node, ref ranges);
         foreach (DeletionRange range in ranges.AsSpan())
         {
+            _logger.Warn($"Deleting path {path}. Range {range.From} to {range.To}");
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(ComputeTreePathForHash(range.From, 64), ComputeTreePathForHash(range.To, 64));
         }
     }
 
-    private static void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode node)
+    private void RequestStorageDeletion(IPersistence.IWriteBatch writeBatch, Hash256 address, in TreePath path, TrieNode node)
     {
+        _logger.Warn($"Deleting path {address}:{path}. New node is a {node.NodeType}");
         ValueHash256 addressHash = address.ValueHash256;
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, node, ref ranges);
         foreach (DeletionRange range in ranges.AsSpan())
         {
+            _logger.Warn($"Deleting path {address}:{path}. Range {range.From} to {range.To}");
             writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
             writeBatch.DeleteStorageTrieNodeRange(addressHash, ComputeTreePathForHash(range.From, 64), ComputeTreePathForHash(range.To, 64));
         }
