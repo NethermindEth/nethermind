@@ -208,7 +208,7 @@ public class RewardTests
         UInt256 signerAReward = totalRewards / 3;
         UInt256 ownerAReward = signerAReward * 90 / 100;
         UInt256 foundationReward = signerAReward / 10;
-        UInt256 signerBReward = totalRewards * 2 / 3;
+        UInt256 signerBReward = totalRewards / 3 * 2;
         UInt256 ownerBReward = signerBReward * 90 / 100;
         foundationReward += signerBReward / 10;
 
