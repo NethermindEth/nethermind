@@ -22,30 +22,22 @@ public static class RuntimeInformation
 
     public static CpuInfo? GetCpuInfo()
     {
-#if ZKVM
-        // NativeAOT/ZKVM: avoid Process-based probing (Sysctl/Wmic/ProcCpuInfo invoke external processes).
-        return null;
-#else
+#if !ZKVM
         if (IsWindows())
             return WmicCpuInfoProvider.WmicCpuInfo.Value;
         if (IsLinux())
             return ProcCpuInfoProvider.ProcCpuInfo.Value;
         if (IsMacOS())
             return SysctlCpuInfoProvider.SysctlCpuInfo.Value;
+#endif
 
         return null;
-#endif
+
     }
 
-#if ZKVM
-    public static int PhysicalCoreCount { get; } = Math.Max(1, Environment.ProcessorCount);
-    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount) };
-    public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(Math.Max(1, Environment.ProcessorCount), 16) };
-#else
-    public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount;
-    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = Environment.ProcessorCount };
+    public static readonly int ProcessorCount = Math.Max(1, Environment.ProcessorCount);
+    public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? ProcessorCount;
+    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = ProcessorCount };
     public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(PhysicalCoreCount, 16) };
-#endif
-
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }
