@@ -66,9 +66,6 @@ internal sealed class StateTrieStoreWarmerAdapter(
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStateRlp(path, hash, flags);
 
-    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        throw new NotSupportedException("Warmer adapter does not support commit");
-
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
@@ -127,7 +124,4 @@ internal sealed class StorageTrieStoreWarmerAdapter(
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
-
-    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        throw new NotSupportedException("Warmer adapter does not support commit");
 }
