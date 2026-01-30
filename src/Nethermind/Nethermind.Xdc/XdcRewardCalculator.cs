@@ -105,8 +105,7 @@ namespace Nethermind.Xdc
             long number = epochHeader.Number;
             if (number == 0) return (signers, 0);
 
-            long startBlockNumber = 0, signingCount = 0;
-            long endBlockNumber = epochHeader.Number;
+            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
 
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
@@ -119,15 +118,20 @@ namespace Nethermind.Xdc
                 Hash256 parentHash = h.ParentHash;
                 h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
-                if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && i != spec.SwitchBlock + 1)
+                if (_epochSwitchManager.IsEpochSwitchAtBlock(h))
                 {
-                    startBlockNumber = i + 1;
-                    // Get masternodes from epoch switch header
-                    masternodes = new HashSet<Address>(h.ValidatorsAddress!);
-                    // TIPUpgradeReward path (protector/observer selection) is currently ignored,
-                    // because on mainnet the upgrade height is set to an effectively unreachable block.
-                    // If/when that changes, we must compute protector/observer sets here.
-                    break;
+                    epochCount++;
+                    if (epochCount == signEpochCount) endBlockNumber = i;
+                    if (epochCount == rewardEpochCount)
+                    {
+                        startBlockNumber = i + 1;
+                        // Get masternodes from epoch switch header
+                        masternodes = new HashSet<Address>(h.ValidatorsAddress!);
+                        // TIPUpgradeReward path (protector/observer selection) is currently ignored,
+                        // because on mainnet the upgrade height is set to an effectively unreachable block.
+                        // If/when that changes, we must compute protector/observer sets here.
+                        break;
+                    }
                 }
 
                 blockNumberToHash[i] = h.Hash;

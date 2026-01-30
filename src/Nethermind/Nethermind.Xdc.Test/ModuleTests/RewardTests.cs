@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
@@ -12,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
@@ -19,6 +17,9 @@ using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -35,7 +36,8 @@ public class RewardTests
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
-            masternodeVotingContract
+            masternodeVotingContract,
+            Substitute.For<ITransactionProcessor>()
         );
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
@@ -135,7 +137,8 @@ public class RewardTests
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
-            masternodeVotingContract
+            masternodeVotingContract,
+            Substitute.For<ITransactionProcessor>()
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -278,7 +281,7 @@ public class RewardTests
         votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.Arg<Address>());
 
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract);
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<ITransactionProcessor>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         // Expect ownerA, ownerB, and foundation
@@ -310,7 +313,8 @@ public class RewardTests
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
-            masternodeVotingContract
+            masternodeVotingContract,
+            Substitute.For<ITransactionProcessor>()
             );
         var totalReward = UInt256.Parse("171000000000000000000");
         long totalSigner = 177, sign = 59;

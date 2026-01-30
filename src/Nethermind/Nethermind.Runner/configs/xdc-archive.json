@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/xdc-test.json",
-    "BaseDbPath": "nethermind_db/xdc-test",
+    "BaseDbPath": "nethermind_db/xdc-archive",
     "LogFileName": "xdc.log",
     "StateDbKeyScheme": "Hash",
     "AutoDump": "Geth"
