@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Processing
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            private readonly ParallelWorldState? _parallelWorldState = stateProvider as ParallelWorldState;
+            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
@@ -35,11 +35,11 @@ namespace Nethermind.Consensus.Processing
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    _parallelWorldState?.BlockAccessList.IncrementBlockAccessIndex();
+                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
-                _parallelWorldState?.BlockAccessList.IncrementBlockAccessIndex();
+                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 return [.. receiptsTracer.TxReceipts];
             }

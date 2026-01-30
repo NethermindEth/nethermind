@@ -10,10 +10,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
 
-public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
+public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
-    public bool Enabled { get; set; } = false;
-    public BlockAccessList BlockAccessList = new();
+    public bool TracingEnabled { get; set; } = false;
+    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
 
     public PreBlockCaches? Caches => (_innerWorldState as IPreBlockCaches)?.Caches;
 
@@ -26,10 +26,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     {
         _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
 
-        if (Enabled)
+        if (TracingEnabled)
         {
             UInt256 newBalance = oldBalance + balanceChange;
-            BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
     }
 
@@ -40,10 +40,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     {
         bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
 
-        if (Enabled)
+        if (TracingEnabled)
         {
             UInt256 newBalance = oldBalance + balanceChange;
-            BlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
         return res;
@@ -51,15 +51,15 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public override IDisposable BeginScope(BlockHeader? baseBlock)
     {
-        BlockAccessList = new();
+        GeneratedBlockAccessList = new();
         return _innerWorldState.BeginScope(baseBlock);
     }
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.AddStorageRead(storageCell);
+            GeneratedBlockAccessList.AddStorageRead(storageCell);
         }
         return _innerWorldState.Get(storageCell);
     }
@@ -71,9 +71,9 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     {
         _innerWorldState.IncrementNonce(address, delta, out oldNonce);
 
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+            GeneratedBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
         }
     }
 
@@ -81,28 +81,28 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     {
         _innerWorldState.SetNonce(address, nonce);
 
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.AddNonceChange(address, (ulong)nonce);
+            GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
         }
     }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
             byte[] oldCode = _innerWorldState.GetCode(address) ?? [];
-            BlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
+            GeneratedBlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
         }
         return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
             ReadOnlySpan<byte> oldValue = _innerWorldState.Get(storageCell);
-            BlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
+            GeneratedBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
         }
         _innerWorldState.Set(storageCell, newValue);
     }
@@ -127,36 +127,36 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
             UInt256 before = _innerWorldState.GetBalance(address);
             UInt256 after = before - balanceChange;
-            BlockAccessList.AddBalanceChange(address, before, after);
+            GeneratedBlockAccessList.AddBalanceChange(address, before, after);
         }
         _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
     }
 
     public override void DeleteAccount(Address address)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.DeleteAccount(address, _innerWorldState.GetBalance(address));
+            GeneratedBlockAccessList.DeleteAccount(address, _innerWorldState.GetBalance(address));
         }
         _innerWorldState.DeleteAccount(address);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.AddAccountRead(address);
+            GeneratedBlockAccessList.AddAccountRead(address);
             if (balance != 0)
             {
-                BlockAccessList.AddBalanceChange(address, 0, balance);
+                GeneratedBlockAccessList.AddBalanceChange(address, 0, balance);
             }
             if (nonce != 0)
             {
-                BlockAccessList.AddNonceChange(address, (ulong)nonce);
+                GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
             }
         }
         _innerWorldState.CreateAccount(address, balance, nonce);
@@ -178,24 +178,24 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public void AddAccountRead(Address address)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.AddAccountRead(address);
+            GeneratedBlockAccessList.AddAccountRead(address);
         }
     }
 
     public override void Restore(Snapshot snapshot)
     {
-        if (Enabled)
+        if (TracingEnabled)
         {
-            BlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
+            GeneratedBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
         }
         _innerWorldState.Restore(snapshot);
     }
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
-        int blockAccessListSnapshot = BlockAccessList.TakeSnapshot();
+        int blockAccessListSnapshot = GeneratedBlockAccessList.TakeSnapshot();
         Snapshot snapshot = _innerWorldState.TakeSnapshot(newTransactionStart);
         return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
     }
