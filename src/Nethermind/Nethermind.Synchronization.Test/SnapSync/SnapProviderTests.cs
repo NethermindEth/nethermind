@@ -190,12 +190,14 @@ public class SnapProviderTests(bool useFlat)
     {
         (Hash256, Account)[] entries =
         [
-            (TestItem.KeccakA, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
-            (TestItem.KeccakB, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
-            (TestItem.KeccakC, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
-            (TestItem.KeccakD, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
-            (TestItem.KeccakE, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
-            (TestItem.KeccakF, TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
+            (new Hash256("0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
+            (new Hash256("2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
+            (new Hash256("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
+            // Should split it right here
+
+            (new Hash256("9fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
+            (new Hash256("afffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
+            (new Hash256("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), TestItem.GenerateRandomAccount().WithChangedStorageRoot(TestItem.GetRandomKeccak())),
         ];
         Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
@@ -236,11 +238,11 @@ public class SnapProviderTests(bool useFlat)
                 }
             }
 
-            Assert.That(accountCount, Is.EqualTo(6));
+            Assert.That(accountCount, Is.EqualTo(3));
         }
         else
         {
-            container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(6);
+            container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(3); // 3 child. Root branch node not saved due to state sync compatibility
         }
     }
 

@@ -21,11 +21,10 @@ public interface ISnapTree : IDisposable
 
 public interface ISnapStateTree : ISnapTree
 {
-    Hash256 RootHash { get; set; }
+    Hash256 RootHash { get; }
 
+    void Clear();
     void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags);
     void UpdateRootHash();
     void Commit(bool skipRoot, WriteFlags writeFlags);
-
-    bool Set(in ValueHash256 path, Account account);
 }

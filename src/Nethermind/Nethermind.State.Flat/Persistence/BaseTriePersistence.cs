@@ -135,13 +135,20 @@ public static class BaseTriePersistence
         ISortedKeyValueStore stateNodesSnap,
         ISortedKeyValueStore storageNodesSnap,
         ISortedKeyValueStore fallbackNodesSnap,
-        IWriteOnlyKeyValueStore stateTopNodes,
-        IWriteOnlyKeyValueStore stateNodes,
-        IWriteOnlyKeyValueStore storageNodes,
-        IWriteOnlyKeyValueStore fallbackNodes,
+        Nethermind.Core.IWriteBatch stateTopNodes,
+        Nethermind.Core.IWriteBatch stateNodes,
+        Nethermind.Core.IWriteBatch storageNodes,
+        Nethermind.Core.IWriteBatch fallbackNodes,
         WriteFlags flags
     ) : BasePersistence.ITrieWriteBatch
     {
+        public void Clear()
+        {
+            stateTopNodes.Clear();
+            stateNodes.Clear();
+            storageNodes.Clear();
+            fallbackNodes.Clear();
+        }
 
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)

@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
@@ -38,8 +39,19 @@ public class FlatSnapStorageTree : ISnapStorageTree
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None) is not null;
 
-    public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags) =>
+    public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags)
+    {
+        // Persist flat entries directly
+        foreach (ref readonly PatriciaTree.BulkSetEntry entry in entries.AsSpan())
+        {
+            // Decode RLP-encoded storage value
+            byte[] toWrite = entry.Value.AsRlpValueContext().DecodeByteArray();
+            _writeBatch.SetStorageRaw(_addressHash, entry.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
+        }
+
+        // Build trie as before
         _tree.BulkSet(entries, flags);
+    }
 
     public void UpdateRootHash() => _tree.UpdateRootHash();
 

@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
@@ -18,6 +19,8 @@ namespace Nethermind.State.Flat.Sync;
 /// </summary>
 public class FlatSnapStateTree : ISnapStateTree
 {
+    private static readonly AccountDecoder _accountDecoder = new();
+
     private readonly IPersistence.IPersistenceReader _reader;
     private readonly IPersistence.IWriteBatch _writeBatch;
     private readonly StateTree _tree;
@@ -29,21 +32,35 @@ public class FlatSnapStateTree : ISnapStateTree
         _tree = new StateTree(new PersistenceTrieStoreAdapter(reader, writeBatch), logManager);
     }
 
-    public Hash256 RootHash { get => _tree.RootHash; set => _tree.RootHash = value; }
+    public Hash256 RootHash => _tree.RootHash;
 
     public void SetRootFromProof(TrieNode root) => _tree.RootRef = root;
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         _reader.TryLoadStateRlp(path, ReadFlags.None) is not null;
 
-    public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags) =>
+    public void Clear()
+    {
+        _writeBatch.Clear();
+        _tree.RootHash = Keccak.EmptyTreeHash;
+    }
+
+    public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags)
+    {
+        // Persist flat entries directly
+        foreach (ref readonly PatriciaTree.BulkSetEntry entry in entries.AsSpan())
+        {
+            Account account = _accountDecoder.Decode(entry.Value)!;
+            _writeBatch.SetAccountRaw(entry.Path.ToCommitment(), account);
+        }
+
+        // Build trie as before
         _tree.BulkSet(entries, flags);
+    }
 
     public void UpdateRootHash() => _tree.UpdateRootHash();
 
     public void Commit(bool skipRoot, WriteFlags writeFlags) => _tree.Commit(skipRoot, writeFlags);
-
-    public bool Set(in ValueHash256 path, Account account) => _tree.Set(path, account) is not null;
 
     public void Dispose()
     {

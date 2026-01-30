@@ -57,22 +57,26 @@ namespace Nethermind.Synchronization.SnapSync
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
-            bool hasExtraStorage = false;
+            bool hasEarlierEntries = false;
+            int hasExtraStorageIdx = -1;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
-                if (account.Account.HasStorage)
+
+                if (account.Path >= limitHash && hasExtraStorageIdx == -1)
                 {
-                    if (account.Path >= limitHash || account.Path < startingHash)
-                    {
-                        hasExtraStorage = true;
-                    }
-                    else
-                    {
-                        accountsWithStorage.Add(account);
-                    }
+                    hasExtraStorageIdx = index;
+                }
+                else if (account.Path < startingHash)
+                {
+                    hasEarlierEntries = true;
+                }
+                else if (account.Account.HasStorage)
+                {
+                    // If within range, we will need to schedule the storage range, hence this
+                    accountsWithStorage.Add(account);
                 }
 
                 if (account.Account.HasCode)
@@ -94,7 +98,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null, tree.RootHash);
             }
 
-            if (hasExtraStorage)
+            if (hasExtraStorageIdx != -1 && !hasEarlierEntries)
             {
                 // The server will always give one node extra after the limit path if it can fit in the response.
                 // When we have extra storage, the extra storage must not be re-stored as it may have already been set
@@ -106,13 +110,37 @@ namespace Nethermind.Synchronization.SnapSync
                 // Fortunately, this should only happen n-1 time where n is the number of top level
                 // partition count.
 
-                tree.RootHash = Keccak.EmptyTreeHash;
+                tree.Clear();
+
+                entries.Truncate(hasExtraStorageIdx);
+
+                tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
+            }
+            else if (hasEarlierEntries)
+            {
+                // Same case as above, but for some reason earlier too??? so we rebuild the whole thing.
+                tree.Clear();
+
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> filteredEntries = new(accounts.Count);
                 for (var index = 0; index < accounts.Count; index++)
                 {
                     PathWithAccount account = accounts[index];
-                    if (account.Path >= limitHash || account.Path < startingHash) continue;
-                    _ = tree.Set(account.Path, account.Account);
+
+                    if (account.Path >= limitHash)
+                    {
+                        continue;
+                    }
+                    else if (account.Path < startingHash)
+                    {
+                        continue;
+                    }
+
+                    Account accountValue = account.Account;
+                    Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
+                    filteredEntries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
                 }
+
+                tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             }
             else
             {

@@ -48,6 +48,8 @@ public static class BasePersistence
 
     public interface IHashedFlatWriteBatch
     {
+        public void Clear();
+
         public void SelfDestruct(in ValueHash256 address);
 
         public void RemoveAccount(in ValueHash256 address);
@@ -74,6 +76,8 @@ public static class BasePersistence
 
     public interface IFlatWriteBatch
     {
+        public void Clear();
+
         public void SelfDestruct(Address addr);
 
         public void SetAccount(Address addr, Account? account);
@@ -97,6 +101,7 @@ public static class BasePersistence
 
     public interface ITrieWriteBatch
     {
+        public void Clear();
         public void SelfDestruct(in ValueHash256 address);
         public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
@@ -114,6 +119,7 @@ public static class BasePersistence
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
+        public void Clear() => flatWriteBatch.Clear();
 
         public void SetAccount(Address addr, Account? account)
         {
@@ -255,6 +261,12 @@ public static class BasePersistence
         private TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
 
         public void Dispose() => disposer.Dispose();
+
+        public void Clear()
+        {
+            _flatWriter.Clear();
+            _trieWriteBatch.Clear();
+        }
 
         public void SelfDestruct(Address addr)
         {

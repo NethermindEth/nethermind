@@ -191,11 +191,17 @@ public static class BaseFlatPersistence
     public struct WriteBatch(
         ISortedKeyValueStore stateSnap,
         ISortedKeyValueStore storageSnap,
-        IWriteOnlyKeyValueStore state,
-        IWriteOnlyKeyValueStore storage,
+        IWriteBatch state,
+        IWriteBatch storage,
         WriteFlags flags
     ) : BasePersistence.IHashedFlatWriteBatch
     {
+        public void Clear()
+        {
+            state.Clear();
+            storage.Clear();
+        }
+
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
