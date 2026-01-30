@@ -30,6 +30,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -219,6 +220,7 @@ public abstract class StateSyncFeedTestsBase(
             Db = new TestMemDb();
             NodeStorage = new NodeStorage(Db);
             StateTree = new StateTree(TestTrieStoreFactory.Build(Db, logManager), logManager);
+            SnapTrieFactory = new PatriciaSnapTrieFactory(NodeStorage, logManager);
         }
 
         public TestMemDb CodeDb { get; }
@@ -226,11 +228,38 @@ public abstract class StateSyncFeedTestsBase(
         public IDb StateDb => Db;
         public NodeStorage NodeStorage { get; }
         public StateTree StateTree { get; }
+        public ISnapTrieFactory SnapTrieFactory { get; }
 
         public void AssertFlushed()
         {
             Db.WasFlushed.Should().BeTrue();
             CodeDb.WasFlushed.Should().BeTrue();
+        }
+
+        public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
+        {
+            if (!skipLogs) logger.Info($"==================== {stage} ====================");
+            StateTree.RootHash = remote.StateTree.RootHash;
+
+            if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
+            TreeDumper dumper = new TreeDumper();
+            remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+            string remoteStr = dumper.ToString();
+            if (!skipLogs) logger.Info(remoteStr);
+            if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
+            dumper.Reset();
+            StateTree.Accept(dumper, StateTree.RootHash);
+            string localStr = dumper.ToString();
+            if (!skipLogs) logger.Info(localStr);
+
+            if (stage == "END")
+            {
+                Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}{Environment.NewLine}{remoteStr}{Environment.NewLine}{localStr}");
+                TrieStatsCollector collector = new(CodeDb, LimboLogs.Instance);
+                StateTree.Accept(collector, StateTree.RootHash);
+                Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
+                Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
+            }
         }
     }
 
@@ -249,32 +278,6 @@ public abstract class StateSyncFeedTestsBase(
         public IDb StateDb => Db;
         public ITrieStore TrieStore { get; }
         public StateTree StateTree { get; }
-    }
-
-    protected static void CompareTrees(LocalDbContext local, RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
-    {
-        if (!skipLogs) logger.Info($"==================== {stage} ====================");
-        local.StateTree.RootHash = remote.StateTree.RootHash;
-
-        if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
-        TreeDumper dumper = new TreeDumper();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
-        string remoteStr = dumper.ToString();
-        if (!skipLogs) logger.Info(remoteStr);
-        if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
-        dumper.Reset();
-        local.StateTree.Accept(dumper, local.StateTree.RootHash);
-        string localStr = dumper.ToString();
-        if (!skipLogs) logger.Info(localStr);
-
-        if (stage == "END")
-        {
-            Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}{Environment.NewLine}{remoteStr}{Environment.NewLine}{localStr}");
-            TrieStatsCollector collector = new(local.CodeDb, LimboLogs.Instance);
-            local.StateTree.Accept(collector, local.StateTree.RootHash);
-            Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
-            Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
-        }
     }
 
     protected class SyncPeerMock : BaseSyncPeerMock

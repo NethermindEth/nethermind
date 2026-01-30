@@ -33,7 +33,7 @@ public class TreeSyncStoreTestFixtureSource : IEnumerable
         // Add here
     }
 
-    private class PatriciaTreeTestOperation: ITestOperation
+    private class PatriciaTreeTestOperation : ITestOperation
     {
 
     }

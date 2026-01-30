@@ -34,7 +34,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         Hash256 rootHash = remote.StateTree.RootHash;
 
-        ProcessAccountRange(remote.StateTree, local.StateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
+        ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
         await using IContainer container = PrepareDownloader(local, remote);
         SafeContext ctx = container.Resolve<SafeContext>();
@@ -42,7 +42,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
-        CompareTrees(local, remote, _logger, "END");
+        local.CompareTrees(remote, _logger, "END");
         Assert.That(local.StateTree.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
         // I guess state root will be requested regardless
@@ -89,7 +89,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             {
                 endHashIndex = startingHashIndex + 1000;
 
-                ProcessAccountRange(remote.StateTree, local.StateTree, blockNumber, remote.StateTree.RootHash,
+                ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockNumber, remote.StateTree.RootHash,
                    accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
                 startingHashIndex = endHashIndex + 1;
@@ -134,7 +134,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(remote.StateTree, local.StateTree, blockJumps, remote.StateTree.RootHash,
+            ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockJumps, remote.StateTree.RootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
 
@@ -150,12 +150,12 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
         local.StateTree.UpdateRootHash();
-        CompareTrees(local, remote, _logger, "END");
+        local.CompareTrees(remote, _logger, "END");
         _logger.Info($"REQUESTED NODES TO HEAL: {data.RequestedNodesCount}");
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));
     }
 
-    private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
+    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
     {
         ValueHash256 startingHash = accounts.First().Path;
         ValueHash256 endHash = accounts.Last().Path;
@@ -168,6 +168,6 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
         byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
-        _ = SnapProviderHelper.AddAccountRange(new PatriciaSnapStateTree(localStateTree), blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+        _ = SnapProviderHelper.AddAccountRange(snapTrieFactory.CreateStateTree(), blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
     }
 }
