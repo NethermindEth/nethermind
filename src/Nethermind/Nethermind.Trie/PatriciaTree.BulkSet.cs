@@ -27,7 +27,7 @@ public partial class PatriciaTree
         DoNotParallelize = 2
     }
 
-    public readonly struct BulkSetEntry(ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
+    public readonly struct BulkSetEntry(in ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
     {
         public readonly ValueHash256 Path = path;
         public readonly byte[] Value = value;
@@ -261,6 +261,7 @@ public partial class PatriciaTree
         return node;
     }
 
+    [SkipLocalsInit]
     private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
@@ -450,6 +451,7 @@ public partial class PatriciaTree
         return usedMask;
     }
 
+    [SkipLocalsInit]
     internal static int HexarySearchAlreadySortedLarge(
         Span<BulkSetEntry> entries,
         int pathIndex,

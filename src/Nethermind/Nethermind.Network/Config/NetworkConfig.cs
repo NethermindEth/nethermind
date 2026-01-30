@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 using Nethermind.Core;
 
 namespace Nethermind.Network.Config
@@ -30,7 +31,7 @@ namespace Nethermind.Network.Config
         public bool DiagTracerEnabled { get; set; } = false;
         public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
         public uint MaxNettyArenaCount { get; set; } = INetworkConfig.DefaultMaxNettyArenaCount;
-        public string Bootnodes { get; set; } = string.Empty;
+        public NetworkNode[] Bootnodes { get; set; } = [];
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;

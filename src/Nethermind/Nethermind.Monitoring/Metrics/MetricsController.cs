@@ -14,6 +14,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -29,7 +30,6 @@ namespace Nethermind.Monitoring.Metrics
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalMilliseconds;
-        private Timer _timer = null!;
         private static bool _staticLabelsInitialized;
 
         private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
@@ -223,6 +223,11 @@ namespace Nethermind.Monitoring.Metrics
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
+                    if (member.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null)
+                    {
+                        (member as PropertyInfo)?.SetValue(null, _enableDetailedMetric);
+                        continue;
+                    }
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
@@ -326,29 +331,23 @@ namespace Nethermind.Monitoring.Metrics
             _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(_intervalMilliseconds));
-
-        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
-
-        private void UpdateAllMetrics(object? state) => UpdateAllMetrics();
-
-        private bool _isUpdating = false;
-        public void UpdateAllMetrics()
+        public async Task RunTimer(CancellationToken cancellationToken)
         {
-            if (!Interlocked.Exchange(ref _isUpdating, true))
+            using var standardTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(_intervalMilliseconds));
+
+            try
             {
-                try
+                while (await standardTimer.WaitForNextTickAsync(cancellationToken))
                 {
-                    UpdateAllMetricsInner();
+                    UpdateAllMetrics();
                 }
-                finally
-                {
-                    Volatile.Write(ref _isUpdating, false);
-                }
+            }
+            catch (OperationCanceledException)
+            {
             }
         }
 
-        private void UpdateAllMetricsInner()
+        public void UpdateAllMetrics()
         {
             foreach (Action callback in _callbacks)
             {

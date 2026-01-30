@@ -428,6 +428,48 @@ public partial class ForwardHeaderProviderTests
         await headerTask.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    [Test]
+    public async Task Reports_weak_peer_on_timeout_cancellation()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IOwnedReadOnlyList<BlockHeader>?>>(x => throw new OperationCanceledException());
+
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        ctx.PeerPool.Received().ReportWeakPeer(peerInfo, AllocationContexts.ForwardHeader);
+    }
+
+    [Test]
+    public async Task Throws_on_sync_cancellation()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IOwnedReadOnlyList<BlockHeader>?>>(x => throw new OperationCanceledException());
+
+        ctx.ConfigureBestPeer(syncPeer);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        Func<Task> act = () => forwardHeader.GetBlockHeaders(0, 128, cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
     [Flags]
     private enum Response
     {
