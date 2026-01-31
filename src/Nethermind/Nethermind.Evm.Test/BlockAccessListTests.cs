@@ -268,7 +268,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(CodeTestSource))]
-    public async Task Constructs_BAL_when_processing_code(byte[] code, AccountChanges expected)
+    public async Task Constructs_BAL_when_processing_code(byte[] code, IDictionary<Address, AccountChanges> expected)
     {
         InitWorldState(TestState);
         ParallelWorldState worldState = TestState as ParallelWorldState;
@@ -283,26 +283,18 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
         BlockAccessList bal = worldState.GeneratedBlockAccessList;
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
+        AccountChanges accountChangesA = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges([new(0, _accountBalance - gasUsed)])
+            .WithNonceChanges([new(0, 1)]).TestObject;
+        AccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res.TransactionExecuted);
-            Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(new AccountChanges(
-                TestItem.AddressA,
-                [],
-                [],
-                new SortedList<ushort, BalanceChange> { { 0, new(0, _accountBalance - gasUsed) } },
-                new SortedList<ushort, NonceChange> { { 0, new(0, 1) } },
-                []
-            )));
-            Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(new AccountChanges(
-                Address.Zero,
-                [],
-                [],
-                new SortedList<ushort, BalanceChange> { { 0, new(0, gasUsed) } },
-                [],
-                []
-            )));
-            Assert.That(bal.GetAccountChanges(_testAddress), Is.EqualTo(expected));
+            Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
+            Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
+            Assert.That(bal.GetAccountChanges(_testAddress), Is.EqualTo(expected[_testAddress]));
         }
     }
 
@@ -340,29 +332,16 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            AccountChanges readAccount = new(
-                _testAddress,
-                [],
-                [new StorageRead(slot)],
-                [],
-                [],
-                []
-            );
-            yield return new TestCaseData(code, readAccount) { TestName = "storage_read" };
+            AccountChanges readAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject;
+            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "storage_read" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
                 .Done;
-            yield return new TestCaseData(code, new AccountChanges(
-                _testAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(slot, new SortedList<ushort, StorageChange> { { 0, new StorageChange(0, slot) } }) } },
-                [],
-                [],
-                [],
-                []
-            )) { TestName = "storage_write" };
+            AccountChanges tmp = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageChanges(slot, [new(0, slot)]).TestObject;
+            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, tmp}}) { TestName = "storage_write" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
@@ -372,7 +351,31 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
                 .Done;
-            yield return new TestCaseData(code, readAccount) { TestName = "storage_write_return_to_original" };
+            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "storage_write_return_to_original" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodecopy" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodehash" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodesize" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.BALANCE)
+                .Done;
+            AccountChanges emptyTestAccount = Build.An.AccountChanges.WithAddress(_testAddress).TestObject;
+            AccountChanges emptyBAccount = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
+            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, emptyTestAccount}, {TestItem.AddressB, emptyBAccount}}) { TestName = "balance" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct_oog" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "revert" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegations" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call_oog" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "callcode" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delgatecall" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "staticcall" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create2" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "precompile" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "zero_transfer" };
         }
     }
 }

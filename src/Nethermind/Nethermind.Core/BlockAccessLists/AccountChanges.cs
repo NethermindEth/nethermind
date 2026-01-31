@@ -15,7 +15,7 @@ namespace Nethermind.Core.BlockAccessLists;
 public class AccountChanges : IEquatable<AccountChanges>
 {
     [JsonConverter(typeof(AddressConverter))]
-    public Address Address { get; init; }
+    public Address Address { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IEnumerable<SlotChanges> StorageChanges => _storageChanges.Values;
