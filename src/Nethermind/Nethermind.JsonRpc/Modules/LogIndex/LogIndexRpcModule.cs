@@ -15,17 +15,17 @@ namespace Nethermind.JsonRpc.Modules.LogIndex;
 public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builder, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge)
     : ILogIndexRpcModule
 {
-    public ResultWrapper<IEnumerable<int>> logIndex_blockNumbers(Filter filter)
+    public ResultWrapper<IEnumerable<long>> logIndex_blockNumbers(Filter filter)
     {
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock!, filter.ToBlock!, filter.Address, filter.Topics);
 
         if (GetBlockNumber(logFilter.FromBlock) is not { } from)
-            return ResultWrapper<IEnumerable<int>>.Fail($"Block {logFilter.FromBlock} is not found.", ErrorCodes.UnknownBlockError);
+            return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.FromBlock} is not found.", ErrorCodes.UnknownBlockError);
 
         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
-            return ResultWrapper<IEnumerable<int>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
+            return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
-        return ResultWrapper<IEnumerable<int>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
+        return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
     }
 
     public ResultWrapper<LogIndexStatus> logIndex_status()

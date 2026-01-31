@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -203,8 +204,9 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
 public static class LogIndexFilterVisitorExtensions
 {
-    public static IEnumerable<int> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
+    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
     {
-        return new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock);
+        return new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock)
+            .Select(static i => (long)i);
     }
 }

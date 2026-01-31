@@ -17,6 +17,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
+using Nethermind.Logging;
 using Nethermind.History;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
@@ -42,20 +43,22 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             )
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
-
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
-            .AddSingleton<ILogFinder, LogFinder>()
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
 
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>();
         if (logIndexConfig.Enabled)
         {
-            builder.AddSingleton<ILogIndexStorage, LogIndexStorage>();
+            builder
+                .AddSingleton<ILogIndexStorage, LogIndexStorage>()
+                .AddSingleton<ILogFinder, IndexedLogFinder>();
         }
         else
         {
-            builder.AddSingleton<ILogIndexStorage, DisabledLogIndexStorage>();
+            builder
+                .AddSingleton<ILogIndexStorage, DisabledLogIndexStorage>()
+                .AddSingleton<ILogFinder, LogFinder>();
         }
 
         if (!receiptConfig.StoreReceipts)
