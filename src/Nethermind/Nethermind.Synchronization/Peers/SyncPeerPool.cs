@@ -243,7 +243,11 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer);
-            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
+            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
+            {
+                return;
+            }
+
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
 
             if (syncPeer.IsPriority)
