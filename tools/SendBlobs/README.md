@@ -103,4 +103,4 @@ Use `--wait` to wait for each transaction to be included in a block before posti
 
 ## Debug
 
-For funding the private key used in the project launch settings, the address is: `0x428a95ceb38b706fbfe74fa0144701cfc1c25ef7`
+For funding the private key used in the project launch settings, the address is: `0xd51a7e12997f6f1d04accc2b4053307a62b373cb`

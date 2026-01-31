@@ -15,6 +15,8 @@ namespace SendBlobs;
 
 internal class FundsDistributor
 {
+    private static readonly TxDecoder TxDecoderInstance = TxDecoder.Instance;
+
     private readonly IJsonRpcClient _rpcClient;
     private readonly ulong _chainId;
     private readonly string? _keyFilePath;
@@ -42,8 +44,8 @@ internal class FundsDistributor
         if (keysToMake == 0)
             throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
 
-        string? balanceString = await _rpcClient.GetBalanceAsync(distributeFrom.Address) ?? throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
-        ulong? nonce = await _rpcClient.GetTransactionCountAsync(distributeFrom.Address) ?? throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
+        string balanceString = await _rpcClient.GetBalanceAsync(distributeFrom.Address);
+        ulong nonce = await _rpcClient.GetTransactionCountAsync(distributeFrom.Address);
         UInt256 gasPrice = await _rpcClient.GetGasPriceAsync();
 
         UInt256 maxPriorityFeePerGas = maxPriorityFee;
@@ -56,8 +58,6 @@ internal class FundsDistributor
 
         if (balance == 0)
             throw new AccountException($"Balance on provided signer {distributeFrom.Address} is 0.");
-
-        ulong nonceValue = nonce.Value;
 
         UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
 
@@ -75,9 +75,8 @@ internal class FundsDistributor
         using PrivateKeyGenerator generator = new();
         IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate());
 
-        List<string> txHash = new List<string>();
+        List<string> txHash = [];
 
-        TxDecoder txDecoder = TxDecoder.Instance;
         StreamWriter? keyWriter = null;
 
         if (!string.IsNullOrWhiteSpace(_keyFilePath))
@@ -100,23 +99,18 @@ internal class FundsDistributor
                 Transaction tx = CreateTx(_chainId,
                                           key.Address,
                                           maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
-                                          nonceValue,
+                                          nonce,
                                           maxPriorityFeePerGas,
                                           perKeyToSend);
 
-                await distributeFrom.Sign(tx);
-
-                string txRlp = Convert.ToHexStringLower(txDecoder
-                    .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
-
-                string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
+                string? result = await SignAndSendAsync(distributeFrom, tx);
                 if (result is not null)
                     txHash.Add(result);
 
                 if (keyWriter is not null)
                     keyWriter.WriteLine(key.ToString());
 
-                nonceValue++;
+                nonce++;
             }
         }
 
@@ -137,21 +131,15 @@ internal class FundsDistributor
             : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
         ILogger log = _logManager.GetClassLogger();
-        List<string> txHashes = new List<string>();
-        TxDecoder txDecoder = TxDecoder.Instance;
-
+        List<string> txHashes = [];
         foreach (var signer in privateSigners)
         {
-            string? balanceString = await _rpcClient.GetBalanceAsync(signer.Address);
-            if (balanceString is null)
-                continue;
-            ulong? nonce = await _rpcClient.GetTransactionCountAsync(signer.Address);
-            if (nonce is null)
-                continue;
+            string balanceString = await _rpcClient.GetBalanceAsync(signer.Address);
+            ulong nonce = await _rpcClient.GetTransactionCountAsync(signer.Address);
 
             UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
 
-            ulong nonceValue = nonce.Value;
+            ulong nonceValue = nonce;
 
             UInt256 gasPrice = await _rpcClient.GetGasPriceAsync();
 
@@ -177,30 +165,35 @@ internal class FundsDistributor
                                       nonceValue,
                                       maxPriorityFeePerGas,
                                       toSend);
-            await signer.Sign(tx);
+            string? result = await SignAndSendAsync(signer, tx);
 
-            string txRlp = Convert.ToHexStringLower(txDecoder
-                .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
-
-            string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
             if (result is not null)
+            {
                 txHashes.Add(result);
+            }
         }
         return txHashes;
     }
 
-    private static Transaction CreateTx(ulong chainId, Address beneficiary, UInt256 maxFee, ulong nonce, UInt256 maxPriorityFeePerGas, UInt256 toSend)
+    private async Task<string?> SignAndSendAsync(Signer signer, Transaction tx)
     {
-        return new()
-        {
-            Type = TxType.EIP1559,
-            ChainId = chainId,
-            Nonce = nonce,
-            GasLimit = GasCostOf.Transaction,
-            GasPrice = maxPriorityFeePerGas,
-            DecodedMaxFeePerGas = maxFee,
-            Value = toSend,
-            To = beneficiary,
-        };
+        await signer.Sign(tx);
+
+        string txRlp = Convert.ToHexStringLower(TxDecoderInstance
+            .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
+
+        return await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
     }
+
+    private static Transaction CreateTx(ulong chainId, Address beneficiary, UInt256 maxFee, ulong nonce, UInt256 maxPriorityFeePerGas, UInt256 toSend) => new()
+    {
+        Type = TxType.EIP1559,
+        ChainId = chainId,
+        Nonce = nonce,
+        GasLimit = GasCostOf.Transaction,
+        GasPrice = maxPriorityFeePerGas,
+        DecodedMaxFeePerGas = maxFee,
+        Value = toSend,
+        To = beneficiary,
+    };
 }

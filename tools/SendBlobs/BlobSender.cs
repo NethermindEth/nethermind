@@ -74,15 +74,9 @@ internal class BlobSender
 
         foreach (PrivateKey privateKey in privateKeys)
         {
-            ulong? nonce = await _rpcClient.GetTransactionCountAsync(privateKey.Address);
+            ulong nonce = await _rpcClient.GetTransactionCountAsync(privateKey.Address);
 
-            if (nonce is null)
-            {
-                _logger.Error("Unable to get nonce");
-                return;
-            }
-
-            signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce.Value));
+            signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
         }
 
         Random random = seed is null ? new() : new(seed.Value);
@@ -214,13 +208,7 @@ internal class BlobSender
 
         ulong chainId = await _rpcClient.GetChainIdAsync();
 
-        ulong? nonce = await _rpcClient.GetTransactionCountAsync(privateKey.Address);
-
-        if (nonce is null)
-        {
-            _logger.Error("Unable to get nonce");
-            return;
-        }
+        ulong nonce = await _rpcClient.GetTransactionCountAsync(privateKey.Address);
 
         Signer signer = new(chainId, privateKey, _logManager);
 
@@ -256,7 +244,7 @@ internal class BlobSender
         maxGasPrice *= feeMultiplier;
         maxFeePerBlobGas *= feeMultiplier;
 
-        Hash256? hash = await SendTransaction(chainId, nonce.Value, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
+        Hash256? hash = await SendTransaction(chainId, nonce, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
 
         if (waitForInclusion)
             await WaitForBlobInclusion(_rpcClient, hash, blockResult.Number);

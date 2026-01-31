@@ -89,47 +89,50 @@ internal static class SetupCli
         command.Add(seedOption);
         command.SetAction((parseResult, cancellationToken) =>
         {
-            PrivateKey[] privateKeys;
-
-            string? privateKeyFileValue = parseResult.GetValue(privateKeyFileOption);
-            string? privateKeyValue = parseResult.GetValue(privateKeyOption);
-
-            if (privateKeyFileValue is not null)
+            return ExecuteWithRpcHandling(() =>
             {
-                if (!File.Exists(privateKeyFileValue))
+                PrivateKey[] privateKeys;
+
+                string? privateKeyFileValue = parseResult.GetValue(privateKeyFileOption);
+                string? privateKeyValue = parseResult.GetValue(privateKeyOption);
+
+                if (privateKeyFileValue is not null)
                 {
-                    Console.WriteLine($"Private key file not found: {privateKeyFileValue}");
+                    if (!File.Exists(privateKeyFileValue))
+                    {
+                        Console.WriteLine($"Private key file not found: {privateKeyFileValue}");
+                        return Task.CompletedTask;
+                    }
+
+                    privateKeys = File.ReadAllLines(privateKeyFileValue).Select(k => new PrivateKey(k)).ToArray();
+                }
+                else if (privateKeyValue is not null)
+                    privateKeys = [new PrivateKey(privateKeyValue)];
+                else
+                {
+                    Console.WriteLine("Missing private key argument.");
                     return Task.CompletedTask;
                 }
 
-                privateKeys = File.ReadAllLines(privateKeyFileValue).Select(k => new PrivateKey(k)).ToArray();
-            }
-            else if (privateKeyValue is not null)
-                privateKeys = [new PrivateKey(privateKeyValue)];
-            else
-            {
-                Console.WriteLine("Missing private key argument.");
-                return Task.CompletedTask;
-            }
+                string? fork = parseResult.GetValue(forkOption);
+                IReleaseSpec spec = fork is null ? Osaka.Instance : SpecNameParser.Parse(fork);
 
-            string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Osaka.Instance : SpecNameParser.Parse(fork);
+                BlobSender sender = new(parseResult.GetRequiredValue(rpcUrlOption), SimpleConsoleLogManager.Instance);
+                ulong? maxFeePerBlobGas = parseResult.GetValue(maxFeePerBlobGasOption) ??
+                                          parseResult.GetValue(maxFeePerDataGasOptionObsolete);
+                ulong? maxPriorityFee = parseResult.GetValue(maxPriorityFeeGasOption);
 
-            BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
-            ulong? maxFeePerBlobGas = parseResult.GetValue(maxFeePerBlobGasOption) ??
-                                      parseResult.GetValue(maxFeePerDataGasOptionObsolete);
-            ulong? maxPriorityFee = parseResult.GetValue(maxPriorityFeeGasOption);
-
-            return sender.SendRandomBlobs(
-                ParseTxOptions(parseResult.GetValue(blobTxOption)),
-                privateKeys,
-                parseResult.GetValue(receiverOption)!,
-                maxFeePerBlobGas.HasValue ? (UInt256?)maxFeePerBlobGas.Value : null,
-                parseResult.GetValue(feeMultiplierOption),
-                maxPriorityFee.HasValue ? (UInt256?)maxPriorityFee.Value : null,
-                parseResult.GetValue(waitOption),
-                spec,
-                parseResult.GetValue(seedOption));
+                return sender.SendRandomBlobs(
+                    ParseTxOptions(parseResult.GetValue(blobTxOption)),
+                    privateKeys,
+                    parseResult.GetRequiredValue(receiverOption),
+                    maxFeePerBlobGas.HasValue ? (UInt256?)maxFeePerBlobGas.Value : null,
+                    parseResult.GetValue(feeMultiplierOption),
+                    maxPriorityFee.HasValue ? (UInt256?)maxPriorityFee.Value : null,
+                    parseResult.GetValue(waitOption),
+                    spec,
+                    parseResult.GetValue(seedOption));
+            });
         });
     }
 
@@ -228,24 +231,27 @@ internal static class SetupCli
         command.Add(keyFileOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(maxFeeOption);
-        command.SetAction(async (parseResult, cancellationToken) =>
+        command.SetAction((parseResult, cancellationToken) =>
         {
-            IJsonRpcClient rpcClient = InitRpcClient(
-                parseResult.GetValue(rpcUrlOption)!,
-                SimpleConsoleLogManager.Instance.GetClassLogger());
+            return ExecuteWithRpcHandling(async () =>
+            {
+                IJsonRpcClient rpcClient = InitRpcClient(
+                    parseResult.GetRequiredValue(rpcUrlOption),
+                    SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            ulong chainId = await rpcClient.GetChainIdAsync();
+                ulong chainId = await rpcClient.GetChainIdAsync();
 
-            Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
-                SimpleConsoleLogManager.Instance);
+                Signer signer = new(chainId, new PrivateKey(parseResult.GetRequiredValue(privateKeyOption)),
+                    SimpleConsoleLogManager.Instance);
 
-            FundsDistributor distributor = new(
-                rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            await distributor.DistributeFunds(
-                signer,
-                parseResult.GetValue(keyNumberOption),
-                parseResult.GetValue(maxFeeOption),
-                parseResult.GetValue(maxPriorityFeeGasOption));
+                FundsDistributor distributor = new(
+                    rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+                await distributor.DistributeFunds(
+                    signer,
+                    parseResult.GetValue(keyNumberOption),
+                    parseResult.GetValue(maxFeeOption),
+                    parseResult.GetValue(maxPriorityFeeGasOption));
+            });
         });
 
         root.Add(command);
@@ -291,28 +297,44 @@ internal static class SetupCli
         command.Add(keyFileOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(maxFeeOption);
-        command.SetAction(async (parseResult, cancellationToken) =>
+        command.SetAction((parseResult, cancellationToken) =>
         {
-            string keyFilePath = parseResult.GetValue(keyFileOption)!;
-            if (!File.Exists(keyFilePath))
+            return ExecuteWithRpcHandling(async () =>
             {
-                Console.WriteLine($"Key file not found: {keyFilePath}");
-                return;
-            }
+                string keyFilePath = parseResult.GetRequiredValue(keyFileOption);
+                if (!File.Exists(keyFilePath))
+                {
+                    Console.WriteLine($"Key file not found: {keyFilePath}");
+                    return;
+                }
 
-            IJsonRpcClient rpcClient = InitRpcClient(
-                parseResult.GetValue(rpcUrlOption)!,
-                SimpleConsoleLogManager.Instance.GetClassLogger());
+                IJsonRpcClient rpcClient = InitRpcClient(
+                    parseResult.GetRequiredValue(rpcUrlOption),
+                    SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            ulong chainId = await rpcClient.GetChainIdAsync();
+                ulong chainId = await rpcClient.GetChainIdAsync();
 
-            FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            await distributor.ReclaimFunds(
-                new(parseResult.GetValue(receiverOption)!),
-                parseResult.GetValue(maxFeeOption),
-                parseResult.GetValue(maxPriorityFeeGasOption));
+                FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+                await distributor.ReclaimFunds(
+                    new(parseResult.GetRequiredValue(receiverOption)),
+                    parseResult.GetValue(maxFeeOption),
+                    parseResult.GetValue(maxPriorityFeeGasOption));
+            });
         });
         root.Add(command);
+    }
+
+    private static async Task ExecuteWithRpcHandling(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (RpcException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            Environment.Exit(-1);
+        }
     }
 
     public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>
@@ -383,30 +405,31 @@ internal static class SetupCli
         command.Add(forkOption);
         command.SetAction((parseResult, cancellationToken) =>
         {
-            PrivateKey privateKey = new(parseResult.GetValue(privateKeyOption)!);
-            string filePath = parseResult.GetValue(fileOption)!;
-            if (!File.Exists(filePath))
+            return ExecuteWithRpcHandling(() =>
             {
-                Console.WriteLine($"File not found: {filePath}");
-                return Task.CompletedTask;
-            }
+                PrivateKey privateKey = new(parseResult.GetRequiredValue(privateKeyOption));
+                string filePath = parseResult.GetRequiredValue(fileOption);
+                if (!File.Exists(filePath))
+                {
+                    Console.WriteLine($"File not found: {filePath}");
+                    return Task.CompletedTask;
+                }
 
-            byte[] data = File.ReadAllBytes(filePath);
-            BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
+                byte[] data = File.ReadAllBytes(filePath);
+                BlobSender sender = new(parseResult.GetRequiredValue(rpcUrlOption), SimpleConsoleLogManager.Instance);
 
-            string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
+                string? fork = parseResult.GetValue(forkOption);
+                IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
 
-            ulong? maxPriorityFee = parseResult.GetValue(maxPriorityFeeGasOption);
-
-            return sender.SendData(
-                data,
-                privateKey,
-                parseResult.GetValue(receiverOption)!,
-                (UInt256)parseResult.GetValue(maxFeePerBlobGasOption),
-                parseResult.GetValue(feeMultiplierOption),
-                maxPriorityFee.HasValue ? (UInt256?)maxPriorityFee.Value : null,
-                parseResult.GetValue(waitOption), spec);
+                return sender.SendData(
+                    data,
+                    privateKey,
+                    parseResult.GetRequiredValue(receiverOption),
+                    (UInt256)parseResult.GetValue(maxFeePerBlobGasOption),
+                    parseResult.GetValue(feeMultiplierOption),
+                    (UInt256?)parseResult.GetValue(maxPriorityFeeGasOption),
+                    parseResult.GetValue(waitOption), spec);
+            });
         });
 
         root.Add(command);
