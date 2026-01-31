@@ -309,7 +309,7 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), false);
+            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
@@ -332,7 +332,7 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), false);
+            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
@@ -357,7 +357,7 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), false);
+            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 

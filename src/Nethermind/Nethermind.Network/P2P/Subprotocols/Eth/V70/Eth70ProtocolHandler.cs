@@ -187,7 +187,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                         throw new SubprotocolException("Received more receipts than requested in eth/70 response");
                     }
 
-                    if (!response.LastBlockIncomplete && size < SoftOutgoingMessageSizeLimit / 4)
+                    if (response.LastBlockIncomplete && size < SoftOutgoingMessageSizeLimit / 4)
                     {
                         throw new SubprotocolException($"Received partial receipts response below minimum size ({size} bytes < {SoftOutgoingMessageSizeLimit / 4} bytes)");
                     }
