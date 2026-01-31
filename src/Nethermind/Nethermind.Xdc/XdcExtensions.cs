@@ -10,6 +10,8 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -22,6 +24,17 @@ public static class XdcExtensions
     {
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
+    }
+
+    public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
+    {
+        var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);
+        if(!targetIsSignContract) return false;
+
+        if(currentTx.Data.Length != 68) return false;
+
+
+        return currentTx.Data.Span.Slice(0, 4).SequenceEqual(XdcConstants.SignMethod);
     }
 
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
@@ -42,6 +55,15 @@ public static class XdcExtensions
         return spec;
     }
 
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long xdcBlockNumber, ulong round = 0)
+    {
+        IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockNumber, null) as IXdcReleaseSpec;
+        if (spec is null)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        spec.ApplyV2Config(round);
+        return spec;
+    }
+
     public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
@@ -53,6 +75,17 @@ public static class XdcExtensions
             addresses[i] = new Address(data.Slice(i * Address.Size, Address.Size));
         }
         return addresses.ToImmutableArray();
+    }
+
+    public static ulong GetRoundNumber(this XdcBlockHeader header, IXdcReleaseSpec spec)
+    {
+        if(header.Number <= spec.SwitchBlock)
+        {
+            return 0;
+        }
+
+        var extraConsensusData = header.ExtraConsensusData;
+        return extraConsensusData.BlockRound;
     }
 
     public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>

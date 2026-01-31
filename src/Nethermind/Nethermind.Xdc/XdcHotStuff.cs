@@ -28,6 +28,7 @@ namespace Nethermind.Xdc
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
         private readonly ISnapshotManager _snapshotManager;
+        private readonly IMasternodesCalculator _masternodesCalculator;
         private readonly IQuorumCertificateManager _quorumCertificateManager;
         private readonly IVotesManager _votesManager;
         private readonly ISigner _signer;
@@ -53,6 +54,7 @@ namespace Nethermind.Xdc
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
             ISnapshotManager snapshotManager,
+            IMasternodesCalculator masternodesCalculator,
             IQuorumCertificateManager quorumCertificateManager,
             IVotesManager votesManager,
             ISigner signer,
@@ -65,7 +67,8 @@ namespace Nethermind.Xdc
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-            _snapshotManager = snapshotManager;
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -409,7 +412,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
             }
             else
             {
