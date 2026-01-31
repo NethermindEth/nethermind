@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
+using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -75,6 +76,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
+    private const int MaxBatchLookupBlocks = 192 * 1024;
+
+    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
+    private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
+
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
         return base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
@@ -376,6 +382,95 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         l1OriginStore.WriteL1Origin(blockId, l1Origin);
 
         return ResultWrapper<L1Origin>.Success(l1Origin);
+    }
+
+    public Task<ResultWrapper<L1Origin?>> taikoAuth_lastL1OriginByBatchID(UInt256 batchId)
+    {
+        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is null)
+        {
+            blockId = GetLastBlockByBatchId(batchId);
+            if (blockId is null)
+            {
+                return TaikoExtendedEthModule.L1OriginNotFound;
+            }
+        }
+
+        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+
+        return origin is null ? TaikoExtendedEthModule.L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
+    }
+
+    public Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId)
+    {
+        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is null)
+        {
+            blockId = GetLastBlockByBatchId(batchId);
+            if (blockId is null)
+            {
+                return BlockIdNotFound;
+            }
+        }
+
+        return ResultWrapper<UInt256?>.Success(blockId);
+    }
+
+    /// <summary>
+    /// Traverses the blockchain backwards to find the last Shasta block of the given batch ID.
+    /// </summary>
+    /// <param name="batchId">The Shasta batch identifier for which to find the last corresponding block.</param>
+    /// <returns>The block ID if found, or null if not found or lookback limit exceeded.</returns>
+    private UInt256? GetLastBlockByBatchId(UInt256 batchId)
+    {
+        Block? currentBlock = blockFinder.Head;
+        int lookbackCount = 0;
+
+        while (currentBlock is not null &&
+               currentBlock.Transactions.Length > 0 &&
+               HasAnchorV4Prefix(currentBlock.Transactions[0].Data))
+        {
+            if (currentBlock.Number == 0)
+            {
+                break;
+            }
+
+            lookbackCount++;
+            if (lookbackCount > MaxBatchLookupBlocks)
+            {
+                return null;
+            }
+
+            // Read L1Origin to check if this is a preconfirmation block
+            L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
+
+            // Skip preconfirmation blocks
+            if (l1Origin is not null && l1Origin.IsPreconfBlock)
+            {
+                currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
+                continue;
+            }
+
+            UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
+            if (proposalId is null)
+            {
+                return null;
+            }
+
+            if (proposalId.Value == batchId)
+            {
+                return (UInt256)currentBlock.Number;
+            }
+
+            currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
+        }
+
+        return null;
+    }
+
+    private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
+    {
+        return data.Length >= 4 && AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4]);
     }
 
     /// <inheritdoc />
