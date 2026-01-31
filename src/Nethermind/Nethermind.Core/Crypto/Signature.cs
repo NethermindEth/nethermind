@@ -86,6 +86,13 @@ namespace Nethermind.Core.Crypto
             }
         }
 
+        public void WriteBytesWithRecoveryTo(Span<byte> destination)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, Size);
+            Bytes.CopyTo(destination);
+            destination[64] = RecoveryId;
+        }
+
         public override string ToString()
         {
             string vString = V.ToString("X").ToLower();
