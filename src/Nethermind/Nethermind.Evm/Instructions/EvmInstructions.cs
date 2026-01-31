@@ -53,7 +53,7 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.SLT] = &InstructionMath2Param<TGasPolicy, OpSLt, TTracingInst>;
         lookup[(int)Instruction.SGT] = &InstructionMath2Param<TGasPolicy, OpSGt, TTracingInst>;
         lookup[(int)Instruction.EQ] = &InstructionBitwise<TGasPolicy, OpBitwiseEq>;
-        lookup[(int)Instruction.ISZERO] = &InstructionMath1Param<TGasPolicy, OpIsZero>;
+        lookup[(int)Instruction.ISZERO] = &InstructionIsZero<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.AND] = &InstructionBitwise<TGasPolicy, OpBitwiseAnd>;
         lookup[(int)Instruction.OR] = &InstructionBitwise<TGasPolicy, OpBitwiseOr>;
         lookup[(int)Instruction.XOR] = &InstructionBitwise<TGasPolicy, OpBitwiseXor>;
