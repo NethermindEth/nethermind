@@ -14,5 +14,6 @@ namespace Nethermind.Network
         IReadOnlyCollection<Peer> ConnectedPeers { get; }
         int MaxActivePeers { get; }
         int ActivePeersCount { get; }
+        int ConnectedPeersCount { get; }
     }
 }
