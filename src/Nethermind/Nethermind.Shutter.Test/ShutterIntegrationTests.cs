@@ -117,5 +117,4 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
     }
-
 }

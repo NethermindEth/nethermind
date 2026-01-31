@@ -212,4 +212,9 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.RequestsHash = requestsHash;
         return this;
     }
+    public BlockHeaderBuilder WithBlockAccessListHash(Hash256? requestsHash)
+    {
+        TestObjectInternal.BlockAccessListHash = requestsHash;
+        return this;
+    }
 }

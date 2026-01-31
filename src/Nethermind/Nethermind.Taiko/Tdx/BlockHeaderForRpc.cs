@@ -40,6 +40,7 @@ public class BlockHeaderForRpc
         ExcessBlobGas = header.ExcessBlobGas;
         ParentBeaconBlockRoot = header.ParentBeaconBlockRoot;
         RequestsHash = header.RequestsHash;
+        BlockAccessListHash = header.BlockAccessListHash;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -82,4 +83,7 @@ public class BlockHeaderForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? RequestsHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? BlockAccessListHash { get; set; }
 }

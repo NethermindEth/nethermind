@@ -322,6 +322,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV6Result?>, GetPayloadV6Handler>()
                 .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
@@ -331,6 +332,9 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IAsyncHandler<Hash256[], IEnumerable<byte[]?>>, GetBALsByHashV1Handler>()
+                .AddSingleton<IAsyncHandler<(long, long), IEnumerable<byte[]>?>, GetBALsByRangeV1Handler>()
+                .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

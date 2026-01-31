@@ -12,6 +12,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -98,6 +100,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
+    /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-4844</see>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
@@ -108,6 +117,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
+        // Console.WriteLine("Created block access list:\n" +  (block.BlockAccessList is null ? "null" : block.BlockAccessList.ToString()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
@@ -140,7 +150,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
-            return new BlockDecodingResult(transactions.Error);
+            return new(transactions.Error);
         }
 
         BlockHeader header = new(
@@ -168,13 +178,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals);
+        return new(block);
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot()
-    {
-        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
-    }
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
 
     protected Transaction[]? _transactions = null;
 
@@ -250,7 +258,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected virtual int GetExecutionPayloadVersion() => this switch
     {
-        { ExecutionRequests: not null } => 4,
+        { BlockAccessList: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1
