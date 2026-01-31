@@ -35,7 +35,6 @@ namespace Nethermind.Xdc
         private const long BlocksPerYear = 15768000;
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
-        private const long MergeSignRange = 15;
         private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
 
         /// <summary>
@@ -62,7 +61,7 @@ namespace Nethermind.Xdc
             if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
-            if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
+            if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
             var (signers, count) = GetSigningTxCount(number, xdcHeader, spec);
 
@@ -90,6 +89,7 @@ namespace Nethermind.Xdc
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
+            var mergeSignRange = spec.MergeSignRange;
 
             XdcBlockHeader h = header;
             for (long i = number - 1; i >= 0; i--)
@@ -134,8 +134,8 @@ namespace Nethermind.Xdc
 
             // Only blocks at heights that are multiples of MergeSignRange are considered.
             // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
-            long start = ((startBlockNumber + MergeSignRange - 1) / MergeSignRange) * MergeSignRange;
-            for (long i = start; i < endBlockNumber; i += MergeSignRange)
+            long start = ((startBlockNumber + mergeSignRange - 1) / mergeSignRange) * mergeSignRange;
+            for (long i = start; i < endBlockNumber; i += mergeSignRange)
             {
                 if (!blockNumberToHash.TryGetValue(i, out var blockHash)) continue;
                 if (!hashToSigningAddress.TryGetValue(blockHash, out var addresses)) continue;
