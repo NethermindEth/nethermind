@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -14,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -40,7 +42,14 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
+        private readonly ILogger _slowBlockLogger;
         private readonly Stopwatch _runStopwatch = new();
+
+        /// <summary>
+        /// Threshold in milliseconds for slow block logging (default: 1000ms).
+        /// Set to 0 to log all blocks.
+        /// </summary>
+        private readonly long _slowBlockThresholdMs;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -54,6 +63,30 @@ namespace Nethermind.Consensus.Processing
         private long _startCreateOps;
         private long _startContractsAnalyzed;
         private long _startCachedContractsUsed;
+        private long _startAccountReads;
+        private long _startStorageReads;
+        private long _startCodeReads;
+        private long _startCodeBytesRead;
+        private long _startAccountWrites;
+        private long _startAccountDeleted;
+        private long _startStorageWrites;
+        private long _startStorageDeleted;
+        private long _startCodeWrites;
+        private long _startCodeBytesWritten;
+        // Timing metrics for cross-client slow block logging
+        private long _startStateReadTime;
+        private long _startStateHashTime;
+        private long _startCommitTime;
+        // Cache statistics for cross-client slow block logging
+        private long _startAccountCacheHits;
+        private long _startAccountCacheMisses;
+        private long _startStorageCacheHits;
+        private long _startStorageCacheMisses;
+        private long _startCodeCacheHits;
+        private long _startCodeCacheMisses;
+        // EIP-7702 delegation tracking for cross-client slow block logging
+        private long _startEip7702DelegationsSet;
+        private long _startEip7702DelegationsCleared;
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
@@ -69,12 +102,14 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = 1000)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
             _logger = logger;
+            _slowBlockLogger = slowBlockLogger ?? logger;
+            _slowBlockThresholdMs = slowBlockThresholdMs;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -94,6 +129,30 @@ namespace Nethermind.Consensus.Processing
             _startCreateOps = Evm.Metrics.ThreadLocalCreates;
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
             _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startAccountReads = Evm.Metrics.ThreadLocalAccountReads;
+            _startStorageReads = Evm.Metrics.ThreadLocalStorageReads;
+            _startCodeReads = Evm.Metrics.ThreadLocalCodeReads;
+            _startCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
+            _startAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            _startAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted;
+            _startStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            _startStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted;
+            _startCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
+            _startCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
+            // Timing metrics for cross-client slow block logging
+            _startStateReadTime = Evm.Metrics.ThreadLocalStateReadTime;
+            _startStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
+            _startCommitTime = Evm.Metrics.ThreadLocalCommitTime;
+            // Cache statistics for cross-client slow block logging
+            _startAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
+            _startAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
+            _startStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
+            _startStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
+            _startCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
+            _startCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
+            // EIP-7702 delegation tracking
+            _startEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
+            _startEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -124,6 +183,52 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            // Capture state access metrics for cross-client slow block logging
+            blockData.CurrentAccountReads = Evm.Metrics.ThreadLocalAccountReads;
+            blockData.CurrentStorageReads = Evm.Metrics.ThreadLocalStorageReads;
+            blockData.CurrentCodeReads = Evm.Metrics.ThreadLocalCodeReads;
+            blockData.CurrentCodeBytesRead = Evm.Metrics.ThreadLocalCodeBytesRead;
+            blockData.CurrentAccountWrites = Evm.Metrics.ThreadLocalAccountWrites;
+            blockData.CurrentAccountDeleted = Evm.Metrics.ThreadLocalAccountDeleted;
+            blockData.CurrentStorageWrites = Evm.Metrics.ThreadLocalStorageWrites;
+            blockData.CurrentStorageDeleted = Evm.Metrics.ThreadLocalStorageDeleted;
+            blockData.StartAccountReads = _startAccountReads;
+            blockData.StartStorageReads = _startStorageReads;
+            blockData.StartCodeReads = _startCodeReads;
+            blockData.StartCodeBytesRead = _startCodeBytesRead;
+            blockData.StartAccountWrites = _startAccountWrites;
+            blockData.StartAccountDeleted = _startAccountDeleted;
+            blockData.StartStorageWrites = _startStorageWrites;
+            blockData.StartStorageDeleted = _startStorageDeleted;
+            blockData.CurrentCodeWrites = Evm.Metrics.ThreadLocalCodeWrites;
+            blockData.CurrentCodeBytesWritten = Evm.Metrics.ThreadLocalCodeBytesWritten;
+            blockData.StartCodeWrites = _startCodeWrites;
+            blockData.StartCodeBytesWritten = _startCodeBytesWritten;
+            // Capture timing metrics for cross-client slow block logging
+            blockData.CurrentStateReadTime = Evm.Metrics.ThreadLocalStateReadTime;
+            blockData.CurrentStateHashTime = Evm.Metrics.ThreadLocalStateHashTime;
+            blockData.CurrentCommitTime = Evm.Metrics.ThreadLocalCommitTime;
+            blockData.StartStateReadTime = _startStateReadTime;
+            blockData.StartStateHashTime = _startStateHashTime;
+            blockData.StartCommitTime = _startCommitTime;
+            // Capture cache statistics from existing Db.Metrics counters
+            blockData.CurrentAccountCacheHits = DbMetrics.ThreadLocalStateTreeCacheHits;
+            blockData.CurrentAccountCacheMisses = DbMetrics.ThreadLocalStateTreeReads;
+            blockData.CurrentStorageCacheHits = DbMetrics.ThreadLocalStorageTreeCacheHits;
+            blockData.CurrentStorageCacheMisses = DbMetrics.ThreadLocalStorageTreeReads;
+            blockData.CurrentCodeCacheHits = Evm.Metrics.ThreadLocalCodeDbCache;
+            blockData.CurrentCodeCacheMisses = Evm.Metrics.ThreadLocalCodeReads;
+            blockData.StartAccountCacheHits = _startAccountCacheHits;
+            blockData.StartAccountCacheMisses = _startAccountCacheMisses;
+            blockData.StartStorageCacheHits = _startStorageCacheHits;
+            blockData.StartStorageCacheMisses = _startStorageCacheMisses;
+            blockData.StartCodeCacheHits = _startCodeCacheHits;
+            blockData.StartCodeCacheMisses = _startCodeCacheMisses;
+            // EIP-7702 delegation tracking
+            blockData.CurrentEip7702DelegationsSet = Evm.Metrics.ThreadLocalEip7702DelegationsSet;
+            blockData.CurrentEip7702DelegationsCleared = Evm.Metrics.ThreadLocalEip7702DelegationsCleared;
+            blockData.StartEip7702DelegationsSet = _startEip7702DelegationsSet;
+            blockData.StartEip7702DelegationsCleared = _startEip7702DelegationsCleared;
 
             CaptureReportData(blockData);
         }
@@ -174,8 +279,16 @@ namespace Nethermind.Consensus.Processing
             // We want the rate here
             double mgas = block.GasUsed / 1_000_000.0;
             double timeSec = data.ProcessingMicroseconds / 1_000_000.0;
-            Metrics.BlockMGasPerSec.Observe(mgas / timeSec);
+            double mgasPerSec = timeSec > 0 ? mgas / timeSec : 0;
+            Metrics.BlockMGasPerSec.Observe(mgasPerSec);
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+
+            // Log slow blocks in JSON format for cross-client performance analysis
+            long processingMs = data.ProcessingMicroseconds / 1000;
+            if (processingMs >= _slowBlockThresholdMs)
+            {
+                LogSlowBlock(block, data, processingMs, mgasPerSec);
+            }
 
             Metrics.Mgas += block.GasUsed / 1_000_000.0;
             Transaction[] txs = block.Transactions;
@@ -413,6 +526,97 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        /// <summary>
+        /// Logs slow block execution statistics in JSON format for cross-client performance analysis.
+        /// Follows the standardized execution metrics specification.
+        /// </summary>
+        private void LogSlowBlock(Block block, BlockData data, long processingMs, double mgasPerSec)
+        {
+            try
+            {
+                long sloadOps = data.CurrentSLoadOps - data.StartSLoadOps;
+                long sstoreOps = data.CurrentSStoreOps - data.StartSStoreOps;
+                long callOps = data.CurrentCallOps - data.StartCallOps;
+                long createOps = data.CurrentCreatesOps - data.StartCreateOps;
+                long cachedContracts = data.CurrentCachedContractsUsed - data.StartCachedContractsUsed;
+                long analyzedContracts = data.CurrentContractsAnalyzed - data.StartContractsAnalyzed;
+
+                // State access metrics for cross-client standardization
+                long accountReads = data.CurrentAccountReads - data.StartAccountReads;
+                long storageReads = data.CurrentStorageReads - data.StartStorageReads;
+                long codeReads = data.CurrentCodeReads - data.StartCodeReads;
+                long codeBytesRead = data.CurrentCodeBytesRead - data.StartCodeBytesRead;
+                long accountWrites = data.CurrentAccountWrites - data.StartAccountWrites;
+                long accountDeleted = data.CurrentAccountDeleted - data.StartAccountDeleted;
+                long storageWrites = data.CurrentStorageWrites - data.StartStorageWrites;
+                long storageDeleted = data.CurrentStorageDeleted - data.StartStorageDeleted;
+                long codeWrites = data.CurrentCodeWrites - data.StartCodeWrites;
+                long codeBytesWritten = data.CurrentCodeBytesWritten - data.StartCodeBytesWritten;
+
+                // EIP-7702 delegation tracking
+                long eip7702DelegationsSet = data.CurrentEip7702DelegationsSet - data.StartEip7702DelegationsSet;
+                long eip7702DelegationsCleared = data.CurrentEip7702DelegationsCleared - data.StartEip7702DelegationsCleared;
+
+                // Timing metrics for cross-client standardization (convert ticks to ms with sub-ms precision)
+                // 1 tick = 100 nanoseconds, so 10000 ticks = 1 ms
+                double stateReadMs = (data.CurrentStateReadTime - data.StartStateReadTime) / (double)TimeSpan.TicksPerMillisecond;
+                double stateHashMs = (data.CurrentStateHashTime - data.StartStateHashTime) / (double)TimeSpan.TicksPerMillisecond;
+                double commitMs = (data.CurrentCommitTime - data.StartCommitTime) / (double)TimeSpan.TicksPerMillisecond;
+                // Convert from microseconds to milliseconds with sub-ms precision
+                double totalMs = data.ProcessingMicroseconds / 1000.0;
+                // Derive execution time by subtracting state I/O overhead from total
+                double executionMs = totalMs - stateReadMs - stateHashMs - commitMs;
+                if (executionMs < 0) executionMs = totalMs; // Fallback if timing not fully captured
+
+                // Calculate cache deltas for this block
+                long accountCacheHits = data.CurrentAccountCacheHits - data.StartAccountCacheHits;
+                long accountCacheMisses = data.CurrentAccountCacheMisses - data.StartAccountCacheMisses;
+                long storageCacheHits = data.CurrentStorageCacheHits - data.StartStorageCacheHits;
+                long storageCacheMisses = data.CurrentStorageCacheMisses - data.StartStorageCacheMisses;
+                long codeCacheHits = data.CurrentCodeCacheHits - data.StartCodeCacheHits;
+                long codeCacheMisses = data.CurrentCodeCacheMisses - data.StartCodeCacheMisses;
+
+                // Calculate hit rates
+                double accountHitRate = CalculateHitRate(accountCacheHits, accountCacheMisses);
+                double storageHitRate = CalculateHitRate(storageCacheHits, storageCacheMisses);
+                double codeHitRate = CalculateHitRate(codeCacheHits, codeCacheMisses);
+
+                var slowBlockLog = new SlowBlockLog(
+                    Level: "warn",
+                    Msg: "Slow block",
+                    Block: new SlowBlockInfo(block.Number, block.Hash?.ToString() ?? "0x", block.GasUsed, block.Transactions.Length),
+                    Timing: new SlowBlockTiming(Math.Round(executionMs, 3), Math.Round(stateReadMs, 3), Math.Round(stateHashMs, 3), Math.Round(commitMs, 3), Math.Round(totalMs, 3)),
+                    Throughput: new SlowBlockThroughput(Math.Round(mgasPerSec, 2)),
+                    StateReads: new SlowBlockStateReads(accountReads, storageReads, codeReads, codeBytesRead),
+                    StateWrites: new SlowBlockStateWrites(accountWrites, accountDeleted, storageWrites, storageDeleted, codeWrites, codeBytesWritten, eip7702DelegationsSet, eip7702DelegationsCleared),
+                    Cache: new SlowBlockCacheStats(
+                        new SlowBlockCacheEntry(accountCacheHits, accountCacheMisses, accountHitRate),
+                        new SlowBlockCacheEntry(storageCacheHits, storageCacheMisses, storageHitRate),
+                        new SlowBlockCacheEntry(codeCacheHits, codeCacheMisses, codeHitRate)),
+                    Evm: new SlowBlockEvm(sloadOps, sstoreOps, callOps, createOps));
+
+                string json = JsonSerializer.Serialize(slowBlockLog, new JsonSerializerOptions
+                {
+                    WriteIndented = false
+                });
+
+                if (_slowBlockLogger.IsWarn) _slowBlockLogger.Warn(json);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Error logging slow block: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Calculates the cache hit rate as a percentage.
+        /// </summary>
+        private static double CalculateHitRate(long hits, long misses)
+        {
+            long total = hits + misses;
+            return total > 0 ? Math.Round((double)hits / total * 100.0, 2) : 0.0;
+        }
+
         public void Start()
         {
             if (!_runStopwatch.IsRunning)
@@ -468,6 +672,112 @@ namespace Nethermind.Consensus.Processing
             public long StartCallOps;
             public long StartSStoreOps;
             public long StartSLoadOps;
+            // State access metrics for cross-client slow block logging
+            public long CurrentAccountReads;
+            public long CurrentStorageReads;
+            public long CurrentCodeReads;
+            public long CurrentCodeBytesRead;
+            public long CurrentAccountWrites;
+            public long CurrentAccountDeleted;
+            public long CurrentStorageWrites;
+            public long CurrentStorageDeleted;
+            public long StartAccountReads;
+            public long StartStorageReads;
+            public long StartCodeReads;
+            public long StartCodeBytesRead;
+            public long StartAccountWrites;
+            public long StartAccountDeleted;
+            public long StartStorageWrites;
+            public long StartStorageDeleted;
+            public long CurrentCodeWrites;
+            public long CurrentCodeBytesWritten;
+            public long StartCodeWrites;
+            public long StartCodeBytesWritten;
+            // Timing metrics for cross-client slow block logging (in ticks)
+            public long CurrentStateReadTime;
+            public long CurrentStateHashTime;
+            public long CurrentCommitTime;
+            public long StartStateReadTime;
+            public long StartStateHashTime;
+            public long StartCommitTime;
+            // Cache statistics for cross-client slow block logging
+            public long CurrentAccountCacheHits;
+            public long CurrentAccountCacheMisses;
+            public long CurrentStorageCacheHits;
+            public long CurrentStorageCacheMisses;
+            public long CurrentCodeCacheHits;
+            public long CurrentCodeCacheMisses;
+            public long StartAccountCacheHits;
+            public long StartAccountCacheMisses;
+            public long StartStorageCacheHits;
+            public long StartStorageCacheMisses;
+            public long StartCodeCacheHits;
+            public long StartCodeCacheMisses;
+            // EIP-7702 delegation tracking for cross-client slow block logging
+            public long CurrentEip7702DelegationsSet;
+            public long CurrentEip7702DelegationsCleared;
+            public long StartEip7702DelegationsSet;
+            public long StartEip7702DelegationsCleared;
         }
+
+        // Named types for slow block JSON serialization (cross-client standardized format)
+        private record SlowBlockLog(
+            [property: JsonPropertyName("level")] string Level,
+            [property: JsonPropertyName("msg")] string Msg,
+            [property: JsonPropertyName("block")] SlowBlockInfo Block,
+            [property: JsonPropertyName("timing")] SlowBlockTiming Timing,
+            [property: JsonPropertyName("throughput")] SlowBlockThroughput Throughput,
+            [property: JsonPropertyName("state_reads")] SlowBlockStateReads StateReads,
+            [property: JsonPropertyName("state_writes")] SlowBlockStateWrites StateWrites,
+            [property: JsonPropertyName("cache")] SlowBlockCacheStats Cache,
+            [property: JsonPropertyName("evm")] SlowBlockEvm Evm);
+
+        private record SlowBlockInfo(
+            [property: JsonPropertyName("number")] long Number,
+            [property: JsonPropertyName("hash")] string Hash,
+            [property: JsonPropertyName("gas_used")] long GasUsed,
+            [property: JsonPropertyName("tx_count")] int TxCount);
+
+        private record SlowBlockTiming(
+            [property: JsonPropertyName("execution_ms")] double ExecutionMs,
+            [property: JsonPropertyName("state_read_ms")] double StateReadMs,
+            [property: JsonPropertyName("state_hash_ms")] double StateHashMs,
+            [property: JsonPropertyName("commit_ms")] double CommitMs,
+            [property: JsonPropertyName("total_ms")] double TotalMs);
+
+        private record SlowBlockThroughput(
+            [property: JsonPropertyName("mgas_per_sec")] double MgasPerSec);
+
+        private record SlowBlockStateReads(
+            [property: JsonPropertyName("accounts")] long Accounts,
+            [property: JsonPropertyName("storage_slots")] long StorageSlots,
+            [property: JsonPropertyName("code")] long Code,
+            [property: JsonPropertyName("code_bytes")] long CodeBytes);
+
+        private record SlowBlockStateWrites(
+            [property: JsonPropertyName("accounts")] long Accounts,
+            [property: JsonPropertyName("accounts_deleted")] long AccountsDeleted,
+            [property: JsonPropertyName("storage_slots")] long StorageSlots,
+            [property: JsonPropertyName("storage_slots_deleted")] long StorageSlotsDeleted,
+            [property: JsonPropertyName("code")] long Code,
+            [property: JsonPropertyName("code_bytes")] long CodeBytes,
+            [property: JsonPropertyName("eip7702_delegations_set")] long Eip7702DelegationsSet,
+            [property: JsonPropertyName("eip7702_delegations_cleared")] long Eip7702DelegationsCleared);
+
+        private record SlowBlockCacheStats(
+            [property: JsonPropertyName("account")] SlowBlockCacheEntry Account,
+            [property: JsonPropertyName("storage")] SlowBlockCacheEntry Storage,
+            [property: JsonPropertyName("code")] SlowBlockCacheEntry Code);
+
+        private record SlowBlockCacheEntry(
+            [property: JsonPropertyName("hits")] long Hits,
+            [property: JsonPropertyName("misses")] long Misses,
+            [property: JsonPropertyName("hit_rate")] double HitRate);
+
+        private record SlowBlockEvm(
+            [property: JsonPropertyName("sload")] long Sload,
+            [property: JsonPropertyName("sstore")] long Sstore,
+            [property: JsonPropertyName("calls")] long Calls,
+            [property: JsonPropertyName("creates")] long Creates);
     }
 }

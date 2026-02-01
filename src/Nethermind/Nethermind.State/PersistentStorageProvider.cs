@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -22,6 +23,7 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
@@ -351,7 +353,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
-        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+        long start = Stopwatch.GetTimestamp();
+        // Track storage read for execution metrics
+        EvmMetrics.ThreadExecutionMetrics.StorageReads++;
+        ReadOnlySpan<byte> result = GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+        EvmMetrics.ThreadExecutionMetrics.StateReadTimeTicks += Stopwatch.GetElapsedTime(start).Ticks;
+        return result;
     }
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)

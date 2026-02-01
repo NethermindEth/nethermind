@@ -99,6 +99,7 @@ public class ZeroContentionCounter
     }
 
     public void Increment(int value = 1) => _threadLocal.Value!.Increment(value);
+    public void Increment(long value) => _threadLocal.Value!.Increment(value);
     public long ThreadLocalValue => _threadLocal.Value!.Value;
 
     private class BoxedLong
@@ -106,5 +107,6 @@ public class ZeroContentionCounter
         private long _value;
         public long Value => _value;
         public void Increment(int value) => _value += value;
+        public void Increment(long value) => _value += value;
     }
 }
