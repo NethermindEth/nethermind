@@ -64,12 +64,9 @@ public class CachedCodeInfoRepository(
     {
         IPrecompile precompile = originalPrecompile.Value.Precompile!;
 
-        if (!precompile.SupportsCaching)
-        {
-            return originalPrecompile.Value;
-        }
-
-        return new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+        return !precompile.SupportsCaching 
+            ? originalPrecompile.Value
+            : new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
     }
 
     private class CachedPrecompile(
