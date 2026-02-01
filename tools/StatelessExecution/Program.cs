@@ -1,12 +1,11 @@
 // See https://aka.ms/new-console-template for more information
 
+using System;
 using System.Globalization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
@@ -14,6 +13,9 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.NativeAot;
 
 class Program
 {
@@ -148,185 +150,91 @@ class Program
     ];
 
 
-    private static BlockForRpc suggestedBlockForRpc = new()
+    private static Transaction[] suggestedTransactions =
+    [
+        new Transaction
+        {
+            Type = TxType.Legacy,
+            Nonce = 0x3a,
+            To = new Address("0x74f3a49bc3a9480339de1077c9d8ec557bbb6a80"),
+            SenderAddress = new Address("0xaa2fbe31e6d774d2e70b1375f3bc791ae487fd50"),
+            Value = 0x0,
+            Data = FromHexString("0xa9059cbb0000000000000000000000003b2dd509ceb8f0cc2fe9517dcdb3ff44f7c852590000000000000000000000000000000000000000000000000de0b6b3a7640000"),
+            GasPrice = 0x4fedaff4,
+            GasLimit = 0x8a5c,
+            Signature = new Signature(
+                UInt256.Parse("0x1a70af6bcb203d37fab6b37b8f5f855065a06b20af395ca3a73b75ec28c78f76"),
+                UInt256.Parse("0x5207477fc69d8556839f726608a47c39648c973214619d94c42e8db6fc63d5aa"),
+                0x111784),
+            Hash = new Hash256("0x22fcc6a6fec3b16d3c5d3fccb672ff73a4c3e8ddce522e0d64b14fe24a6e0386")
+        },
+        new Transaction
+        {
+            Type = TxType.EIP1559,
+            Nonce = 0x71,
+            To = new Address("0xafdf5cb097d6fb2eb8b1ffbab180e667458e18f4"),
+            SenderAddress = new Address("0xa4a59a31360b4ab10d28755f53697b60c796ee03"),
+            Value = 0x1c4eda91bb040,
+            Data = FromHexString("0xbca2127c000000000000000000000000a4a59a31360b4ab10d28755f53697b60c796ee030000000000000000000000000000000000000000000000000001c4eda919200000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000290400000000000000000000000000000000000000000000000000000000000049310000000000000000000000000a4a59a31360b4ab10d28755f53697b60c796ee030000000000000000000000000000000000000000000000000000000000000000"),
+            GasPrice = 0x5d340d9,
+            DecodedMaxFeePerGas = 0x7a8a53c5,
+            GasLimit = 0x7a120,
+            ChainId = 0x88bb0,
+            AccessList = AccessList.Empty,
+            Signature = new Signature(
+                UInt256.Parse("0xd2a4b3f5d85a32198e3827e798a671b955492838fa570c4d5539d015b12f89fe"),
+                UInt256.Parse("0x6f1d4e4b547991d64901e7e3cdc4a114023f28dc139b6fc7bfd2326c1e4e092f"),
+                0x1 + 27),
+            Hash = new Hash256("0xe8edbc9ac0359f4d9c9d331fd2dc77e66adb2e8d13f31a9627652549625f5592")
+        }
+    ];
+
+    private static Withdrawal[] suggestedWithdrawals =
+    [
+        new Withdrawal { Index = 0x2434c6, ValidatorIndex = 0xf8fe7, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x172073 },
+        new Withdrawal { Index = 0x2434c7, ValidatorIndex = 0xf8fe8, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x16fe30 },
+        new Withdrawal { Index = 0x2434c8, ValidatorIndex = 0xf8fe9, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x171655 },
+        new Withdrawal { Index = 0x2434c9, ValidatorIndex = 0xf8fea, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x171d09 },
+        new Withdrawal { Index = 0x2434ca, ValidatorIndex = 0xf8feb, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x17193f },
+        new Withdrawal { Index = 0x2434cb, ValidatorIndex = 0xf8fec, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x171c89 },
+        new Withdrawal { Index = 0x2434cc, ValidatorIndex = 0xf8fed, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x175f94 },
+        new Withdrawal { Index = 0x2434cd, ValidatorIndex = 0xf8fee, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x16f8ed },
+        new Withdrawal { Index = 0x2434ce, ValidatorIndex = 0xf8fef, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x171613 },
+        new Withdrawal { Index = 0x2434cf, ValidatorIndex = 0xf8ff0, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x17164a },
+        new Withdrawal { Index = 0x2434d0, ValidatorIndex = 0xf8ff1, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x17421f },
+        new Withdrawal { Index = 0x2434d1, ValidatorIndex = 0xf8ff2, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x16ebda },
+        new Withdrawal { Index = 0x2434d2, ValidatorIndex = 0xf8ff3, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x175778 },
+        new Withdrawal { Index = 0x2434d3, ValidatorIndex = 0xf8ff4, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x173770 },
+        new Withdrawal { Index = 0x2434d4, ValidatorIndex = 0xf8ff5, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x171616 },
+        new Withdrawal { Index = 0x2434d5, ValidatorIndex = 0xf8ff6, Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"), AmountInGwei = 0x1721fc }
+    ];
+
+    private static BlockHeader suggestedBlockHeader = new BlockHeader(
+        parentHash: new Hash256("0xd1630c4211b6a4e15e7eb4c0360b0689f56d87bce3240b484186cfae7dbb563e"),
+        unclesHash: new Hash256("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"),
+        beneficiary: new Address("0x670b24610df99b1685aeac0dfd5307b92e0cf4d7"),
+        difficulty: 0,
+        number: 0x24a0a,
+        gasLimit: 0x22550dd,
+        timestamp: 0x67f64040,
+        extraData: FromHexString("0x4e65746865726d696e642d312e33312e36"),
+        blobGasUsed: 0x0,
+        excessBlobGas: 0x0,
+        parentBeaconBlockRoot: new Hash256("0xf77738d6edadb5437af69b7162266d298cdad3daede4a6651a68af24015f4115"),
+        requestsHash: new Hash256("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
     {
-        Difficulty = 0,
-        ExtraData = FromHexString("0x4e65746865726d696e642d312e33312e36"),
-        GasLimit = 0x22550dd,
-        GasUsed = 0xea92,
-        Hash = new Hash256("0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8"),
-        LogsBloom = new Bloom(
-            FromHexString(
-                "0x00000000000000010000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000010000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000002000000000000001000000000000000000000000000000000000000008000000000000000000000000001000000000000000000000000100000000000")),
-        Miner = new Address("0x670b24610df99b1685aeac0dfd5307b92e0cf4d7"),
-        MixHash = new Hash256("0x13a65de1d0a7a9801e445fa4d0cd1aff4664e827414ebbaa92dbe8a9845274de"),
-        Nonce = FromHexString("0000000000000000"),
-        Number = 0x24a0a,
-        ParentHash = new Hash256("0xd1630c4211b6a4e15e7eb4c0360b0689f56d87bce3240b484186cfae7dbb563e"),
-        ReceiptsRoot = new Hash256("0xa75e77614e6c1e0ed2a26bc74fa3756eb75271f370d768d21e2bbeb6d86288a7"),
-        Sha3Uncles = new Hash256("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"),
         StateRoot = new Hash256("0xd83005fd3ee674571081f73d05d1e5fe7cea52d84a9ba8fa8c1edf8f63a03c9d"),
-        Timestamp = 0x67f64040,
+        TxRoot = new Hash256("0x880229fea8fd347b90edc0ae9a7b7ed988a11bf8c7e14489dbf1df813a2699f3"),
+        ReceiptsRoot = new Hash256("0xa75e77614e6c1e0ed2a26bc74fa3756eb75271f370d768d21e2bbeb6d86288a7"),
+        Bloom = new Bloom(FromHexString("0x00000000000000010000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000010000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000002000000000000001000000000000000000000000000000000000000008000000000000000000000000001000000000000000000000000100000000000")),
+        GasUsed = 0xea92,
+        MixHash = new Hash256("0x13a65de1d0a7a9801e445fa4d0cd1aff4664e827414ebbaa92dbe8a9845274de"),
         BaseFeePerGas = 0x41735fe0,
-        TransactionsRoot = new Hash256("0x880229fea8fd347b90edc0ae9a7b7ed988a11bf8c7e14489dbf1df813a2699f3"),
-        Uncles = [],
         WithdrawalsRoot = new Hash256("0x7d0f887b2b13997f8b51201e040bae4120e697d042f221279f058665f544dde5"),
-        BlobGasUsed = 0x0,
-        ExcessBlobGas = 0x0,
-        ParentBeaconBlockRoot = new Hash256("0xf77738d6edadb5437af69b7162266d298cdad3daede4a6651a68af24015f4115"),
-        RequestsHash = new Hash256("0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
-        Transactions =
-        [
-            new LegacyTransactionForRpc()
-            {
-                Nonce = 0x3a,
-                To = new Address("0x74f3a49bc3a9480339de1077c9d8ec557bbb6a80"),
-                From = new Address("0xaa2fbe31e6d774d2e70b1375f3bc791ae487fd50"),
-                Value = 0x0,
-                Input = FromHexString("0xa9059cbb0000000000000000000000003b2dd509ceb8f0cc2fe9517dcdb3ff44f7c852590000000000000000000000000000000000000000000000000de0b6b3a7640000"),
-                GasPrice = 0x4fedaff4,
-                V = 0x111784,
-                R = UInt256.Parse("0x1a70af6bcb203d37fab6b37b8f5f855065a06b20af395ca3a73b75ec28c78f76"),
-                S = UInt256.Parse("0x5207477fc69d8556839f726608a47c39648c973214619d94c42e8db6fc63d5aa"),
-                Hash = new Hash256("0x22fcc6a6fec3b16d3c5d3fccb672ff73a4c3e8ddce522e0d64b14fe24a6e0386"),
-                Gas = 0x8a5c
-            },
-            new EIP1559TransactionForRpc()
-            {
-                MaxPriorityFeePerGas = 0x5d340d9,
-                MaxFeePerGas = 0x7a8a53c5,
-                AccessList = AccessListForRpc.FromAccessList(AccessList.Empty),
-                YParity = 0x1,
-                ChainId = 0x88bb0,
-                Nonce = 0x71,
-                To = new Address("0xafdf5cb097d6fb2eb8b1ffbab180e667458e18f4"),
-                From = new Address("0xa4a59a31360b4ab10d28755f53697b60c796ee03"),
-                Value = 0x1c4eda91bb040,
-                Input = FromHexString("0xbca2127c000000000000000000000000a4a59a31360b4ab10d28755f53697b60c796ee030000000000000000000000000000000000000000000000000001c4eda919200000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000290400000000000000000000000000000000000000000000000000000000000049310000000000000000000000000a4a59a31360b4ab10d28755f53697b60c796ee030000000000000000000000000000000000000000000000000000000000000000"),
-                GasPrice = 0x4746a0b9,
-                V = 0x1,
-                R = UInt256.Parse("0xd2a4b3f5d85a32198e3827e798a671b955492838fa570c4d5539d015b12f89fe"),
-                S = UInt256.Parse("0x6f1d4e4b547991d64901e7e3cdc4a114023f28dc139b6fc7bfd2326c1e4e092f"),
-                Hash = new Hash256("0xe8edbc9ac0359f4d9c9d331fd2dc77e66adb2e8d13f31a9627652549625f5592"),
-                Gas = 0x7a120
-            }
-        ],
-        Withdrawals =
-        [
-            new Withdrawal()
-            {
-                Index = 0x2434c6,
-                ValidatorIndex = 0xf8fe7,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x172073,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434c7,
-                ValidatorIndex = 0xf8fe8,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x16fe30,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434c8,
-                ValidatorIndex = 0xf8fe9,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x171655,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434c9,
-                ValidatorIndex = 0xf8fea,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x171d09,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434ca,
-                ValidatorIndex = 0xf8feb,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x17193f,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434cb,
-                ValidatorIndex = 0xf8fec,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x171c89,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434cc,
-                ValidatorIndex = 0xf8fed,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x175f94
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434cd,
-                ValidatorIndex = 0xf8fee,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x16f8ed
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434ce,
-                ValidatorIndex = 0xf8fef,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x171613
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434cf,
-                ValidatorIndex = 0xf8ff0,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x17164a
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434d0,
-                ValidatorIndex = 0xf8ff1,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x17421f
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434d1,
-                ValidatorIndex = 0xf8ff2,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x16ebda
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434d2,
-                ValidatorIndex = 0xf8ff3,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x175778
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434d3,
-                ValidatorIndex = 0xf8ff4,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x173770
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434d4,
-                ValidatorIndex = 0xf8ff5,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x171616,
-            },
-            new Withdrawal()
-            {
-                Index = 0x2434d5,
-                ValidatorIndex = 0xf8ff6,
-                Address = new("0xe5061fe5b4d0bd260f1ff80fa919e339f1f5c330"),
-                AmountInGwei = 0x1721fc
-            }
-        ]
+        Hash = new Hash256("0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8")
     };
+
+    private static Block suggestedBlock = new Block(suggestedBlockHeader, suggestedTransactions, [], suggestedWithdrawals);
 
     private static byte[][] ToByteArrays(string[] data)
     {
@@ -339,8 +247,9 @@ class Program
         return result;
     }
 
-    static int Main(string[] args)
+    static int Main()
     {
+#nullable enable
         Witness witness = new Witness()
         {
             Codes = ToByteArrays(codes),
@@ -349,41 +258,10 @@ class Program
             State = ToByteArrays(state)
         };
 
-        BlockHeader suggestedBlockHeader = new BlockHeader(
-            suggestedBlockForRpc.ParentHash,
-            suggestedBlockForRpc.Sha3Uncles,
-            suggestedBlockForRpc.Miner,
-            suggestedBlockForRpc.Difficulty,
-            suggestedBlockForRpc.Number!.Value,
-            suggestedBlockForRpc.GasLimit,
-            (ulong)suggestedBlockForRpc.Timestamp,
-            suggestedBlockForRpc.ExtraData,
-            suggestedBlockForRpc.BlobGasUsed,
-            suggestedBlockForRpc.ExcessBlobGas,
-            suggestedBlockForRpc.ParentBeaconBlockRoot,
-            suggestedBlockForRpc.RequestsHash)
-        {
-            StateRoot = suggestedBlockForRpc.StateRoot,
-            TxRoot = suggestedBlockForRpc.TransactionsRoot,
-            ReceiptsRoot = suggestedBlockForRpc.ReceiptsRoot,
-            Bloom = suggestedBlockForRpc.LogsBloom,
-            GasUsed = suggestedBlockForRpc.GasUsed,
-            MixHash = suggestedBlockForRpc.MixHash,
-            BaseFeePerGas = suggestedBlockForRpc.BaseFeePerGas!.Value,
-            WithdrawalsRoot = suggestedBlockForRpc.WithdrawalsRoot,
-            ParentBeaconBlockRoot = suggestedBlockForRpc.ParentBeaconBlockRoot,
-            RequestsHash = suggestedBlockForRpc.RequestsHash,
-            BlobGasUsed = suggestedBlockForRpc.BlobGasUsed,
-            ExcessBlobGas = suggestedBlockForRpc.ExcessBlobGas,
-            Hash = suggestedBlockForRpc.Hash,
-        };
-
-        // suggestedBlockHeader.Hash = suggestedBlockHeader.CalculateHash();
-
         BlockHeader? baseBlock = null;
-        foreach (var header in witness.DecodedHeaders)
+        foreach (BlockHeader header in witness.DecodedHeaders)
         {
-            if (header.Hash == suggestedBlockHeader.ParentHash)
+            if (header.Hash == suggestedBlock.Header.ParentHash)
             {
                 baseBlock = header;
             }
@@ -395,32 +273,67 @@ class Program
             return 4;
         }
 
-        Transaction[] transactions = new Transaction[suggestedBlockForRpc.Transactions.Length];
-        for (int j = 0; j < transactions.Length; j++)
-        {
-            transactions[j] = ((TransactionForRpc)suggestedBlockForRpc.Transactions[j]).ToTransaction();
-        }
-
-        Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);
-
         ISpecProvider specProvider = HoodiSpecProvider.Instance;
+
+        IReleaseSpec preExecSpec = specProvider.GetSpec(suggestedBlock.Header);
+        EnsureNoTraceOpcodesInitialized(preExecSpec);
 
         StatelessBlockProcessingEnv blockProcessingEnv =
             new(witness, specProvider, Always.Valid, NullLogManager.Instance);
 
-        using var scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
+        using System.IDisposable scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
         (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
             ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
-        if (processed.Hash != suggestedBlock.Hash)
-        {
-            // Invalid block
-            return 2;
-        }
-        // Block processed successfully
 
-        return 0;
+        return processed.Hash != suggestedBlock.Hash
+            ? 2  // Invalid block
+            : 0; // Block processed successfully
     }
+
+    private static unsafe void EnsureNoTraceOpcodesInitialized(IReleaseSpec spec)
+    {
+        // Under NativeAOT we cannot rely on runtime generic opcode generation; it may require dynamic code.
+        // In that case we must use a compiled-in (precomputed) opcode table provider.
+        if (spec.EvmInstructionsNoTrace is not null)
+        {
+            return;
+        }
+
+#if ZKVM
+        // In ZKVM mode, always try to generate opcodes statically.
+        // The AOT compiler will compile this generically without needing dynamic code.
+        spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
+        return;
+#else
+        if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported)
+        {
+            spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<EthereumGasPolicy, OffFlag>(spec);
+            return;
+        }
+
+        Array? precomputed = NativeAotOpcodeTableProvider.TryGetNoTraceOpcodesForEthereumGasPolicy(spec);
+        if (precomputed is not null)
+        {
+            spec.EvmInstructionsNoTrace = precomputed;
+            return;
+        }
+
+        Console.WriteLine(
+            "EVM opcode table (no-trace) was not initialized and no NativeAOT precomputed table provider was linked in. " +
+            "Ensure NativeAotOpcodeTableProvider is generated/compiled for this build and assigned to spec.EvmInstructionsNoTrace.");
+        Environment.Exit(2);
+#endif
+    }
+
+#if !ZKVM
+    private static class NativeAotOpcodeTableProvider
+    {
+        // NativeAOT: provide a compiled-in no-trace opcode table for VirtualMachine<EthereumGasPolicy>.
+        public static Array? TryGetNoTraceOpcodesForEthereumGasPolicy(IReleaseSpec spec)
+            => NativeAotNoTraceOpcodeTableEthereumGasPolicy.TryGetAsArray(spec);
+    }
+#endif
 }

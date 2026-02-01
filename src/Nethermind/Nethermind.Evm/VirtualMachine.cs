@@ -49,7 +49,21 @@ public static class VirtualMachineStatics
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
 
+#if ZKVM
+    // NativeAOT/ZKVM: avoid BigInteger-based static initialization (can trigger runtime failures).
+    // 2^255 expressed as a UInt256 with bit 255 set (big-endian).
+    public static readonly UInt256 P255Int = new UInt256(
+        new byte[]
+        {
+            0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        },
+        isBigEndian: true);
+#else
     public static readonly UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
+#endif
     public static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.EofValidator.MAGIC);
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
@@ -83,6 +97,397 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+#if ZKVM
+    /// <summary>
+    /// Executes a transaction with the same semantics as the non-instruction-tracing path, but without invoking
+    /// generic methods that can trigger GVM lookups under NativeAOT/ZKVM runtimes.
+    /// </summary>
+    public TransactionSubstate ExecuteTransactionNoTracing(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer)
+    {
+        return ExecuteTransactionNoTracingCore(vmState, worldState, txTracer);
+    }
+
+    private TransactionSubstate ExecuteTransactionNoTracingCore(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer)
+    {
+        _txTracer = txTracer;
+        _worldState = worldState;
+
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        PrepareOpcodesNoTracing(spec);
+        OpCodeCount = 0;
+
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
+        _currentState = vmState;
+        _previousCallResult = null;
+        _previousCallOutputDestination = UInt256.Zero;
+        ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
+
+        while (true)
+        {
+            if (!_currentState.IsContinuation)
+            {
+                ReturnDataBuffer = Array.Empty<byte>();
+            }
+
+            Exception? failure;
+            string? substateError;
+
+            try
+            {
+                CallResult callResult;
+
+                if (_currentState.IsPrecompile)
+                {
+                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure, out substateError);
+                    if (failure is not null)
+                    {
+                        goto Failure;
+                    }
+                }
+                else
+                {
+                    if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
+                    {
+                        TraceTransactionActionStart(_currentState);
+                    }
+
+                    if (_currentState.Env.CodeInfo is not null)
+                    {
+                        callResult = ExecuteCallNoTracing(
+                            _previousCallResult,
+                            previousCallOutput,
+                            _previousCallOutputDestination);
+                    }
+                    else
+                    {
+                        callResult = CallResult.InvalidCodeException;
+                    }
+
+                    if (!callResult.IsReturn)
+                    {
+                        PrepareNextCallFrame(in callResult, ref previousCallOutput);
+                        continue;
+                    }
+
+                    if (callResult.IsException)
+                    {
+                        TransactionSubstate substate = HandleExceptionNoTracing(in callResult, ref previousCallOutput, out bool terminate);
+                        if (terminate)
+                        {
+                            _currentState = null;
+                            return substate;
+                        }
+
+                        continue;
+                    }
+                }
+
+                if (_currentState.IsTopLevel)
+                {
+                    if (_txTracer.IsTracingActions)
+                    {
+                        TraceTransactionActionEnd(_currentState, callResult);
+                    }
+
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    _currentState = null;
+                    return substate;
+                }
+
+                using (VmState<TGasPolicy> previousState = _currentState)
+                {
+                    _currentState = _stateStack.Pop();
+                    _currentState.IsContinuation = true;
+
+                    TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
+                    bool previousStateSucceeded = true;
+
+                    if (!callResult.ShouldRevert)
+                    {
+                        long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
+
+                        if (previousState.ExecutionType.IsAnyCreate())
+                        {
+                            PrepareCreateData(previousState, ref previousCallOutput);
+                            if (previousState.ExecutionType.IsAnyCreateLegacy())
+                            {
+                                HandleLegacyCreate(
+                                    in callResult,
+                                    previousState,
+                                    gasAvailableForCodeDeposit,
+                                    ref previousStateSucceeded);
+                            }
+                            else if (previousState.ExecutionType.IsAnyCreateEof())
+                            {
+                                HandleEofCreate(
+                                    in callResult,
+                                    previousState,
+                                    gasAvailableForCodeDeposit,
+                                    ref previousStateSucceeded);
+                            }
+                        }
+                        else
+                        {
+                            previousCallOutput = HandleRegularReturnNoTracing(in callResult, previousState);
+                        }
+
+                        if (previousStateSucceeded)
+                        {
+                            previousState.CommitToParent(_currentState);
+                        }
+                    }
+                    else
+                    {
+                        HandleRevert(previousState, callResult, ref previousCallOutput);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is EvmException or OverflowException)
+            {
+                failure = ex;
+                substateError = null;
+                goto Failure;
+            }
+
+            continue;
+
+        Failure:
+            TransactionSubstate failSubstate = HandleFailureNoTracing(failure, substateError, ref previousCallOutput, out bool shouldExit);
+            if (shouldExit)
+            {
+                _currentState = null;
+                return failSubstate;
+            }
+        }
+    }
+
+    private interface IOpcodeTableProvider
+    {
+        bool TryGetNoTracing<TPolicy>(IReleaseSpec spec, out delegate*<VirtualMachine<TPolicy>, ref EvmStack, ref TPolicy, ref int, EvmExceptionType>[] opcodes)
+            where TPolicy : struct, IGasPolicy<TPolicy>;
+    }
+
+    private sealed class DefaultOpcodeTableProvider : IOpcodeTableProvider
+    {
+        public bool TryGetNoTracing<TPolicy>(IReleaseSpec spec, out delegate*<VirtualMachine<TPolicy>, ref EvmStack, ref TPolicy, ref int, EvmExceptionType>[] opcodes)
+            where TPolicy : struct, IGasPolicy<TPolicy>
+        {
+            Array? noTrace = spec.EvmInstructionsNoTrace;
+
+            if (noTrace is null)
+            {
+                if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported)
+                {
+                    noTrace = EvmInstructions.GenerateOpCodes<TPolicy, OffFlag>(spec);
+                    spec.EvmInstructionsNoTrace = noTrace;
+                }
+                else
+                {
+                    opcodes = default;
+                    return false;
+                }
+            }
+
+            if (noTrace is delegate*<VirtualMachine<TPolicy>, ref EvmStack, ref TPolicy, ref int, EvmExceptionType>[] typed)
+            {
+                opcodes = typed;
+                return true;
+            }
+
+            opcodes = default;
+            return false;
+        }
+    }
+
+    private static readonly IOpcodeTableProvider OpcodeTableProvider = new DefaultOpcodeTableProvider();
+
+    private void PrepareOpcodesNoTracing(IReleaseSpec spec)
+    {
+        // NativeAOT/ZKVM: avoid generic opcode generation at runtime when dynamic code is unavailable.
+        // Under regular JIT runtime, we can lazily generate the table here as before.
+        if (OpcodeTableProvider.TryGetNoTracing<TGasPolicy>(spec, out delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodes))
+        {
+            _opcodeMethods = opcodes;
+            return;
+        }
+
+        Array? noTrace = spec.EvmInstructionsNoTrace;
+        if (noTrace is null)
+        {
+            Console.WriteLine(
+                "EVM opcode table (no-trace) was not initialized. Under NativeAOT it must be precomputed and assigned to spec.EvmInstructionsNoTrace.");
+            Environment.Exit(2);
+            return;
+        }
+
+        Console.WriteLine(
+            $"EVM opcode table (no-trace) has unexpected type '{noTrace.GetType()}'. " +
+            "Under NativeAOT it must be precomputed with the correct function-pointer signature for this VirtualMachine<TGasPolicy> instantiation.");
+        Environment.Exit(2);
+    }
+
+    [SkipLocalsInit]
+    private CallResult ExecuteCallNoTracing(
+        ReadOnlyMemory<byte>? previousCallResult,
+        ZeroPaddedSpan previousCallOutput,
+        scoped in UInt256 previousCallOutputDestination)
+    {
+        VmState<TGasPolicy> vmState = _currentState;
+        ExecutionEnvironment env = vmState.Env;
+
+        if (!vmState.IsContinuation)
+        {
+            IReleaseSpec spec = BlockExecutionContext.Spec;
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+
+            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
+            {
+                _worldState.IncrementNonce(env.ExecutingAccount);
+            }
+        }
+
+        if (env.CodeInfo.CodeSpan.Length == 0)
+        {
+            if (!vmState.IsTopLevel)
+            {
+                Metrics.IncrementEmptyCalls();
+            }
+
+            return CallResult.Empty(vmState.Env.CodeInfo.Version);
+        }
+
+        vmState.InitializeStacks();
+
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
+        TGasPolicy gas = vmState.Gas;
+
+        if (previousCallResult is not null)
+        {
+            stack.PushBytes<OffFlag>(previousCallResult.Value.Span);
+        }
+
+        if (previousCallOutput.Length > 0)
+        {
+            UInt256 localPreviousDest = previousCallOutputDestination;
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            {
+                return CallResult.OutOfGasException;
+            }
+
+            if (!vmState.Memory.TrySave(in localPreviousDest, previousCallOutput))
+            {
+                return CallResult.OutOfGasException;
+            }
+        }
+
+        return _txTracer.IsCancelable switch
+        {
+            false => RunByteCode<OffFlag, OffFlag>(ref stack, ref gas),
+            true => RunByteCode<OffFlag, OnFlag>(ref stack, ref gas),
+        };
+    }
+
+    private ZeroPaddedSpan HandleRegularReturnNoTracing(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
+    {
+        ZeroPaddedSpan previousCallOutput;
+        ReturnDataBuffer = callResult.Output.Bytes;
+
+        _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.SuccessBytes
+            : callResult.PrecompileSuccess.HasValue
+                ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
+                : StatusCode.SuccessBytes;
+
+        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(
+            0,
+            Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+
+        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+
+        if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
+        }
+
+        return previousCallOutput;
+    }
+
+    private TransactionSubstate HandleFailureNoTracing(Exception failure, string? substateError, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    {
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"exception ({failure.GetType().Name}) in {_currentState.ExecutionType} at depth {_currentState.Env.CallDepth} - restoring snapshot");
+        }
+
+        _worldState.Restore(_currentState.Snapshot);
+        RevertParityTouchBugAccount();
+
+        ITxTracer txTracer = _txTracer;
+        EvmException? evmException = failure as EvmException;
+        EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
+
+        if (txTracer.IsTracingActions)
+        {
+            txTracer.ReportActionError(errorType);
+        }
+
+        if (_currentState.IsTopLevel)
+        {
+            EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            shouldExit = true;
+            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError);
+        }
+
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        _previousCallOutputDestination = UInt256.Zero;
+        ReturnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+
+        _currentState.Dispose();
+        _currentState = _stateStack.Pop();
+        _currentState.IsContinuation = true;
+
+        shouldExit = false;
+        return default;
+    }
+
+    private TransactionSubstate HandleExceptionNoTracing(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    {
+        ITxTracer txTracer = _txTracer;
+
+        if (txTracer.IsTracingActions)
+        {
+            txTracer.ReportActionError(callResult.ExceptionType);
+        }
+
+        _worldState.Restore(_currentState.Snapshot);
+        RevertParityTouchBugAccount();
+
+        if (_currentState.IsTopLevel)
+        {
+            shouldExit = true;
+            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
+        }
+
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        _previousCallOutputDestination = UInt256.Zero;
+        ReturnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+
+        _currentState.Dispose();
+        _currentState = _stateStack.Pop();
+        _currentState.IsContinuation = true;
+
+        shouldExit = false;
+        return default;
+    }
+#endif
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));

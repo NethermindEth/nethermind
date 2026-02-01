@@ -22,6 +22,10 @@ public static class RuntimeInformation
 
     public static CpuInfo? GetCpuInfo()
     {
+#if ZKVM
+        // NativeAOT/ZKVM: avoid Process-based probing (Sysctl/Wmic/ProcCpuInfo invoke external processes).
+        return null;
+#else
         if (IsWindows())
             return WmicCpuInfoProvider.WmicCpuInfo.Value;
         if (IsLinux())
@@ -30,11 +34,18 @@ public static class RuntimeInformation
             return SysctlCpuInfoProvider.SysctlCpuInfo.Value;
 
         return null;
+#endif
     }
 
+#if ZKVM
+    public static int PhysicalCoreCount { get; } = Math.Max(1, Environment.ProcessorCount);
+    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount) };
+    public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(Math.Max(1, Environment.ProcessorCount), 16) };
+#else
     public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount;
     public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = Environment.ProcessorCount };
     public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(PhysicalCoreCount, 16) };
+#endif
 
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }

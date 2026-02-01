@@ -222,15 +222,29 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
+#if ZKVM
+            // NativeAOT/ZKVM: avoid generic specialization on static interface members (IFlag.IsActive),
+            // which can trigger GVM lookup failures at runtime. Force the non-instruction-tracing path.
+            if (tracer.IsTracingInstructions)
+            {
+                throw new NotSupportedException("Instruction tracing is not supported under ZKVM.");
+            }
+
+            int statusCode = ExecuteEvmCall_NoTracing(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas);
+#else
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+#endif
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
 
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
                 tx.SpentGas = spentGas.SpentGas;
+
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                header.GasUsed += spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -766,13 +780,127 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
-
+            goto Complete;
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                header.GasUsed += gasConsumed.SpentGas;
-
             return statusCode;
         }
+
+#if ZKVM
+        private int ExecuteEvmCall_NoTracing(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            int delegationRefunds,
+            IntrinsicGas<TGasPolicy> gas,
+            in StackAccessTracker accessedItems,
+            TGasPolicy gasAvailable,
+            ExecutionEnvironment env,
+            out TransactionSubstate substate,
+            out GasConsumed gasConsumed)
+        {
+            substate = default;
+            gasConsumed = tx.GasLimit;
+            byte statusCode = StatusCode.Failure;
+
+            Snapshot snapshot = WorldState.TakeSnapshot();
+
+            PayValue(tx, spec, opts);
+
+            if (env.CodeInfo is not null)
+            {
+                if (tx.IsContractCreation)
+                {
+                    if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                    {
+                        goto FailContractCreate;
+                    }
+                }
+            }
+            else
+            {
+                long minimalGasLong = TGasPolicy.GetRemainingGas(gas.MinimalGas);
+                gasConsumed = minimalGasLong;
+                if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice, spec);
+                goto Complete;
+            }
+
+            ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
+
+            using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
+            {
+                // NativeAOT/ZKVM: avoid interface dispatch, which can trigger GVM lookup failures at runtime.
+                if (VirtualMachine is not VirtualMachine<TGasPolicy> vm)
+                {
+                    throw new InvalidOperationException($"Expected {nameof(VirtualMachine)} to be {typeof(VirtualMachine<TGasPolicy>)} under ZKVM.");
+                }
+
+                substate = vm.ExecuteTransactionNoTracing(state, WorldState, tracer);
+                Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
+                gasAvailable = state.Gas;
+
+                if (tracer.IsTracingAccess)
+                {
+                    tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
+                }
+
+                if (substate.ShouldRevert || substate.IsError)
+                {
+                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                    WorldState.Restore(snapshot);
+                }
+                else
+                {
+                    if (tx.IsContractCreation)
+                    {
+                        if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
+                        {
+                            if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                            {
+                                goto FailContractCreate;
+                            }
+                        }
+                        else
+                        {
+                            if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                            {
+                                goto FailContractCreate;
+                            }
+                        }
+                    }
+
+                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    {
+                        if (Logger.IsTrace)
+                            Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                        WorldState.ClearStorage(toBeDestroyed);
+                        WorldState.DeleteAccount(toBeDestroyed);
+
+                        if (tracer.IsTracingRefunds)
+                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                    }
+
+                    statusCode = StatusCode.Success;
+                }
+            }
+
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
+                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+            goto Complete;
+
+        FailContractCreate:
+            if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+            WorldState.Restore(snapshot);
+            gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
+            goto Complete;
+
+        Complete:
+            return statusCode;
+        }
+#endif
 
         protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
         {

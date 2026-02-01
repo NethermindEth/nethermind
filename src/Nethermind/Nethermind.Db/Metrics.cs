@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -92,6 +93,18 @@ namespace Nethermind.Db
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+#if ZKVM
+        // Under NativeAOT/ZKVM we avoid initializing NonBlocking dictionaries (can trigger runtime generic type construction).
+        // Provide no-op placeholders so callers still compile.
+        public static IReadOnlyDictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
+        public static IReadOnlyDictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
+        public static IReadOnlyDictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
+        public static IReadOnlyDictionary<string, long> DbMemtableSize { get; } = new Dictionary<string, long>();
+        public static IReadOnlyDictionary<string, long> DbBlockCacheSize { get; } = new Dictionary<string, long>();
+        public static IReadOnlyDictionary<string, long> DbIndexFilterSize { get; } = new Dictionary<string, long>();
+        public static IReadOnlyDictionary<(string, string), double> DbStats { get; } = new Dictionary<(string, string), double>();
+        public static IReadOnlyDictionary<(string, int, string), double> DbCompactionStats { get; } = new Dictionary<(string, int, string), double>();
+#else
         [GaugeMetric]
         [Description("Database reads per database")]
         [KeyIsLabel("db")]
@@ -129,6 +142,7 @@ namespace Nethermind.Db
         [Description("Metrics extracted from RocksDB Compaction Stats")]
         [KeyIsLabel("db", "level", "metric")]
         public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
+#endif
 
         [DetailedMetric]
         [Description("Prewarmer get operation times")]
