@@ -32,7 +32,6 @@ namespace Nethermind.Xdc
         IMasternodeVotingContract masternodeVotingContract) : IRewardCalculator
     {
         private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
-        private const long BlocksPerYear = 15768000;
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
         private const long MergeSignRange = 15;
