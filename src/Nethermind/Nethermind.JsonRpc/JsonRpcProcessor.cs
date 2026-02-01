@@ -21,6 +21,7 @@ using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -52,8 +53,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    public CancellationToken ProcessExit
-        => _processExitSource?.Token ?? default;
+    public CancellationToken ProcessExit => _processExitSource?.Token ?? default;
 
     private void DeserializeObjectOrArray(JsonDocument doc, out JsonRpcRequest? model, out ArrayPoolList<JsonRpcRequest>? collection)
     {
@@ -124,7 +124,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element) =>
         new(element.GetArrayLength(), element.EnumerateArray().Select(DeserializeObject));
 
-    private static readonly JsonReaderOptions _jsonReaderOptions = new() { AllowMultipleValues = true };
+    private static readonly JsonReaderOptions _socketJsonReaderOptions = new() { AllowMultipleValues = true };
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
@@ -140,7 +140,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
 
         using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
-        JsonReaderState readerState = new(_jsonReaderOptions);
+        JsonReaderState readerState = CreateJsonReaderState(context);
         bool freshState = true;
         bool shouldExit = false;
         try
@@ -181,7 +181,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     {
                         try
                         {
-                            freshState = TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument);
+                            freshState = TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument, context);
                             if (freshState)
                             {
                                 result = await ProcessJsonDocument(jsonDocument, context, startTime);
@@ -245,17 +245,25 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
     }
 
-    private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, bool isFinalBlock, ref JsonReaderState readerState, [NotNullWhen(true)] out JsonDocument? jsonDocument)
+    private static bool TryParseJson(
+        ref ReadOnlySequence<byte> buffer,
+        bool isFinalBlock,
+        ref JsonReaderState readerState,
+        [NotNullWhen(true)] out JsonDocument? jsonDocument,
+        JsonRpcContext context)
     {
         Utf8JsonReader jsonReader = new(buffer, isFinalBlock, readerState);
         bool parsed = JsonDocument.TryParseValue(ref jsonReader, out jsonDocument);
         buffer = buffer.Slice(jsonReader.BytesConsumed);
         readerState = parsed
-            ? new(_jsonReaderOptions) // Reset state for the next document
+            ? CreateJsonReaderState(context) // Reset state for the next document
             : jsonReader.CurrentState; // Preserve state for resumption when more data arrives
 
         return parsed;
     }
+
+    private static JsonReaderState CreateJsonReaderState(JsonRpcContext context) =>
+        new(context.RpcEndpoint == RpcEndpoint.Http ? default : _socketJsonReaderOptions);
 
     private async Task<JsonRpcResult?> ProcessJsonDocument(JsonDocument jsonDocument, JsonRpcContext context, long startTime)
     {
