@@ -21,10 +21,17 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public static string Name => "ID";
 
+    // Caching disabled: the copy operation is O(n) and the cache key hash is also O(n),
+    // making caching strictly worse than direct execution for this precompile.
+    public bool SupportsCaching => false;
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        3L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    {
+        long cost = 3L * EvmCalculations.Div32Ceiling((uint)inputData.Length, out bool outOfGas);
+        return !outOfGas ? cost : long.MaxValue;
+    }
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();
 }

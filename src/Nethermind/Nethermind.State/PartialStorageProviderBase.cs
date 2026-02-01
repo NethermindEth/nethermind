@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -60,13 +63,16 @@ namespace Nethermind.State
         public int TakeSnapshot(bool newTransactionStart)
         {
             int position = _changes.Count - 1;
-            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
+            if (_logger.IsTrace) Trace(position);
             if (newTransactionStart && position != Resettable.EmptyPosition)
             {
                 _transactionChangesSnapshots.Push(position);
             }
 
             return position;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(int position) => _logger.Trace($"Storage snapshot {position}");
         }
 
         /// <summary>
@@ -76,12 +82,12 @@ namespace Nethermind.State
         /// <exception cref="InvalidOperationException">Throws exception if snapshot is invalid</exception>
         public void Restore(int snapshot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
+            if (_logger.IsTrace) Trace(snapshot);
 
             int currentPosition = _changes.Count - 1;
             if (snapshot > currentPosition)
             {
-                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+                ThrowCannotRestore(snapshot, currentPosition);
             }
 
             if (snapshot == currentPosition)
@@ -100,7 +106,7 @@ namespace Nethermind.State
                         int actualPosition = stack.Pop();
                         if (actualPosition != currentPosition - i)
                         {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+                            ThrowWrongPosition(currentPosition, i, actualPosition);
                         }
 
                         _keptInCache.Add(change);
@@ -112,7 +118,7 @@ namespace Nethermind.State
                 int forAssertion = stack.Pop();
                 if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    ThrowFailedCheck(currentPosition, i, forAssertion);
                 }
 
                 _changes[currentPosition - i] = default;
@@ -139,6 +145,20 @@ namespace Nethermind.State
                 _transactionChangesSnapshots.Pop();
             }
 
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(int snapshot) => _logger.Trace($"Restoring storage snapshot {snapshot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowCannotRestore(int snapshot, int currentPosition)
+                => throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowWrongPosition(int currentPosition, int i, int actualPosition)
+                => throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowFailedCheck(int currentPosition, int i, int forAssertion)
+                => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
         }
 
         /// <summary>
@@ -149,12 +169,15 @@ namespace Nethermind.State
         {
             if (_changes.Count == 0)
             {
-                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
+                if (_logger.IsTrace) Trace();
             }
             else
             {
                 CommitCore(tracer);
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace() => _logger.Trace("No storage changes to commit");
         }
 
         /// <summary>
@@ -171,11 +194,14 @@ namespace Nethermind.State
 
         private void Reset()
         {
-            if (_logger.IsTrace) _logger.Trace("Resetting storage");
+            if (_logger.IsTrace) Trace();
 
             _changes.Clear();
             _intraBlockCache.ResetAndClear();
             _transactionChangesSnapshots.Clear();
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace() => _logger.Trace("Resetting storage");
         }
 
         /// <summary>

@@ -46,7 +46,9 @@ public class ContractBasedValidatorTests
     private BlockHeader _parentHeader;
     private ITransactionProcessor _transactionProcessor;
     private IAuRaBlockFinalizationManager _blockFinalizationManager;
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private static readonly Address _contractAddress = Address.FromNumber(1000);
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] { 0, 1, 2 });
     private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] { 3, 4, 5 });
     private Address[] _initialValidators;
@@ -647,7 +649,7 @@ public class ContractBasedValidatorTests
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,
