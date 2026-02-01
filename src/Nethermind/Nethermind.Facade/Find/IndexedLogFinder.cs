@@ -44,7 +44,7 @@ public class IndexedLogFinder(
         IEnumerable<FilterLog> result = [];
 
         if (indexRange.from > fromBlock.Number &&
-            FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is {} beforeIndex)
+            FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
         {
             result = result.Concat(
                 base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken)
@@ -60,7 +60,7 @@ public class IndexedLogFinder(
         cancellationToken.ThrowIfCancellationRequested();
 
         if (indexRange.to < toBlock.Number &&
-            FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is {} afterIndex)
+            FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
         {
             result = result.Concat(
                 base.FindLogs(filter, afterIndex, toBlock, cancellationToken)
