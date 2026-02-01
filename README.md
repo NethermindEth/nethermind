@@ -14,7 +14,7 @@
 [![GitHub Discussions](https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social)](https://github.com/nethermindeth/nethermind/discussions)
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
-Nethermind Ethereum client is an execution client built on .NET. Nethermind is the fastest client in terms of throughput, block processing, TPS, and syncing new nodes. With its modular design and plugin system, it offers extensibility and features for new chains. As one of the most adopted execution clients on Ethereum, Nethermind plays a crucial role in enhancing the diversity and resilience of the Ethereum ecosystem.
+Nethermind is an Ethereum execution client built on .NET. Nethermind is the fastest client in terms of throughput, block processing, transactions per second (TPS), and syncing new nodes. With its modular design and plugin system, it offers extensibility and features for new chains. As one of the most adopted execution clients on Ethereum, Nethermind plays a crucial role in enhancing the diversity and resilience of the Ethereum ecosystem.
 
 ## Documentation
 
