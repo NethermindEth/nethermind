@@ -18,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NonBlocking;
 
 namespace Nethermind.State;
 

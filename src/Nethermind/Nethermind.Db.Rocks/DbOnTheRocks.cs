@@ -71,6 +71,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly List<OptionsHandle> _doNotGcOptions = [];
 
     private readonly IRocksDbConfig _perTableDbConfig;
+    internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -116,12 +117,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
 
-        _reader = new RocksDbReader(this, () =>
-        {
-            ReadOptions readOptions = new ReadOptions();
-            readOptions.SetVerifyChecksums(_perTableDbConfig.VerifyChecksum ?? true);
-            return readOptions;
-        }, _iteratorManager, null);
+        _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
@@ -654,11 +650,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _lowPriorityAndNoWalWrite.DisableWal(1);
         _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
 
-        _defaultReadOptions = new ReadOptions();
-        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
+        _defaultReadOptions = CreateReadOptions();
 
-        _hintCacheMissOptions = new ReadOptions();
-        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
+        _hintCacheMissOptions = CreateReadOptions();
         _hintCacheMissOptions.SetFillCache(false);
 
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
@@ -668,8 +662,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
         if (dbConfig.ReadAheadSize != 0)
         {
-            _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
+            _readAheadReadOptions = CreateReadOptions();
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
         }
@@ -682,6 +675,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // potential fix for corruption on hard process termination, may cause performance degradation
         options.SetSync(dbConfig.WriteAheadLogSync);
         return options;
+    }
+
+    internal ReadOptions CreateReadOptions()
+    {
+        ReadOptions readOptions = new();
+        readOptions.SetVerifyChecksums(VerifyChecksum);
+        return readOptions;
     }
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags)
@@ -1148,45 +1148,60 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(iterator);
     }
 
+    private void IteratorSeekToFirstWithErrorHandling(Iterator iterator)
+    {
+        try
+        {
+            iterator.SeekToFirst();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    private void IteratorNextWithErrorHandling(Iterator iterator)
+    {
+        try
+        {
+            iterator.Next();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    private void IteratorDisposeWithErrorHandling(Iterator iterator)
+    {
+        try
+        {
+            iterator.Dispose();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
     {
         try
         {
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorSeekToFirstWithErrorHandling(iterator);
 
             while (iterator.Valid())
             {
                 yield return iterator.Value();
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                IteratorNextWithErrorHandling(iterator);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorDisposeWithErrorHandling(iterator);
         }
     }
 
@@ -1194,86 +1209,37 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         try
         {
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorSeekToFirstWithErrorHandling(iterator);
 
             while (iterator.Valid())
             {
                 yield return iterator.Key();
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                IteratorNextWithErrorHandling(iterator);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorDisposeWithErrorHandling(iterator);
         }
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
     {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
         try
         {
-            ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-            try
-            {
-                iterator.SeekToFirst();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorSeekToFirstWithErrorHandling(iterator);
 
             while (iterator.Valid())
             {
                 yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
-
-                try
-                {
-                    iterator.Next();
-                }
-                catch (RocksDbSharpException e)
-                {
-                    CreateMarkerIfCorrupt(e);
-                    throw;
-                }
+                IteratorNextWithErrorHandling(iterator);
             }
         }
         finally
         {
-            try
-            {
-                iterator.Dispose();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            IteratorDisposeWithErrorHandling(iterator);
         }
     }
 
@@ -2004,7 +1970,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf)
     {
-        ReadOptions readOptions = new ReadOptions();
+        ReadOptions readOptions = CreateReadOptions();
 
         IntPtr iterateLowerBound = IntPtr.Zero;
         IntPtr iterateUpperBound = IntPtr.Zero;
@@ -2029,7 +1995,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Snapshot snapshot = _db.CreateSnapshot();
         return new RocksDbSnapshot(this, () =>
         {
-            ReadOptions readOptions = new ReadOptions();
+            ReadOptions readOptions = CreateReadOptions();
             readOptions.SetSnapshot(snapshot);
             return readOptions;
         }, null, snapshot);

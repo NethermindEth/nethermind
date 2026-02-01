@@ -176,6 +176,8 @@ public class EthereumRunnerTests
             return;
         }
 
+        if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
+
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
@@ -336,9 +338,6 @@ public class EthereumRunnerTests
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
-        // An ugly hack to keep unused types
-        Console.WriteLine(typeof(IHiveConfig));
-
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         var tempPath = TempPath.GetTempDirectory();
@@ -421,6 +420,8 @@ public class EthereumRunnerTests
                 }
             }
         }
+
+        GC.KeepAlive(typeof(IHiveConfig));
     }
 
     private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin

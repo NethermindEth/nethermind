@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
