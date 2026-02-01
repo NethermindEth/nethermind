@@ -138,7 +138,8 @@ public class PayloadAttributes
         if (actualVersion != apiVersion)
         {
             // except of Shanghai api handling Paris fork
-            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion < apiVersion)
+            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion == PayloadAttributesVersions.Paris ||
+                apiVersion == EngineApiVersions.Amsterdam && timestampVersion == PayloadAttributesVersions.Amsterdam)
             {
 
                 error = null;
