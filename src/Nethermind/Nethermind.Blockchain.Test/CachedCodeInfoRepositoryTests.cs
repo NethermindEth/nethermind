@@ -24,7 +24,7 @@ public class CachedCodeInfoRepositoryTests
     private static IReleaseSpec CreateSpecWithPrecompile(Address precompileAddress)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.Precompiles.Returns(new HashSet<AddressAsKey> { precompileAddress }.ToFrozenSet());
+        spec.IsPrecompile(precompileAddress).Returns(true);
         return spec;
     }
 
@@ -255,11 +255,8 @@ public class CachedCodeInfoRepositoryTests
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
 
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.Precompiles.Returns(new HashSet<AddressAsKey>
-        {
-            Sha256Precompile.Address,
-            IdentityPrecompile.Address
-        }.ToFrozenSet());
+        spec.IsPrecompile(Sha256Precompile.Address).Returns(true);
+        spec.IsPrecompile(IdentityPrecompile.Address).Returns(true);
 
         // Act
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
