@@ -67,7 +67,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Peer peerC = SetUpPeerC();      //Node is null, Caps are empty
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer> { peerA, peerB, peerC });
+            peerManager.ActivePeersCount.Returns(3);
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
+            peerManager.ConnectedPeersCount.Returns(5);
             peerManager.MaxActivePeers.Returns(15);
 
             TestReadOnlyStateProvider stateProvider = new TestReadOnlyStateProvider();
@@ -361,6 +363,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer> { });
             peerManager.ConnectedPeers.Returns(new List<Peer> { new(new Node(TestItem.PublicKeyA, "111.1.1.1", 11111, true)) });
+            peerManager.ConnectedPeersCount.Returns(1);
 
             IParityRpcModule parityRpcModule = CreateParityRpcModule(peerManager);
 
