@@ -19,7 +19,6 @@ using Nethermind.Evm.State;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
