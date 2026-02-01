@@ -60,8 +60,17 @@ public class CachedCodeInfoRepository(
 
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) =>
-        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
+    {
+        IPrecompile precompile = originalPrecompile.Value.Precompile!;
+
+        if (!precompile.SupportsCaching)
+        {
+            return originalPrecompile.Value;
+        }
+
+        return new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+    }
 
     private class CachedPrecompile(
         Address address,
