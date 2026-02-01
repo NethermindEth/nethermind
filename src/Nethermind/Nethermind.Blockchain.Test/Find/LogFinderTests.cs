@@ -24,6 +24,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.Blockchain.Test.Find;
 
@@ -322,15 +323,15 @@ public class LogFinderTests
 
         await Task.Delay(timeout * waitTime);
 
-        Func<FilterLog[]> action = () => logs.ToArray();
+        TestDelegate action = () => _ = logs.ToArray();
 
         if (waitTime > 1)
         {
-            action.Should().Throw<AggregateException>().WithInnerException<OperationCanceledException>();
+            Assert.That(action, Throws.Exception.InstanceOf<OperationCanceledException>().Or.InnerException.InstanceOf<OperationCanceledException>());
         }
         else
         {
-            action.Should().NotThrow();
+            Assert.DoesNotThrow(action);
         }
     }
 
