@@ -23,7 +23,7 @@ env:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }}
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     continue-on-error: true
     outputs:
@@ -40,7 +40,6 @@ jobs:
           - Ethereum.KeyAddress.Test
           - Ethereum.KeyStore.Test
           - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Blockchain.Test
           - Ethereum.Legacy.Transition.Test
           - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
@@ -91,6 +90,16 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        chunk: ['']
+        include:
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 1of4
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 2of4
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 3of4
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 4of4
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -103,6 +112,8 @@ jobs:
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release \
             ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
@@ -115,7 +126,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-outcome
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-outcome
           path: test.outcome
           retention-days: 1
 
@@ -123,7 +134,7 @@ jobs:
         if: env.COLLECT_COVERAGE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project }}-coverage
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
           path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
           retention-days: 1
 
