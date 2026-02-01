@@ -13,17 +13,13 @@ using Nethermind.Facade.Find;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitDatabase), typeof(StartBlockProcessor))]
-    public class StartLogIndex(IBasicApi api, IServiceStopper serviceStopper, ILogIndexBuilder logIndexBuilder) : IStep
+    public class StartLogIndex(IBasicApi api, ILogIndexBuilder logIndexBuilder) : IStep
     {
         public Task Execute(CancellationToken cancellationToken)
         {
             if (api.Config<ILogIndexConfig>().Enabled)
-            {
                 _ = logIndexBuilder.StartAsync();
-                serviceStopper.AddStoppable(logIndexBuilder);
-            }
 
-            api.DisposeStack.Push(logIndexBuilder);
             return Task.CompletedTask;
         }
 
