@@ -1,3 +1,4 @@
+<!-- cspell:disable -->
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/307367c4-415f-4d0f-8d87-49eac88ffebc">
@@ -5,6 +6,7 @@
     <img alt="Nethermind" src="https://github.com/user-attachments/assets/ce071b5b-c50b-4f30-95f8-b5f35695140e" height="64">
   </picture>
 </p>
+<!-- cspell:enable -->
 
 # Nethermind Ethereum client
 
