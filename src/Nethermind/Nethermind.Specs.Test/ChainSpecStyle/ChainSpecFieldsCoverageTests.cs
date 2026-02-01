@@ -215,7 +215,7 @@ public class ChainSpecFieldsCoverageTests
         }";
 
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(minimalChainSpec));
-        
+
         // Should not throw
         Action loadAction = () => loader.Load(stream);
         loadAction.Should().NotThrow();
