@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ActivePeers.Returns(new List<Peer> { peerA, peerB, peerC });
             peerManager.ActivePeersCount.Returns(3);
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
-            peerManager.ConnectedPeersCount.Returns(5); 
+            peerManager.ConnectedPeersCount.Returns(5);
             peerManager.MaxActivePeers.Returns(15);
 
             TestReadOnlyStateProvider stateProvider = new TestReadOnlyStateProvider();
