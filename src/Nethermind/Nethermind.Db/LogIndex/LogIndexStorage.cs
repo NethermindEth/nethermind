@@ -18,7 +18,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.LogIndex
 {
-    // TODO: test on big-endian system or optimize for little-endian
     // TODO: use uint for block number?
     public partial class LogIndexStorage : ILogIndexStorage
     {
@@ -659,7 +658,9 @@ namespace Nethermind.Db.LogIndex
                         Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
 
                         foreach ((Hash256 topic, List<int> blocks) in topics)
+                        {
                             MergeBlockNumbers(batches.Topics[topicIndex], topic.Bytes, blocks, isBackwardSync, stats);
+                        }
                     }
 
                     stats?.Merging.Include(Stopwatch.GetElapsedTime(timestamp));
@@ -701,7 +702,7 @@ namespace Nethermind.Db.LogIndex
         }
 
         protected virtual void MergeBlockNumbers(
-            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> numbers,
+            IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<int> numbers,
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
         {
@@ -803,16 +804,6 @@ namespace Nethermind.Db.LogIndex
         private static int ReadBlockNumber(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
         private static int ReadLastBlockNumber(ReadOnlySpan<byte> source) => ReadBlockNumber(source[^BlockNumberSize..]);
 
-        private static void WriteBlockNumbers(Span<byte> destination, IEnumerable<int> numbers)
-        {
-            var shift = 0;
-            foreach (var number in numbers)
-            {
-                WriteBlockNumber(destination[shift..], number);
-                shift += BlockNumberSize;
-            }
-        }
-
         private static void ReadBlockNumbers(ReadOnlySpan<byte> source, Span<int> buffer)
         {
             if (source.Length % BlockNumberSize != 0)
@@ -833,10 +824,10 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static byte[] CreateDbValue(IReadOnlyList<int> blockNumbers)
+        private static byte[] CreateDbValue(List<int> numbers)
         {
-            var value = new byte[blockNumbers.Count * BlockNumberSize];
-            WriteBlockNumbers(value, blockNumbers);
+            var value = new byte[numbers.Count * BlockNumberSize];
+            numbers.CopyTo(MemoryMarshal.Cast<byte, int>(value.AsSpan()));
             return value;
         }
 

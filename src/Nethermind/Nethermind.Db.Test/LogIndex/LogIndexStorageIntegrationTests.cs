@@ -983,7 +983,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             private int _count;
 
-            protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> numbers, bool isBackwardSync, LogIndexUpdateStats? stats)
+            protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<int> numbers, bool isBackwardSync, LogIndexUpdateStats? stats)
             {
                 var isFailBlock =
                     FailOnBlock >= Math.Min(numbers[0], numbers[^1]) &&
