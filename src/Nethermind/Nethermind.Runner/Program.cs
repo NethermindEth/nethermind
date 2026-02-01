@@ -38,6 +38,9 @@ using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+#if !DEBUG
+using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
+#endif
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
