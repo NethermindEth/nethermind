@@ -21,6 +21,10 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public static string Name => "ID";
 
+    // Caching disabled: the copy operation is O(n) and the cache key hash is also O(n),
+    // making caching strictly worse than direct execution for this precompile.
+    public bool SupportsCaching => false;
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
