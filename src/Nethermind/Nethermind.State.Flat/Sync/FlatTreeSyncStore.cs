@@ -111,7 +111,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             FlatEntryWriter.BranchInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
             while (enumerator.MoveNext())
             {
-                ProcessInlineAccountLeaf(writeBatch, enumerator.CurrentPath, enumerator.CurrentNode);
+                ProcessInlineAccountLeaf(writeBatch, enumerator.IntermediatePath, enumerator.CurrentNode);
             }
         }
         else if (node.IsExtension)
@@ -119,7 +119,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
             while (enumerator.MoveNext())
             {
-                ProcessInlineAccountLeaf(writeBatch, enumerator.CurrentPath, enumerator.CurrentNode);
+                ProcessInlineAccountLeaf(writeBatch, enumerator.IntermediatePath, enumerator.CurrentNode);
             }
         }
     }
@@ -165,7 +165,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             FlatEntryWriter.BranchInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
             while (enumerator.MoveNext())
             {
-                ProcessInlineStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentNode);
+                ProcessInlineStorageLeaf(writeBatch, address, enumerator.IntermediatePath, enumerator.CurrentNode);
             }
         }
         else if (node.IsExtension)
@@ -173,7 +173,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
             while (enumerator.MoveNext())
             {
-                ProcessInlineStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentNode);
+                ProcessInlineStorageLeaf(writeBatch, address, enumerator.IntermediatePath, enumerator.CurrentNode);
             }
         }
     }
@@ -340,35 +340,37 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         int? nibbleRangeStart = null;
 
+        void CompleteCurrentRange(int nibble, ref RefList16<DeletionRange> ranges)
+        {
+            if (nibbleRangeStart.HasValue)
+            {
+                AddMergedRangeIntersected(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, nibble - 1), existingCoverage, ref ranges);
+                nibbleRangeStart = null;
+            }
+        }
+
         for (int i = 0; i < 16; i++)
         {
             if (!newNode.IsChildNull(i))
             {
-                if (nibbleRangeStart.HasValue)
-                {
-                    AddMergedRangeIntersected(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, i - 1), existingCoverage, ref ranges);
-                    nibbleRangeStart = null;
-                }
+                CompleteCurrentRange(i, ref ranges);
                 continue;
             }
 
             // New has null at position i - check if existing covered this area
             DeletionRange childRange = ComputeSubtreeRange(path.Append(i));
-            if (RangesOverlap(childRange, existingCoverage))
+            bool shouldDeleteNibble = RangesOverlap(childRange, existingCoverage);
+            if (shouldDeleteNibble)
             {
                 nibbleRangeStart ??= i;
             }
-            else if (nibbleRangeStart.HasValue)
+            else
             {
-                AddMergedRangeIntersected(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, i - 1), existingCoverage, ref ranges);
-                nibbleRangeStart = null;
+                CompleteCurrentRange(i, ref ranges);
             }
         }
 
-        if (nibbleRangeStart.HasValue)
-        {
-            AddMergedRangeIntersected(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, 15), existingCoverage, ref ranges);
-        }
+        CompleteCurrentRange(16, ref ranges);
     }
 
     /// <summary>
@@ -380,7 +382,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         DeletionRange existingCoverage = ComputeExistingNodeCoverage(path, existingNode);
 
         // Gap before the leaf - only if existing covered it
-        ValueHash256 subtreeStart = path.Append(0, 64 - path.Length).Path;
+        ValueHash256 subtreeStart = path.ToLowerBoundPath();
         if (newFullPath.Path.CompareTo(subtreeStart) > 0)
         {
             DeletionRange gapBefore = new(subtreeStart, DecrementPath(newFullPath.Path));
@@ -394,7 +396,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         // Gap after the leaf - only if existing covered it
         ValueHash256 afterLeaf = IncrementPath(newFullPath.Path);
-        ValueHash256 subtreeEnd = path.Append(0xF, 64 - path.Length).Path;
+        ValueHash256 subtreeEnd = path.ToUpperBoundPath();
         if (afterLeaf.CompareTo(subtreeEnd) <= 0)
         {
             DeletionRange gapAfter = new(afterLeaf, subtreeEnd);
@@ -416,8 +418,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         DeletionRange existingCoverage = ComputeExistingNodeCoverage(path, existingNode);
 
         // Gap before the extension - only if existing covered it
-        ValueHash256 subtreeStart = path.Append(0, 64 - path.Length).Path;
-        ValueHash256 extensionStart = extendedPath.Append(0, 64 - extendedPath.Length).Path;
+        ValueHash256 subtreeStart = path.ToLowerBoundPath();
+        ValueHash256 extensionStart = extendedPath.ToLowerBoundPath();
         if (extensionStart.CompareTo(subtreeStart) > 0)
         {
             DeletionRange gapBefore = new(subtreeStart, DecrementPath(extensionStart));
@@ -430,9 +432,9 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         }
 
         // Gap after the extension - only if existing covered it
-        ValueHash256 extensionEnd = extendedPath.Append(0xF, 64 - extendedPath.Length).Path;
+        ValueHash256 extensionEnd = extendedPath.ToUpperBoundPath();
         ValueHash256 afterExtension = IncrementPath(extensionEnd);
-        ValueHash256 subtreeEnd = path.Append(0xF, 64 - path.Length).Path;
+        ValueHash256 subtreeEnd = path.ToUpperBoundPath();
         if (afterExtension.CompareTo(subtreeEnd) <= 0)
         {
             DeletionRange gapAfter = new(afterExtension, subtreeEnd);
@@ -494,15 +496,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// Compute the range of full paths covered by a subtree rooted at childPath.
     /// </summary>
     private static DeletionRange ComputeSubtreeRange(in TreePath childPath) =>
-        new(childPath.Append(0, 64 - childPath.Length).Path,
-            childPath.Append(0xF, 64 - childPath.Length).Path);
+        new(childPath.ToLowerBoundPath(), childPath.ToUpperBoundPath());
 
     /// <summary>
     /// Compute the merged range covering path.from.0000... to path.to.ffff... for a nibble range.
     /// </summary>
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
-        new(path.Append(from).Append(0, 63 - path.Length).Path,
-            path.Append(to).Append(0xF, 63 - path.Length).Path);
+        new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
 
     /// <summary>
     /// Create a TreePath from a ValueHash256 with specified length.

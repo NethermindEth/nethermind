@@ -39,11 +39,8 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                TreePath childPath = enumerator.CurrentPath;
-                (byte[] keyNibbles, _) = HexPrefix.FromBytes(enumerator.CurrentKey);
-                ValueHash256 fullPath = childPath.Append(keyNibbles).Path;
                 Account account = AccountDecoder.Instance.Decode(enumerator.CurrentValue)!;
-                writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
+                writeBatch.SetAccountRaw(enumerator.CurrentPath.ToCommitment(), account);
             }
         }
         else if (node.IsExtension)
@@ -51,11 +48,8 @@ internal static class FlatEntryWriter
             ExtensionInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                TreePath childPath = enumerator.CurrentPath;
-                (byte[] keyNibbles, _) = HexPrefix.FromBytes(enumerator.CurrentKey);
-                ValueHash256 fullPath = childPath.Append(keyNibbles).Path;
                 Account account = AccountDecoder.Instance.Decode(enumerator.CurrentValue)!;
-                writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
+                writeBatch.SetAccountRaw(enumerator.CurrentPath.ToCommitment(), account);
             }
         }
     }
@@ -66,12 +60,13 @@ internal static class FlatEntryWriter
     public static void WriteStorageFlatEntries(
         IPersistence.IWriteBatch writeBatch,
         Hash256 address,
-        ref TreePath path,
+        TreePath path,
         TrieNode node)
     {
         if (node.IsLeaf)
         {
-            WriteStorageLeaf(writeBatch, address, path, node.Key, node.Value.Span);
+            ValueHash256 fullPath = path.Append(node.Key).Path;
+            WriteStorageLeaf(writeBatch, address, fullPath, node.Value.Span);
             return;
         }
 
@@ -80,7 +75,7 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                WriteStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentKey, enumerator.CurrentValue);
+                WriteStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentValue);
             }
         }
         else if (node.IsExtension)
@@ -88,7 +83,7 @@ internal static class FlatEntryWriter
             ExtensionInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                WriteStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentKey, enumerator.CurrentValue);
+                WriteStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentValue);
             }
         }
     }
@@ -96,11 +91,9 @@ internal static class FlatEntryWriter
     private static void WriteStorageLeaf(
         IPersistence.IWriteBatch writeBatch,
         Hash256 address,
-        TreePath path,
-        ReadOnlySpan<byte> key,
+        ValueHash256 fullPath,
         ReadOnlySpan<byte> value)
     {
-        ValueHash256 fullPath = path.Append(key).Path;
         byte[] toWrite = value.IsEmpty
             ? State.StorageTree.ZeroBytes
             : value.AsRlpValueContext().DecodeByteArray();
@@ -120,7 +113,7 @@ internal static class FlatEntryWriter
         private int _index;
         private int _rlpPosition;
 
-        private ReadOnlySpan<byte> _currentKey;
+        private ValueHash256 _currentFullPath;
         private ReadOnlySpan<byte> _currentValue;
         private ReadOnlySpan<byte> _currentRlp;
 
@@ -130,7 +123,7 @@ internal static class FlatEntryWriter
             _rlp = node.FullRlp.Span;
             _originalPathLength = path.Length;
             _index = -1;
-            _currentKey = default;
+            _currentFullPath = default;
             _currentValue = default;
             _currentRlp = default;
 
@@ -140,8 +133,8 @@ internal static class FlatEntryWriter
             _rlpPosition = ctx.Position;
         }
 
-        public TreePath CurrentPath => _path;
-        public ReadOnlySpan<byte> CurrentKey => _currentKey;
+        public ValueHash256 CurrentPath => _currentFullPath;
+        public TreePath IntermediatePath => _path;
         public ReadOnlySpan<byte> CurrentValue => _currentValue;
 
         /// <summary>
@@ -176,22 +169,26 @@ internal static class FlatEntryWriter
                         continue;
 
                     case 160: // Hash reference (0xa0 = 32-byte Keccak)
-                        _rlpPosition = ctx.Position + 32;
+                        ctx.Position--;
+                        ctx.SkipItem();
+                        _rlpPosition = ctx.Position;
                         continue;
 
                     default: // Inline node
                         ctx.Position--;
+                        int length = ctx.PeekNextRlpLength();
                         ReadOnlySpan<byte> inlineRlp = ctx.PeekNextItem();
 
-                        if (TryExtractLeafData(inlineRlp, out _currentKey, out _currentValue))
+                        if (TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
                         {
                             _currentRlp = inlineRlp;
                             _path.AppendMut(_index);
-                            _rlpPosition = ctx.Position + inlineRlp.Length;
+                            _currentFullPath = _path.Append(currentKey).Path;
+                            _rlpPosition = ctx.Position + length;
                             return true;
                         }
 
-                        _rlpPosition = ctx.Position + inlineRlp.Length;
+                        _rlpPosition = ctx.Position;
                         continue;
                 }
             }
@@ -199,28 +196,6 @@ internal static class FlatEntryWriter
             return false;
         }
 
-        private static bool TryExtractLeafData(
-            ReadOnlySpan<byte> nodeRlp,
-            out ReadOnlySpan<byte> key,
-            out ReadOnlySpan<byte> value)
-        {
-            Rlp.ValueDecoderContext ctx = new(nodeRlp);
-            ctx.ReadSequenceLength();
-
-            ReadOnlySpan<byte> keySpan = ctx.DecodeByteArraySpan();
-
-            // Check if leaf (0x20 bit set in first nibble)
-            if (keySpan.Length > 0 && (keySpan[0] & 0x20) != 0)
-            {
-                key = keySpan;
-                value = ctx.DecodeByteArraySpan();
-                return true;
-            }
-
-            key = default;
-            value = default;
-            return false;
-        }
     }
 
     /// <summary>
@@ -237,7 +212,7 @@ internal static class FlatEntryWriter
 
         private readonly ReadOnlySpan<byte> _extensionKey;
 
-        private ReadOnlySpan<byte> _currentKey;
+        private ValueHash256 _currentFullPath;
         private ReadOnlySpan<byte> _currentValue;
         private ReadOnlySpan<byte> _currentRlp;
 
@@ -247,7 +222,7 @@ internal static class FlatEntryWriter
             _rlp = node.FullRlp.Span;
             _originalPathLength = path.Length;
             _done = false;
-            _currentKey = default;
+            _currentFullPath = default;
             _currentValue = default;
             _currentRlp = default;
 
@@ -257,8 +232,8 @@ internal static class FlatEntryWriter
             _extensionKey = ctx.DecodeByteArraySpan();
         }
 
-        public TreePath CurrentPath => _path;
-        public ReadOnlySpan<byte> CurrentKey => _currentKey;
+        public ValueHash256 CurrentPath => _currentFullPath;
+        public TreePath IntermediatePath => _path;
         public ReadOnlySpan<byte> CurrentValue => _currentValue;
 
         /// <summary>
@@ -292,6 +267,7 @@ internal static class FlatEntryWriter
 
             int prefix = ctx.ReadByte();
 
+
             switch (prefix)
             {
                 case 0:
@@ -304,12 +280,13 @@ internal static class FlatEntryWriter
                     ctx.Position--;
                     ReadOnlySpan<byte> inlineRlp = ctx.PeekNextItem();
 
-                    if (TryExtractLeafData(inlineRlp, out _currentKey, out _currentValue))
+                    if (TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
                     {
                         _currentRlp = inlineRlp;
                         // Append extension key nibbles to path
                         (byte[] extensionKeyNibbles, _) = HexPrefix.FromBytes(_extensionKey);
                         _path.AppendMut(extensionKeyNibbles);
+                        _currentFullPath = _path.Append(currentKey).Path;
                         return true;
                     }
 
@@ -317,29 +294,30 @@ internal static class FlatEntryWriter
                     return false;
             }
         }
+    }
 
-        private static bool TryExtractLeafData(
-            ReadOnlySpan<byte> nodeRlp,
-            out ReadOnlySpan<byte> key,
-            out ReadOnlySpan<byte> value)
+    private static bool TryExtractLeafData(
+        ReadOnlySpan<byte> nodeRlp,
+        out ReadOnlySpan<byte> key,
+        out ReadOnlySpan<byte> value)
+    {
+        Rlp.ValueDecoderContext ctx = new(nodeRlp);
+        ctx.ReadSequenceLength();
+
+        ReadOnlySpan<byte> keySpan = ctx.DecodeByteArraySpan();
+        (byte[] keyBytes, bool isLeaf) = HexPrefix.FromBytes(keySpan);
+
+        // Check if leaf (0x20 bit set in first nibble)
+        if (isLeaf)
         {
-            Rlp.ValueDecoderContext ctx = new(nodeRlp);
-            ctx.ReadSequenceLength();
-
-            ReadOnlySpan<byte> keySpan = ctx.DecodeByteArraySpan();
-
-            if (keySpan.Length > 0 && (keySpan[0] & 0x20) != 0)
-            {
-                (byte[] keyBytes, bool _isLeaf) = HexPrefix.FromBytes(keySpan);
-                key = keyBytes;
-                value = ctx.DecodeByteArraySpan();
-                return true;
-            }
-
-            key = default;
-            value = default;
-            return false;
+            value = ctx.DecodeByteArraySpan();
+            key = keyBytes;
+            return true;
         }
+
+        key = default;
+        value = default;
+        return false;
     }
 
     /// <summary>

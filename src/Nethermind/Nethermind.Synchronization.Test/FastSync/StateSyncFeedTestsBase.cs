@@ -123,9 +123,10 @@ public abstract class StateSyncFeedTestsBase(
             })
             .AddSingleton<ILogManager>(_logManager)
             .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
+            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<LocalDbContext>()
             .AddKeyedSingleton<IDb>(DbNames.Code, (_) => new TestMemDb())
-            .AddKeyedSingleton<IDb>(DbNames.State,(_) => new TestMemDb())
+            .AddKeyedSingleton<IDb>(DbNames.State, (_) => new TestMemDb())
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
             // Cache key includes type name so different inherited test classes don't share the same blocktree
@@ -218,23 +219,20 @@ public abstract class StateSyncFeedTestsBase(
     {
         public LocalDbContext(
             [KeyFilter(DbNames.Code)] IDb codeDb,
-            [KeyFilter(DbNames.Code)] IDb stateDb,
+            [KeyFilter(DbNames.State)] IDb stateDb,
             INodeStorage nodeStorage,
-            ISnapTrieFactory snapTrieFactory,
             ILogManager logManager)
         {
             NodeStorage = nodeStorage;
             CodeDb = (TestMemDb)codeDb;
             Db = (TestMemDb)stateDb;
-            StateTree = new StateTree(TestTrieStoreFactory.Build(Db, logManager), logManager);
-            SnapTrieFactory = snapTrieFactory;
+            StateTree = new StateTree(TestTrieStoreFactory.Build(nodeStorage, logManager), logManager);
         }
 
         private TestMemDb CodeDb { get; }
         private TestMemDb Db { get; }
         private INodeStorage NodeStorage { get; }
         private StateTree StateTree { get; }
-        public ISnapTrieFactory SnapTrieFactory { get; }
 
         public Hash256 RootHash
         {

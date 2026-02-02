@@ -36,8 +36,9 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         await using IContainer container = PrepareDownloader(remote);
         LocalDbContext local = container.Resolve<LocalDbContext>();
+        ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
-        ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
+        ProcessAccountRange(remote.StateTree, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx);
@@ -130,6 +131,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
         LocalDbContext local = container.Resolve<LocalDbContext>();
+        ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
         int startingHashIndex = 0;
         int endHashIndex;
@@ -145,7 +147,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             {
                 endHashIndex = startingHashIndex + 1000;
 
-                ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockNumber, rootHashAtBlock[blockNumber],
+                ProcessAccountRange(remote.StateTree, snapTrieFactory, blockNumber, rootHashAtBlock[blockNumber],
                    blockAccounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
                 startingHashIndex = endHashIndex + 1;
@@ -164,7 +166,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockJumps, finalRootHash,
+            ProcessAccountRange(remote.StateTree, snapTrieFactory, blockJumps, finalRootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
             startingHashIndex += 1000;
