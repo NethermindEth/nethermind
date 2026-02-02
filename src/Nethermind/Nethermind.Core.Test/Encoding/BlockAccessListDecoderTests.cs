@@ -62,11 +62,9 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Can_decode_then_encode_slot_change()
     {
-        // Note: UInt256 constructor from bytes needs isBigEndian: true to match RLP encoding
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
         SlotChanges expected = new(0, new SortedList<ushort, StorageChange> { { 0, parentHashStorageChange } });
 
-        // Generate expected RLP from the object (uses variable-length encoding per EIP-7928)
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(expectedRlp));
@@ -82,12 +80,8 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Can_decode_then_encode_storage_change()
     {
-        // Create expected StorageChange with a large UInt256 value
-        // Note: UInt256 constructor from bytes uses little-endian, but we want the value 0xc382836f...
-        // which when RLP encoded gives the same hex string as the value bytes
         StorageChange expected = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
 
-        // Generate expected RLP from the object (uses variable-length encoding per EIP-7928)
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(expectedRlp));
@@ -154,73 +148,31 @@ public class BlockAccessListDecoderTests
         StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
 
-        BalanceChange balanceChange = new()
-        {
-            BlockAccessIndex = 10,
-            PostBalance = 0
-        };
-        BalanceChange balanceChange2 = new()
-        {
-            BlockAccessIndex = 11,
-            PostBalance = 1
-        };
+        BalanceChange balanceChange = new(10, 0);
+        BalanceChange balanceChange2 = new(11, 1);
         byte[] balanceChangeBytes = Rlp.Encode(balanceChange, RlpBehaviors.None).Bytes;
         BalanceChange balanceChangeDecoded = Rlp.Decode<BalanceChange>(balanceChangeBytes, RlpBehaviors.None);
         Assert.That(balanceChange, Is.EqualTo(balanceChangeDecoded));
 
-        NonceChange nonceChange = new()
-        {
-            BlockAccessIndex = 10,
-            NewNonce = 0
-        };
-        NonceChange nonceChange2 = new()
-        {
-            BlockAccessIndex = 11,
-            NewNonce = 0
-        };
+        NonceChange nonceChange = new(10, 0);
+        NonceChange nonceChange2 = new(11, 0);
         byte[] nonceChangeBytes = Rlp.Encode(nonceChange, RlpBehaviors.None).Bytes;
         NonceChange nonceChangeDecoded = Rlp.Decode<NonceChange>(nonceChangeBytes, RlpBehaviors.None);
         Assert.That(nonceChange, Is.EqualTo(nonceChangeDecoded));
 
-        CodeChange codeChange = new()
-        {
-            BlockAccessIndex = 10,
-            NewCode = [0, 50]
-        };
+        CodeChange codeChange = new(10, [0, 50]);
         byte[] codeChangeBytes = Rlp.Encode(codeChange, RlpBehaviors.None).Bytes;
         CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
         Assert.That(codeChange, Is.EqualTo(codeChangeDecoded));
 
-        SortedDictionary<UInt256, SlotChanges> storageChangesDict = new()
-        {
-            { slotChanges.Slot, slotChanges }
-        };
-
-        SortedList<ushort, BalanceChange> balanceChangesList = new()
-        {
-            { balanceChange.BlockAccessIndex, balanceChange },
-            { balanceChange2.BlockAccessIndex, balanceChange2 }
-        };
-
-        SortedList<ushort, NonceChange> nonceChangesList = new()
-        {
-            { nonceChange.BlockAccessIndex, nonceChange },
-            { nonceChange2.BlockAccessIndex, nonceChange2 }
-        };
-
-        SortedList<ushort, CodeChange> codeChangesList = new()
-        {
-            { codeChange.BlockAccessIndex, codeChange },
-        };
-
-        AccountChanges accountChanges = new(
-            TestItem.AddressA,
-            storageChangesDict,
-            [storageRead, storageRead2],
-            balanceChangesList,
-            nonceChangesList,
-            codeChangesList
-        );
+        AccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(slotChanges.Slot, storageChange)
+            .WithStorageReads(0xbababa, 0xcacaca)
+            .WithBalanceChanges([balanceChange, balanceChange2])
+            .WithNonceChanges([nonceChange, nonceChange2])
+            .WithCodeChanges(codeChange)
+            .TestObject;
         byte[] accountChangesBytes = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
         AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
         Assert.That(accountChanges, Is.EqualTo(accountChangesDecoded));
@@ -240,72 +192,63 @@ public class BlockAccessListDecoderTests
     {
         get
         {
-            UInt256 eip4788Slot1 = 0xc;
-            // Note: UInt256 constructor from bytes needs isBigEndian: true to match RLP encoding
             StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-            // Note: value 0x0c (12) encoded as variable-length UInt256, not 32 bytes
             StorageChange timestampStorageChange = new(0, 0xc);
             SortedDictionary<Address, AccountChanges> expectedAccountChanges = new()
             {
-                {Eip7002Constants.WithdrawalRequestPredeployAddress, new(
+                {
                     Eip7002Constants.WithdrawalRequestPredeployAddress,
-                    [],
-                    [new(0), new(1), new(2), new(3)],
-                    [],
-                    [],
-                    []
-                )},
-                {Eip7251Constants.ConsolidationRequestPredeployAddress, new(
+                    Build.An.AccountChanges
+                        .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
+                        .WithStorageReads(0, 1, 2, 3)
+                        .TestObject
+                },
+                {
                     Eip7251Constants.ConsolidationRequestPredeployAddress,
-                    [],
-                    [new(0), new(1), new(2), new(3)],
-                    [],
-                    [],
-                    []
-                )},
-                {Eip2935Constants.BlockHashHistoryAddress, new(
+                    Build.An.AccountChanges
+                        .WithAddress(Eip7251Constants.ConsolidationRequestPredeployAddress)
+                        .WithStorageReads(0, 1, 2, 3)
+                        .TestObject
+                },
+                {
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange>{{0, parentHashStorageChange}}) } },
-                    [],
-                    [],
-                    [],
-                    []
-                )},
-                {Eip4788Constants.BeaconRootsAddress, new(
+                    Build.An.AccountChanges
+                        .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
+                        .WithStorageChanges(0, parentHashStorageChange)
+                        .TestObject
+                },
+                {
                     Eip4788Constants.BeaconRootsAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange>{{0, timestampStorageChange}}) } },
-                    [new(0x200b)],
-                    [],
-                    [],
-                    []
-                )},
-                {new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"), new(
+                    Build.An.AccountChanges
+                        .WithAddress(Eip4788Constants.BeaconRootsAddress)
+                        .WithStorageChanges(0xc, timestampStorageChange)
+                        .WithStorageReads(0x200b)
+                        .TestObject
+                },
+                {
                     new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"),
-                    [],
-                    [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, 0x1319718811c8) } },
-                    [],
-                    []
-                )},
-                {new("0xaccc7d92b051544a255b8a899071040739bada75"), new(
+                    Build.An.AccountChanges
+                        .WithAddress(new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"))
+                        .WithBalanceChanges([new(1, 0x1319718811c8)])
+                        .TestObject
+                },
+                {
                     new("0xaccc7d92b051544a255b8a899071040739bada75"),
-                    [],
-                    [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(Bytes.FromHexString("0x3635c99aac6d15af9c"), isBigEndian: true)) } },
-                    new SortedList<ushort, NonceChange> { { 1, new(1, 1) } },
-                    []
-                )},
-                {new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"), new(
+                    Build.An.AccountChanges
+                        .WithAddress(new("0xaccc7d92b051544a255b8a899071040739bada75"))
+                        .WithBalanceChanges([new(1, new UInt256(Bytes.FromHexString("0x3635c99aac6d15af9c"), isBigEndian: true))])
+                        .WithNonceChanges([new(1, 1)])
+                        .TestObject
+                },
+                {
                     new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"),
-                    [],
-                    [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, 0x64) } },
-                    [],
-                    []
-                )},
+                    Build.An.AccountChanges
+                        .WithAddress(new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"))
+                        .WithBalanceChanges([new(1, 0x64)])
+                        .TestObject
+                },
             };
             BlockAccessList expected = new(expectedAccountChanges);
-            // Generate RLP from object (uses variable-length encoding per EIP-7928)
             string balanceChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
             yield return new TestCaseData(balanceChangesRlp, expected)
             { TestName = "balance_changes" };
@@ -316,28 +259,20 @@ public class BlockAccessListDecoderTests
     {
         get
         {
-            AccountChanges storageReadsExpected = new(
-                Eip7002Constants.WithdrawalRequestPredeployAddress,
-                [],
-                [new(0), new(1), new(2), new(3)],
-                [],
-                [],
-                []
-            );
-            // Generate RLP from object (uses variable-length encoding per EIP-7928)
+            AccountChanges storageReadsExpected = Build.An.AccountChanges
+                .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
+                .WithStorageReads(0, 1, 2, 3)
+                .TestObject;
             string storageReadsRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageReadsExpected).Bytes);
             yield return new TestCaseData(storageReadsRlp, storageReadsExpected)
             { TestName = "storage_reads" };
 
-            AccountChanges storageChangesExpected = new(
-                Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange> { { 0, new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true)) } }) } },
-                [],
-                [],
-                [],
-                []
-            );
-            // Generate RLP from object (uses variable-length encoding per EIP-7928)
+            AccountChanges storageChangesExpected = Build.An.AccountChanges
+                .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
+                .WithStorageChanges(
+                    0,
+                    [new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))])
+                .TestObject;
             string storageChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageChangesExpected).Bytes);
             yield return new TestCaseData(storageChangesRlp, storageChangesExpected)
             { TestName = "storage_changes" };

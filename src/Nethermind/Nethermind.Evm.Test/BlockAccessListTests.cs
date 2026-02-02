@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -47,7 +46,6 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
 
-        // Get the main world state which should be a ParallelWorldState after DI fix
         IWorldState mainWorldState = testBlockchain.MainWorldState;
         ParallelWorldState? tracedWorldState = mainWorldState as ParallelWorldState;
         Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be ParallelWorldState");
@@ -134,7 +132,6 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
 
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
-        // GeneratedBlockAccessList is set by the block processor during execution
         BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList;
         Assert.That(blockAccessList.AccountChanges.Count, Is.EqualTo(10));
 
@@ -155,7 +152,6 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
         UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
         UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
 
-        // UInt256 from bytes needs isBigEndian: true to match EVM storage encoding
         StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
         StorageChange calldataStorageChange = new(0, 0);
         StorageChange timestampStorageChange = new(0, 0xF4240);
@@ -167,82 +163,58 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(addressAChanges, Is.EqualTo(new AccountChanges(
-                TestItem.AddressA,
-                [],
-                [],
-                new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
-                new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
-                []
-            )));
+            Assert.That(addressAChanges, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
+                    .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
+                    .TestObject));
 
-            Assert.That(addressBChanges, Is.EqualTo(new AccountChanges(
-                TestItem.AddressB,
-                [],
-                [],
-                [],
-                [],
-                []
-            )));
+            Assert.That(addressBChanges, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressB)
+                    .TestObject));
 
-            Assert.That(addressCChanges, Is.EqualTo(new AccountChanges(
-                TestItem.AddressC,
-                [],
-                [],
-                new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
-                [],
-                []
-            )));
+            Assert.That(addressCChanges, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressC)
+                    .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction)), new(2, new UInt256(gasUsedBeforeFinal)), new(3, new UInt256(gasUsed))])
+                    .TestObject));
 
-            Assert.That(addressDChanges, Is.EqualTo(new AccountChanges(
-                TestItem.AddressD,
-                [],
-                [],
-                new SortedList<ushort, BalanceChange> { { 4, new(4, 1.GWei()) } },
-                [],
-                []
-            )));
+            Assert.That(addressDChanges, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressD)
+                    .WithBalanceChanges([new(4, 1.GWei())])
+                    .TestObject));
 
-            Assert.That(newContractChanges, Is.EqualTo(new AccountChanges(
-                newContractAddress,
-                [],
-                [],
-                [],
-                new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
-                new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
-            )));
+            Assert.That(newContractChanges, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(newContractAddress)
+                    .WithNonceChanges([new(2, 1)])
+                    .WithCodeChanges([new(2, Eip2935TestConstants.Code)])
+                    .TestObject));
 
-            Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges(
-                newContractAddress2,
-                [],
-                [new(1)],
-                [],
-                [],
-                []
-            )));
+            Assert.That(newContractChanges2, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(newContractAddress2)
+                    .WithStorageReads(1)
+                    .TestObject));
 
-            Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
-                Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange> { { 0, parentHashStorageChange } }) } },
-                [],
-                [],
-                [],
-                []
-            )));
+            Assert.That(eip2935Changes, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
+                    .WithStorageChanges(0, parentHashStorageChange)
+                    .TestObject));
 
             // eip4788 stores timestamp at slot1 and beacon root (0) at slot2
             // beacon root 0→0 is not a change, so only slot1 has a storage change
             // slot1 is not a separate read since it's already a change, only slot2 is read
-            Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
-                Eip4788Constants.BeaconRootsAddress,
-                new SortedDictionary<UInt256, SlotChanges>() {
-                    { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange>{{0, timestampStorageChange}}) }
-                },
-                [new(eip4788Slot2)],
-                [],
-                [],
-                []
-            )));
+            Assert.That(eip4788Changes, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(Eip4788Constants.BeaconRootsAddress)
+                    .WithStorageChanges(eip4788Slot1, timestampStorageChange)
+                    .WithStorageReads(eip4788Slot2)
+                    .TestObject));
 
             // storage reads make no changes
             Assert.That(eip7002Changes, Is.EqualTo(
