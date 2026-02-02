@@ -25,6 +25,7 @@ public class TaikoBlockValidator(
     private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[..4].ToArray();
     private static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[..4].ToArray();
     public static readonly byte[] AnchorV4Selector = Keccak.Compute("anchorV4((uint48,bytes32,bytes32))").Bytes[..4].ToArray();
+    public static readonly byte[] AnchorV4WithSignalSlotsSelector = Keccak.Compute("anchorV4WithSignalSlots((uint48,bytes32,bytes32),bytes32[])").Bytes[..4].ToArray();
 
 
     public static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
@@ -111,7 +112,8 @@ public class TaikoBlockValidator(
     private static bool IsValidAnchorSelector(ReadOnlySpan<byte> selector, ITaikoReleaseSpec spec)
     {
         if (spec.IsShastaEnabled)
-            return AnchorV4Selector.AsSpan().SequenceEqual(selector);
+            return AnchorV4Selector.AsSpan().SequenceEqual(selector)
+                || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(selector);
 
         if (spec.IsPacayaEnabled)
             return AnchorV3Selector.AsSpan().SequenceEqual(selector);
