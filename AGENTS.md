@@ -27,7 +27,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Trust null annotations, do not add redundant null checks
 - Add tests to existing test files rather than creating new ones
 - Code comments must explain _why_, not _what_
-- Do not suggest using Linq when a simple loop would suffice
+- Do not suggest using LINQ when a simple loop would suffice
 - Do not use the `#region` and `#endregion` pragmas
 - Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
 
