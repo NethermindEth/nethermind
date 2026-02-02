@@ -319,12 +319,14 @@ public class TestBlockchain : IDisposable
             if (specProvider.GenesisSpec.IsBeaconBlockRootAvailable)
             {
                 state.CreateAccount(specProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+                state.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, specProvider.GenesisSpec);
             }
 
             // Eip2935
-            if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
+            if (specProvider.GenesisSpec.IsEip2935Enabled)
             {
                 state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress!, 1);
+                state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, specProvider.GenesisSpec);
             }
 
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);

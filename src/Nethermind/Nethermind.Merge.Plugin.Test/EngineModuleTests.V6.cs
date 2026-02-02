@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
@@ -12,6 +12,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -20,11 +22,17 @@ public partial class EngineModuleTests
     [Test]
     public async Task Builds_block_with_BAL()
     {
-        using MergeTestBlockchain chain = await new MergeTestBlockchain().Build(new TestSpecProvider(Amsterdam.Instance));
+        ulong timestamp = 12;
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
         Block genesis = chain.BlockFinder.FindGenesisBlock()!;
-        PayloadAttributes payloadAttributes =
-            new() { Timestamp = 12, PrevRandao = genesis.Header.Random!, SuggestedFeeRecipient = Address.Zero };
+        PayloadAttributes payloadAttributes = new() {
+            Timestamp = timestamp,
+            PrevRandao = genesis.Header.Random!,
+            SuggestedFeeRecipient = Address.Zero,
+            ParentBeaconBlockRoot = Keccak.Zero
+        };
 
         // inject tx into txpool, use fcu
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(genesis.Header, payloadAttributes)!;
@@ -33,9 +41,9 @@ public partial class EngineModuleTests
 
         ResultWrapper<GetPayloadV6Result?> getPayloadResult =
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(payloadId));
-        var res = getPayloadResult.Data!;
+        GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
         BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
-        //use balbuilder.withpreexecutionprecompiles
+        Assert.That(bal, Is.EqualTo(Build.A.BlockAccessList.WithPrecompileChanges(genesis.Header.Hash!, timestamp).TestObject));
     }
 }

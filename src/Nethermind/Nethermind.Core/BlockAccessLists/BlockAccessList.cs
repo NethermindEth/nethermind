@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -293,6 +294,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public override string? ToString()
         => JsonSerializer.Serialize(this);
+
+    // for testing
+    internal void AddAccountChanges(params AccountChanges[] accountChanges)
+        => _accountChanges.AddRange(accountChanges.ToDictionary(x => x.Address, x => x));
 
     private bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {

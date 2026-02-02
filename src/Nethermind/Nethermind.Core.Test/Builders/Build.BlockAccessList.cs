@@ -5,6 +5,6 @@ namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
-        public AccountChangesBuilder AccountChanges => new();
+        public BlockAccessListBuilder BlockAccessList => new();
     }
 }
