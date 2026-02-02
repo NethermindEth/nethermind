@@ -84,6 +84,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                 ValueHash256 fullPath = path.Append(node.Key).Path;
                 Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
                 writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
+                _logger.Warn($"Writing leaf {path}. Full path {fullPath}");
             }
         }
         else
@@ -103,6 +104,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                 byte[] toWrite = value.IsEmpty
                     ? StorageTree.ZeroBytes
                     : value.AsRlpValueContext().DecodeByteArray();
+                _logger.Warn($"Writing leaf {address}:{path}. Full path {fullPath}");
                 writeBatch.SetStorageRaw(address, fullPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
             }
         }
