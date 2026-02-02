@@ -76,7 +76,7 @@ public abstract class StateSyncFeedTestsBase(
         return remoteStorageTree;
     }
 
-    protected IContainer PrepareDownloader(LocalDbContext local, RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
+    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
     {
         SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
         for (int i = 0; i < defaultPeerCount; i++)
@@ -90,7 +90,7 @@ public abstract class StateSyncFeedTestsBase(
             syncPeers[i] = mock;
         }
 
-        ContainerBuilder builder = BuildTestContainerBuilder(local, remote, syncDispatcherAllocateTimeoutMs)
+        ContainerBuilder builder = BuildTestContainerBuilder(remote, syncDispatcherAllocateTimeoutMs)
             .AddSingleton<SyncPeerMock[]>(syncPeers);
 
         builder.RegisterBuildCallback((ctx) =>
@@ -108,8 +108,10 @@ public abstract class StateSyncFeedTestsBase(
         return builder.Build();
     }
 
-    protected ContainerBuilder BuildTestContainerBuilder(LocalDbContext local, RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
+    protected ContainerBuilder BuildTestContainerBuilder(RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
     {
+        LocalDbContext local = new(_logManager);
+
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
@@ -121,6 +123,7 @@ public abstract class StateSyncFeedTestsBase(
                 return syncConfig;
             })
             .AddSingleton<ILogManager>(_logManager)
+            .AddSingleton<LocalDbContext>(local)
             .AddKeyedSingleton<IDb>(DbNames.Code, local.CodeDb)
             .AddKeyedSingleton<IDb>(DbNames.State, local.StateDb)
             .AddSingleton<INodeStorage>(local.NodeStorage)

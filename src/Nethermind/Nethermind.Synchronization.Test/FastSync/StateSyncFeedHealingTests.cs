@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -28,15 +29,16 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
     [Test]
     public async Task HealTreeWithoutBoundaryProofs()
     {
-        LocalDbContext local = new(_logManager);
         RemoteDbContext remote = new(_logManager);
         TestItem.Tree.FillStateTreeWithTestAccounts(remote.StateTree);
 
         Hash256 rootHash = remote.StateTree.RootHash;
 
+        await using IContainer container = PrepareDownloader(remote);
+        LocalDbContext local = container.Resolve<LocalDbContext>();
+
         ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
-        await using IContainer container = PrepareDownloader(local, remote);
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx);
 
@@ -52,7 +54,6 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
     [Test]
     public async Task HealBigSqueezedRandomTree()
     {
-        LocalDbContext local = new(_logManager);
         RemoteDbContext remote = new(_logManager);
 
         int pathPoolCount = 100_000;
@@ -83,6 +84,10 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
         int startingHashIndex = 0;
         int endHashIndex;
         int blockJumps = 5;
+
+        await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
+        LocalDbContext local = container.Resolve<LocalDbContext>();
+
         for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             for (int i = 0; i < 19; i++)
@@ -143,7 +148,6 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         local.RootHash = remote.StateTree.RootHash;
 
-        await using IContainer container = PrepareDownloader(local, remote, syncDispatcherAllocateTimeoutMs: 1000);
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, timeout: 20000);
 

@@ -161,9 +161,9 @@ public class SnapProviderTests(bool useFlat)
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = CreateContainerBuilder(new TestSyncConfig()
-            {
-                SnapSyncAccountRangePartitionCount = 1
-            })
+        {
+            SnapSyncAccountRangePartitionCount = 1
+        })
             .WithSuggestedHeaderOfStateRoot(root)
             .Build();
 
@@ -204,9 +204,9 @@ public class SnapProviderTests(bool useFlat)
         (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = CreateContainerBuilder(new TestSyncConfig()
-            {
-                SnapSyncAccountRangePartitionCount = 2
-            })
+        {
+            SnapSyncAccountRangePartitionCount = 2
+        })
             .WithSuggestedHeaderOfStateRoot(root)
             .Build();
 

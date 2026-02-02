@@ -43,7 +43,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Explicit("This test is not stable, especially on slow Github Actions machines")]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1;
@@ -51,10 +50,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3;
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
-            local.CompareTrees(remote, _logger, "BEFORE FIRST SYNC", true);
-
-            await using IContainer container = PrepareDownloader(local, remote, mock =>
+            await using IContainer container = PrepareDownloader(remote, mock =>
                 mock.SetFilter(((MemDb)remote.StateDb).Keys.Take(((MemDb)remote.StateDb).Keys.Count - 4).Select(HashKey).ToArray()));
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
+            local.CompareTrees(remote, _logger, "BEFORE FIRST SYNC", true);
 
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
@@ -117,13 +117,14 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Can_download_a_full_state((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -134,9 +135,9 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Can_download_an_empty_tree()
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
-            await using IContainer container = PrepareDownloader(local, remote);
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
             local.CompareTrees(remote, _logger, "END");
@@ -147,12 +148,12 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
-            await using IContainer container = PrepareDownloader(local, remote, mock =>
+            await using IContainer container = PrepareDownloader(remote, mock =>
                 mock.SetFilter(new[] { remote.StateTree.RootHash }));
+            LocalDbContext local = container.Resolve<LocalDbContext>();
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx, 1000);
 
@@ -173,13 +174,14 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
+            await using IContainer container = PrepareDownloader(remote, static mock => mock.MaxResponseLength = 1);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote, static mock => mock.MaxResponseLength = 1);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -189,14 +191,15 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public async Task When_saving_root_goes_asleep_and_then_restart_to_new_tree_when_reactivated()
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             remote.StateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             remote.StateTree.Commit();
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -211,14 +214,15 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
+            await using IContainer container = PrepareDownloader(remote, mock =>
+                mock.SetFilter(((MemDb)remote.StateDb).Keys.Take(((MemDb)remote.StateDb).Keys.Count - 1).Select(k => HashKey(k)).ToArray()));
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEFORE FIRST SYNC");
 
-            await using IContainer container = PrepareDownloader(local, remote, mock =>
-                mock.SetFilter(((MemDb)remote.StateDb).Keys.Take(((MemDb)remote.StateDb).Keys.Count - 1).Select(k => HashKey(k)).ToArray()));
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx, TimeoutLength);
 
@@ -257,7 +261,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Dependent_branch_counter_is_zero_and_leaf_is_short((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
@@ -275,9 +278,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
             remote.StateTree.Commit();
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -289,7 +294,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
@@ -299,9 +303,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Set(TestItem.AddressD, changedAccount);
             remote.StateTree.Commit();
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -313,7 +319,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
@@ -326,9 +331,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
             remote.StateTree.Commit();
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -340,7 +347,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             testCase.SetupTree(remote.StateTree, remote.TrieStore, remote.CodeDb);
 
@@ -352,9 +358,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
             remote.StateTree.Commit();
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             local.CompareTrees(remote, _logger, "BEGIN");
 
-            await using IContainer container = PrepareDownloader(local, remote);
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
 
@@ -364,12 +372,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public async Task When_empty_response_received_return_lesser_quality()
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             remote.StateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             remote.StateTree.Commit();
 
-            await using IContainer container = BuildTestContainerBuilder(local, remote)
+            await using IContainer container = BuildTestContainerBuilder(remote)
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
 
@@ -384,12 +391,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public async Task When_empty_response_received_with_no_peer_return_not_allocated()
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             remote.StateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             remote.StateTree.Commit();
 
-            await using IContainer container = BuildTestContainerBuilder(local, remote)
+            await using IContainer container = BuildTestContainerBuilder(remote)
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
 
@@ -405,7 +411,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Repeat(TestRepeatCount)]
         public async Task RepairPossiblyMissingStorage()
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1;
@@ -426,6 +431,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
             state.Commit();
 
+            await using IContainer container = PrepareDownloader(remote);
+            LocalDbContext local = container.Resolve<LocalDbContext>();
+
             // Local state only have the state
             local.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject);
             local.Set(TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject);
@@ -435,7 +443,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             // Local state missing root so that it would start
             local.NodeStorage.Set(null, TreePath.Empty, local.RootHash, null);
 
-            await using IContainer container = PrepareDownloader(local, remote);
             container.Resolve<StateSyncPivot>().UpdatedStorages.Add(theAccount);
 
             SafeContext ctx = container.Resolve<SafeContext>();
@@ -449,7 +456,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         [CancelAfter(10000)]
         public async Task Pending_items_cache_mechanism_works_across_root_changes(CancellationToken cancellation)
         {
-            LocalDbContext local = new(_logManager);
             RemoteDbContext remote = new(_logManager);
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1;
@@ -469,7 +475,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.StateTree.UpdateRootHash();
             remote.StateTree.Commit();
 
-            await using IContainer container = PrepareDownloader(local, remote);
+            await using IContainer container = PrepareDownloader(remote);
             SafeContext ctx = container.Resolve<SafeContext>();
 
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);

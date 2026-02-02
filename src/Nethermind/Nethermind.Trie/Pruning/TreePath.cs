@@ -110,7 +110,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return copy;
     }
 
-    internal void AppendMut(ReadOnlySpan<byte> nibbles)
+    public void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)

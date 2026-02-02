@@ -104,7 +104,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         IConfigProvider configProvider = new ConfigProvider();
         configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
@@ -699,7 +699,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 .AddDecorator<IBlockProcessor, BlockProcessorInterceptor>();
         }
 
-        private Exception? BlockProcessingFailure ;
+        private Exception? BlockProcessingFailure;
         private CancellationTokenSource _cts = new CancellationTokenSource();
 
         private void ReportException(Exception exception)
@@ -725,7 +725,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         internal class BlockProcessorInterceptor(
             IBlockProcessor blockProcessor,
-            BlockProcessorExceptionDetector blockProcessorExceptionDetector): IBlockProcessor
+            BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
         {
 
             public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,

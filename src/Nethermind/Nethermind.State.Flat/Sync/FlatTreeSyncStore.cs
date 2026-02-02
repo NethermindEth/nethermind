@@ -77,15 +77,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             }
 
             writeBatch.SetStateTrieNode(path, node);
-
-            // For leaf nodes, also write the flat account entry
-            if (node.IsLeaf)
-            {
-                ValueHash256 fullPath = path.Append(node.Key).Path;
-                Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
-                writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
-                _logger.Warn($"Writing leaf {path}. Full path {fullPath}");
-            }
+            WriteAccountFlatEntriesWithDeletion(writeBatch, path, node);
         }
         else
         {
@@ -95,19 +87,128 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             }
 
             writeBatch.SetStorageTrieNode(address, path, node);
+            WriteStorageFlatEntriesWithDeletion(writeBatch, address, path, node);
+        }
+    }
 
-            // For leaf nodes, also write the flat storage entry
-            if (node.IsLeaf)
+    private void WriteAccountFlatEntriesWithDeletion(
+        IPersistence.IWriteBatch writeBatch,
+        in TreePath path,
+        TrieNode node)
+    {
+        if (node.IsLeaf)
+        {
+            ValueHash256 fullPath = path.Append(node.Key).Path;
+            Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
+            writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
+            return;
+        }
+
+        TreePath mutablePath = path;
+
+        if (node.IsBranch)
+        {
+            FlatEntryWriter.BranchInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
+            while (enumerator.MoveNext())
             {
-                ValueHash256 fullPath = path.Append(node.Key).Path;
-                ReadOnlySpan<byte> value = node.Value.Span;
-                byte[] toWrite = value.IsEmpty
-                    ? StorageTree.ZeroBytes
-                    : value.AsRlpValueContext().DecodeByteArray();
-                _logger.Warn($"Writing leaf {address}:{path}. Full path {fullPath}");
-                writeBatch.SetStorageRaw(address, fullPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
+                ProcessInlineAccountLeaf(writeBatch, enumerator.CurrentPath, enumerator.CurrentNode);
             }
         }
+        else if (node.IsExtension)
+        {
+            FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
+            while (enumerator.MoveNext())
+            {
+                ProcessInlineAccountLeaf(writeBatch, enumerator.CurrentPath, enumerator.CurrentNode);
+            }
+        }
+    }
+
+    private void ProcessInlineAccountLeaf(
+        IPersistence.IWriteBatch writeBatch,
+        in TreePath childPath,
+        TrieNode childNode)
+    {
+        // Check for existing node at this inline leaf's path
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        byte[]? existingData = reader.TryLoadStateRlp(childPath, ReadFlags.None);
+
+        if (existingData is not null)
+        {
+            TrieNode existingChildNode = new(NodeType.Unknown, existingData);
+            existingChildNode.ResolveNode(NullTrieNodeResolver.Instance, childPath);
+            RequestStateDeletion(writeBatch, childPath, childNode, existingChildNode);
+        }
+
+        // Write the flat entry
+        ValueHash256 fullPath = childPath.Append(childNode.Key).Path;
+        Account account = AccountDecoder.Instance.Decode(childNode.Value.Span)!;
+        writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
+    }
+
+    private void WriteStorageFlatEntriesWithDeletion(
+        IPersistence.IWriteBatch writeBatch,
+        Hash256 address,
+        in TreePath path,
+        TrieNode node)
+    {
+        if (node.IsLeaf)
+        {
+            WriteStorageLeafEntry(writeBatch, address, path, node);
+            return;
+        }
+
+        TreePath mutablePath = path;
+
+        if (node.IsBranch)
+        {
+            FlatEntryWriter.BranchInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
+            while (enumerator.MoveNext())
+            {
+                ProcessInlineStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentNode);
+            }
+        }
+        else if (node.IsExtension)
+        {
+            FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
+            while (enumerator.MoveNext())
+            {
+                ProcessInlineStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentNode);
+            }
+        }
+    }
+
+    private void ProcessInlineStorageLeaf(
+        IPersistence.IWriteBatch writeBatch,
+        Hash256 address,
+        in TreePath childPath,
+        TrieNode childNode)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        byte[]? existingData = reader.TryLoadStorageRlp(address, childPath, ReadFlags.None);
+
+        if (existingData is not null)
+        {
+            TrieNode existingChildNode = new(NodeType.Unknown, existingData);
+            existingChildNode.ResolveNode(NullTrieNodeResolver.Instance, childPath);
+            RequestStorageDeletion(writeBatch, address, childPath, childNode, existingChildNode);
+        }
+
+        WriteStorageLeafEntry(writeBatch, address, childPath, childNode);
+    }
+
+    private static void WriteStorageLeafEntry(
+        IPersistence.IWriteBatch writeBatch,
+        Hash256 address,
+        in TreePath path,
+        TrieNode node)
+    {
+        ValueHash256 fullPath = path.Append(node.Key).Path;
+        ReadOnlySpan<byte> value = node.Value.Span;
+        byte[] toWrite = value.IsEmpty
+            ? StorageTree.ZeroBytes
+            : value.AsRlpValueContext().DecodeByteArray();
+        writeBatch.SetStorageRaw(address, fullPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
     }
 
     private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode existingNode)
