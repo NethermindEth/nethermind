@@ -559,27 +559,17 @@ public class FlatTrieVerifier
         if (_logger.IsInfo) _logger.Info($"Target path: {targetPath}");
 
         TreePath currentPath = TreePath.Empty;
-        Hash256? currentHash = stateRoot;
+        TrieNode? currentNode = trieStore.FindCachedOrUnknown(currentPath, stateRoot);
+        Hash256? expectedHash = stateRoot;
 
-        while (currentHash is not null && currentHash != Keccak.EmptyTreeHash)
+        while (currentNode is not null)
         {
-            // Load RLP
-            byte[]? rlp = trieStore.TryLoadRlp(currentPath, currentHash, ReadFlags.None);
-            bool hashValid = rlp is not null && Keccak.Compute(rlp) == currentHash;
+            bool isInline = expectedHash is null;
 
-            if (rlp is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"  Path: {currentPath} | Hash: {currentHash.ToShortString()} | RLP: MISSING");
-                if (_logger.IsWarn) _logger.Warn($"  -> Remaining nibbles to traverse: {targetPath.Length - currentPath.Length}");
-                ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
-                return;
-            }
-
-            // Decode node
-            TrieNode node = new(NodeType.Unknown, currentHash, rlp);
+            // Resolve the node (loads RLP for non-inline, no-op for already resolved inline nodes)
             try
             {
-                node.ResolveNode(trieStore, currentPath);
+                currentNode.ResolveNode(trieStore, currentPath);
             }
             catch (TrieNodeException ex)
             {
@@ -588,53 +578,43 @@ public class FlatTrieVerifier
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {node.NodeType} | Hash: {currentHash.ToShortString()} | HashValid: {hashValid}");
+            // Verify hash only for non-inline nodes
+            if (!isInline)
+            {
+                bool hashValid = currentNode.Keccak == expectedHash;
+                if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {currentNode.NodeType} | Hash: {expectedHash!.ToShortString()} | HashValid: {hashValid}");
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {currentNode.NodeType} | Inline node (no hash)");
+            }
 
             // Navigate based on node type
-            switch (node.NodeType)
+            switch (currentNode.NodeType)
             {
                 case NodeType.Branch:
-                    // Get the nibble to follow - use target path if available, otherwise scan all children
-                    int nibble;
-                    if (currentPath.Length < targetPath.Length)
-                    {
-                        nibble = targetPath[currentPath.Length];
-                    }
-                    else
-                    {
-                        // Past target path - find first non-null child to continue exploring
-                        nibble = -1;
-                        for (int i = 0; i < 16; i++)
-                        {
-                            if (!node.IsChildNull(i))
-                            {
-                                nibble = i;
-                                if (_logger.IsInfo) _logger.Info($"  -> Past target, following first non-null child {i:X}");
-                                break;
-                            }
-                        }
-                        if (nibble == -1)
-                        {
-                            if (_logger.IsInfo) _logger.Info($"  -> Branch has no children");
-                            return;
-                        }
-                    }
+                    // Get the nibble to follow from flatKey (full 64-nibble path)
+                    TreePath fullPath = new TreePath(flatKey, 64);
+                    int nibble = fullPath[currentPath.Length];
 
-                    currentPath = currentPath.Append(nibble);
-
-                    if (node.IsChildNull(nibble))
+                    if (currentNode.IsChildNull(nibble))
                     {
+                        TreePath nullChildPath = currentPath.Append(nibble);
                         if (_logger.IsWarn) _logger.Warn($"  -> Branch child {nibble:X} is null");
-                        if (_logger.IsWarn) _logger.Warn($"  -> Remaining nibbles: {targetPath.Length - currentPath.Length}");
-                        ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
+                        if (_logger.IsWarn) _logger.Warn($"  -> Remaining nibbles: {targetPath.Length - nullChildPath.Length}");
+                        ScanRemainingPathWithZeroHash(trieStore, nullChildPath, targetPath);
                         return;
                     }
 
-                    currentHash = node.GetChildHash(nibble);
+                    // Get next hash (null for inline nodes) and then get the actual child node
+                    expectedHash = currentNode.GetChildHash(nibble);
+                    TreePath branchChildPath = currentPath.Append(nibble);
+                    currentNode = currentNode.GetChildWithChildPath(trieStore, ref branchChildPath, nibble);
+                    currentPath = branchChildPath;
                     break;
 
                 case NodeType.Extension:
-                    byte[]? key = node.Key;
+                    byte[]? key = currentNode.Key;
                     if (_logger.IsInfo) _logger.Info($"  -> Extension key: {key?.ToHexString() ?? "null"}");
 
                     if (key is null)
@@ -658,30 +638,26 @@ public class FlatTrieVerifier
                         }
                     }
 
-                    currentPath = currentPath.Append(key);
-                    currentHash = node.GetChildHash(0);
+                    // Get next hash (null for inline nodes) and then get the actual child node
+                    expectedHash = currentNode.GetChildHash(0);
+                    TreePath extensionChildPath = currentPath.Append(key);
+                    currentNode = currentNode.GetChildWithChildPath(trieStore, ref extensionChildPath, 0);
+                    currentPath = extensionChildPath;
                     break;
 
                 case NodeType.Leaf:
-                    if (_logger.IsInfo) _logger.Info($"  -> Found leaf with key: {node.Key?.ToHexString() ?? "null"}");
-                    if (_logger.IsInfo) _logger.Info($"  -> Full leaf path: {currentPath.Append(node.Key ?? [])}");
+                    if (_logger.IsInfo) _logger.Info($"  -> Found leaf with key: {currentNode.Key?.ToHexString() ?? "null"}");
+                    if (_logger.IsInfo) _logger.Info($"  -> Full leaf path: {currentPath.Append(currentNode.Key ?? [])}");
                     return;
 
                 default:
-                    if (_logger.IsWarn) _logger.Warn($"  -> Unknown node type: {node.NodeType}");
+                    if (_logger.IsWarn) _logger.Warn($"  -> Unknown node type: {currentNode.NodeType}");
                     ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
                     return;
             }
         }
 
-        if (currentHash is null)
-        {
-            if (_logger.IsInfo) _logger.Info($"  -> Traversal ended with null hash at path {currentPath}");
-        }
-        else if (currentHash == Keccak.EmptyTreeHash)
-        {
-            if (_logger.IsInfo) _logger.Info($"  -> Traversal ended at empty tree hash at path {currentPath}");
-        }
+        if (_logger.IsInfo) _logger.Info($"  -> Traversal ended with null node at path {currentPath}");
 
         // Continue scanning remaining path with zero hash to see what's stored
         ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
