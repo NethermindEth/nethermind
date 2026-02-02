@@ -173,7 +173,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                 using GetReceiptsMessage70 request = BuildRequest(blockHashes, blockIndex, firstBlockReceiptIndex);
                 (ReceiptsMessage70 response, ulong size) = await SendRequest(request, token);
 
-                try
+                using (response)
                 {
                     totalResponseSize += size;
 
@@ -253,10 +253,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                             firstBlockReceiptIndex = 0;
                         }
                     }
-                }
-                finally
-                {
-                    response.Dispose();
                 }
             }
 
