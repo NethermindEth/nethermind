@@ -24,7 +24,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -105,7 +104,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task getPayloadV1_picks_transactions_from_pool_v1()
+    [CancelAfter(10000)]
+    public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -123,7 +123,7 @@ public partial class EngineModuleTests
                 new PayloadAttributes() { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        await blockImprovementLock.WaitAsync(10000);
+        await blockImprovementLock.WaitAsync(cancellationToken);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
