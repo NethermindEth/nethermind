@@ -1731,29 +1731,27 @@ public ref partial struct EvmStack
                 0x08090a0b0c0d0e0ful,
                 0x0001020304050607ul).AsByte();
 
-            // Issue both loads first for memory-level parallelism
-            Word bData = Unsafe.ReadUnaligned<Word>(ref bytes);
-            Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
-
+            // Process each value completely before starting the next to reduce register pressure.
+            // Write directly to the out parameters to avoid intermediate local variable copies.
             if (Avx512Vbmi.VL.IsSupported)
             {
-                Word bConv = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
-                Word aConv = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
+                Word bData = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Unsafe.As<UInt256, Word>(ref b) = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
 
-                b = Unsafe.As<Word, UInt256>(ref bConv);
-                a = Unsafe.As<Word, UInt256>(ref aConv);
+                Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+                Unsafe.As<UInt256, Word>(ref a) = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
             }
             else
             {
-                Word bShuf = Avx2.Shuffle(bData, shuffle);
-                Word aShuf = Avx2.Shuffle(aData, shuffle);
-
                 const byte SwapHalves = 0b_01_00_11_10;
-                Vector256<ulong> bPerm = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
-                Vector256<ulong> aPerm = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
 
-                b = Unsafe.As<Vector256<ulong>, UInt256>(ref bPerm);
-                a = Unsafe.As<Vector256<ulong>, UInt256>(ref aPerm);
+                Word bData = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Word bShuf = Avx2.Shuffle(bData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref b) = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
+
+                Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+                Word aShuf = Avx2.Shuffle(aData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref a) = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
             }
         }
         else
@@ -1832,40 +1830,34 @@ public ref partial struct EvmStack
                 0x08090a0b0c0d0e0ful,
                 0x0001020304050607ul).AsByte();
 
-            // Issue all loads first to maximise memory-level parallelism
-            // and hide cache latency across the 96-byte span
-            Word cData = Unsafe.ReadUnaligned<Word>(ref bytes);
-            Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
-            Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
-
+            // Process each value completely before starting the next to reduce register pressure.
+            // Write directly to the out parameters to avoid intermediate local variable copies.
             if (Avx512Vbmi.VL.IsSupported)
             {
-                // vpermb does full cross-lane byte permutation in one instruction
-                Word cConv = Avx512Vbmi.VL.PermuteVar32x8(cData, shuffle);
-                Word bConv = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
-                Word aConv = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
+                Word cData = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Unsafe.As<UInt256, Word>(ref c) = Avx512Vbmi.VL.PermuteVar32x8(cData, shuffle);
 
-                c = Unsafe.As<Word, UInt256>(ref cConv);
-                b = Unsafe.As<Word, UInt256>(ref bConv);
-                a = Unsafe.As<Word, UInt256>(ref aConv);
+                Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+                Unsafe.As<UInt256, Word>(ref b) = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
+
+                Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
+                Unsafe.As<UInt256, Word>(ref a) = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
             }
             else
             {
-                // AVX2 needs shuffle + permute (2 instructions per value)
-                // Issue all shuffles together for ILP
-                Word cShuf = Avx2.Shuffle(cData, shuffle);
-                Word bShuf = Avx2.Shuffle(bData, shuffle);
-                Word aShuf = Avx2.Shuffle(aData, shuffle);
-
-                // Issue all permutes together
                 const byte SwapHalves = 0b_01_00_11_10;
-                Vector256<ulong> cPerm = Avx2.Permute4x64(cShuf.AsUInt64(), SwapHalves);
-                Vector256<ulong> bPerm = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
-                Vector256<ulong> aPerm = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
 
-                c = Unsafe.As<Vector256<ulong>, UInt256>(ref cPerm);
-                b = Unsafe.As<Vector256<ulong>, UInt256>(ref bPerm);
-                a = Unsafe.As<Vector256<ulong>, UInt256>(ref aPerm);
+                Word cData = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Word cShuf = Avx2.Shuffle(cData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref c) = Avx2.Permute4x64(cShuf.AsUInt64(), SwapHalves);
+
+                Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+                Word bShuf = Avx2.Shuffle(bData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref b) = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
+
+                Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
+                Word aShuf = Avx2.Shuffle(aData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref a) = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
             }
         }
         else
@@ -1961,44 +1953,41 @@ public ref partial struct EvmStack
                 0x08090a0b0c0d0e0ful,
                 0x0001020304050607ul).AsByte();
 
-            // Issue all loads first - 128 bytes spans 2 cache lines minimum,
-            // so maximising MLP is critical here
-            Word dData = Unsafe.ReadUnaligned<Word>(ref bytes);
-            Word cData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
-            Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
-            Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 96));
-
+            // Process each value completely before starting the next to reduce register pressure.
+            // Write directly to the out parameters to avoid intermediate local variable copies.
             if (Avx512Vbmi.VL.IsSupported)
             {
-                Word dConv = Avx512Vbmi.VL.PermuteVar32x8(dData, shuffle);
-                Word cConv = Avx512Vbmi.VL.PermuteVar32x8(cData, shuffle);
-                Word bConv = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
-                Word aConv = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
+                Word dData = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Unsafe.As<UInt256, Word>(ref d) = Avx512Vbmi.VL.PermuteVar32x8(dData, shuffle);
 
-                d = Unsafe.As<Word, UInt256>(ref dConv);
-                c = Unsafe.As<Word, UInt256>(ref cConv);
-                b = Unsafe.As<Word, UInt256>(ref bConv);
-                a = Unsafe.As<Word, UInt256>(ref aConv);
+                Word cData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+                Unsafe.As<UInt256, Word>(ref c) = Avx512Vbmi.VL.PermuteVar32x8(cData, shuffle);
+
+                Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
+                Unsafe.As<UInt256, Word>(ref b) = Avx512Vbmi.VL.PermuteVar32x8(bData, shuffle);
+
+                Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 96));
+                Unsafe.As<UInt256, Word>(ref a) = Avx512Vbmi.VL.PermuteVar32x8(aData, shuffle);
             }
             else
             {
-                // Issue all shuffles together
-                Word dShuf = Avx2.Shuffle(dData, shuffle);
-                Word cShuf = Avx2.Shuffle(cData, shuffle);
-                Word bShuf = Avx2.Shuffle(bData, shuffle);
-                Word aShuf = Avx2.Shuffle(aData, shuffle);
-
-                // Issue all permutes together
                 const byte SwapHalves = 0b_01_00_11_10;
-                Vector256<ulong> dPerm = Avx2.Permute4x64(dShuf.AsUInt64(), SwapHalves);
-                Vector256<ulong> cPerm = Avx2.Permute4x64(cShuf.AsUInt64(), SwapHalves);
-                Vector256<ulong> bPerm = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
-                Vector256<ulong> aPerm = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
 
-                d = Unsafe.As<Vector256<ulong>, UInt256>(ref dPerm);
-                c = Unsafe.As<Vector256<ulong>, UInt256>(ref cPerm);
-                b = Unsafe.As<Vector256<ulong>, UInt256>(ref bPerm);
-                a = Unsafe.As<Vector256<ulong>, UInt256>(ref aPerm);
+                Word dData = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Word dShuf = Avx2.Shuffle(dData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref d) = Avx2.Permute4x64(dShuf.AsUInt64(), SwapHalves);
+
+                Word cData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 32));
+                Word cShuf = Avx2.Shuffle(cData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref c) = Avx2.Permute4x64(cShuf.AsUInt64(), SwapHalves);
+
+                Word bData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 64));
+                Word bShuf = Avx2.Shuffle(bData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref b) = Avx2.Permute4x64(bShuf.AsUInt64(), SwapHalves);
+
+                Word aData = Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref bytes, 96));
+                Word aShuf = Avx2.Shuffle(aData, shuffle);
+                Unsafe.As<UInt256, Vector256<ulong>>(ref a) = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
             }
         }
         else
