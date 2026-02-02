@@ -39,7 +39,6 @@ public interface IPersistence
 
     public interface IWriteBatch : IDisposable
     {
-        void Clear();
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
         void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);

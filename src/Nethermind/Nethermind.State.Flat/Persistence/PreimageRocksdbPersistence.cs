@@ -141,8 +141,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
     {
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
-        public void Clear() => _flatWriteBatch.Clear();
-
         public void SelfDestruct(Address addr)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;

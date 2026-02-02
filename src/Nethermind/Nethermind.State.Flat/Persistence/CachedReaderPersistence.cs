@@ -121,7 +121,6 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private class ClearCacheOnWriteBatchComplete(IPersistence.IWriteBatch inner, CachedReaderPersistence parent)
         : IPersistence.IWriteBatch
     {
-        public void Clear() => inner.Clear();
         public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);

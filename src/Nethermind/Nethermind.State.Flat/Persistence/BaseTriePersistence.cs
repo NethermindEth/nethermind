@@ -142,14 +142,6 @@ public static class BaseTriePersistence
         WriteFlags flags
     ) : BasePersistence.ITrieWriteBatch
     {
-        public void Clear()
-        {
-            stateTopNodes.Clear();
-            stateNodes.Clear();
-            storageNodes.Clear();
-            fallbackNodes.Clear();
-        }
-
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {

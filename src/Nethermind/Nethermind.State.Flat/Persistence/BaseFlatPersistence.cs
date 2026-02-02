@@ -196,12 +196,6 @@ public static class BaseFlatPersistence
         WriteFlags flags
     ) : BasePersistence.IHashedFlatWriteBatch
     {
-        public void Clear()
-        {
-            state.Clear();
-            storage.Clear();
-        }
-
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {

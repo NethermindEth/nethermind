@@ -41,12 +41,6 @@ public class PreimageRecordingPersistence : IPersistence
 
     private class RecordingWriteBatch(IPersistence.IWriteBatch inner, IWriteBatch preimageWriteBatch, IDb preimageDb) : IPersistence.IWriteBatch
     {
-        public void Clear()
-        {
-            preimageWriteBatch.Clear();
-            inner.Clear();
-        }
-
         public void Dispose()
         {
             preimageWriteBatch.Dispose();
