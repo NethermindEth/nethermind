@@ -83,8 +83,6 @@ internal class BlobSender
 
         int signerIndex = -1;
 
-        ulong excessBlobs = (ulong)blobTxCounts.Sum(bc => bc.blobCount) / 2;
-
         foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         {
             int txCount = txs.txCount;
@@ -143,6 +141,7 @@ internal class BlobSender
                     return;
                 }
 
+                ulong excessBlobs = (ulong)blobCount / 2;
                 (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult, excessBlobs, spec);
 
                 maxPriorityFeePerGas *= feeMultiplier;
@@ -172,8 +171,10 @@ internal class BlobSender
                 if (result is not null)
                     signers[signerIndex] = new(signer, nonce + 1);
 
-                if (waitForInclusion)
+                if (waitForInclusion && result is not null)
+                {
                     await WaitForBlobInclusion(_rpcClient, result, blockResult.Number);
+                }
             }
         }
     }
@@ -246,8 +247,10 @@ internal class BlobSender
 
         Hash256? hash = await SendTransaction(chainId, nonce, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
 
-        if (waitForInclusion)
+        if (waitForInclusion && hash is not null)
+        {
             await WaitForBlobInclusion(_rpcClient, hash, blockResult.Number);
+        }
     }
 
     private async Task<(UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas)> GetGasPrices
@@ -325,7 +328,7 @@ internal class BlobSender
         return result is not null ? tx.CalculateHash() : null;
     }
 
-    private async static Task WaitForBlobInclusion(IJsonRpcClient rpcClient, Hash256? txHash, UInt256 lastBlockNumber)
+    private async static Task WaitForBlobInclusion(IJsonRpcClient rpcClient, Hash256 txHash, UInt256 lastBlockNumber)
     {
         Console.WriteLine("Waiting for blob transaction to be included in a block");
         int waitInMs = 2000;
@@ -335,16 +338,18 @@ internal class BlobSender
         while (true)
         {
             BlockModel<Hash256>? blockResult = await rpcClient.GetBlockByNumberAsync(lastBlockNumber, false);
+
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
 
-                if (txHash is not null && blockResult.Transactions.Contains(txHash))
+                if (blockResult.Transactions.Contains(txHash))
                 {
                     Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                     return;
                 }
             }
+
             await Task.Delay(waitInMs);
 
             retryCount--;

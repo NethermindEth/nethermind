@@ -59,7 +59,8 @@ internal class FundsDistributor
         if (balance == 0)
             throw new AccountException($"Balance on provided signer {distributeFrom.Address} is 0.");
 
-        UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
+        UInt256 maxFeePerGas = maxFee != 0 ? maxFee : gasPrice;
+        UInt256 approxGasFee = maxFeePerGas * GasCostOf.Transaction;
 
         //Leave 10% of the balance as buffer in case of gas spikes
         UInt256 balanceMinusBuffer = (balance * 900) / 1000;
@@ -98,7 +99,7 @@ internal class FundsDistributor
 
                 Transaction tx = CreateTx(_chainId,
                                           key.Address,
-                                          maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
+                                          maxFee != 0 ? maxFee : gasPrice,
                                           nonce,
                                           maxPriorityFeePerGas,
                                           perKeyToSend);
@@ -149,7 +150,8 @@ internal class FundsDistributor
                 maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
             }
 
-            UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
+            UInt256 maxFeePerGas = maxFee != 0 ? maxFee : gasPrice;
+            UInt256 approxGasFee = maxFeePerGas * GasCostOf.Transaction;
 
             if (balance < approxGasFee)
             {
@@ -161,7 +163,7 @@ internal class FundsDistributor
 
             Transaction tx = CreateTx(_chainId,
                                       beneficiary,
-                                      maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
+                                      maxFee != 0 ? maxFee : gasPrice,
                                       nonceValue,
                                       maxPriorityFeePerGas,
                                       toSend);

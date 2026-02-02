@@ -122,8 +122,15 @@ internal static class SetupCli
                                           parseResult.GetValue(maxFeePerDataGasOptionObsolete);
                 ulong? maxPriorityFee = parseResult.GetValue(maxPriorityFeeGasOption);
 
+                (int count, int blobCount, string @break)[] txOptions = ParseTxOptions(parseResult.GetValue(blobTxOption));
+                if (txOptions.Length == 0)
+                {
+                    Console.WriteLine("No --bloboptions provided. Nothing to send.");
+                    return Task.CompletedTask;
+                }
+
                 return sender.SendRandomBlobs(
-                    ParseTxOptions(parseResult.GetValue(blobTxOption)),
+                    txOptions,
                     privateKeys,
                     parseResult.GetRequiredValue(receiverOption),
                     maxFeePerBlobGas.HasValue ? (UInt256?)maxFeePerBlobGas.Value : null,
@@ -392,7 +399,7 @@ internal static class SetupCli
             HelpName = "fee"
         };
         Option<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
-        Option<string> forkOption = new("--fork") { Description = "Specify fork for max blob count, target blob count, proof type" };
+        Option<string> forkOption = new("--fork") { Description = "Specify fork for max blob count, target blob count, proof type. Osaka by default" };
 
         command.Add(fileOption);
         command.Add(rpcUrlOption);
@@ -419,7 +426,7 @@ internal static class SetupCli
                 BlobSender sender = new(parseResult.GetRequiredValue(rpcUrlOption), SimpleConsoleLogManager.Instance);
 
                 string? fork = parseResult.GetValue(forkOption);
-                IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
+                IReleaseSpec spec = fork is null ? Osaka.Instance : SpecNameParser.Parse(fork);
 
                 return sender.SendData(
                     data,

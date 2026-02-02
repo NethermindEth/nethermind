@@ -60,7 +60,7 @@ internal static class RpcClientExtensions
         public async Task<BlockModel<Hash256>?> GetBlockByNumberAsync(object blockNumberOrTag, bool fullTxObjects) => await PostWithRetryNullable<BlockModel<Hash256>>(rpcClient, nameof(IEthRpcModule.eth_getBlockByNumber), blockNumberOrTag, fullTxObjects);
 
         private async Task<T> PostWithRetry<T>(string method, params object?[]? parameters) =>
-            (await PostWithRetryNullable<T>(rpcClient, method, parameters: parameters)) ?? throw new RpcException($"RPC call '{nameof(IEthRpcModule.eth_chainId)}' returned null or empty response.");
+            (await PostWithRetryNullable<T>(rpcClient, method, parameters: parameters)) ?? throw new RpcException($"RPC call '{method}' returned null or empty response.");
 
         private async Task<T?> PostWithRetryNullable<T>(string method, params object?[]? parameters)
         {
