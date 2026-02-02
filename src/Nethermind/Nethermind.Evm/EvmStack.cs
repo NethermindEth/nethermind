@@ -12,7 +12,6 @@ using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -434,26 +433,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        // This avoids expensive vpinsrq + vinserti128 dependency chain.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2));
 
         return EvmExceptionType.None;
     }
@@ -477,26 +462,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        // This avoids expensive vpinsrq + vinserti128 dependency chain.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3));
 
         return EvmExceptionType.None;
     }
@@ -520,26 +491,11 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4));
 
         return EvmExceptionType.None;
     }
@@ -563,26 +519,11 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5));
 
         return EvmExceptionType.None;
     }
@@ -606,26 +547,11 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6));
 
         return EvmExceptionType.None;
     }
@@ -649,26 +575,11 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7));
 
         return EvmExceptionType.None;
     }
@@ -726,29 +637,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                ((ulong)Unsafe.Add(ref value, 0)) << 56,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                ((ulong)Unsafe.Add(ref value, 0)) << 56
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.Add(ref value, 0)) << 56;
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9));
 
         return EvmExceptionType.None;
     }
@@ -772,29 +666,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10));
 
         return EvmExceptionType.None;
     }
@@ -818,29 +695,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56)
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11));
 
         return EvmExceptionType.None;
     }
@@ -864,29 +724,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12));
 
         return EvmExceptionType.None;
     }
@@ -910,29 +753,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56)
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13));
 
         return EvmExceptionType.None;
     }
@@ -956,29 +782,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48)
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14));
 
         return EvmExceptionType.None;
     }
@@ -1002,29 +811,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56)
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15));
 
         return EvmExceptionType.None;
     }
@@ -1048,29 +840,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                Unsafe.ReadUnaligned<ulong>(ref value),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                0UL,
-                Unsafe.ReadUnaligned<ulong>(ref value)
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref value);
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16));
 
         return EvmExceptionType.None;
     }
@@ -1094,29 +869,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                ((ulong)Unsafe.Add(ref value, 0)) << 56,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 17))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                ((ulong)Unsafe.Add(ref value, 0)) << 56,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 17))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = ((ulong)Unsafe.Add(ref value, 0)) << 56;
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 17));
 
         return EvmExceptionType.None;
     }
@@ -1140,29 +898,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 18))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 18))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 18));
 
         return EvmExceptionType.None;
     }
@@ -1186,29 +927,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 19))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 19))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 19));
 
         return EvmExceptionType.None;
     }
@@ -1232,29 +956,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 20))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 20))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 20));
 
         return EvmExceptionType.None;
     }
@@ -1278,29 +985,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 21))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 21))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 21));
 
         return EvmExceptionType.None;
     }
@@ -1323,18 +1013,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
 
         return EvmExceptionType.None;
     }
@@ -1358,29 +1041,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 22))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 22))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 22));
 
         return EvmExceptionType.None;
     }
@@ -1404,29 +1070,12 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 23))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = Vector128.Create(
-                ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7))
-            );
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15)),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 23))
-            );
-        }
+        // Write all 4 lanes directly with scalar stores (no zeroing needed).
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        headU64 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
+        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7));
+        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15));
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 23));
 
         return EvmExceptionType.None;
     }
@@ -1472,18 +1121,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
 
         return EvmExceptionType.None;
     }
@@ -1506,18 +1148,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
 
         return EvmExceptionType.None;
     }
@@ -1540,18 +1175,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
 
         return EvmExceptionType.None;
     }
@@ -1574,18 +1202,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
 
         return EvmExceptionType.None;
     }
@@ -1608,18 +1229,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
 
         return EvmExceptionType.None;
     }
@@ -1642,18 +1256,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = Unsafe.ReadUnaligned<ulong>(ref value);
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref value);
 
         return EvmExceptionType.None;
     }
@@ -1677,26 +1284,11 @@ public ref partial struct EvmStack
 
         Head = (int)newOffset;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(
-                0UL,
-                0UL,
-                ((ulong)Unsafe.Add(ref value, 0)) << 56,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1))
-            ).AsByte();
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-
-            head128 = default;
-
-            Unsafe.Add(ref head128, 1) = Vector128.Create(
-                ((ulong)Unsafe.Add(ref value, 0)) << 56,
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1))
-            );
-        }
+        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.Add(ref value, 0)) << 56;
+        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1));
 
         return EvmExceptionType.None;
     }
@@ -1719,18 +1311,11 @@ public ref partial struct EvmStack
         }
 
         Head = (int)newOffset;
-        ulong lane3 = (ulong)value << 56;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = CreateWordFromUInt64(lane3);
-        }
-        else
-        {
-            ref Vector128<ulong> head128 = ref Unsafe.As<Word, Vector128<ulong>>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = Vector128.Create(0UL, lane3);
-        }
+        // Zero entire word with single vector store, then fill lane 3 with scalar store.
+        head = default;
+        ref ulong headU64 = ref Unsafe.As<Word, ulong>(ref head);
+        Unsafe.Add(ref headU64, 3) = (ulong)value << 56;
 
         return EvmExceptionType.None;
     }
