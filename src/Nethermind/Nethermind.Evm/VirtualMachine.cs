@@ -219,8 +219,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 ProcessCallFramesCore<TTracingInst, TTracingActions, TCancellable>(spec, out substate);
                 return;
             }
-            catch (EvmException) { }
-            catch (OverflowException) { }
+            catch (EvmException) { /* Handled after finally */ }
+            catch (OverflowException) { /* Handled after finally */ }
             finally
             {
                 // Dispose any state that was pending when exception occurred
