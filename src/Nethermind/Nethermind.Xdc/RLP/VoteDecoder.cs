@@ -93,7 +93,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
     private int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
     {
         return
-            (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0
+            ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)
             + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
     }
