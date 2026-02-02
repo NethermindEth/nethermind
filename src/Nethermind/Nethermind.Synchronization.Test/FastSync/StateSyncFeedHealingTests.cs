@@ -43,7 +43,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
         local.CompareTrees(remote, _logger, "END");
-        Assert.That(local.StateTree.RootHash, Is.EqualTo(remote.StateTree.RootHash));
+        Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
         // I guess state root will be requested regardless
         Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
@@ -141,7 +141,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             startingHashIndex += 1000;
         }
 
-        local.StateTree.RootHash = remote.StateTree.RootHash;
+        local.RootHash = remote.StateTree.RootHash;
 
         await using IContainer container = PrepareDownloader(local, remote, syncDispatcherAllocateTimeoutMs: 1000);
         SafeContext ctx = container.Resolve<SafeContext>();
@@ -149,7 +149,7 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
-        local.StateTree.UpdateRootHash();
+        local.UpdateRootHash();
         local.CompareTrees(remote, _logger, "END");
         _logger.Info($"REQUESTED NODES TO HEAL: {data.RequestedNodesCount}");
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));

@@ -34,9 +34,6 @@ internal class PersistenceTrieStoreAdapter(
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
         address is null ? this : new PersistenceStorageTrieStoreAdapter(reader, writeBatch, address);
 
-    public IScopedTrieStore GetStorageTrieStore(Hash256 address) =>
-        new PersistenceStorageTrieStoreAdapter(reader, writeBatch, address);
-
     public override bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         _writtenNodes.ContainsKey(keccak) || reader.TryLoadStateRlp(path, ReadFlags.None) is not null;
 

@@ -227,8 +227,20 @@ public abstract class StateSyncFeedTestsBase(
         public TestMemDb Db { get; }
         public IDb StateDb => Db;
         public NodeStorage NodeStorage { get; }
-        public StateTree StateTree { get; }
+        private StateTree StateTree { get; }
         public ISnapTrieFactory SnapTrieFactory { get; }
+
+        public Hash256 RootHash
+        {
+            get => StateTree.RootHash;
+            set => StateTree.RootHash = value;
+        }
+
+        public void UpdateRootHash() => StateTree.UpdateRootHash();
+
+        public void Set(Hash256 address, Account? account) => StateTree.Set(address, account);
+
+        public void Commit() => StateTree.Commit();
 
         public void AssertFlushed()
         {

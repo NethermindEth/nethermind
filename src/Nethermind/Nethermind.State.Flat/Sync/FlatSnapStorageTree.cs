@@ -42,8 +42,11 @@ public class FlatSnapStorageTree : ISnapStorageTree
         _tree.RootHash = Keccak.EmptyTreeHash;
     }
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None) is not null;
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
+    {
+        byte[]? rlp = _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None);
+        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+    }
 
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags)
     {

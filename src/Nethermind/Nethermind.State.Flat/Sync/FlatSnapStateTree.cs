@@ -36,8 +36,11 @@ public class FlatSnapStateTree : ISnapStateTree
 
     public void SetRootFromProof(TrieNode root) => _tree.RootRef = root;
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        _reader.TryLoadStateRlp(path, ReadFlags.None) is not null;
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
+    {
+        byte[]? rlp = _reader.TryLoadStateRlp(path, ReadFlags.None);
+        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+    }
 
     public void Clear()
     {

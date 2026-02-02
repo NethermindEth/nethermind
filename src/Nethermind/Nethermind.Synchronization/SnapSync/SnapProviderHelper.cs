@@ -65,9 +65,12 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithAccount account = accounts[index];
 
-                if (account.Path >= limitHash && hasExtraStorageIdx == -1)
+                if (account.Path > limitHash)
                 {
-                    hasExtraStorageIdx = index;
+                    if (hasExtraStorageIdx == -1)
+                    {
+                        hasExtraStorageIdx = index;
+                    }
                 }
                 else if (account.Path < startingHash)
                 {
@@ -75,7 +78,8 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (account.Account.HasStorage)
                 {
-                    // If within range, we will need to schedule the storage range, hence this
+                    // If within range, we will need to schedule the storage range, hence this.
+                    // BUT only once per storage.
                     accountsWithStorage.Add(account);
                 }
 
@@ -126,14 +130,8 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     PathWithAccount account = accounts[index];
 
-                    if (account.Path >= limitHash)
-                    {
-                        continue;
-                    }
-                    else if (account.Path < startingHash)
-                    {
-                        continue;
-                    }
+                    if (account.Path > limitHash) continue;
+                    else if (account.Path < startingHash) continue;
 
                     Account accountValue = account.Account;
                     Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);

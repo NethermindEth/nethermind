@@ -80,9 +80,8 @@ public class FlatTrieVerifier
 
         using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId);
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
-        Hash256 stateRoot = stateAtBlock.StateRoot!;
 
-        return VerifyCore(reader, trieStore, stateRoot, cancellationToken);
+        return VerifyCore(reader, trieStore, stateId.StateRoot.ToCommitment(), cancellationToken);
     }
 
     // Internal method for testing with direct components
@@ -93,7 +92,7 @@ public class FlatTrieVerifier
 
     private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
     {
-        HashVerifyingTrieStore verifyingTrieStore = new(trieStore, _logger);
+        HashVerifyingTrieStore verifyingTrieStore = new(trieStore, null, _logger);
         VisitorProgressTracker progressTracker = new("Verify flat", _logManager, printNodes: false);
 
         Channel<StorageVerificationJob> channel = Channel.CreateBounded<StorageVerificationJob>(
@@ -754,7 +753,7 @@ public class FlatTrieVerifier
     /// <summary>
     /// Wrapper around IScopedTrieStore that verifies hashes of loaded RLP data.
     /// </summary>
-    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, ILogger logger) : IScopedTrieStore
+    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger) : IScopedTrieStore
     {
         private long _hashMismatchCount;
 
@@ -788,15 +787,23 @@ public class FlatTrieVerifier
             if (computed != expectedHash)
             {
                 Interlocked.Increment(ref _hashMismatchCount);
-                if (logger.IsError) logger.Error(
-                    $"Hash mismatch at path {path}: expected {expectedHash.ToShortString()}, computed {computed.ToShortString()}");
+                if (address is null)
+                {
+                    if (logger.IsError) logger.Error(
+                        $"Hash mismatch at path {path}: expected {expectedHash.ToShortString()}, computed {computed.ToShortString()}");
+                }
+                else
+                {
+                    if (logger.IsError) logger.Error(
+                        $"Hash mismatch at path {address}:{path}: expected {expectedHash.ToShortString()}, computed {computed.ToShortString()}");
+                }
             }
         }
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null
                 ? this
-                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), logger);
+                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger);
 
         public INodeStorage.KeyScheme Scheme => inner.Scheme;
 

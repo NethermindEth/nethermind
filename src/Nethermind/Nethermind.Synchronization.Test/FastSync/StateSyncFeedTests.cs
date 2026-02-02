@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER FIRST SYNC", true);
 
-            local.StateTree.RootHash = remote.StateTree.RootHash;
+            local.RootHash = remote.StateTree.RootHash;
             for (byte i = 0; i < 8; i++)
                 remote.StateTree
                     .Set(TestItem.Addresses[i], TrieScenarios.AccountJustState0.WithChangedBalance(i)
@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER SECOND SYNC", true);
 
-            local.StateTree.RootHash = remote.StateTree.RootHash;
+            local.RootHash = remote.StateTree.RootHash;
             for (byte i = 0; i < 16; i++)
                 remote.StateTree
                     .Set(TestItem.Addresses[i], TrieScenarios.AccountJustState0.WithChangedBalance(i)
@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "AFTER FIRST SYNC");
 
-            local.StateTree.RootHash = remote.StateTree.RootHash;
+            local.RootHash = remote.StateTree.RootHash;
             remote.StateTree.Set(TestItem.AddressA, TrieScenarios.AccountJustState0.WithChangedBalance(123.Ether()));
             remote.StateTree.Set(TestItem.AddressB, TrieScenarios.AccountJustState1.WithChangedBalance(123.Ether()));
             remote.StateTree.Set(TestItem.AddressC, TrieScenarios.AccountJustState2.WithChangedBalance(123.Ether()));
@@ -427,14 +427,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Commit();
 
             // Local state only have the state
-            state = local.StateTree;
-            state.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject);
-            state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject);
-            state.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
-            state.Commit();
+            local.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            local.Set(TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject);
+            local.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
+            local.Commit();
 
             // Local state missing root so that it would start
-            local.NodeStorage.Set(null, TreePath.Empty, state.RootHash, null);
+            local.NodeStorage.Set(null, TreePath.Empty, local.RootHash, null);
 
             await using IContainer container = PrepareDownloader(local, remote);
             container.Resolve<StateSyncPivot>().UpdatedStorages.Add(theAccount);
