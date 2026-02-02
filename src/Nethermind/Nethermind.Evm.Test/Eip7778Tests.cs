@@ -499,4 +499,163 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Block gas should be greater than cumulative receipt gas due to refunds
         Assert.That(block.Header.GasUsed, Is.GreaterThan(receipt2.GasUsedTotal), "Block gas (pre-refund) should be greater than cumulative receipt gas (post-refund) due to tx1 refund");
     }
+
+    [Test]
+    public void Restore_to_snapshot_zero_clears_all_receipts_and_gas()
+    {
+        // Test that Restore(0) properly clears all receipts and resets gas tracking
+        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] code = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        (Block block, Transaction tx1) = PrepareTx((1, 0), 100000, code);
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        // Take snapshot before any transactions
+        int snapshot = tracer.TakeSnapshot();
+        Assert.That(snapshot, Is.EqualTo(0));
+
+        // Execute a transaction
+        tracer.StartNewTxTrace(tx1);
+        _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(0));
+
+        // Restore to snapshot 0
+        tracer.Restore(snapshot);
+
+        // Verify everything is cleared
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0), "Receipts should be empty after restore to 0");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(0), "Block gas should be reset after restore to 0");
+    }
+
+    [Test]
+    public void Restore_after_multiple_transactions_maintains_correct_gas_tracking()
+    {
+        // Test restore after multiple transactions with varying refunds
+        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] codeWithRefund = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        byte[] codeNoRefund = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction tx1) = PrepareTx((1, 0), 100000, codeWithRefund);
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        // Execute first transaction (with refund)
+        tracer.StartNewTxTrace(tx1);
+        _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        // Take snapshot after first tx
+        int snapshotAfterTx1 = tracer.TakeSnapshot();
+        long blockGasAfterTx1 = block.Header.GasUsed;
+        TxReceipt receipt1 = tracer.TxReceipts[0];
+
+        // Execute second transaction
+        Transaction tx2 = Build.A.Transaction
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .WithGasLimit(100000)
+            .WithGasPrice(1)
+            .To(Recipient)
+            .WithCode(codeNoRefund)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        tracer.StartNewTxTrace(tx2);
+        _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(blockGasAfterTx1));
+
+        // Restore to snapshot after tx1
+        tracer.Restore(snapshotAfterTx1);
+
+        // Verify state is restored to after tx1
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1), "Should have 1 receipt after restore");
+        Assert.That(tracer.TxReceipts[0].GasUsed, Is.EqualTo(receipt1.GasUsed), "First receipt should be unchanged");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "Block gas should be restored to post-tx1 value");
+    }
+
+    [Test]
+    public void Double_restore_works_correctly()
+    {
+        // Test that multiple restore operations work correctly
+        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] code = Prepare.EvmCode.Op(Instruction.STOP).Done;
+
+        (Block block, Transaction tx1) = PrepareTx((1, 0), 50000, code);
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        // Snapshot 0 (empty)
+        int snapshot0 = tracer.TakeSnapshot();
+
+        // Execute tx1
+        tracer.StartNewTxTrace(tx1);
+        _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        // Snapshot 1 (after tx1)
+        int snapshot1 = tracer.TakeSnapshot();
+        long gasAfterTx1 = block.Header.GasUsed;
+
+        // Execute tx2 (call to Recipient which has code deployed)
+        Transaction tx2 = Build.A.Transaction
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .WithGasLimit(50000)
+            .WithGasPrice(1)
+            .To(Recipient)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        tracer.StartNewTxTrace(tx2);
+        _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+
+        // First restore: back to after tx1
+        tracer.Restore(snapshot1);
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(gasAfterTx1));
+
+        // Second restore: back to empty
+        tracer.Restore(snapshot0);
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(0));
+    }
 }
