@@ -4,7 +4,6 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Admin.Models
 {

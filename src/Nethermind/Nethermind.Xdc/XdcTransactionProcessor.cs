@@ -22,7 +22,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
     private readonly IMasternodeVotingContract _masternodeVotingContract;
 
     public XdcTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
@@ -75,8 +75,8 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
-         out UInt256 blobBaseFee)
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+        out UInt256 blobBaseFee)
     {
         if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
         {

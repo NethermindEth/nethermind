@@ -25,7 +25,6 @@ using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
