@@ -15,35 +15,23 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal class SnapshotManager : BaseSnapshotManager<Snapshot, SnapshotDecoder>
+internal class SubnetSnapshotManager : BaseSnapshotManager<SubnetSnapshot, SubnetSnapshotDecoder>
 {
-    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-        : base(snapshotDb, blockTree, penaltyHandler, votingContract, specProvider, "XDC Snapshot cache")
+    public SubnetSnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+        : base(snapshotDb, blockTree, penaltyHandler, votingContract, specProvider, "XDC Subnet Snapshot cache")
     {
     }
 
     public override (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         int maxMasternodes = spec.MaxMasternodes;
-        Snapshot previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
+        SubnetSnapshot? previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
 
         if (previousSnapshot is null)
             throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
 
         Address[] candidates = previousSnapshot.NextEpochCandidates;
-
-        if (blockNumber == spec.SwitchBlock + 1)
-        {
-            if (candidates.Length > maxMasternodes)
-            {
-                Array.Resize(ref candidates, maxMasternodes);
-                return (candidates, []);
-            }
-
-            return (candidates, []);
-        }
-
-        Address[] penalties = PenaltyHandler.HandlePenalties(blockNumber, parentHash, candidates);
+        Address[] penalties = previousSnapshot.NextEpochPenalties;
 
         candidates = candidates
             .Except(penalties)        // remove penalties
@@ -53,8 +41,9 @@ internal class SnapshotManager : BaseSnapshotManager<Snapshot, SnapshotDecoder>
         return (candidates, penalties);
     }
 
-    protected override Snapshot CreateSnapshot(XdcBlockHeader header, Address[] candidates, IXdcReleaseSpec spec)
+    protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, Address[] candidates, IXdcReleaseSpec spec)
     {
-        return new Snapshot(header.Number, header.Hash, candidates);
+        Address[] penalties = PenaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
+        return new SubnetSnapshot(header.Number, header.Hash, candidates, penalties);
     }
 }
