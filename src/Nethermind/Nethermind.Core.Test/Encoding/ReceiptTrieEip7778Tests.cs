@@ -16,32 +16,22 @@ namespace Nethermind.Core.Test.Encoding;
 public class ReceiptTrieEip7778Tests
 {
     [Test]
-    public void Receipts_root_ignores_gas_spent_when_eip7778_disabled()
+    public void Receipts_root_same_when_eip7778_disabled_or_enabled()
     {
-        TxReceipt baseReceipt = BuildReceipt(0);
-        TxReceipt updatedReceipt = BuildReceipt(123);
+        // After revert from ethereum/execution-specs#2073, GasSpent is no longer part of receipts
+        // So the receipt trie root should be the same regardless of EIP-7778
+        TxReceipt receipt = BuildReceipt();
 
-        IReceiptSpec spec = new ReleaseSpec { IsEip658Enabled = true, IsEip7778Enabled = false };
-        Hash256 root1 = ReceiptTrie.CalculateRoot(spec, new[] { baseReceipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
-        Hash256 root2 = ReceiptTrie.CalculateRoot(spec, new[] { updatedReceipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
+        IReceiptSpec specWithout7778 = new ReleaseSpec { IsEip658Enabled = true, IsEip7778Enabled = false };
+        IReceiptSpec specWith7778 = new ReleaseSpec { IsEip658Enabled = true, IsEip7778Enabled = true };
+
+        Hash256 root1 = ReceiptTrie.CalculateRoot(specWithout7778, new[] { receipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
+        Hash256 root2 = ReceiptTrie.CalculateRoot(specWith7778, new[] { receipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
 
         Assert.That(root2, Is.EqualTo(root1));
     }
 
-    [Test]
-    public void Receipts_root_includes_gas_spent_when_eip7778_enabled()
-    {
-        TxReceipt baseReceipt = BuildReceipt(0);
-        TxReceipt updatedReceipt = BuildReceipt(123);
-
-        IReceiptSpec spec = new ReleaseSpec { IsEip658Enabled = true, IsEip7778Enabled = true };
-        Hash256 root1 = ReceiptTrie.CalculateRoot(spec, new[] { baseReceipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
-        Hash256 root2 = ReceiptTrie.CalculateRoot(spec, new[] { updatedReceipt }, Rlp.GetStreamDecoder<TxReceipt>()!);
-
-        Assert.That(root2, Is.Not.EqualTo(root1));
-    }
-
-    private static TxReceipt BuildReceipt(long gasSpent)
+    private static TxReceipt BuildReceipt()
     {
         TxReceipt receipt = Build.A.Receipt.TestObject;
         receipt.Logs = [];
@@ -49,7 +39,6 @@ public class ReceiptTrieEip7778Tests
         receipt.StatusCode = 1;
         receipt.PostTransactionState = null;
         receipt.GasUsedTotal = 1000;
-        receipt.GasSpent = gasSpent;
         return receipt;
     }
 }

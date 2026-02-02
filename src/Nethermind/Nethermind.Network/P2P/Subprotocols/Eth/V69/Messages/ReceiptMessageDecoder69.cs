@@ -67,13 +67,8 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         txReceipt.Logs = entries;
 
-        // EIP-7778: Read GasSpent if present (after logs sequence)
+        // Handle any remaining extra bytes
         bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-        if (ctx.Position < receiptEnd)
-        {
-            txReceipt.GasSpent = ctx.DecodePositiveLong();
-        }
-
         if (ctx.Position != receiptEnd)
         {
             if (allowExtraBytes)
@@ -114,13 +109,6 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
                 : Rlp.LengthOf(item.PostTransactionState);
-        }
-
-        // EIP-7778: Include GasSpent in content length if flag is set and value is present
-        bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-        if (isEip7778Receipts && item.GasSpent.HasValue)
-        {
-            contentLength += Rlp.LengthOf(item.GasSpent.Value);
         }
 
         return (contentLength, logsLength);
@@ -176,12 +164,6 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         for (var i = 0; i < logs.Length; i++)
         {
             rlpStream.Encode(logs[i]);
-        }
-
-        // EIP-7778: Encode GasSpent after logs if flag is set and value is present
-        if ((rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts && item.GasSpent.HasValue)
-        {
-            rlpStream.Encode(item.GasSpent.Value);
         }
     }
 }

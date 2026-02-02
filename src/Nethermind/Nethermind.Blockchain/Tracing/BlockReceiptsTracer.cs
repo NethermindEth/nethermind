@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -72,22 +73,44 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         return receipt;
     }
 
+    /// <summary>
+    /// Updates cumulative gas tracking for both block and receipt accounting.
+    /// EIP-7778: Block gas uses pre-refund values for gas limit accounting,
+    /// while receipt gas uses post-refund values (what users actually pay).
+    /// </summary>
+    /// <returns>The cumulative post-refund gas for receipts</returns>
+    protected long UpdateCumulativeGasTracking(in GasConsumed gasConsumed)
+    {
+        // Track cumulative block gas for restore (pre-refund)
+        long cumulativeBlockGas = (_cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : 0) + gasConsumed.EffectiveBlockGas;
+        _cumulativeBlockGasPerTx.Add(cumulativeBlockGas);
+
+        // Track cumulative receipt gas (post-refund)
+        _cumulativeReceiptGas += gasConsumed.SpentGas;
+
+        Debug.Assert(_txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
+            "Receipt and gas tracking lists must remain synchronized");
+
+        return _cumulativeReceiptGas;
+    }
+
     protected virtual TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
+        long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
+
         Transaction transaction = CurrentTx!;
         TxReceipt txReceipt = new()
         {
             Logs = logEntries,
             TxType = transaction.Type,
             // Bloom calculated in parallel with other receipts
-            GasUsedTotal = Block.GasUsed,
+            GasUsedTotal = cumulativeReceiptGas,  // Post-refund cumulative
             StatusCode = statusCode,
             Recipient = transaction.IsContractCreation ? null : recipient,
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
             Index = _currentIndex,
-            GasUsed = gasConsumed.EffectiveBlockGas,
-            GasSpent = gasConsumed.SpentGas, // EIP-7778: Gas actually spent (after refunds)
+            GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
@@ -199,6 +222,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
+    private readonly List<long> _cumulativeBlockGasPerTx = new();  // Track pre-refund block gas for restore
+    private long _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
@@ -211,13 +236,20 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void Restore(int snapshot)
     {
         int numToRemove = _txReceipts.Count - snapshot;
-
-        for (int i = 0; i < numToRemove; i++)
+        if (numToRemove > 0)
         {
-            _txReceipts.RemoveAt(_txReceipts.Count - 1);
+            _txReceipts.RemoveRange(snapshot, numToRemove);
+            _cumulativeBlockGasPerTx.RemoveRange(snapshot, numToRemove);
         }
 
-        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        Debug.Assert(_txReceipts.Count == _cumulativeBlockGasPerTx.Count,
+            "Receipt and gas tracking lists must remain synchronized after restore");
+
+        // Restore block gas from tracking (pre-refund)
+        Block.Header.GasUsed = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : 0;
+
+        // Restore receipt gas from remaining receipts (post-refund)
+        _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -228,6 +260,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
+        _cumulativeBlockGasPerTx.Clear();
+        _cumulativeReceiptGas = 0;
 
         _otherTracer.StartNewBlockTrace(block);
     }

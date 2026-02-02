@@ -339,7 +339,7 @@ public class DataFeed
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
         ReceiptForRpc[] receipts = _receiptFinder.Get(head)
-            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header), includeGasSpent: spec.IsEip7778Enabled))
+            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
             .ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(

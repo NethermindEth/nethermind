@@ -19,6 +19,8 @@ namespace Nethermind.Evm.Test;
 
 /// <summary>
 /// Tests for EIP-7778: Block Gas Accounting without Refunds
+/// With the revert from ethereum/execution-specs#2073, receipts now use post-refund gas
+/// while block gas accounting still uses pre-refund gas.
 /// </summary>
 public class Eip7778Tests : VirtualMachineTestsBase
 {
@@ -68,8 +70,10 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Receipt_cumulative_gas_uses_pre_refund_value_when_eip7778_enabled()
+    public void Receipt_uses_post_refund_gas_when_eip7778_enabled()
     {
+        // After the revert (ethereum/execution-specs#2073), receipts show post-refund gas
+        // This is what users pay, while block gas accounting uses pre-refund
         TestState.CreateAccount(Recipient, 1.Ether());
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
@@ -93,9 +97,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
         tracer.EndBlockTrace();
 
         TxReceipt receipt = tracer.TxReceipts[0];
-        Assert.That(receipt.GasUsedTotal, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasSpent, Is.LessThan(receipt.GasUsed));
+
+        // Receipt gas is post-refund, block gas is pre-refund
+        // So receipt.GasUsed < block.GasUsed when there are refunds
+        Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt GasUsed should be post-refund (less than block gas)");
+        Assert.That(receipt.GasUsedTotal, Is.EqualTo(receipt.GasUsed), "For single tx, GasUsedTotal equals GasUsed");
     }
 
     [Test]
@@ -174,7 +180,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Receipt_cumulative_gas_equals_spent_gas_when_eip7778_disabled()
+    public void Receipt_gas_equals_block_gas_when_eip7778_disabled()
     {
         TestState.CreateAccount(Recipient, 1.Ether());
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
@@ -199,51 +205,9 @@ public class Eip7778Tests : VirtualMachineTestsBase
         tracer.EndBlockTrace();
 
         TxReceipt receipt = tracer.TxReceipts[0];
+        // When EIP-7778 is disabled, receipt and block gas are both post-refund
         Assert.That(receipt.GasUsedTotal, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasUsed, Is.EqualTo(receipt.GasSpent));
-    }
-
-    [Test]
-    public void Receipt_gas_spent_equals_spent_gas()
-    {
-        TxReceipt receipt = new()
-        {
-            GasUsed = 21000,
-            GasUsedTotal = 50000,
-            GasSpent = 21000
-        };
-
-        Assert.That(receipt.GasSpent, Is.EqualTo(receipt.GasUsed));
-    }
-
-    [Test]
-    public void Receipt_copy_constructor_copies_gas_spent()
-    {
-        TxReceipt original = new()
-        {
-            GasUsed = 21000,
-            GasUsedTotal = 50000,
-            GasSpent = 18000
-        };
-
-        TxReceipt copy = new(original);
-
-        Assert.That(copy.GasSpent, Is.EqualTo(original.GasSpent));
-    }
-
-    [Test]
-    public void TxReceiptStructRef_copies_gas_spent()
-    {
-        TxReceipt original = new()
-        {
-            GasUsed = 21000,
-            GasUsedTotal = 50000,
-            GasSpent = 18000
-        };
-
-        TxReceiptStructRef structRef = new(original);
-
-        Assert.That(structRef.GasSpent, Is.EqualTo(original.GasSpent));
+        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed));
     }
 
     [Test]
@@ -315,8 +279,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Since this is a simple transfer with no refunds, preRefundGas = standard gas
         // But floor gas is higher, so block gas should use floor
         Assert.That(block.Header.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Block gas should use calldata floor when it exceeds execution gas");
+        // Receipt also uses floor gas since it's what user pays
         Assert.That(receipt.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Receipt GasUsed should use calldata floor");
-        Assert.That(receipt.GasSpent, Is.EqualTo(intrinsicGas.FloorGas), "User pays floor gas");
     }
 
     [Test]
@@ -393,7 +357,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // The execution gas (pre-refund) should exceed the floor gas
         // Block gas = max(preRefundGas, floorGas), so should use preRefundGas
         Assert.That(block.Header.GasUsed, Is.GreaterThan(intrinsicGas.FloorGas), "Block gas should exceed calldata floor when execution is more expensive");
-        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed), "Receipt GasUsed should match block gas");
+        // Receipt uses post-refund gas which is less than block gas
+        Assert.That(receipt.GasUsed, Is.LessThanOrEqualTo(block.Header.GasUsed), "Receipt GasUsed (post-refund) should be <= block gas (pre-refund)");
     }
 
     [Test]
@@ -401,7 +366,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // Test the scenario where there's a refund but floor gas still applies
         // Formula: blockGas = max(preRefundGas, floorGas)
-        //          spentGas = max(postRefundGas, floorGas)
+        //          receiptGas = max(postRefundGas, floorGas)
         var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
         {
             IsEip7778Enabled = true,
@@ -462,19 +427,18 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         TxReceipt receipt = tracer.TxReceipts[0];
 
-        // With refund: GasSpent (post-refund) < GasUsed (pre-refund/block gas)
-        // Both should be >= floor gas
+        // With refund: receipt.GasUsed (post-refund) < block.GasUsed (pre-refund)
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, eip7778And7623Spec);
 
-        Assert.That(receipt.GasSpent, Is.LessThan(receipt.GasUsed), "User pays less due to refund");
-        Assert.That(receipt.GasSpent, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
+        Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt shows post-refund gas, which is less than block gas");
+        Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
         Assert.That(block.Header.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "Block gas should be at least floor gas");
-        Assert.That(block.Header.GasUsed, Is.EqualTo(receipt.GasUsed), "Block gas should match receipt GasUsed (pre-refund)");
     }
 
     [Test]
-    public void Multiple_transactions_cumulative_gas_uses_pre_refund_values()
+    public void Multiple_transactions_cumulative_gas_uses_post_refund_values()
     {
+        // After the revert, cumulative receipt gas uses post-refund values
         // Set up storage slot that will be cleared for refund
         TestState.CreateAccount(Recipient, 1.Ether());
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
@@ -505,7 +469,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
 
-        long gasUsedAfterTx1 = block.Header.GasUsed;
+        long blockGasAfterTx1 = block.Header.GasUsed;
         TxReceipt receipt1 = tracer.TxReceipts[0];
 
         // Prepare and execute second transaction (no refund)
@@ -525,20 +489,173 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         TxReceipt receipt2 = tracer.TxReceipts[1];
 
-        // Verify first transaction has refund (pre-refund > post-refund)
-        Assert.That(receipt1.GasUsedTotal, Is.EqualTo(gasUsedAfterTx1), "First receipt cumulative gas should match block gas after tx1");
-        Assert.That(receipt1.GasSpent, Is.LessThan(receipt1.GasUsed), "First tx GasSpent should be less than GasUsed due to refund");
+        // Receipt gas is post-refund, block gas is pre-refund
+        // First tx had refund, so receipt1.GasUsed < contribution to block gas
+        Assert.That(receipt1.GasUsed, Is.LessThan(blockGasAfterTx1), "First tx receipt (post-refund) should be less than its block gas contribution (pre-refund)");
 
-        // Verify second transaction cumulative gas builds on first
-        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(block.Header.GasUsed), "Second receipt cumulative gas should match final block gas");
-        Assert.That(receipt2.GasUsedTotal, Is.GreaterThan(receipt1.GasUsedTotal), "Cumulative gas should increase");
+        // Verify cumulative receipt gas uses post-refund values
+        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(receipt1.GasUsed + receipt2.GasUsed), "Cumulative receipt gas should be sum of post-refund gas values");
 
-        // Verify cumulative calculation: tx2.GasUsedTotal = tx1.GasUsed + tx2.GasUsed (both pre-refund)
-        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(receipt1.GasUsed + receipt2.GasUsed), "Cumulative gas should be sum of pre-refund gas values");
+        // Block gas should be greater than cumulative receipt gas due to refunds
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(receipt2.GasUsedTotal), "Block gas (pre-refund) should be greater than cumulative receipt gas (post-refund) due to tx1 refund");
+    }
 
-        // Verify that total spent gas (post-refund) is less than cumulative gas (pre-refund)
-        // because tx1 has a refund
-        long totalSpent = receipt1.GasSpent!.Value + receipt2.GasSpent!.Value;
-        Assert.That(totalSpent, Is.LessThan(receipt2.GasUsedTotal), "Total spent gas should be less than cumulative gas due to tx1 refund");
+    [Test]
+    public void Restore_to_snapshot_zero_clears_all_receipts_and_gas()
+    {
+        // Test that Restore(0) properly clears all receipts and resets gas tracking
+        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] code = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        (Block block, Transaction tx1) = PrepareTx((1, 0), 100000, code);
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        // Take snapshot before any transactions
+        int snapshot = tracer.TakeSnapshot();
+        Assert.That(snapshot, Is.EqualTo(0));
+
+        // Execute a transaction
+        tracer.StartNewTxTrace(tx1);
+        _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(0));
+
+        // Restore to snapshot 0
+        tracer.Restore(snapshot);
+
+        // Verify everything is cleared
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0), "Receipts should be empty after restore to 0");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(0), "Block gas should be reset after restore to 0");
+    }
+
+    [Test]
+    public void Restore_after_multiple_transactions_maintains_correct_gas_tracking()
+    {
+        // Test restore after multiple transactions with varying refunds
+        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] codeWithRefund = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        byte[] codeNoRefund = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction tx1) = PrepareTx((1, 0), 100000, codeWithRefund);
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        // Execute first transaction (with refund)
+        tracer.StartNewTxTrace(tx1);
+        _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        // Take snapshot after first tx
+        int snapshotAfterTx1 = tracer.TakeSnapshot();
+        long blockGasAfterTx1 = block.Header.GasUsed;
+        TxReceipt receipt1 = tracer.TxReceipts[0];
+
+        // Execute second transaction
+        Transaction tx2 = Build.A.Transaction
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .WithGasLimit(100000)
+            .WithGasPrice(1)
+            .To(Recipient)
+            .WithCode(codeNoRefund)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        tracer.StartNewTxTrace(tx2);
+        _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(blockGasAfterTx1));
+
+        // Restore to snapshot after tx1
+        tracer.Restore(snapshotAfterTx1);
+
+        // Verify state is restored to after tx1
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1), "Should have 1 receipt after restore");
+        Assert.That(tracer.TxReceipts[0].GasUsed, Is.EqualTo(receipt1.GasUsed), "First receipt should be unchanged");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(blockGasAfterTx1), "Block gas should be restored to post-tx1 value");
+    }
+
+    [Test]
+    public void Double_restore_works_correctly()
+    {
+        // Test that multiple restore operations work correctly
+        TestState.CreateAccount(Recipient, 1.Ether());
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] code = Prepare.EvmCode.Op(Instruction.STOP).Done;
+
+        (Block block, Transaction tx1) = PrepareTx((1, 0), 50000, code);
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        // Snapshot 0 (empty)
+        int snapshot0 = tracer.TakeSnapshot();
+
+        // Execute tx1
+        tracer.StartNewTxTrace(tx1);
+        _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        // Snapshot 1 (after tx1)
+        int snapshot1 = tracer.TakeSnapshot();
+        long gasAfterTx1 = block.Header.GasUsed;
+
+        // Execute tx2 (call to Recipient which has code deployed)
+        Transaction tx2 = Build.A.Transaction
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .WithGasLimit(50000)
+            .WithGasPrice(1)
+            .To(Recipient)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        tracer.StartNewTxTrace(tx2);
+        _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+
+        // First restore: back to after tx1
+        tracer.Restore(snapshot1);
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(1));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(gasAfterTx1));
+
+        // Second restore: back to empty
+        tracer.Restore(snapshot0);
+        Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(0));
     }
 }

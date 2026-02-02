@@ -42,8 +42,7 @@ namespace Nethermind.JsonRpc.Modules
                         r,
                         block.Timestamp,
                         t.GetGasInfo(spec, block.Header),
-                        receipts.GetBlockLogFirstIndex(r.Index),
-                        spec.IsEip7778Enabled);
+                        receipts.GetBlockLogFirstIndex(r.Index));
                 });
             ReceiptForRpc[] resultAsArray = result.ToArray();
             return ResultWrapper<ReceiptForRpc[]?>.Success(resultAsArray);

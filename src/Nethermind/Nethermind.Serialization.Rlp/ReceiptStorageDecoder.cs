@@ -94,13 +94,6 @@ namespace Nethermind.Serialization.Rlp
                 {
                     txReceipt.Error = rlpStream.DecodeString();
                 }
-
-                // EIP-7778: Read GasSpent if flag is set and data is present
-                bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-                if (isEip7778Receipts && rlpStream.Position < receiptEnd)
-                {
-                    txReceipt.GasSpent = rlpStream.DecodePositiveLong();
-                }
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -176,13 +169,6 @@ namespace Nethermind.Serialization.Rlp
                 {
                     txReceipt.Error = decoderContext.DecodeString();
                 }
-
-                // EIP-7778: Read GasSpent if flag is set and data is present
-                bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-                if (isEip7778Receipts && decoderContext.Position < receiptEnd)
-                {
-                    txReceipt.GasSpent = decoderContext.DecodePositiveLong();
-                }
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -209,7 +195,6 @@ namespace Nethermind.Serialization.Rlp
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
-            bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
 
             if (item.TxType != TxType.Legacy)
             {
@@ -258,12 +243,6 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 rlpStream.Encode(item.Error);
-
-                // EIP-7778: Encode GasSpent if flag is set and value is present
-                if (isEip7778Receipts && item.GasSpent.HasValue)
-                {
-                    rlpStream.Encode(item.GasSpent.Value);
-                }
             }
             else
             {
@@ -279,12 +258,6 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 rlpStream.Encode(item.Error);
-
-                // EIP-7778: Encode GasSpent if flag is set and value is present
-                if (isEip7778Receipts && item.GasSpent.HasValue)
-                {
-                    rlpStream.Encode(item.GasSpent.Value);
-                }
             }
         }
 
@@ -328,13 +301,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             contentLength += Rlp.LengthOf(item.Error);
-
-            // EIP-7778: Include GasSpent in content length if flag is set and value is present
-            bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-            if (isEip7778Receipts && item.GasSpent.HasValue)
-            {
-                contentLength += Rlp.LengthOf(item.GasSpent.Value);
-            }
 
             return (contentLength, logsLength);
         }
@@ -435,13 +401,6 @@ namespace Nethermind.Serialization.Rlp
                 if (decoderContext.Position < receiptEnd)
                 {
                     item.Error = decoderContext.DecodeString();
-                }
-
-                // EIP-7778: Read GasSpent if flag is set and data is present
-                bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-                if (isEip7778Receipts && decoderContext.Position < receiptEnd)
-                {
-                    item.GasSpent = decoderContext.DecodePositiveLong();
                 }
             }
         }

@@ -37,7 +37,6 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
     private void Initialize(ReadOnlySpan<TxReceipt> receipts, IReceiptSpec spec)
     {
         RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
-            | (spec.IsEip7778Enabled ? RlpBehaviors.Eip7778Receipts : RlpBehaviors.None)
             | RlpBehaviors.SkipTypedWrapping;
         int key = 0;
 

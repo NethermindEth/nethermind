@@ -75,14 +75,8 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
-            // EIP-7778: Read GasSpent if present (after logs sequence)
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (ctx.Position < receiptEnd)
-            {
-                txReceipt.GasSpent = ctx.DecodePositiveLong();
-            }
-
             // Handle any remaining extra bytes
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (ctx.Position != receiptEnd)
             {
                 if (allowExtraBytes)
@@ -123,13 +117,6 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += isEip658Receipts
                     ? Rlp.LengthOf(item.StatusCode)
                     : Rlp.LengthOf(item.PostTransactionState);
-            }
-
-            // EIP-7778: Include GasSpent in content length if flag is set and value is present
-            bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-            if (isEip7778Receipts && item.GasSpent.HasValue)
-            {
-                contentLength += Rlp.LengthOf(item.GasSpent.Value);
             }
 
             return (contentLength, logsLength);
@@ -188,7 +175,6 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
-            bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
 
             if (item.TxType != TxType.Legacy)
             {
@@ -221,12 +207,6 @@ namespace Nethermind.Serialization.Rlp
             for (var i = 0; i < logs.Length; i++)
             {
                 rlpStream.Encode(logs[i]);
-            }
-
-            // EIP-7778: Encode GasSpent after logs if flag is set and value is present
-            if (isEip7778Receipts && item.GasSpent.HasValue)
-            {
-                rlpStream.Encode(item.GasSpent.Value);
             }
         }
     }
