@@ -3,14 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -43,7 +40,6 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Init.Modules;
 
 namespace Nethermind.Core.Test.Blockchain;

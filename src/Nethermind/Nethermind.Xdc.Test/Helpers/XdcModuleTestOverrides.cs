@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;

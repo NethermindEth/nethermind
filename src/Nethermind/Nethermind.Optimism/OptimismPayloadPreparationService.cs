@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
