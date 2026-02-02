@@ -58,7 +58,6 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         int pathPoolCount = 100_000;
         Hash256[] pathPool = new Hash256[pathPoolCount];
-        SortedDictionary<Hash256, Account> accounts = new();
 
         for (int i = 0; i < pathPoolCount; i++)
         {
@@ -69,7 +68,16 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             pathPool[i] = keccak;
         }
 
-        // generate Remote Tree
+        int blockJumps = 5;
+
+        // Store accounts snapshot at each block number
+        SortedDictionary<Hash256, Account>[] accountsAtBlock = new SortedDictionary<Hash256, Account>[blockJumps + 1];
+        Hash256[] rootHashAtBlock = new Hash256[blockJumps + 1];
+
+        // Initialize accounts
+        SortedDictionary<Hash256, Account> accounts = new();
+
+        // Generate initial Remote Tree (block 0)
         for (int accountIndex = 0; accountIndex < 10000; accountIndex++)
         {
             Account account = TestItem.GenerateRandomAccount();
@@ -81,25 +89,14 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
 
         remote.StateTree.Commit();
 
-        int startingHashIndex = 0;
-        int endHashIndex;
-        int blockJumps = 5;
-
-        await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
-        LocalDbContext local = container.Resolve<LocalDbContext>();
-
+        // Pre-build all blocks and store state at each block
         for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
-            for (int i = 0; i < 19; i++)
-            {
-                endHashIndex = startingHashIndex + 1000;
+            // Store snapshot of accounts and root hash at this block
+            accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
+            rootHashAtBlock[blockNumber] = remote.StateTree.RootHash;
 
-                ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockNumber, remote.StateTree.RootHash,
-                   accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
-
-                startingHashIndex = endHashIndex + 1;
-            }
-
+            // Modify tree for next block
             for (int accountIndex = 0; accountIndex < 1000; accountIndex++)
             {
                 Account account = TestItem.GenerateRandomAccount();
@@ -117,8 +114,6 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                         remote.StateTree.Set(path, null);
                         accounts.Remove(path);
                     }
-
-
                 }
                 else
                 {
@@ -130,6 +125,36 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
             remote.StateTree.Commit();
         }
 
+        // Final state root
+        Hash256 finalRootHash = remote.StateTree.RootHash;
+
+        await using IContainer container = PrepareDownloader(remote, syncDispatcherAllocateTimeoutMs: 1000);
+        LocalDbContext local = container.Resolve<LocalDbContext>();
+
+        int startingHashIndex = 0;
+        int endHashIndex;
+
+        // Now process account ranges using stored snapshots
+        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        {
+            // Set remote tree to the state at this block number
+            remote.StateTree.RootHash = rootHashAtBlock[blockNumber];
+            SortedDictionary<Hash256, Account> blockAccounts = accountsAtBlock[blockNumber];
+
+            for (int i = 0; i < 19; i++)
+            {
+                endHashIndex = startingHashIndex + 1000;
+
+                ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockNumber, rootHashAtBlock[blockNumber],
+                   blockAccounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
+
+                startingHashIndex = endHashIndex + 1;
+            }
+        }
+
+        // Set remote tree back to final state for remaining processing
+        remote.StateTree.RootHash = finalRootHash;
+
         endHashIndex = startingHashIndex + 1000;
         while (endHashIndex < pathPool.Length - 1)
         {
@@ -139,14 +164,13 @@ public class StateSyncFeedHealingTests(Action<ContainerBuilder> registerTreeSync
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockJumps, remote.StateTree.RootHash,
+            ProcessAccountRange(remote.StateTree, local.SnapTrieFactory, blockJumps, finalRootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
-
 
             startingHashIndex += 1000;
         }
 
-        local.RootHash = remote.StateTree.RootHash;
+        local.RootHash = finalRootHash;
 
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, timeout: 20000);
