@@ -22,12 +22,12 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
     private readonly IMasternodeVotingContract _masternodeVotingContract;
 
     public XdcTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider specProvider,
-        IWorldState worldState,
-        IVirtualMachine virtualMachine,
-        ICodeInfoRepository codeInfoRepository,
-        ILogManager logManager,
+        ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager,
         IMasternodeVotingContract masternodeVotingContract)
         : base(
             blobBaseFeeCalculator,
