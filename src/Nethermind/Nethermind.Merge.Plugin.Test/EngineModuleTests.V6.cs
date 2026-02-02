@@ -31,16 +31,20 @@ public partial class EngineModuleTests
             Timestamp = timestamp,
             PrevRandao = genesis.Header.Random!,
             SuggestedFeeRecipient = Address.Zero,
-            ParentBeaconBlockRoot = Keccak.Zero
+            ParentBeaconBlockRoot = Keccak.Zero,
+            Withdrawals = []
         };
 
-        // inject tx into txpool, use fcu
-        string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(genesis.Header, payloadAttributes)!;
+        // inject tx into txpool
+        ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV3(fcuState, payloadAttributes);
+        Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         await Task.Delay(1000);
 
         ResultWrapper<GetPayloadV6Result?> getPayloadResult =
-            await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(payloadId));
+            await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
         BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
