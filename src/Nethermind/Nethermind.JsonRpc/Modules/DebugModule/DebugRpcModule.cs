@@ -24,7 +24,6 @@ using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -41,7 +40,6 @@ public class DebugRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
-
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
@@ -450,9 +448,6 @@ public class DebugRpcModule(
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
-
-    public ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash)
-        => ResultWrapper<BlockAccessList?>.Success(debugBridge.GetBlockAccessList(blockHash));
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         jsonRpcConfig.BuildTimeoutCancellationToken();

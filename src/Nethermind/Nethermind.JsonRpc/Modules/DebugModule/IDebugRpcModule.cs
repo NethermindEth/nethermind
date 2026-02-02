@@ -11,7 +11,6 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -117,9 +116,6 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
-
-    [JsonRpcMethod(Description = "Retrieves block access list from block hash.")]
-    ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash);
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(

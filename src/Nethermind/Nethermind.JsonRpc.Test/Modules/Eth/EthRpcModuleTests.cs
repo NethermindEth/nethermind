@@ -1578,6 +1578,38 @@ public partial class EthRpcModuleTests
         Assert.That(recovered, Is.EqualTo(new Address(keyAddress)));
     }
 
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", new Hash256("0xc6444d9b4ab5180055fd877be9231ffae98404e9eb871d19affe9702fc05b095"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"slot\":\"0x2\",\"changes\":{\"0\":{\"blockAccessIndex\":0,\"newValue\":\"0x179d875956f4d9ec8d54fc9f973a3ce5800b4f0a836a5f89cfc2842359d02b9e\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0xa410\"},{\"blockAccessIndex\":2,\"postBalance\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5dea00002\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5de9f5bee\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"blockAccessIndex\":1,\"newNonce\":\"0x2\"},{\"blockAccessIndex\":2,\"newNonce\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash_not_found()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", Hash256.Zero);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"slot\":\"0x2\",\"changes\":{\"0\":{\"blockAccessIndex\":0,\"newValue\":\"0x179d875956f4d9ec8d54fc9f973a3ce5800b4f0a836a5f89cfc2842359d02b9e\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0xa410\"},{\"blockAccessIndex\":2,\"postBalance\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5dea00002\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5de9f5bee\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"blockAccessIndex\":1,\"newNonce\":\"0x2\"},{\"blockAccessIndex\":2,\"newNonce\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number_not_found()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 100);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+    }
+
     public class AllowNullAuthorizationTuple : AuthorizationTuple
     {
         public AllowNullAuthorizationTuple(ulong chainId, Address? codeAddress, ulong nonce, Signature? sig)
@@ -1663,6 +1695,12 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
+        public static async Task<Context> CreateWithAmsterdamEnabled()
+        {
+            OverridableReleaseSpec releaseSpec = new(Amsterdam.Instance);
+            TestSpecProvider specProvider = new(releaseSpec);
+            return await Create(specProvider);
+        }
 
         public static async Task<Context> CreateWithAncientBarriers(long blockNumber)
         {

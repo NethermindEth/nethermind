@@ -382,17 +382,4 @@ public class DebugModuleTests
 
         actual.Should().BeEquivalentTo(expected);
     }
-
-    [Test]
-    public async Task Get_bal()
-    {
-        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
-        BlockAccessList bal = new();
-        localDebugBridge.GetBlockAccessList(Keccak.Zero).Returns(bal);
-
-        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBALByHash", Keccak.Zero) as JsonRpcSuccessResponse;
-
-        Assert.That((BlockAccessList?)response?.Result, Is.EqualTo(bal));
-    }
 }
