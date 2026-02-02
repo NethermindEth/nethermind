@@ -21,7 +21,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;

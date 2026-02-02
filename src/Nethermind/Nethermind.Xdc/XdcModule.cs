@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
@@ -15,14 +14,10 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using Nethermind.Logging;
 
 namespace Nethermind.Xdc;
 
