@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
 
-        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart = 0, bool includeGasSpent = false)
+        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart = 0)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -25,7 +25,6 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
-            GasSpent = includeGasSpent ? receipt.GasSpent : null;
             EffectiveGasPrice = gasInfo.EffectiveGasPrice;
             BlobGasUsed = gasInfo.BlobGasUsed;
             BlobGasPrice = gasInfo.BlobGasPrice;
@@ -46,12 +45,6 @@ namespace Nethermind.JsonRpc.Data
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
-
-        /// <summary>
-        /// EIP-7778: Gas actually spent by the transaction after refunds.
-        /// </summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public long? GasSpent { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }
@@ -88,7 +81,6 @@ namespace Nethermind.JsonRpc.Data
                 BlockNumber = BlockNumber,
                 ContractAddress = ContractAddress,
                 GasUsed = GasUsed,
-                GasSpent = GasSpent,
                 StatusCode = Status is not null ? (byte)Status : byte.MinValue,
                 TxHash = TransactionHash,
                 GasUsedTotal = CumulativeGasUsed,

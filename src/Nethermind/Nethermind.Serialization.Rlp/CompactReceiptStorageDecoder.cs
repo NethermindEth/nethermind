@@ -61,20 +61,10 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            // EIP-7778: Read GasSpent if present in the stream
-            if (rlpStream.Position < receiptEnd)
-            {
-                txReceipt.GasSpent = rlpStream.DecodePositiveLong();
-            }
-
             // Handle any remaining extra bytes
-            if (rlpStream.Position < receiptEnd)
+            if (rlpStream.Position < receiptEnd && allowExtraBytes)
             {
-                if (allowExtraBytes)
-                {
-                    rlpStream.Position = receiptEnd;
-                }
-                // Note: We don't throw here since the check was already done above
+                rlpStream.Position = receiptEnd;
             }
 
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
@@ -125,12 +115,6 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            // EIP-7778: Read GasSpent if present in the stream
-            if (decoderContext.Position < receiptEnd)
-            {
-                txReceipt.GasSpent = decoderContext.DecodePositiveLong();
-            }
-
             // Handle any remaining extra bytes
             if (decoderContext.Position < receiptEnd && allowExtraBytes)
             {
@@ -178,14 +162,8 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // EIP-7778: Read GasSpent if present in the stream
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (decoderContext.Position < receiptEnd)
-            {
-                item.GasSpent = decoderContext.DecodePositiveLong();
-            }
-
             // Handle any remaining extra bytes
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (decoderContext.Position < receiptEnd && allowExtraBytes)
             {
                 decoderContext.Position = receiptEnd;
@@ -224,7 +202,6 @@ namespace Nethermind.Serialization.Rlp
             (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
 
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
-            bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
 
             // Note: Any byte saved here is about 3GB on mainnet.
             rlpStream.StartSequence(totalContentLength);
@@ -246,12 +223,6 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < logs.Length; i++)
             {
                 CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
-            }
-
-            // EIP-7778: Encode GasSpent if flag is set and value is present
-            if (isEip7778Receipts && item.GasSpent.HasValue)
-            {
-                rlpStream.Encode(item.GasSpent.Value);
             }
         }
 
@@ -278,13 +249,6 @@ namespace Nethermind.Serialization.Rlp
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
-
-            // EIP-7778: Include GasSpent in content length if flag is set and value is present
-            bool isEip7778Receipts = (rlpBehaviors & RlpBehaviors.Eip7778Receipts) == RlpBehaviors.Eip7778Receipts;
-            if (isEip7778Receipts && item.GasSpent.HasValue)
-            {
-                contentLength += Rlp.LengthOf(item.GasSpent.Value);
-            }
 
             return (contentLength, logsLength);
         }

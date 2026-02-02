@@ -158,8 +158,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 receipt,
                 block.Timestamp,
                 tx?.GetGasInfo(spec, block.Header) ?? new(),
-                logIndexStart,
-                spec.IsEip7778Enabled);
+                logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
 

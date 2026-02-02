@@ -25,7 +25,6 @@ namespace Nethermind.Core
             Index = other.Index;
             GasUsed = other.GasUsed;
             GasUsedTotal = other.GasUsedTotal;
-            GasSpent = other.GasSpent;
             Sender = other.Sender;
             ContractAddress = other.ContractAddress;
             Recipient = other.Recipient;
@@ -51,13 +50,6 @@ namespace Nethermind.Core
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
-
-        /// <summary>
-        /// EIP-7778: Gas actually spent by the transaction after refunds.
-        /// This is the amount the user pays for. Null for pre-EIP-7778 receipts.
-        /// </summary>
-        public long? GasSpent { get; set; }
-
         public Address? Sender { get; set; }
         public Address? ContractAddress { get; set; }
         public Address? Recipient { get; set; }
@@ -95,13 +87,6 @@ namespace Nethermind.Core
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
-
-        /// <summary>
-        /// EIP-7778: Gas actually spent by the transaction after refunds.
-        /// This is the amount the user pays for. Null for pre-EIP-7778 receipts.
-        /// </summary>
-        public long? GasSpent { get; set; }
-
         public AddressStructRef Sender;
         public AddressStructRef ContractAddress;
         public AddressStructRef Recipient;
@@ -135,7 +120,6 @@ namespace Nethermind.Core
             Index = receipt.Index;
             GasUsed = receipt.GasUsed;
             GasUsedTotal = receipt.GasUsedTotal;
-            GasSpent = receipt.GasSpent;
             Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
             ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
             Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();

@@ -19,6 +19,8 @@ namespace Nethermind.Evm.Test;
 
 /// <summary>
 /// Tests for EIP-7778: Block Gas Accounting without Refunds
+/// With the revert from ethereum/execution-specs#2073, receipts now use post-refund gas
+/// while block gas accounting still uses pre-refund gas.
 /// </summary>
 public class Eip7778Tests : VirtualMachineTestsBase
 {
@@ -68,8 +70,10 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Receipt_cumulative_gas_uses_pre_refund_value_when_eip7778_enabled()
+    public void Receipt_uses_post_refund_gas_when_eip7778_enabled()
     {
+        // After the revert (ethereum/execution-specs#2073), receipts show post-refund gas
+        // This is what users pay, while block gas accounting uses pre-refund
         TestState.CreateAccount(Recipient, 1.Ether());
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
@@ -93,9 +97,11 @@ public class Eip7778Tests : VirtualMachineTestsBase
         tracer.EndBlockTrace();
 
         TxReceipt receipt = tracer.TxReceipts[0];
-        Assert.That(receipt.GasUsedTotal, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasSpent, Is.LessThan(receipt.GasUsed));
+
+        // Receipt gas is post-refund, block gas is pre-refund
+        // So receipt.GasUsed < block.GasUsed when there are refunds
+        Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt GasUsed should be post-refund (less than block gas)");
+        Assert.That(receipt.GasUsedTotal, Is.EqualTo(receipt.GasUsed), "For single tx, GasUsedTotal equals GasUsed");
     }
 
     [Test]
@@ -174,7 +180,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Receipt_cumulative_gas_equals_spent_gas_when_eip7778_disabled()
+    public void Receipt_gas_equals_block_gas_when_eip7778_disabled()
     {
         TestState.CreateAccount(Recipient, 1.Ether());
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
@@ -199,51 +205,9 @@ public class Eip7778Tests : VirtualMachineTestsBase
         tracer.EndBlockTrace();
 
         TxReceipt receipt = tracer.TxReceipts[0];
+        // When EIP-7778 is disabled, receipt and block gas are both post-refund
         Assert.That(receipt.GasUsedTotal, Is.EqualTo(block.Header.GasUsed));
-        Assert.That(receipt.GasUsed, Is.EqualTo(receipt.GasSpent));
-    }
-
-    [Test]
-    public void Receipt_gas_spent_equals_spent_gas()
-    {
-        TxReceipt receipt = new()
-        {
-            GasUsed = 21000,
-            GasUsedTotal = 50000,
-            GasSpent = 21000
-        };
-
-        Assert.That(receipt.GasSpent, Is.EqualTo(receipt.GasUsed));
-    }
-
-    [Test]
-    public void Receipt_copy_constructor_copies_gas_spent()
-    {
-        TxReceipt original = new()
-        {
-            GasUsed = 21000,
-            GasUsedTotal = 50000,
-            GasSpent = 18000
-        };
-
-        TxReceipt copy = new(original);
-
-        Assert.That(copy.GasSpent, Is.EqualTo(original.GasSpent));
-    }
-
-    [Test]
-    public void TxReceiptStructRef_copies_gas_spent()
-    {
-        TxReceipt original = new()
-        {
-            GasUsed = 21000,
-            GasUsedTotal = 50000,
-            GasSpent = 18000
-        };
-
-        TxReceiptStructRef structRef = new(original);
-
-        Assert.That(structRef.GasSpent, Is.EqualTo(original.GasSpent));
+        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed));
     }
 
     [Test]
@@ -315,8 +279,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Since this is a simple transfer with no refunds, preRefundGas = standard gas
         // But floor gas is higher, so block gas should use floor
         Assert.That(block.Header.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Block gas should use calldata floor when it exceeds execution gas");
+        // Receipt also uses floor gas since it's what user pays
         Assert.That(receipt.GasUsed, Is.EqualTo(intrinsicGas.FloorGas), "Receipt GasUsed should use calldata floor");
-        Assert.That(receipt.GasSpent, Is.EqualTo(intrinsicGas.FloorGas), "User pays floor gas");
     }
 
     [Test]
@@ -393,7 +357,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // The execution gas (pre-refund) should exceed the floor gas
         // Block gas = max(preRefundGas, floorGas), so should use preRefundGas
         Assert.That(block.Header.GasUsed, Is.GreaterThan(intrinsicGas.FloorGas), "Block gas should exceed calldata floor when execution is more expensive");
-        Assert.That(receipt.GasUsed, Is.EqualTo(block.Header.GasUsed), "Receipt GasUsed should match block gas");
+        // Receipt uses post-refund gas which is less than block gas
+        Assert.That(receipt.GasUsed, Is.LessThanOrEqualTo(block.Header.GasUsed), "Receipt GasUsed (post-refund) should be <= block gas (pre-refund)");
     }
 
     [Test]
@@ -401,7 +366,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // Test the scenario where there's a refund but floor gas still applies
         // Formula: blockGas = max(preRefundGas, floorGas)
-        //          spentGas = max(postRefundGas, floorGas)
+        //          receiptGas = max(postRefundGas, floorGas)
         var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
         {
             IsEip7778Enabled = true,
@@ -462,19 +427,18 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         TxReceipt receipt = tracer.TxReceipts[0];
 
-        // With refund: GasSpent (post-refund) < GasUsed (pre-refund/block gas)
-        // Both should be >= floor gas
+        // With refund: receipt.GasUsed (post-refund) < block.GasUsed (pre-refund)
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, eip7778And7623Spec);
 
-        Assert.That(receipt.GasSpent, Is.LessThan(receipt.GasUsed), "User pays less due to refund");
-        Assert.That(receipt.GasSpent, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
+        Assert.That(receipt.GasUsed, Is.LessThan(block.Header.GasUsed), "Receipt shows post-refund gas, which is less than block gas");
+        Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "User payment should be at least floor gas");
         Assert.That(block.Header.GasUsed, Is.GreaterThanOrEqualTo(intrinsicGas.FloorGas), "Block gas should be at least floor gas");
-        Assert.That(block.Header.GasUsed, Is.EqualTo(receipt.GasUsed), "Block gas should match receipt GasUsed (pre-refund)");
     }
 
     [Test]
-    public void Multiple_transactions_cumulative_gas_uses_pre_refund_values()
+    public void Multiple_transactions_cumulative_gas_uses_post_refund_values()
     {
+        // After the revert, cumulative receipt gas uses post-refund values
         // Set up storage slot that will be cleared for refund
         TestState.CreateAccount(Recipient, 1.Ether());
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
@@ -505,7 +469,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
 
-        long gasUsedAfterTx1 = block.Header.GasUsed;
+        long blockGasAfterTx1 = block.Header.GasUsed;
         TxReceipt receipt1 = tracer.TxReceipts[0];
 
         // Prepare and execute second transaction (no refund)
@@ -525,20 +489,14 @@ public class Eip7778Tests : VirtualMachineTestsBase
 
         TxReceipt receipt2 = tracer.TxReceipts[1];
 
-        // Verify first transaction has refund (pre-refund > post-refund)
-        Assert.That(receipt1.GasUsedTotal, Is.EqualTo(gasUsedAfterTx1), "First receipt cumulative gas should match block gas after tx1");
-        Assert.That(receipt1.GasSpent, Is.LessThan(receipt1.GasUsed), "First tx GasSpent should be less than GasUsed due to refund");
+        // Receipt gas is post-refund, block gas is pre-refund
+        // First tx had refund, so receipt1.GasUsed < contribution to block gas
+        Assert.That(receipt1.GasUsed, Is.LessThan(blockGasAfterTx1), "First tx receipt (post-refund) should be less than its block gas contribution (pre-refund)");
 
-        // Verify second transaction cumulative gas builds on first
-        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(block.Header.GasUsed), "Second receipt cumulative gas should match final block gas");
-        Assert.That(receipt2.GasUsedTotal, Is.GreaterThan(receipt1.GasUsedTotal), "Cumulative gas should increase");
+        // Verify cumulative receipt gas uses post-refund values
+        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(receipt1.GasUsed + receipt2.GasUsed), "Cumulative receipt gas should be sum of post-refund gas values");
 
-        // Verify cumulative calculation: tx2.GasUsedTotal = tx1.GasUsed + tx2.GasUsed (both pre-refund)
-        Assert.That(receipt2.GasUsedTotal, Is.EqualTo(receipt1.GasUsed + receipt2.GasUsed), "Cumulative gas should be sum of pre-refund gas values");
-
-        // Verify that total spent gas (post-refund) is less than cumulative gas (pre-refund)
-        // because tx1 has a refund
-        long totalSpent = receipt1.GasSpent!.Value + receipt2.GasSpent!.Value;
-        Assert.That(totalSpent, Is.LessThan(receipt2.GasUsedTotal), "Total spent gas should be less than cumulative gas due to tx1 refund");
+        // Block gas should be greater than cumulative receipt gas due to refunds
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(receipt2.GasUsedTotal), "Block gas (pre-refund) should be greater than cumulative receipt gas (post-refund) due to tx1 refund");
     }
 }

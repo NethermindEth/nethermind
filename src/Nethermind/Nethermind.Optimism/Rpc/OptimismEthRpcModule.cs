@@ -107,15 +107,13 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                             block.Timestamp,
                             tx.GetGasInfo(spec, block.Header),
                             l1BlockGasInfo.GetTxGasInfo(tx),
-                            receipts.GetBlockLogFirstIndex(receipt.Index),
-                            spec.IsEip7778Enabled)
+                            receipts.GetBlockLogFirstIndex(receipt.Index))
                         : new OptimismReceiptForRpc(
                             tx.Hash!,
                             receipt,
                             block.Timestamp,
                             tx.GetGasInfo(spec, block.Header),
-                            receipts.GetBlockLogFirstIndex(receipt.Index),
-                            spec.IsEip7778Enabled))];
+                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
         return ResultWrapper<ReceiptForRpc[]?>.Success(result);
     }
 
@@ -176,15 +174,13 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                         blockTimestamp,
                         gasInfo.Value,
                         l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)),
-                        logIndexStart,
-                        spec.IsEip7778Enabled)
+                        logIndexStart)
                 : new OptimismReceiptForRpc(
                         txHash,
                         receipt,
                         blockTimestamp,
                         gasInfo.Value,
-                        logIndexStart,
-                        spec.IsEip7778Enabled);
+                        logIndexStart);
         return ResultWrapper<ReceiptForRpc?>.Success(result);
     }
 
