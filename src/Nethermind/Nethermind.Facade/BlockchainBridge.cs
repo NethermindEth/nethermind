@@ -33,6 +33,8 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Facade
 {
@@ -49,6 +51,7 @@ namespace Nethermind.Facade
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
         ILogFinder logFinder,
+        IBlockAccessListStore balStore,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IMiningConfig miningConfig)
@@ -397,6 +400,9 @@ namespace Nethermind.Facade
         {
             return logFinder.FindLogs(filter, cancellationToken);
         }
+
+        public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
+            => balStore.Get(blockHash);
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {

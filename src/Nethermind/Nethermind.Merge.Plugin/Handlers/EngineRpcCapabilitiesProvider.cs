@@ -53,8 +53,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             // Amsterdam
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV6)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV5)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-            _capabilities[nameof(IEngineRpcModule.engine_getBALSByHashV1)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-            _capabilities[nameof(IEngineRpcModule.engine_getBALSByRangeV1)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
         }
 
         return _capabilities;

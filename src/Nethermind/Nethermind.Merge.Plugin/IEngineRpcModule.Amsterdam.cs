@@ -25,14 +25,26 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
 
     [JsonRpcMethod(
-        Description = "Returns an array of block access lists for the list of provided block hashes.",
+        Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<byte[]?>>> engine_getBALSByHashV1(Hash256[] blockHashes);
+    ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes);
 
     [JsonRpcMethod(
-        Description = "Returns an array of block access lists for the provided number range.",
+        Description = "Returns an array of execution payload bodies for the provided number range",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<byte[]>?>> engine_getBALSByRangeV1(long start, long count);
+    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
+
+    // [JsonRpcMethod(
+    //     Description = "Returns an array of block access lists for the list of provided block hashes.",
+    //     IsSharable = true,
+    //     IsImplemented = true)]
+    // Task<ResultWrapper<IEnumerable<byte[]?>>> engine_getBALSByHashV1(Hash256[] blockHashes);
+
+    // [JsonRpcMethod(
+    //     Description = "Returns an array of block access lists for the provided number range.",
+    //     IsSharable = true,
+    //     IsImplemented = true)]
+    // Task<ResultWrapper<IEnumerable<byte[]>?>> engine_getBALSByRangeV1(long start, long count);
 }

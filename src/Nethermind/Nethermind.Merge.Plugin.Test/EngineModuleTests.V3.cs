@@ -373,26 +373,26 @@ public partial class EngineModuleTests
                                          .Success(new PayloadStatusV1() { Status = FurtherValidationStatus })));
 
             return (chain, new EngineRpcModule(
-                 Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-                 Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
-                 newPayloadHandlerMock,
-                 Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
-                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                 Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                 Substitute.For<IAsyncHandler<Hash256[], IEnumerable<byte[]?>>>(),
-                 Substitute.For<IAsyncHandler<(long, long), IEnumerable<byte[]>?>>(),
-                 Substitute.For<IEngineRequestsTracker>(),
-                 chain.SpecProvider,
-                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-                 Substitute.For<ILogManager>()));
+                Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+                Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
+                newPayloadHandlerMock,
+                Substitute.For<IForkchoiceUpdatedHandler>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+                Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
+                Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+                Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+                Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+                Substitute.For<IEngineRequestsTracker>(),
+                chain.SpecProvider,
+                new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                Substitute.For<ILogManager>()));
         }
 
 

@@ -36,8 +36,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
-        IAsyncHandler<Hash256[], IEnumerable<byte[]?>> getBALsByHashV1Handler,
-        IAsyncHandler<(long, long), IEnumerable<byte[]>?> getBALsByRangeV1Handler,
+        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -57,8 +57,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _getBlobsHandler = getBlobsHandler;
         _getBlobsHandlerV2 = getBlobsHandlerV2;
-        _getBALSByHashV1Handler = getBALsByHashV1Handler;
-        _getBALSByRangeV1Handler = getBALsByRangeV1Handler;
+        _executionGetPayloadBodiesByHashV2Handler = getPayloadBodiesByHashV2Handler;
+        _executionGetPayloadBodiesByRangeV2Handler = getPayloadBodiesByRangeV2Handler;
         _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;
