@@ -79,14 +79,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public bool IsDelegated(Address address, IReleaseSpec spec)
     {
-        if (_codeOverrides.TryGetValue(address, out var result))
-        {
-            return ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out _);
-        }
-        else
-        {
-            return codeInfoRepository.IsDelegated(address, spec);
-        }
+        return _codeOverrides.TryGetValue(address, out var result)
+            ? ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out _)
+            : codeInfoRepository.IsDelegated(address, spec);
     }
 
 

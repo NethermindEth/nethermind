@@ -4,11 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
@@ -101,16 +98,9 @@ internal static partial class EvmInstructions
         {
             // Determine how many bytes can be used from the code.
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                // Directly push the single byte.
-                return stack.PushByte<TTracingInst>(Add(ref stack.Code, programCounter));
-            }
-            else
-            {
-                // Fallback when immediate data is incomplete.
-                return stack.PushZero<TTracingInst>();
-            }
+            return usedFromCode == Size ?
+                stack.PushByte<TTracingInst>(Add(ref stack.Code, programCounter)) :
+                stack.PushZero<TTracingInst>();
         }
     }
 
@@ -226,15 +216,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 3-byte value.
-                return stack.Push3Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode == Size ?
+                // Direct push of a 3-byte value (common case); otherwise padded push.
+                stack.Push3Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -253,15 +238,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 4-byte value.
-                return stack.Push4Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode == Size ?
+                // Direct push of a 4-byte value (common case); otherwise padded push.
+                stack.Push4Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -280,15 +260,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 5-byte value.
-                return stack.Push5Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode == Size ?
+                // Direct push of a 5-byte value (common case); otherwise padded push.
+                stack.Push5Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -307,15 +282,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 6-byte value.
-                return stack.Push6Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode == Size ?
+                // Direct push of a 6-byte value (common case); otherwise padded push.
+                stack.Push6Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -334,15 +304,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 7-byte value.
-                return stack.Push7Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode == Size ?
+                // Direct push of a 7-byte value (common case); otherwise padded push.
+                stack.Push7Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -361,15 +326,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 8-byte value.
-                return stack.Push8Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode == Size ?
+                // Direct push of a 8-byte value (common case); otherwise padded push.
+                stack.Push8Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -388,15 +348,9 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
-                // Direct push of a 9-byte value.
-                return stack.Push9Bytes<TTracingInst>(ref start);
-            }
+            return usedFromCode != Size ?
+                stack.Push9Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -415,15 +369,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 10-byte value.
-                return stack.Push10Bytes<TTracingInst>(ref start);
-            }
+                stack.Push10Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -442,15 +391,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 11-byte value.
-                return stack.Push11Bytes<TTracingInst>(ref start);
-            }
+                stack.Push11Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -469,15 +413,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 12-byte value.
-                return stack.Push12Bytes<TTracingInst>(ref start);
-            }
+                stack.Push12Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -496,15 +435,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 13-byte value.
-                return stack.Push13Bytes<TTracingInst>(ref start);
-            }
+                stack.Push13Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -523,15 +457,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 14-byte value.
-                return stack.Push14Bytes<TTracingInst>(ref start);
-            }
+                stack.Push14Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -550,15 +479,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 15-byte value.
-                return stack.Push15Bytes<TTracingInst>(ref start);
-            }
+                stack.Push15Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -577,15 +501,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 16-byte value.
-                return stack.Push16Bytes<TTracingInst>(ref start);
-            }
+                stack.Push16Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -604,15 +523,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 17-byte value.
-                return stack.Push17Bytes<TTracingInst>(ref start);
-            }
+                stack.Push17Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -631,15 +545,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 18-byte value.
-                return stack.Push18Bytes<TTracingInst>(ref start);
-            }
+                stack.Push18Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -658,15 +567,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 19-byte value.
-                return stack.Push19Bytes<TTracingInst>(ref start);
-            }
+                stack.Push19Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -685,15 +589,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 20-byte value.
-                return stack.Push20Bytes<TTracingInst>(ref start);
-            }
+                stack.Push20Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -712,15 +611,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 21-byte value.
-                return stack.Push21Bytes<TTracingInst>(ref start);
-            }
+                stack.Push21Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -739,15 +633,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 22-byte value.
-                return stack.Push22Bytes<TTracingInst>(ref start);
-            }
+                stack.Push22Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -766,15 +655,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 23-byte value.
-                return stack.Push23Bytes<TTracingInst>(ref start);
-            }
+                stack.Push23Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -793,15 +677,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 24-byte value.
-                return stack.Push24Bytes<TTracingInst>(ref start);
-            }
+                stack.Push24Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -820,15 +699,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 25-byte value.
-                return stack.Push25Bytes<TTracingInst>(ref start);
-            }
+                stack.Push25Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -847,15 +721,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 26-byte value.
-                return stack.Push26Bytes<TTracingInst>(ref start);
-            }
+                stack.Push26Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -874,15 +743,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 27-byte value.
-                return stack.Push27Bytes<TTracingInst>(ref start);
-            }
+                stack.Push27Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -901,15 +765,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 28-byte value.
-                return stack.Push28Bytes<TTracingInst>(ref start);
-            }
+                stack.Push28Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -928,15 +787,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 29-byte value.
-                return stack.Push29Bytes<TTracingInst>(ref start);
-            }
+                stack.Push29Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -955,15 +809,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 30-byte value.
-                return stack.Push30Bytes<TTracingInst>(ref start);
-            }
+                stack.Push30Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -982,15 +831,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 31-byte value.
-                return stack.Push31Bytes<TTracingInst>(ref start);
-            }
+                stack.Push31Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 
@@ -1009,15 +853,10 @@ internal static partial class EvmInstructions
         {
             int usedFromCode = Math.Min(stack.CodeLength - programCounter, length);
             ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
-            if (usedFromCode != Size)
-            {
-                return stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
-            }
-            else
-            {
+            return usedFromCode == Size ?
                 // Direct push of a 32-byte value.
-                return stack.Push32Bytes<TTracingInst>(ref start);
-            }
+                stack.Push32Bytes<TTracingInst>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst>(ref start, usedFromCode, length);
         }
     }
 

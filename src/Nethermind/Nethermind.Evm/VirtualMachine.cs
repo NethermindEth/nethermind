@@ -426,22 +426,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Capture code to deploy before PrepareCreateData clears ReturnDataBuffer
         ReadOnlyMemory<byte> codeToDeployMemory = ReturnDataBuffer;
         PrepareCreateData(previousState);
-        if (!executionType.IsAnyCreateLegacy())
-        {
-            return HandleEofCreate<TTracingActions>(
+        return executionType.IsAnyCreateLegacy() ?
+            HandleLegacyCreate<TTracingActions>(
+                in callResult,
+                previousState,
+                gasAvailableForCodeDeposit,
+                codeToDeployMemory) :
+            HandleEofCreate<TTracingActions>(
                 in callResult,
                 previousState,
                 gasAvailableForCodeDeposit,
                 codeToDeployMemory);
-        }
-        else
-        {
-            return HandleLegacyCreate<TTracingActions>(
-                in callResult,
-                previousState,
-                gasAvailableForCodeDeposit,
-                codeToDeployMemory);
-        }
     }
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState)
@@ -1449,15 +1444,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Use if rather than pattern match as it generates better asm for a large struct return.
-        if (typeof(TGasPolicy) == typeof(EthereumGasPolicy))
-        {
+        result = typeof(TGasPolicy) == typeof(EthereumGasPolicy) ?
             // Allow de-virtualizated call to improve performance.
-            result = DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas, version);
-        }
-        else
-        {
-            result = RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, version);
-        }
+            DispatchExecution<TTracingInst, TCancellable>(ref stack, ref gas, version) :
+            RunByteCode<TTracingInst, TCancellable>(ref stack, ref gas, version);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

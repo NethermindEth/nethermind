@@ -71,8 +71,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         RunTransactions(processor, state, spec);
     }
 
-    static Address recipient1 = new("0x0000000000000000000000000000000010000000");
-    static Address recipient2 = new("0x0000000000000000000000000000000000000100");
+    private static readonly Address recipient1 = new("0x0000000000000000000000000000000010000000");
+    private static readonly Address recipient2 = new("0x0000000000000000000000000000000000000100");
     private static void RunTransactions(TransactionProcessor<TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
     {
         const int WarmUpIterations = 30;
@@ -116,7 +116,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
-    static void AddPrecompileCall(List<byte> codeToDeploy)
+    private static void AddPrecompileCall(List<byte> codeToDeploy)
     {
         byte[] x1 = Bytes.FromHexString("089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf");
         byte[] y1 = Bytes.FromHexString("2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36");

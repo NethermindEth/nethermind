@@ -325,15 +325,10 @@ internal static partial class EvmInstructions
             .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         // The TEofEnabled flag allows JIT to eliminate this block when not enabled.
-        if (TEofEnabled.IsActive && IsEofMagic(accountCode))
-        {
-            return new(programCounter, stack.PushUInt32<TTracingInst>(2));
-        }
-        else
-        {
-            // Otherwise, push the actual code length.
-            return new(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
-        }
+        // Otherwise, push the actual code length (common case).
+        return new(programCounter, !(TEofEnabled.IsActive && IsEofMagic(accountCode))
+            ? stack.PushUInt32<TTracingInst>((uint)accountCode.Length)
+            : stack.PushUInt32<TTracingInst>(2));
 
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:

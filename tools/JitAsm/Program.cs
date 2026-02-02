@@ -113,17 +113,10 @@ internal static class Program
 
         var runner = new JitRunner(assembly.FullName, typeName, methodName, typeParams, classTypeParams, verbose);
 
-        JitResult result;
-        if (skipCctor)
-        {
-            // Single pass only
-            result = runner.RunSinglePassAsync().GetAwaiter().GetResult();
-        }
-        else
-        {
-            // Two-pass execution with cctor detection
-            result = runner.RunTwoPassAsync().GetAwaiter().GetResult();
-        }
+        JitResult result = (skipCctor ?
+            runner.RunSinglePassAsync() :
+            runner.RunTwoPassAsync())
+            .GetAwaiter().GetResult();
 
         OutputResult(result, verbose);
     }

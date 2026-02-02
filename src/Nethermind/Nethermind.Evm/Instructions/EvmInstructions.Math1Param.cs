@@ -137,15 +137,10 @@ internal static partial class EvmInstructions
         if (Unsafe.IsNullRef(ref bytes))
             goto StackUnderflow;
 
-        // If the position is out-of-range, push zero.
-        if (a >= EvmStack.WordSize)
-        {
-            return new(programCounter, stack.PushZero<TTracingInst>());
-        }
-        else
-        {
-            return new(programCounter, stack.PushByte<TTracingInst>(Unsafe.Add(ref bytes, (nuint)a)));
-        }
+        // If the position is in-range, push the byte (common case); otherwise push zero.
+        return new(programCounter, a < EvmStack.WordSize
+            ? stack.PushByte<TTracingInst>(Unsafe.Add(ref bytes, (nuint)a))
+            : stack.PushZero<TTracingInst>());
 
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:

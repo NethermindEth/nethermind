@@ -43,17 +43,7 @@ internal static partial class DisassemblyParser
             var startIndex = match.Index;
 
             // Find the end of this method's disassembly
-            int endIndex;
-            if (i + 1 < matches.Count)
-            {
-                // End at the next method header
-                endIndex = matches[i + 1].Index;
-            }
-            else
-            {
-                // End at the end of the output
-                endIndex = jitOutput.Length;
-            }
+            int endIndex = (i + 1 < matches.Count) ? matches[i + 1].Index : jitOutput.Length;
 
             // Extract this method's disassembly
             var methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
@@ -98,15 +88,7 @@ internal static partial class DisassemblyParser
             var methodName = match.Groups["method"].Value;
             var startIndex = match.Index;
 
-            int endIndex;
-            if (i + 1 < matches.Count)
-            {
-                endIndex = matches[i + 1].Index;
-            }
-            else
-            {
-                endIndex = jitOutput.Length;
-            }
+            int endIndex = (i + 1 < matches.Count) ? matches[i + 1].Index : jitOutput.Length;
 
             var methodAsm = jitOutput[startIndex..endIndex].TrimEnd();
 

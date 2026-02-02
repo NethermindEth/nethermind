@@ -180,9 +180,10 @@ internal static partial class EvmInstructions
         // Add extra gas cost if value is transferred.
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
             !TOpCall.IsStatic &&
-            !isTransferZero)
+            !isTransferZero &&
+            !TGasPolicy.ConsumeCallValueTransfer(ref gas))
         {
-            if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
+            goto OutOfGas;
         }
 
         IWorldState state = vm.WorldState;
@@ -194,9 +195,10 @@ internal static partial class EvmInstructions
         else if (EIP158.IsActive &&
             TOpCall.ExecutionType != ExecutionType.DELEGATECALL &&
             !TOpCall.IsStatic &&
-            !isTransferZero && state.IsDeadAccount(target))
+            !isTransferZero && state.IsDeadAccount(target) &&
+            !TGasPolicy.ConsumeNewAccountCreation(ref gas))
         {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+            goto OutOfGas;
         }
 
         // Update gas: call cost and memory expansion for input and output.
@@ -225,14 +227,9 @@ internal static partial class EvmInstructions
             // Get remaining gas for 63/64 calculation
             long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
             gasAvailable -= (long)((ulong)gasAvailable >> 6);
-            if (!gasLimit.IsUint64)
-            {
-                gasLimitUl = gasAvailable;
-            }
-            else
-            {
-                gasLimitUl = (long)Math.Min((ulong)gasAvailable, gasLimit.u0);
-            }
+            gasLimitUl = gasLimit.IsUint64
+                ? (long)Math.Min((ulong)gasAvailable, gasLimit.u0)
+                : gasAvailable;
         }
         else
         {
