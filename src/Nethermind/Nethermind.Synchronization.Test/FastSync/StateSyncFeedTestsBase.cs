@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -110,8 +111,6 @@ public abstract class StateSyncFeedTestsBase(
 
     protected ContainerBuilder BuildTestContainerBuilder(RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
     {
-        LocalDbContext local = new(_logManager);
-
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
@@ -123,10 +122,10 @@ public abstract class StateSyncFeedTestsBase(
                 return syncConfig;
             })
             .AddSingleton<ILogManager>(_logManager)
-            .AddSingleton<LocalDbContext>(local)
-            .AddKeyedSingleton<IDb>(DbNames.Code, local.CodeDb)
-            .AddKeyedSingleton<IDb>(DbNames.State, local.StateDb)
-            .AddSingleton<INodeStorage>(local.NodeStorage)
+            .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
+            .AddSingleton<LocalDbContext>()
+            .AddKeyedSingleton<IDb>(DbNames.Code, (_) => new TestMemDb())
+            .AddKeyedSingleton<IDb>(DbNames.State,(_) => new TestMemDb())
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
             // Cache key includes type name so different inherited test classes don't share the same blocktree
@@ -217,19 +216,23 @@ public abstract class StateSyncFeedTestsBase(
 
     protected class LocalDbContext
     {
-        public LocalDbContext(ILogManager logManager)
+        public LocalDbContext(
+            [KeyFilter(DbNames.Code)] IDb codeDb,
+            [KeyFilter(DbNames.Code)] IDb stateDb,
+            INodeStorage nodeStorage,
+            ISnapTrieFactory snapTrieFactory,
+            ILogManager logManager)
         {
-            CodeDb = new TestMemDb();
-            Db = new TestMemDb();
-            NodeStorage = new NodeStorage(Db);
+            NodeStorage = nodeStorage;
+            CodeDb = (TestMemDb)codeDb;
+            Db = (TestMemDb)stateDb;
             StateTree = new StateTree(TestTrieStoreFactory.Build(Db, logManager), logManager);
-            SnapTrieFactory = new PatriciaSnapTrieFactory(NodeStorage, logManager);
+            SnapTrieFactory = snapTrieFactory;
         }
 
-        public TestMemDb CodeDb { get; }
-        public TestMemDb Db { get; }
-        public IDb StateDb => Db;
-        public NodeStorage NodeStorage { get; }
+        private TestMemDb CodeDb { get; }
+        private TestMemDb Db { get; }
+        private INodeStorage NodeStorage { get; }
         private StateTree StateTree { get; }
         public ISnapTrieFactory SnapTrieFactory { get; }
 
@@ -275,6 +278,11 @@ public abstract class StateSyncFeedTestsBase(
                 Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                 Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
             }
+        }
+
+        public void DeleteStateRoot()
+        {
+            NodeStorage.Set(null, TreePath.Empty, RootHash, null);
         }
     }
 

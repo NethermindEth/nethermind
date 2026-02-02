@@ -441,7 +441,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             local.Commit();
 
             // Local state missing root so that it would start
-            local.NodeStorage.Set(null, TreePath.Empty, local.RootHash, null);
+            local.DeleteStateRoot();
 
             container.Resolve<StateSyncPivot>().UpdatedStorages.Add(theAccount);
 
