@@ -9,14 +9,11 @@ namespace Nethermind.Taiko.Rpc;
 
 public sealed class PreBuiltTxList(TransactionForRpc[] transactions, ulong estimatedGasUsed, ulong bytesLength)
 {
-    [JsonPropertyName("txList")]
     public TransactionForRpc[] TxList { get; } = transactions;
 
-    [JsonPropertyName("estimatedGasUsed")]
     [JsonConverter(typeof(ULongRawJsonConverter))]
     public ulong EstimatedGasUsed { get; } = estimatedGasUsed;
 
-    [JsonPropertyName("bytesLength")]
     [JsonConverter(typeof(ULongRawJsonConverter))]
     public ulong BytesLength { get; } = bytesLength;
 }
