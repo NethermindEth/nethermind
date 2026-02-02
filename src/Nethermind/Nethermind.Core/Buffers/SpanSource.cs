@@ -110,21 +110,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         }
     }
 
-    public bool IsNotNullOrEmpty
-    {
-        get
-        {
-            var obj = _obj;
-
-            if (obj == null)
-                return false;
-
-            if (obj is byte[] array)
-                return array.Length != 0;
-
-            return Unsafe.As<CappedArraySource>(obj).Length != 0;
-        }
-    }
+    public bool IsNotNullOrEmpty => !IsNullOrEmpty;
 
     public static readonly SpanSource Empty = new([]);
 

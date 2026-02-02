@@ -20,7 +20,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.State.Healing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
