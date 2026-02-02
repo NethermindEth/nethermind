@@ -42,6 +42,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             CheckConfig(_v2Configs);
         }
     }
+    public long? TipTrc21Fee { get; set; }
 
     public long TIP2019Block { get; set; }
     public long MergeSignRange { get; set; }
@@ -59,6 +60,11 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             if (list[i].SwitchRound == list[i - 1].SwitchRound)
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");
         }
+    }
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        if (TipTrc21Fee is not null)
+            blockNumbers.Add(TipTrc21Fee.Value);
     }
 }
 

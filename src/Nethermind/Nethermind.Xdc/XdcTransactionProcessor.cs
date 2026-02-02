@@ -51,7 +51,15 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         in UInt256 blobBaseFee,
         int statusCode)
     {
-        if (tx.IsSpecialTransaction((IXdcReleaseSpec)spec)) return;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
+
+        if (tx.IsSpecialTransaction(xdcSpec)) return;
+
+        if (!xdcSpec.IsTipTrc21FeeEnabled)
+        {
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            return;
+        }
 
         Address coinbase = header.GasBeneficiary!;
         Address owner = _masternodeVotingContract.GetCandidateOwner(header, coinbase);
@@ -66,9 +74,9 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-   protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
-        out UInt256 blobBaseFee)
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+         out UInt256 blobBaseFee)
     {
         if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec))
         {
