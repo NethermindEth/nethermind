@@ -24,7 +24,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Use the `ObjectDisposedException.ThrowIf` method for disposal checks
 - Use documentation comments for all public APIs with proper structure
 - Consider performance implications in high-throughput paths
-- Trust null annotations, do n0t add redundant null checks
+- Trust null annotations, do not add redundant null checks
 - Add tests to existing test files rather than creating new ones
 - Code comments must explain _why_, not _what_
 - Do not suggest using Linq when a simple loop would suffice
