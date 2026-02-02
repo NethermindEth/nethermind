@@ -426,7 +426,7 @@ namespace Nethermind.Blockchain
             }
             else if (block.BlockAccessList is not null)
             {
-                _balStore.Insert(block.Hash, block.BlockAccessList.Value);
+                _balStore.Insert(block.Hash, block.BlockAccessList);
             }
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
@@ -502,7 +502,7 @@ namespace Nethermind.Blockchain
                 }
                 else if (block.BlockAccessList is not null)
                 {
-                    _balStore.Insert(block.Hash, block.BlockAccessList.Value);
+                    _balStore.Insert(block.Hash, block.BlockAccessList);
                 }
             }
 

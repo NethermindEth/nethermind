@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -21,13 +22,10 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Test;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -43,6 +41,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
     private static readonly long _gasLimit = 100000;
     private static readonly Address _testAddress = ContractAddress.From(TestItem.AddressA, 0);
 
+    // do e2e with engine api?
     [Test]
     public async Task Constructs_BAL_when_processing_block()
     {
@@ -136,7 +135,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
         (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
 
         // GeneratedBlockAccessList is set by the block processor during execution
-        BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList!.Value;
+        BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList;
         Assert.That(blockAccessList.AccountChanges.Count, Is.EqualTo(10));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
@@ -246,29 +245,23 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
             )));
 
             // storage reads make no changes
-            Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges(
-                Eip7002Constants.WithdrawalRequestPredeployAddress,
-                [],
-                [new(0), new(1), new(2), new(3)],
-                [],
-                [],
-                []
-            )));
+            Assert.That(eip7002Changes, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
+                    .WithStorageReads(0, 1, 2, 3)
+                    .TestObject));
 
             // storage reads make no changes
-            Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges(
-                Eip7251Constants.ConsolidationRequestPredeployAddress,
-                [],
-                [new(0), new(1), new(2), new(3)],
-                [],
-                [],
-                []
-            )));
+            Assert.That(eip7251Changes, Is.EqualTo(
+                Build.An.AccountChanges
+                    .WithAddress(Eip7251Constants.ConsolidationRequestPredeployAddress)
+                    .WithStorageReads(0, 1, 2, 3)
+                    .TestObject));
         }
     }
 
     [TestCaseSource(nameof(CodeTestSource))]
-    public async Task Constructs_BAL_when_processing_code(byte[] code, IDictionary<Address, AccountChanges> expected)
+    public async Task Constructs_BAL_when_processing_code(byte[] code, IEnumerable<AccountChanges> expected)
     {
         InitWorldState(TestState);
         ParallelWorldState worldState = TestState as ParallelWorldState;
@@ -294,7 +287,12 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted);
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.GetAccountChanges(_testAddress), Is.EqualTo(expected[_testAddress]));
+            Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
+        }
+
+        foreach(AccountChanges expectedAccountChanges in expected)
+        {
+            Assert.That(bal.GetAccountChanges(expectedAccountChanges.Address), Is.EqualTo(expectedAccountChanges));
         }
     }
 
@@ -326,6 +324,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
     {
         get
         {
+            IEnumerable<AccountChanges> changes;
             UInt256 slot = 10;
             byte[] code = Prepare.EvmCode
                 .PushData(slot)
@@ -333,15 +332,16 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
                 .Done;
 
             AccountChanges readAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject;
-            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "storage_read" };
+            changes = [readAccount];
+            yield return new TestCaseData(code, changes) { TestName = "storage_read" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
                 .Done;
-            AccountChanges tmp = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageChanges(slot, [new(0, slot)]).TestObject;
-            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, tmp}}) { TestName = "storage_write" };
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageChanges(slot, [new(0, slot)]).TestObject];
+            yield return new TestCaseData(code, changes) { TestName = "storage_write" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
@@ -351,7 +351,8 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
                 .Done;
-            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "storage_write_return_to_original" };
+            changes = [readAccount];
+            yield return new TestCaseData(code, changes) { TestName = "storage_write_return_to_original" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodecopy" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodehash" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodesize" };
@@ -362,7 +363,8 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
                 .Done;
             AccountChanges emptyTestAccount = Build.An.AccountChanges.WithAddress(_testAddress).TestObject;
             AccountChanges emptyBAccount = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
-            yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, emptyTestAccount}, {TestItem.AddressB, emptyBAccount}}) { TestName = "balance" };
+            changes = [emptyTestAccount, emptyBAccount];
+            yield return new TestCaseData(code, changes) { TestName = "balance" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct_oog" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "revert" };
