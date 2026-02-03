@@ -169,6 +169,9 @@ internal static partial class EvmInstructions
             // Validate the jump destination and update the program counter if valid.
             if (!Jump((int)destination, ref programCounter, vm.VmState.Env))
                 goto InvalidJumpDestination;
+            // Prefetch the cache line at the jump destination
+            // since hardware prefetcher can't predict jumps.
+            PrefetchCodeAtDestination(ref stack, programCounter);
 
             goto Success;
         }
