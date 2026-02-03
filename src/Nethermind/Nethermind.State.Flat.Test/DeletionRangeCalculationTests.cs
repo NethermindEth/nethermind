@@ -4,11 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Sync;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class DeletionRangeCalculationTests
 {
-    private static readonly byte[] DummyValue = [0x01];
+    private static readonly byte[] DummyValue = new byte[33];
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
     [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ff", "0x0000000000000000000000000000000000000000000000000000000000000100", Description = "Byte boundary carry")]
@@ -42,56 +42,34 @@ public class DeletionRangeCalculationTests
 
     private static IEnumerable<TestCaseData> ComputeDeletionRangesTestCases()
     {
+        // Note to AI: please keep the deletion range to left so that its easy to read.
+
         // === Helper functions ===
         static byte[] NibblesFromHexString(string hex) =>
             hex.Select(c => (byte)(c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0')).ToArray();
 
-        TrieNode CreateBranchWithNullChildren(params int[] nullIndices)
+        TrieNode CreateBranchWithChildren(ushort childBitset)
         {
             TrieNode branch = TrieNodeFactory.CreateBranch();
             for (int i = 0; i < 16; i++)
-                if (!nullIndices.Contains(i))
+                if ((childBitset & (1 << i)) != 0)
                     branch[i] = TrieNodeFactory.CreateLeaf([0], DummyValue);
             return branch;
         }
 
+        TrieNode CreateLeaf(string hexKey) =>
+            TrieNodeFactory.CreateLeaf(NibblesFromHexString(hexKey), DummyValue);
+
+        TrieNode CreateExtension(string hexKey) =>
+            TrieNodeFactory.CreateExtension(NibblesFromHexString(hexKey), TrieNodeFactory.CreateBranch());
+
         // === Branch tests ===
-
-        // Children 3, 4, 5 are null (consecutive) - yields 1 combined range
-        yield return new TestCaseData(
-            "",
-            CreateBranchWithNullChildren(3, 4, 5),
-            new (string, string)[]
-            {
-                ("0x3000000000000000000000000000000000000000000000000000000000000000", "0x5fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Branch: consecutive null children 3-5 yield 1 combined range");
-
-        // Children 0, 1 and 14, 15 are null (two consecutive groups) - yields 2 ranges
-        yield return new TestCaseData(
-            "",
-            CreateBranchWithNullChildren(0, 1, 14, 15),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0xe000000000000000000000000000000000000000000000000000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Branch: two consecutive null groups (0-1, 14-15) yield 2 ranges");
-
-        // Single null child 5 - yields 1 range (no merging needed)
-        yield return new TestCaseData(
-            "",
-            CreateBranchWithNullChildren(5),
-            new (string, string)[]
-            {
-                ("0x5000000000000000000000000000000000000000000000000000000000000000", "0x5fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Branch: single null child yields 1 range");
 
         // With path prefix "ab", children 0, 1, 2 null (consecutive)
         yield return new TestCaseData(
             "ab",
-            CreateBranchWithNullChildren(0, 1, 2),
+            CreateBranchWithChildren(0b1111_1111_1111_1000),
+            null,
             new (string, string)[]
             {
                 ("0xab00000000000000000000000000000000000000000000000000000000000000", "0xab2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
@@ -101,7 +79,8 @@ public class DeletionRangeCalculationTests
         // Children 3, 4, 5 are null with path "abcde"
         yield return new TestCaseData(
             "abcde",
-            CreateBranchWithNullChildren(3, 4, 5),
+            CreateBranchWithChildren(0b1111_1111_1100_0111),
+            null,
             new (string, string)[]
             {
                 ("0xabcde30000000000000000000000000000000000000000000000000000000000", "0xabcde5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
@@ -111,7 +90,8 @@ public class DeletionRangeCalculationTests
         // Children 0, 1 and 14, 15 null with path "abcde"
         yield return new TestCaseData(
             "abcde",
-            CreateBranchWithNullChildren(0, 1, 14, 15),
+            CreateBranchWithChildren(0b0011_1111_1111_1100),
+            null,
             new (string, string)[]
             {
                 ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
@@ -122,7 +102,8 @@ public class DeletionRangeCalculationTests
         // Single null child 5 with path "abcde"
         yield return new TestCaseData(
             "abcde",
-            CreateBranchWithNullChildren(5),
+            CreateBranchWithChildren(0b1111_1111_1101_1111),
+            null,
             new (string, string)[]
             {
                 ("0xabcde50000000000000000000000000000000000000000000000000000000000", "0xabcde5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
@@ -130,131 +111,59 @@ public class DeletionRangeCalculationTests
         ).SetDescription("Branch: with 5-nibble path, single null child yields 1 range");
 
         // === Leaf tests ===
+        // Leaf logic changed: now just deletes the whole subtree range (path.ToLowerBound to path.ToUpperBound)
 
-        // Leaf at start (key = all zeros)
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("0000000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000001", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Leaf: at start yields only after gap");
-
-        // Leaf at end (key = all 0xF)
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), DummyValue),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"),
-                ("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Leaf: at end yields before gap and degenerate after gap");
-
-        // Leaf in middle (key = 0x80...)
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("8000000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0x8000000000000000000000000000000000000000000000000000000000000001", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Leaf: in middle yields both gaps");
-
-        // Leaf with path prefix "ab", key "5..."
+        // Leaf with path prefix "ab" - deletes ab00...00 to abff...ff
         yield return new TestCaseData(
             "ab",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("500000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            CreateLeaf("500000000000000000000000000000000000000000000000000000000000"),
+            null,
             new (string, string)[]
             {
-                ("0xab00000000000000000000000000000000000000000000000000000000000000", "0xab4fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0xab50000000000000000000000000000000000000000000000000000000000001", "0xabffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+                ("0xab00000000000000000000000000000000000000000000000000000000000000", "0xabffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
             }
-        ).SetDescription("Leaf: with path prefix correctly pads ranges");
+        ).SetDescription("Leaf: with path prefix deletes subtree range");
 
-        // Leaf at start with path "abcde"
+        // Leaf with path "abcde" - deletes abcde00...00 to abcdef...ff
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("00000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            CreateLeaf("00000000000000000000000000000000000000000000000000000000000"),
+            null,
             new (string, string)[]
             {
-                ("0xabcde00000000000000000000000000000000000000000000000000000000001", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
             }
-        ).SetDescription("Leaf: with 5-nibble path, at start yields only after gap");
+        ).SetDescription("Leaf: with 5-nibble path deletes subtree range");
 
-        // Leaf at end with path "abcde" - only yields before gap (no overflow into next prefix range)
+        // Leaf with path "abcde" (different key, same result)
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), DummyValue),
+            CreateLeaf("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+            null,
             new (string, string)[]
             {
-                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcdeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe")
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
             }
-        ).SetDescription("Leaf: with 5-nibble path, at end yields only before gap");
+        ).SetDescription("Leaf: with 5-nibble path deletes subtree range regardless of key");
 
-        // Leaf in middle with path "abcde"
+        // Leaf with path "abcde" with middle key (same result)
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateLeaf(NibblesFromHexString("80000000000000000000000000000000000000000000000000000000000"), DummyValue),
+            CreateLeaf("80000000000000000000000000000000000000000000000000000000000"),
+            null,
             new (string, string)[]
             {
-                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0xabcde80000000000000000000000000000000000000000000000000000000001", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
             }
-        ).SetDescription("Leaf: with 5-nibble path, in middle yields both gaps");
+        ).SetDescription("Leaf: with 5-nibble path deletes subtree range regardless of key");
 
         // === Extension tests ===
-
-        // Extension at start (key = 0000)
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("0000"), TrieNodeFactory.CreateBranch()),
-            new (string, string)[]
-            {
-                ("0x0001000000000000000000000000000000000000000000000000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Extension: at start yields only after gap");
-
-        // Extension at end (key = ffff)
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("ffff"), TrieNodeFactory.CreateBranch()),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0xfffeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Extension: at end yields before gap and degenerate after gap");
-
-        // Extension in middle (key = 8)
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("8"), TrieNodeFactory.CreateBranch()),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0x9000000000000000000000000000000000000000000000000000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Extension: in middle yields both gaps");
-
-        // Extension with longer key "12345" (5 nibbles) - narrow survival zone
-        // Gaps: 0... to 12344fff..., 12346... to fff...
-        yield return new TestCaseData(
-            "",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("12345"), TrieNodeFactory.CreateBranch()),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0x12344fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0x1234600000000000000000000000000000000000000000000000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            }
-        ).SetDescription("Extension: longer key (5 nibbles) creates narrow survival zone");
 
         // Extension at start with path "abcde"
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("0000"), TrieNodeFactory.CreateBranch()),
+            CreateExtension("0000"),
+            null,
             new (string, string)[]
             {
                 ("0xabcde00010000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
@@ -264,7 +173,8 @@ public class DeletionRangeCalculationTests
         // Extension at end with path "abcde" - only yields before gap (no overflow into next prefix range)
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("ffff"), TrieNodeFactory.CreateBranch()),
+            CreateExtension("ffff"),
+            null,
             new (string, string)[]
             {
                 ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcdefffefffffffffffffffffffffffffffffffffffffffffffffffffffffff")
@@ -274,7 +184,8 @@ public class DeletionRangeCalculationTests
         // Extension in middle with path "abcde"
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("8"), TrieNodeFactory.CreateBranch()),
+            CreateExtension("8"),
+            null,
             new (string, string)[]
             {
                 ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
@@ -285,7 +196,8 @@ public class DeletionRangeCalculationTests
         // Extension with longer key "12345" with path "abcde"
         yield return new TestCaseData(
             "abcde",
-            TrieNodeFactory.CreateExtension(NibblesFromHexString("12345"), TrieNodeFactory.CreateBranch()),
+            CreateExtension("12345"),
+            null,
             new (string, string)[]
             {
                 ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde12344ffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
@@ -293,20 +205,105 @@ public class DeletionRangeCalculationTests
             }
         ).SetDescription("Extension: with 5-nibble path, longer key creates narrow survival zone");
 
-        // === Unknown node type ===
+        // === Optimized deletion tests (with existing nodes) ===
+
+        // Branch to Branch: Only deleted removed children
+        // Existing: children at 0, 1 (null at 2-15); New: children at 0, 3 (null at 1-2, 4-15)
+        // Only position 1 needs deletion (went from non-null to null)
         yield return new TestCaseData(
-            "",
-            new TrieNode(NodeType.Unknown),
+            "abcde",
+            CreateBranchWithChildren(0b0000_0000_0000_1001),
+            CreateBranchWithChildren(0b0000_0000_0000_0011),
+            new (string, string)[]
+            {
+                ("0xabcde10000000000000000000000000000000000000000000000000000000000", "0xabcde1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Branch→Branch: Existing(0,1) to New(0,3) deletes only child 1");
+
+        // Same children structure - no deletions
+        yield return new TestCaseData(
+            "abcde",
+            CreateBranchWithChildren(0b0000_0000_0010_0000),
+            CreateBranchWithChildren(0b0000_0000_0010_0000),
             Array.Empty<(string, string)>()
-        ).SetDescription("Unknown node type yields empty");
+        ).SetDescription("Branch→Branch: Same structure yields no deletions");
+
+        // All children to single child - deletes 0-4, 6-15
+        yield return new TestCaseData(
+            "abcde",
+            CreateBranchWithChildren(0b0000_0000_0010_0000),
+            CreateBranchWithChildren(0b1111_1111_1111_1111),
+            new (string, string)[]
+            {
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde4ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+                ("0xabcde60000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Branch→Branch: All children to single child deletes 0-4, 6-15");
+
+        // Same type, same key: No deletion - Leaf → Leaf with same key
+        yield return new TestCaseData(
+            "abcde",
+            CreateLeaf("50000000000000000000000000000000000000000000000000000000000"),
+            CreateLeaf("50000000000000000000000000000000000000000000000000000000000"),
+            Array.Empty<(string, string)>()
+        ).SetDescription("Leaf→Leaf: Same key yields no deletions");
+
+        // Extension → Extension with same key
+        yield return new TestCaseData(
+            "abcde",
+            CreateExtension("56"),
+            CreateExtension("56"),
+            Array.Empty<(string, string)>()
+        ).SetDescription("Extension→Extension: Same key yields no deletions");
+
+        // Cross-type transitions: Leaf at 5abc... → Branch with child 5 non-null
+        yield return new TestCaseData(
+            "abcde",
+            CreateBranchWithChildren(0b0000_0000_0010_0000),
+            CreateLeaf("5abc0000000000000000000000000000000000000000000000000000000"),
+            new (string, string)[]
+            {
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde4ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+                ("0xabcde60000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Leaf→Branch: Branch deletes null children ranges, leaf in child 5 range survives");
+
+        // Leaf at 5abc... → Branch with child 6 non-null
+        yield return new TestCaseData(
+            "abcde",
+            CreateBranchWithChildren(0b0000_0000_0100_0000),
+            CreateLeaf("5abc0000000000000000000000000000000000000000000000000000000"),
+            new (string, string)[]
+            {
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+                ("0xabcde70000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Leaf→Branch: Branch deletes null children ranges regardless of existing leaf");
+
+        // Extension("56") → Leaf at 5678...: Leaf just deletes its whole range
+        yield return new TestCaseData(
+            "abcde",
+            CreateLeaf("56780000000000000000000000000000000000000000000000000000000"),
+            CreateExtension("56"),
+            new (string, string)[]
+            {
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Extension→Leaf: Leaf deletes entire range");
     }
 
     [TestCaseSource(nameof(ComputeDeletionRangesTestCases))]
-    public void ComputeDeletionRanges_ReturnsExpectedRanges(string hexPath, TrieNode node, (string From, string To)[] expectedRanges)
+    public void ComputeDeletionRanges_ReturnsExpectedRanges(string hexPath, TrieNode node, TrieNode? existingNode, (string From, string To)[] expectedRanges)
     {
-        TreePath path = hexPath == "" ? TreePath.Empty : TreePath.FromHexString(hexPath);
+        // Note to AI: You are not allowed to change this method.
+
+        TreePath path = TreePath.FromHexString(hexPath);
+        node.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        existingNode?.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+
+        path = TreePath.FromHexString(hexPath);
         RefList16<FlatTreeSyncStore.DeletionRange> ranges = new();
-        FlatTreeSyncStore.ComputeDeletionRanges(path, node, null, ref ranges);
+        FlatTreeSyncStore.ComputeDeletionRanges(path, node, existingNode, ref ranges);
 
         Assert.That(ranges.Count, Is.EqualTo(expectedRanges.Length));
         for (int i = 0; i < expectedRanges.Length; i++)
@@ -334,6 +331,7 @@ public class DeletionRangeCalculationTests
 
     private static FlatTreeSyncStore.DeletionRange[] ComputeRanges(TreePath path, TrieNode node)
     {
+        node.ResolveKey(NullTrieNodeResolver.Instance, ref path);
         RefList16<FlatTreeSyncStore.DeletionRange> ranges = new();
         FlatTreeSyncStore.ComputeDeletionRanges(path, node, null, ref ranges);
         return ranges.AsSpan().ToArray();
@@ -531,122 +529,4 @@ public class DeletionRangeCalculationTests
         });
     }
 
-    // === Optimized deletion tests (using both existing and new nodes) ===
-
-    private static FlatTreeSyncStore.DeletionRange[] ComputeRangesOptimized(TreePath path, TrieNode newNode, TrieNode existingNode)
-    {
-        RefList16<FlatTreeSyncStore.DeletionRange> ranges = new();
-        FlatTreeSyncStore.ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
-        return ranges.AsSpan().ToArray();
-    }
-
-    private static IEnumerable<TestCaseData> OptimizedDeletionTestCases()
-    {
-        static byte[] Nibbles(string hex) =>
-            hex.Select(c => (byte)(c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0')).ToArray();
-
-        TrieNode CreateBranchWith(params int[] childIndices)
-        {
-            TrieNode branch = TrieNodeFactory.CreateBranch();
-            foreach (int i in childIndices)
-                branch[i] = TrieNodeFactory.CreateLeaf([0], DummyValue);
-            return branch;
-        }
-
-        // === Branch to Branch: Only deleted removed children ===
-
-        // Existing: children at 0, 1 (null at 2-15); New: children at 0, 3 (null at 1-2, 4-15)
-        // Only position 1 needs deletion (went from non-null to null)
-        yield return new TestCaseData(
-            "", CreateBranchWith(0, 3), CreateBranchWith(0, 1),
-            new (string, string)[] { ("0x1000000000000000000000000000000000000000000000000000000000000000", "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") },
-            new[] { "0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Branch→Branch: Existing(0,1) to New(0,3) deletes only child 1");
-
-        // Same children structure - no deletions
-        yield return new TestCaseData(
-            "", CreateBranchWith(5), CreateBranchWith(5),
-            Array.Empty<(string, string)>(),
-            new[] { "0x5000000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Branch→Branch: Same structure yields no deletions");
-
-        // All children to single child - deletes 0-4, 6-15
-        yield return new TestCaseData(
-            "", CreateBranchWith(5), CreateBranchWith(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-            new (string, string)[]
-            {
-                ("0x0000000000000000000000000000000000000000000000000000000000000000", "0x4fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0x6000000000000000000000000000000000000000000000000000000000000000", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            },
-            new[] { "0x5000000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Branch→Branch: All children to single child deletes 0-4, 6-15");
-
-        // === Same type, same key: No deletion ===
-
-        // Leaf → Leaf with same key
-        yield return new TestCaseData(
-            "", TrieNodeFactory.CreateLeaf(Nibbles("5000000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            TrieNodeFactory.CreateLeaf(Nibbles("5000000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            Array.Empty<(string, string)>(),
-            new[] { "0x5000000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Leaf→Leaf: Same key yields no deletions");
-
-        // Extension → Extension with same key
-        yield return new TestCaseData(
-            "", TrieNodeFactory.CreateExtension([0x5, 0x6], TrieNodeFactory.CreateBranch()),
-            TrieNodeFactory.CreateExtension([0x5, 0x6], TrieNodeFactory.CreateBranch()),
-            Array.Empty<(string, string)>(),
-            new[] { "0x5600000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Extension→Extension: Same key yields no deletions");
-
-        // === Cross-type transitions ===
-
-        // Leaf at 5abc... → Branch with child 5 non-null: Leaf survives (handled by child sync)
-        yield return new TestCaseData(
-            "", CreateBranchWith(5),
-            TrieNodeFactory.CreateLeaf(Nibbles("5abc000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            Array.Empty<(string, string)>(),
-            new[] { "0x5abc000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Leaf→Branch: Leaf at 5abc... survives when branch has child 5");
-
-        // Leaf at 5abc... → Branch with child 6 non-null: Leaf deleted (falls under null child 5)
-        yield return new TestCaseData(
-            "", CreateBranchWith(6),
-            TrieNodeFactory.CreateLeaf(Nibbles("5abc000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            new (string, string)[] { ("0x5abc000000000000000000000000000000000000000000000000000000000000", "0x5abc000000000000000000000000000000000000000000000000000000000000") },
-            new[] { "0x6000000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Leaf→Branch: Leaf at 5abc... deleted when branch has null at child 5");
-
-        // Extension("56") → Leaf at 5678...: Deletes extension subtree except leaf path
-        yield return new TestCaseData(
-            "", TrieNodeFactory.CreateLeaf(Nibbles("5678000000000000000000000000000000000000000000000000000000000000"), DummyValue),
-            TrieNodeFactory.CreateExtension([0x5, 0x6], TrieNodeFactory.CreateBranch()),
-            new (string, string)[]
-            {
-                ("0x5600000000000000000000000000000000000000000000000000000000000000", "0x5677ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-                ("0x5678000000000000000000000000000000000000000000000000000000000001", "0x56ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-            },
-            new[] { "0x5678000000000000000000000000000000000000000000000000000000000000" }
-        ).SetDescription("Extension→Leaf: Extension subtree deleted except leaf path");
-    }
-
-    [TestCaseSource(nameof(OptimizedDeletionTestCases))]
-    public void ComputeDeletionRanges_WithExistingNode_ReturnsOptimizedRanges(
-        string hexPath, TrieNode newNode, TrieNode existingNode,
-        (string From, string To)[] expectedRanges, string[] survivingPaths)
-    {
-        TreePath path = hexPath == "" ? TreePath.Empty : TreePath.FromHexString(hexPath);
-        FlatTreeSyncStore.DeletionRange[] ranges = ComputeRangesOptimized(path, newNode, existingNode);
-
-        Assert.That(ranges, Has.Length.EqualTo(expectedRanges.Length), $"Expected {expectedRanges.Length} range(s)");
-
-        for (int i = 0; i < expectedRanges.Length; i++)
-        {
-            Assert.That(ranges[i].From, Is.EqualTo(new ValueHash256(expectedRanges[i].From)), $"Range[{i}].From mismatch");
-            Assert.That(ranges[i].To, Is.EqualTo(new ValueHash256(expectedRanges[i].To)), $"Range[{i}].To mismatch");
-        }
-
-        foreach (string survivingPath in survivingPaths)
-            Assert.That(IsDeleted(ranges, survivingPath), Is.False, $"Path {survivingPath} should NOT be deleted");
-    }
 }
