@@ -28,11 +28,9 @@ using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Evm;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
-using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Validators;
 

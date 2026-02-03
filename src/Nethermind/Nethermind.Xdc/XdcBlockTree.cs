@@ -12,7 +12,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;

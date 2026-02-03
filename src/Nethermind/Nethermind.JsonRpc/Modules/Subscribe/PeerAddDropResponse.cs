@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 

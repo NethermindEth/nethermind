@@ -3,8 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json.Serialization;
-
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
 

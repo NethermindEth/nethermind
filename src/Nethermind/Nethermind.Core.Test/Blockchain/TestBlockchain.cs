@@ -474,6 +474,11 @@ public class TestBlockchain : IDisposable
         await TestUtil.AddBlockAndWaitForHead(true, CreateCancellationSource().Token, transactions);
     }
 
+    public async Task AddBlockMayHaveExtraTx(params Transaction[] transactions)
+    {
+        await TestUtil.AddBlockMayHaveExtraTx(true, CreateCancellationSource().Token, transactions);
+    }
+
     public async Task AddBlockThroughPoW(params Transaction[] transactions)
     {
         await PoWTestUtil.AddBlockAndWaitForHead(CreateCancellationSource().Token, transactions);

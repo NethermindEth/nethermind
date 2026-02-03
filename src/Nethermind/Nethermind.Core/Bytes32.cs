@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
