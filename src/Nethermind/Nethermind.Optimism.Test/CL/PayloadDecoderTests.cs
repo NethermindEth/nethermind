@@ -23,25 +23,25 @@ public class PayloadDecoderTests
 
     private void ComparePayloads(ExecutionPayloadV3 expected, ExecutionPayloadV3 actual)
     {
-        expected.BaseFeePerGas.Should().Be(actual.BaseFeePerGas);
-        expected.BlobGasUsed.Should().Be(actual.BlobGasUsed);
-        expected.BlockHash.Should().Be(actual.BlockHash);
-        expected.BlockNumber.Should().Be(actual.BlockNumber);
-        expected.ExcessBlobGas.Should().Be(actual.ExcessBlobGas);
-        expected.ExecutionRequests.Should().BeEquivalentTo(actual.ExecutionRequests);
-        expected.ExtraData.Should().BeEquivalentTo(actual.ExtraData);
-        expected.FeeRecipient.Should().BeEquivalentTo(actual.FeeRecipient);
-        expected.GasLimit.Should().Be(actual.GasLimit);
-        expected.GasUsed.Should().Be(actual.GasUsed);
-        expected.Timestamp.Should().Be(actual.Timestamp);
-        expected.ParentHash.Should().Be(actual.ParentHash);
-        expected.Transactions.Should().BeEquivalentTo(actual.Transactions);
-        expected.ParentBeaconBlockRoot.Should().Be(actual.ParentBeaconBlockRoot!);
-        expected.ReceiptsRoot.Should().BeEquivalentTo(actual.ReceiptsRoot);
-        expected.StateRoot.Should().BeEquivalentTo(actual.StateRoot);
-        expected.Withdrawals.Should().BeEquivalentTo(actual.Withdrawals);
-        expected.LogsBloom.Should().Be(actual.LogsBloom);
-        expected.PrevRandao.Should().Be(actual.PrevRandao);
+        actual.BaseFeePerGas.Should().Be(expected.BaseFeePerGas);
+        actual.BlobGasUsed.Should().Be(expected.BlobGasUsed);
+        actual.BlockHash.Should().Be(expected.BlockHash);
+        actual.BlockNumber.Should().Be(expected.BlockNumber);
+        actual.ExcessBlobGas.Should().Be(expected.ExcessBlobGas);
+        actual.ExecutionRequests.Should().BeEquivalentTo(expected.ExecutionRequests);
+        actual.ExtraData.Should().BeEquivalentTo(expected.ExtraData);
+        actual.FeeRecipient.Should().BeEquivalentTo(expected.FeeRecipient);
+        actual.GasLimit.Should().Be(expected.GasLimit);
+        actual.GasUsed.Should().Be(expected.GasUsed);
+        actual.Timestamp.Should().Be(expected.Timestamp);
+        actual.ParentHash.Should().Be(expected.ParentHash);
+        actual.Transactions.Should().BeEquivalentTo(expected.Transactions);
+        actual.ParentBeaconBlockRoot.Should().Be(expected.ParentBeaconBlockRoot!);
+        actual.ReceiptsRoot.Should().BeEquivalentTo(expected.ReceiptsRoot);
+        actual.StateRoot.Should().BeEquivalentTo(expected.StateRoot);
+        actual.Withdrawals.Should().BeEquivalentTo(expected.Withdrawals);
+        actual.LogsBloom.Should().Be(expected.LogsBloom);
+        actual.PrevRandao.Should().Be(expected.PrevRandao);
     }
 
     public static IEnumerable<(string, ExecutionPayloadV3)> RealPayloadsTestCases()
