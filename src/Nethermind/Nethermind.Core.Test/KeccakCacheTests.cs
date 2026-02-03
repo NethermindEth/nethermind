@@ -117,5 +117,83 @@ namespace Nethermind.Core.Test
                 KeccakCache.Compute(span).Should().Be(ValueKeccak.Compute(span));
             }
         }
+
+        [Test]
+        public void Hash256_32_byte_path()
+        {
+            // Tests the optimized 32-byte path (most common - Hash256/UInt256)
+            var random = new Random(42);
+            for (int i = 0; i < 1000; i++)
+            {
+                var bytes = new byte[32];
+                random.NextBytes(bytes);
+
+                ValueHash256 expected = ValueKeccak.Compute(bytes);
+                ValueHash256 actual = KeccakCache.Compute(bytes);
+                actual.Should().Be(expected);
+
+                // Second call should hit cache
+                KeccakCache.Compute(bytes).Should().Be(expected);
+            }
+        }
+
+        [Test]
+        public void Address_20_byte_path()
+        {
+            // Tests the optimized 20-byte path (Address)
+            var random = new Random(42);
+            for (int i = 0; i < 1000; i++)
+            {
+                var bytes = new byte[20];
+                random.NextBytes(bytes);
+
+                ValueHash256 expected = ValueKeccak.Compute(bytes);
+                ValueHash256 actual = KeccakCache.Compute(bytes);
+                actual.Should().Be(expected);
+
+                // Second call should hit cache
+                KeccakCache.Compute(bytes).Should().Be(expected);
+            }
+        }
+
+        [Test]
+        public void Concurrent_read_write_stress()
+        {
+            // Stress test the seqlock pattern with concurrent readers and writers
+            const int iterations = 100_000;
+            var bytes = new byte[32];
+            new Random(123).NextBytes(bytes);
+            ValueHash256 expected = ValueKeccak.Compute(bytes);
+
+            // Prime the cache
+            KeccakCache.Compute(bytes);
+
+            // Create different keys that hash to the same bucket (will cause cache eviction)
+            var collisions = new byte[4][];
+            collisions[0] = bytes;
+            var random = new Random(456);
+            var bucket = KeccakCache.GetBucket(bytes);
+            int found = 1;
+            while (found < 4)
+            {
+                var candidate = new byte[32];
+                random.NextBytes(candidate);
+                if (KeccakCache.GetBucket(candidate) == bucket)
+                {
+                    collisions[found++] = candidate;
+                }
+            }
+
+            var expectedValues = collisions.Select(c => ValueKeccak.Compute(c)).ToArray();
+
+            // Parallel readers and writers hammering the same bucket
+            Parallel.For(0, iterations, i =>
+            {
+                int idx = i % 4;
+                var input = collisions[idx];
+                var result = KeccakCache.Compute(input);
+                result.Should().Be(expectedValues[idx], $"iteration {i}, index {idx}");
+            });
+        }
     }
 }
