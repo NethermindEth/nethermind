@@ -293,7 +293,7 @@ namespace Nethermind.Core
         }
     }
 
-    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
+    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64
     {
         private readonly Address _key = key;
         public Address Value => _key;
@@ -303,6 +303,15 @@ namespace Nethermind.Core
 
         public bool Equals(AddressAsKey other) => _key == other._key;
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long GetHashCode64()
+        {
+            if (_key is null) return 0;
+            ref byte start = ref MemoryMarshal.GetReference(_key.Bytes);
+            return SpanExtensions.FastHash64For20Bytes(ref start);
+        }
+
         public override string ToString()
         {
             return _key?.ToString() ?? "<null>";

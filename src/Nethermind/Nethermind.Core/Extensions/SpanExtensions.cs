@@ -22,6 +22,11 @@ namespace Nethermind.Core.Extensions
         // the performance of the network as a whole.
         private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 
+        /// <summary>
+        /// Instance-random seed for hash calculations. Exposed for custom hash implementations.
+        /// </summary>
+        public static uint InstanceRandom => s_instanceRandom;
+
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
         {
             return ToHexString(memory.Span, withZeroX, false, false);
@@ -201,7 +206,7 @@ namespace Nethermind.Core.Extensions
         }
 
         /// <summary>
-        /// Computes a very fast, non-cryptographic 32-bit hash of exactly 32 bytes using AES-NI.
+        /// Computes a very fast, non-cryptographic 32-bit hash of exactly 32 bytes.
         /// </summary>
         /// <param name="start">Reference to the first byte of the 32-byte input.</param>
         /// <returns>A 32-bit hash value.</returns>
@@ -216,24 +221,78 @@ namespace Nethermind.Core.Extensions
 
             uint seed = s_instanceRandom + 32;
 
-            if (x64.Aes.IsSupported)
+            Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+            Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+            key ^= Vector128.CreateScalar(seed).AsByte();
+            Vector128<byte> mixed = x64.Aes.IsSupported
+                ? x64.Aes.Encrypt(data, key)
+                : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+            ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
+            return (int)(uint)(compressed ^ (compressed >> 32));
+        }
+
+        /// <summary>
+        /// Computes a very fast, non-cryptographic 64-bit hash of exactly 32 bytes.
+        /// </summary>
+        /// <param name="start">Reference to the first byte of the 32-byte input.</param>
+        /// <returns>A 64-bit hash value with good distribution across all bits.</returns>
+        /// <remarks>
+        /// Uses AES hardware acceleration when available, falls back to CRC32C otherwise.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long FastHash64For32Bytes(ref byte start)
+        {
+            uint seed = s_instanceRandom + 32;
+
+            if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {
                 Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
                 key ^= Vector128.CreateScalar(seed).AsByte();
-                Vector128<byte> mixed = x64.Aes.Encrypt(data, key);
-                ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
-                return (int)(uint)(compressed ^ (compressed >> 32));
+                Vector128<byte> mixed = x64.Aes.IsSupported
+                    ? x64.Aes.Encrypt(data, key)
+                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
             }
-            else // Arm.Aes.IsSupported
+
+            // Fallback: CRC32C-based 64-bit hash
+            ulong h0 = BitOperations.Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref start));
+            ulong h1 = BitOperations.Crc32C(seed ^ 0x9E3779B9u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)));
+            ulong h2 = BitOperations.Crc32C(seed ^ 0x85EBCA6Bu, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 16)));
+            ulong h3 = BitOperations.Crc32C(seed ^ 0xC2B2AE35u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 24)));
+            return (long)((h0 | (h1 << 32)) ^ (h2 | (h3 << 32)));
+        }
+
+        /// <summary>
+        /// Computes a very fast, non-cryptographic 64-bit hash of exactly 20 bytes (Address size).
+        /// </summary>
+        /// <param name="start">Reference to the first byte of the 20-byte input.</param>
+        /// <returns>A 64-bit hash value with good distribution across all bits.</returns>
+        /// <remarks>
+        /// Uses AES hardware acceleration when available, falls back to CRC32C otherwise.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long FastHash64For20Bytes(ref byte start)
+        {
+            uint seed = s_instanceRandom + 20;
+
+            if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {
                 Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
-                Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+                uint last4 = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16));
+                Vector128<byte> data = Vector128.CreateScalar(last4).AsByte();
                 key ^= Vector128.CreateScalar(seed).AsByte();
-                Vector128<byte> mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
-                ulong compressed = mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1);
-                return (int)(uint)(compressed ^ (compressed >> 32));
+                Vector128<byte> mixed = x64.Aes.IsSupported
+                    ? x64.Aes.Encrypt(data, key)
+                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
             }
+
+            // Fallback: CRC32C-based 64-bit hash
+            ulong h0 = BitOperations.Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref start));
+            ulong h1 = BitOperations.Crc32C(seed ^ 0x9E3779B9u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)));
+            uint h2 = BitOperations.Crc32C(seed ^ 0x85EBCA6Bu, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16)));
+            return (long)((h0 | (h1 << 32)) ^ ((ulong)h2 * 0x9E3779B97F4A7C15));
         }
 
         /// <summary>

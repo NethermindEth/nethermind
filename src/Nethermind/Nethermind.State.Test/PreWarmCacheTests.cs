@@ -158,9 +158,9 @@ public class PreWarmCacheTests
     [Test]
     public void Epoch_wraparound_invalidates_entries()
     {
-        // With 12-bit epoch, we wrap after 4096 clears
-        const int epochBits = 12;
-        const int epochCount = 1 << epochBits; // 4096
+        // With 26-bit epoch (improved from 12-bit), we need 67M clears for wraparound
+        // This test verifies that 4096 clears (old wraparound point) no longer causes issues
+        const int clearCount = 4096;
 
         var cache = new PreWarmCache<StorageCell, byte[]>();
         var key = new StorageCell(TestItem.AddressA, 1);
@@ -169,22 +169,28 @@ public class PreWarmCacheTests
         cache.Set(in key, value);
         cache.TryGetValue(in key, out _).Should().BeTrue();
 
-        // Clear enough times to wrap the epoch
-        for (int i = 0; i < epochCount; i++)
+        // Clear 4096 times - with 26-bit epoch, this no longer causes wraparound
+        for (int i = 0; i < clearCount; i++)
         {
             cache.Clear();
         }
 
-        // After wraparound, the entry appears valid again because the epoch matches
-        // (12-bit epoch wraps every 4096 clears - this is acceptable for a prewarming cache)
-        cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
-        retrieved.Should().BeEquivalentTo(value);
+        // Entry should be invalidated and NOT reappear (no more wraparound at 4096)
+        cache.TryGetValue(in key, out byte[]? retrieved).Should().BeFalse();
+        retrieved.Should().BeNull();
+
+        // Re-adding the value should work
+        cache.Set(in key, value);
+        cache.TryGetValue(in key, out byte[]? retrievedAfterSet).Should().BeTrue();
+        retrievedAfterSet.Should().BeEquivalentTo(value);
     }
 
     [Test]
     public void Multiple_epoch_wraparounds_maintain_correctness()
     {
-        const int epochCount = 1 << 12; // 4096
+        // With 26-bit epoch, wraparound requires 67M clears (~25 years at 1 block/12s)
+        // This test verifies normal operation through many clears
+        const int clearCount = 4096;
 
         var cache = new PreWarmCache<StorageCell, byte[]>();
         var key = new StorageCell(TestItem.AddressA, 1);
@@ -195,27 +201,24 @@ public class PreWarmCacheTests
         cache.TryGetValue(in key, out byte[]? retrieved0).Should().BeTrue();
         retrieved0.Should().BeEquivalentTo(value0);
 
-        // Clear through a full epoch cycle (4096 clears = epoch wraps from 0 back to 0)
-        for (int i = 0; i < epochCount; i++)
+        // Clear 4096 times - entry should be invalidated
+        for (int i = 0; i < clearCount; i++)
         {
             cache.Clear();
         }
 
-        // After wraparound, the entry appears valid again because the epoch matches
-        // (12-bit epoch wraps every 4096 clears - this is acceptable for a prewarming cache)
-        cache.TryGetValue(in key, out byte[]? retrievedAfterWrap).Should().BeTrue();
-        retrievedAfterWrap.Should().BeEquivalentTo(value0);
+        // Entry should be gone (not reappear like with old 12-bit epoch)
+        cache.TryGetValue(in key, out byte[]? retrievedAfterClear).Should().BeFalse();
 
-        // Round 1: Try to set new value with same key
-        // With skip-if-exact-match optimization, this is skipped because the hash signature
-        // (epoch + hash bits) matches the existing entry after wraparound.
-        // This is acceptable for prewarming: epoch wraparound takes ~13.6 hours (4096 blocks * 12s),
-        // and stale data from wraparound is already an acknowledged limitation.
+        // Round 1: Set new value - should work normally
         byte[] value1 = [0x01];
         cache.Set(in key, value1);
         cache.TryGetValue(in key, out byte[]? retrieved1).Should().BeTrue();
-        // The original value is preserved because skip-if-exact-match fired
-        retrieved1.Should().BeEquivalentTo(value0);
+        retrieved1.Should().BeEquivalentTo(value1);
+
+        // Clear again and verify it's gone
+        cache.Clear();
+        cache.TryGetValue(in key, out _).Should().BeFalse();
     }
 
     [Test]
@@ -334,7 +337,7 @@ public class PreWarmCacheTests
     {
         var cache = new PreWarmCache<StorageCell, byte[]>();
 
-        // Find keys that hash to the same bucket (bottom 14 bits of hash)
+        // Find keys that hash to the same bucket (bottom 15 bits of 64-bit hash)
         var (key1, key2) = FindCollidingKeys();
 
         byte[] value1 = [1, 1, 1];
@@ -449,7 +452,7 @@ public class PreWarmCacheTests
     public void Spin_through_all_buckets()
     {
         var cache = new PreWarmCache<StorageCell, byte[]>();
-        const int count = 1 << 14; // 16384 buckets
+        const int count = 1 << 15; // 32768 buckets
 
         // Fill all buckets
         for (int i = 0; i < count; i++)
@@ -549,16 +552,17 @@ public class PreWarmCacheTests
 
     private static (StorageCell key1, StorageCell key2) FindCollidingKeys()
     {
-        const int bucketMask = (1 << 14) - 1; // 16383
+        // Must match PreWarmCache bucket calculation: 15-bit bucket from 64-bit hash
+        const int bucketMask = (1 << 15) - 1; // 32767
 
         var key1 = new StorageCell(TestItem.AddressA, 0);
-        int targetBucket = key1.GetHashCode() & bucketMask;
+        int targetBucket = (int)key1.GetHashCode64() & bucketMask;
 
         // Search for a key with the same bucket index
         for (ulong i = 1; i < 1_000_000; i++)
         {
             var candidate = new StorageCell(TestItem.AddressA, i);
-            if ((candidate.GetHashCode() & bucketMask) == targetBucket)
+            if (((int)candidate.GetHashCode64() & bucketMask) == targetBucket)
             {
                 return (key1, candidate);
             }
@@ -568,7 +572,7 @@ public class PreWarmCacheTests
         for (int i = 0; i < 1_000_000; i++)
         {
             var candidate = new StorageCell(TestItem.AddressB, (UInt256)i);
-            if ((candidate.GetHashCode() & bucketMask) == targetBucket)
+            if (((int)candidate.GetHashCode64() & bucketMask) == targetBucket)
             {
                 return (key1, candidate);
             }

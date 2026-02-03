@@ -5,67 +5,71 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.State;
 
 /// <summary>
-/// A high-performance one-way set-associative cache similar to <see cref="Nethermind.Core.Crypto.KeccakCache"/>.
-/// Uses parallel arrays for hash codes, keys, and values to avoid boxing.
-/// Supports reference type values and O(1) Clear() via epoch-based invalidation.
+/// A high-performance one-way set-associative cache using a single cache-line-aligned struct array.
+/// Each entry occupies exactly 64 bytes (one cache line), eliminating false sharing between entries.
+/// Uses seqlock pattern for lock-free reads and epoch-based O(1) Clear().
 /// </summary>
-/// <typeparam name="TKey">The key type (must be a struct implementing IEquatable)</typeparam>
+/// <typeparam name="TKey">The key type (must be a struct implementing IEquatable and IHash64)</typeparam>
 /// <typeparam name="TValue">The value type (must be a reference type)</typeparam>
 public sealed class PreWarmCache<TKey, TValue>
-    where TKey : struct, IEquatable<TKey>
+    where TKey : struct, IEquatable<TKey>, IHash64
     where TValue : class?
 {
     /// <summary>
     /// Number of cache entries. Must be a power of 2 for mask operations.
+    /// 32768 entries × 64 bytes = 2 MB memory footprint.
     /// </summary>
-    private const int Count = 1 << 14; // 16384
+    private const int Count = 1 << 15; // 32768
 
     private const int BucketMask = Count - 1;
 
-    // Bit layout: [Lock:1][Epoch:12][Hash:18][Occupied:1]
-    // Collision detection uses 32 bits: 14 bits in bucket index + 18 bits in hash signature
-    private const int LockMarker = unchecked((int)0x8000_0000); // bit 31
-    private const int EpochShift = 19;
-    private const int EpochMask = 0x7FF8_0000; // bits 19-30 (12 bits, 4096 epochs)
-    private const int HashMask = 0x0007_FFFE;  // bits 1-18 (18 bits), captures hashCode bits 14-31
-    private const int OccupiedBit = 1;         // bit 0
+    // 64-bit layout: [Lock:1][Epoch:26][Hash:36][Occupied:1]
+    // - Lock (bit 63): Set during writes to signal readers to retry
+    // - Epoch (bits 37-62): 26 bits = 67M clears before wrap (~25 years at 1 block/12s)
+    // - Hash (bits 1-36): 36 bits for hash signature (+ 15 bucket bits = 51 bits collision resistance)
+    // - Occupied (bit 0): Set when slot contains valid data
+    private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
+    private const int EpochShift = 37;
+    private const long EpochMask = 0x7FFF_FFE0_0000_0000; // bits 37-62 (26 bits)
+    private const long HashMask = 0x0000_001F_FFFF_FFFE;  // bits 1-36 (36 bits)
+    private const long OccupiedBit = 1L;                   // bit 0
 
     /// <summary>
-    /// Array storing hash codes with lock marker, epoch, and hash signature.
-    /// Bit layout: [Lock:1][Epoch:12][Hash:18][Occupied:1]
-    /// A value of 0 means the slot is empty or has stale epoch.
+    /// Cache entry struct - exactly 64 bytes for cache line alignment.
+    /// Layout: [HashEpochLock:8][Key:48][Value:8] = 64 bytes
     /// </summary>
-    private readonly int[] _hashes;
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Entry
+    {
+        public long HashEpochLock;  // 8 bytes: lock + epoch + hash signature + occupied
+        public TKey Key;            // 48 bytes for StorageCell
+        public TValue? Value;       // 8 bytes (reference)
+    }
 
     /// <summary>
-    /// Array of keys. Only valid when corresponding _hashes entry matches current epoch.
+    /// Single array of entries - each entry is one cache line.
+    /// This eliminates false sharing and reduces cache misses from 3 to 1 per lookup.
     /// </summary>
-    private readonly TKey[] _keys;
-
-    /// <summary>
-    /// Array of values corresponding to keys.
-    /// </summary>
-    private readonly TValue?[] _values;
+    private readonly Entry[] _entries;
 
     /// <summary>
     /// Current epoch counter. Incremented on Clear() to invalidate all entries.
     /// </summary>
-    private int _epoch;
+    private long _epoch;
 
     public PreWarmCache()
     {
-        _hashes = new int[Count];
-        _keys = new TKey[Count];
-        _values = new TValue?[Count];
+        _entries = new Entry[Count];
         _epoch = 0;
     }
 
     /// <summary>
-    /// Tries to get a value from the cache.
+    /// Tries to get a value from the cache using seqlock pattern (lock-free reads).
     /// </summary>
     /// <param name="key">The key to look up</param>
     /// <param name="value">The value if found</param>
@@ -74,35 +78,49 @@ public sealed class PreWarmCache<TKey, TValue>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetValue(in TKey key, out TValue? value)
     {
-        int hashCode = key.GetHashCode();
-        int index = hashCode & BucketMask;
+        long hashCode = key.GetHashCode64();
+        int index = (int)hashCode & BucketMask;
 
         // Current epoch shifted into position
-        int currentEpoch = (Volatile.Read(ref _epoch) << EpochShift) & EpochMask;
-        // Hash signature: bits 14-31 of hashCode in bits 1-18 (bucket uses bits 0-13)
-        int hashSignature = ((hashCode >> 13) & HashMask) | OccupiedBit;
+        long currentEpoch = (Volatile.Read(ref _epoch) << EpochShift) & EpochMask;
+        // Hash signature: bits 15-50 of 64-bit hashCode in bits 1-36 (bucket uses bits 0-14)
+        // Full 51-bit collision resistance: 15 bucket + 36 signature
+        long hashSignature = ((hashCode >> 14) & HashMask) | OccupiedBit;
         // Expected value: current epoch + hash signature (no lock bit)
-        int expected = currentEpoch | hashSignature;
+        long expected = currentEpoch | hashSignature;
 
-        ref int hashSlot = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_hashes), index);
-        int existing = Volatile.Read(ref hashSlot);
+        ref Entry entry = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_entries), index);
 
-        // Check: epoch matches, hash matches, not locked
-        if ((existing & ~LockMarker) == expected &&
-            (existing & LockMarker) == 0 &&
-            Interlocked.CompareExchange(ref hashSlot, existing | LockMarker, existing) == existing)
+        // Seqlock pattern: read sequence, speculatively read data, verify sequence unchanged
+        long seq1 = Volatile.Read(ref entry.HashEpochLock);
+
+        // Early exit: epoch/hash mismatch or write in progress
+        if ((seq1 & ~LockMarker) != expected || (seq1 & LockMarker) != 0)
         {
-            TKey storedKey = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_keys), index);
-            TValue? storedValue = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_values), index);
+            value = default;
+            return false;
+        }
 
-            // Release lock
-            Volatile.Write(ref hashSlot, existing);
+        // Speculative reads - entry is in same cache line, already fetched
+        TKey storedKey = entry.Key;
+        TValue? storedValue = entry.Value;
 
-            if (storedKey.Equals(key))
-            {
-                value = storedValue;
-                return true;
-            }
+        // On x64: loads are never reordered with other loads - Volatile.Read provides acquire semantics
+        // Re-read sequence - if changed, a write occurred during our reads
+        long seq2 = Volatile.Read(ref entry.HashEpochLock);
+
+        // If sequence changed, our reads may be torn - bail out
+        if (seq1 != seq2)
+        {
+            value = default;
+            return false;
+        }
+
+        // Safe to compare - we have a consistent snapshot
+        if (storedKey.Equals(key))
+        {
+            value = storedValue;
+            return true;
         }
 
         value = default;
@@ -138,18 +156,18 @@ public sealed class PreWarmCache<TKey, TValue>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Set(in TKey key, TValue? value)
     {
-        int hashCode = key.GetHashCode();
-        int index = hashCode & BucketMask;
+        long hashCode = key.GetHashCode64();
+        int index = (int)hashCode & BucketMask;
 
         // Current epoch shifted into position
-        int currentEpoch = (Volatile.Read(ref _epoch) << EpochShift) & EpochMask;
-        // Hash signature: bits 14-31 of hashCode in bits 1-18 (bucket uses bits 0-13)
-        int hashSignature = ((hashCode >> 13) & HashMask) | OccupiedBit;
+        long currentEpoch = (Volatile.Read(ref _epoch) << EpochShift) & EpochMask;
+        // Hash signature: bits 15-50 of 64-bit hashCode in bits 1-36
+        long hashSignature = ((hashCode >> 14) & HashMask) | OccupiedBit;
         // Value to store: current epoch + hash signature (no lock initially)
-        int hashToStore = currentEpoch | hashSignature;
+        long hashToStore = currentEpoch | hashSignature;
 
-        ref int hashSlot = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_hashes), index);
-        int existing = Volatile.Read(ref hashSlot);
+        ref Entry entry = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_entries), index);
+        long existing = Volatile.Read(ref entry.HashEpochLock);
 
         // Skip if exact match already exists (same epoch, same hash signature)
         // This reduces cache line invalidation for hot storage cells
@@ -158,16 +176,15 @@ public sealed class PreWarmCache<TKey, TValue>
             return;
         }
 
-        // Can add if: slot is empty (0), OR has stale epoch, OR different key (overwrite)
-        // Just need to acquire lock
+        // Acquire lock via CAS, write data, release lock
         if ((existing & LockMarker) == 0 &&
-            Interlocked.CompareExchange(ref hashSlot, hashToStore | LockMarker, existing) == existing)
+            Interlocked.CompareExchange(ref entry.HashEpochLock, hashToStore | LockMarker, existing) == existing)
         {
-            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_keys), index) = key;
-            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_values), index) = value;
+            entry.Key = key;
+            entry.Value = value;
 
-            // Release lock
-            Volatile.Write(ref hashSlot, hashToStore);
+            // Release lock (clears lock bit, sets final hash+epoch)
+            Volatile.Write(ref entry.HashEpochLock, hashToStore);
         }
     }
 
@@ -178,6 +195,7 @@ public sealed class PreWarmCache<TKey, TValue>
     /// <remarks>
     /// This is an O(1) operation with zero memory allocation.
     /// Thread-safe: can be called while other operations are in flight.
+    /// With 26-bit epoch, supports 67 million clears before wrap.
     /// Stale key/value data remains in arrays but is inaccessible.
     /// </remarks>
     public void Clear()
