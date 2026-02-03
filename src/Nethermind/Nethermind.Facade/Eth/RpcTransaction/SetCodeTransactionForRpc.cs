@@ -26,7 +26,7 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
         AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = true)
     {
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
         if (!baseResult) return baseResult;

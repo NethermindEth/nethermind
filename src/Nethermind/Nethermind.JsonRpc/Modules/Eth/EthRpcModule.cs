@@ -292,7 +292,7 @@ public partial class EthRpcModule(
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = rpcTx.ToTransaction();
         if (!txResult)
         {
             return Task.FromResult(ResultWrapper<Hash256>.Fail(txResult.Error!, ErrorCodes.InvalidInput));

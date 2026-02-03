@@ -97,7 +97,7 @@ public class DebugRpcModule(
         // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = call.ToTransaction();
         if (!txResult)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(txResult.Error!, ErrorCodes.InvalidInput);

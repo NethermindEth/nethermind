@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
-            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
+            Result<Transaction> txResult = tx.ToTransaction();
             if (!txResult)
             {
                 return ResultWrapper<CallResultWithProof>.Fail(txResult.Error!, ErrorCodes.InvalidInput);

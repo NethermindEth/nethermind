@@ -60,7 +60,7 @@ public class L2Api(
         };
         Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t =>
         {
-            Result<Transaction> result = t.ToTransaction();
+            Result<Transaction> result = t.ToTransaction(validateUserInput: false);
             return !result ? throw new InvalidOperationException($"Failed to convert transaction: {result.Error}") : result.Data!;
         }).ToArray();
 

@@ -225,7 +225,7 @@ public class DebugBridge : IDebugBridge
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
+            Result<Transaction> txResult = txForRpc.ToTransaction();
             if (!txResult)
             {
                 trace = new GethLikeTxTrace { Failed = true, ReturnValue = [] };

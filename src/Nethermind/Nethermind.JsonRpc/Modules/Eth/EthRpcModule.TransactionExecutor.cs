@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     call.EnsureDefaults(_rpcConfig.GasCap);
                 }
 
-                Result<Transaction> result = call.ToTransaction(validateUserInput: true);
+                Result<Transaction> result = call.ToTransaction();
                 if (!result) return result;
 
                 Transaction tx = result.Data!;
