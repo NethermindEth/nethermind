@@ -1595,6 +1595,24 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_block_access_list_by_hash_unavailable_before_fork()
+    {
+        using Context ctx = await Context.Create(); // Amsterdam disabled
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", new Hash256("0x49e7d7466be0927347ff2f654c014a768b5a5fcd8c483635210466dd0d6d204c"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_hash_pruned()
+    {
+        Hash256 blockHash = new("0xc6444d9b4ab5180055fd877be9231ffae98404e9eb871d19affe9702fc05b095");
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_block_access_list_by_number()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
@@ -1608,6 +1626,24 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 100);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number_unavailable_before_fork()
+    {
+        using Context ctx = await Context.Create(); // Amsterdam disabled
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_by_number_pruned()
+    {
+        Hash256 blockHash = new("0xc6444d9b4ab5180055fd877be9231ffae98404e9eb871d19affe9702fc05b095");
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
     }
 
     public class AllowNullAuthorizationTuple : AuthorizationTuple
