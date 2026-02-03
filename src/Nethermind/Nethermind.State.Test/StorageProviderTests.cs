@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;

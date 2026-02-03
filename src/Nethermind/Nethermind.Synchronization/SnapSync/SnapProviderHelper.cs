@@ -78,13 +78,10 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                var account_ = account.Account;
-                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
-                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
-                if (account is not null)
-                {
-                    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
-                }
+                Account accountValue = account.Account;
+                Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
+                Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
             }
 
             tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
@@ -201,7 +198,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             ArgumentNullException.ThrowIfNull(tree);
 
-            ValueHash256 effectiveStartingHAsh = startingHash ?? ValueKeccak.Zero;
+            ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
             List<(TrieNode, TreePath)> sortedBoundaryList = new();
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
@@ -222,7 +219,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
+            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHash.Bytes);
             TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
             TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
 

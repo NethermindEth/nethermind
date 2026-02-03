@@ -11,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.TxPool;
 

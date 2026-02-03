@@ -129,6 +129,13 @@ public class TestBlockchainUtil(
 
         return await AddBlock(flags, cancellationToken, transactions);
     }
+    public async Task<Block> AddBlockMayHaveExtraTx(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        AddBlockFlags flags = AddBlockFlags.MayHaveExtraTx;
+        if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
+
+        return await AddBlock(flags, cancellationToken, transactions);
+    }
 
     public async Task<Block> AddBlockAndWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
