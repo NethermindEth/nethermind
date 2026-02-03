@@ -14,8 +14,10 @@ using NUnit.Framework;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
@@ -186,11 +188,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const long gasUsed = 167340;
-        // const long gasUsedBeforeFinal = 92100;
+        const long gasUsedBeforeFinal = 92100;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;
-        // Hash256 parentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c");
         Hash256 parentHash = new(chain.BlockTree.HeadHash);
 
         Transaction tx = Build.A.Transaction
@@ -213,16 +214,16 @@ public partial class EngineModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        /*
-        Store followed by revert should undo storage change
-        PUSH1 1
-        PUSH1 1
-        SSTORE
-        PUSH0
-        PUSH0
-        REVERT
-        */
-        byte[] code = Bytes.FromHexString("0x60016001555f5ffd");
+        // Store followed by revert should undo storage change
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(1)
+            .SSTORE()
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .REVERT()
+            .Done;
+        Console.WriteLine(Bytes.ToHexString(code));
         Transaction tx3 = Build.A.Transaction
             .WithTo(null)
             .WithSenderAddress(TestItem.AddressA)
@@ -242,90 +243,55 @@ public partial class EngineModuleTests
             AmountInGwei = 1
         };
 
-        // UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
-        // UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+        Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
+        Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
 
-        // StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
-        // StorageChange timestampStorageChange = new(0, 0xF4240);
+        UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
 
-        // UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
-        // UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;
-        // UInt256 addressABalance3 = _accountBalance - gasPrice * gasUsed;
+        StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
+        StorageChange timestampStorageChange = new(0, 0xF4240);
 
-        // using (Assert.EnterMultipleScope())
-        // {
-        //     Assert.That(addressAChanges, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(TestItem.AddressA)
-        //             .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
-        //             .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
-        //             .TestObject));
+        UInt256 accountBalance = chain.StateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        UInt256 addressABalance = accountBalance - gasPrice * GasCostOf.Transaction;
+        UInt256 addressABalance2 = accountBalance - gasPrice * gasUsedBeforeFinal;
+        UInt256 addressABalance3 = accountBalance - gasPrice * gasUsed;
 
-        //     Assert.That(addressBChanges, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(TestItem.AddressB)
-        //             .TestObject));
+        BlockAccessList expectedBlockAccessList = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
+                    .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressB)
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressD)
+                    .WithBalanceChanges([new(4, 1.GWei())])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressE)
+                    .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction * gasPrice)), new(2, new UInt256(gasUsedBeforeFinal * gasPrice)), new(3, new UInt256(gasUsed * gasPrice))])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(newContractAddress)
+                    .WithNonceChanges([new(2, 1)])
+                    .WithCodeChanges([new(2, Eip2935TestConstants.Code)])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(newContractAddress2)
+                    .WithStorageReads(1)
+                    .TestObject)
+            .WithPrecompileChanges(parentHash, timestamp)
+            .TestObject;
 
-        //     Assert.That(addressCChanges, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(TestItem.AddressC)
-        //             .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction)), new(2, new UInt256(gasUsedBeforeFinal)), new(3, new UInt256(gasUsed))])
-        //             .TestObject));
-
-        //     Assert.That(addressDChanges, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(TestItem.AddressD)
-        //             .WithBalanceChanges([new(4, 1.GWei())])
-        //             .TestObject));
-
-        //     Assert.That(newContractChanges, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(newContractAddress)
-        //             .WithNonceChanges([new(2, 1)])
-        //             .WithCodeChanges([new(2, Eip2935TestConstants.Code)])
-        //             .TestObject));
-
-        //     Assert.That(newContractChanges2, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(newContractAddress2)
-        //             .WithStorageReads(1)
-        //             .TestObject));
-
-        //     Assert.That(eip2935Changes, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
-        //             .WithStorageChanges(0, parentHashStorageChange)
-        //             .TestObject));
-
-        //     // eip4788 stores timestamp at slot1 and beacon root (0) at slot2
-        //     // beacon root 0→0 is not a change, so only slot1 has a storage change
-        //     // slot1 is not a separate read since it's already a change, only slot2 is read
-        //     Assert.That(eip4788Changes, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(Eip4788Constants.BeaconRootsAddress)
-        //             .WithStorageChanges(eip4788Slot1, timestampStorageChange)
-        //             .WithStorageReads(eip4788Slot2)
-        //             .TestObject));
-
-        //     // storage reads make no changes
-        //     Assert.That(eip7002Changes, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(Eip7002Constants.WithdrawalRequestPredeployAddress)
-        //             .WithStorageReads(0, 1, 2, 3)
-        //             .TestObject));
-
-        //     // storage reads make no changes
-        //     Assert.That(eip7251Changes, Is.EqualTo(
-        //         Build.An.AccountChanges
-        //             .WithAddress(Eip7251Constants.ConsolidationRequestPredeployAddress)
-        //             .WithStorageReads(0, 1, 2, 3)
-        //             .TestObject));
-        // }
         Block block = new(
             new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
-                TestItem.AddressC,
+                TestItem.AddressE,
                 UInt256.Zero,
                 1,
                 chain.BlockTree.Head!.GasLimit,
@@ -338,16 +304,16 @@ public partial class EngineModuleTests
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = gasUsed,
-                Hash = new("0x21db6c36c7dc225d458036f109de3fab9a9e9fb559b0d3b3ee282cfec339cb18"),
+                Hash = new("0x1e11df85db9df143816b319b33ad72dc488d63baa6d3d477b72803b352897ef4"),
                 MixHash = Keccak.Zero,
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = new("0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569"),
-                StateRoot = new("0x9399acd9f2603778c11646f05f7827509b5319815da74b5721a07defb6285c8d"),
+                StateRoot = new("0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b"),
             },
             [tx, tx2, tx3],
             [],
             [withdrawal],
-            Build.A.BlockAccessList.WithPrecompileChanges(parentHash, timestamp).TestObject);
+            expectedBlockAccessList);
         
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
