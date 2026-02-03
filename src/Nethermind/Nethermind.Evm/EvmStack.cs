@@ -67,25 +67,40 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
-        ref byte bytes = ref PushBytesRef();
-        switch (value.Length)
+        if (value.Length >= WordSize)
         {
-            case WordSize:
-                Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
-                return;
-
-            case < WordSize:
-                Unsafe.As<byte, Word>(ref bytes) = default;
-                value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
-                return;
-
-            default:
-                value = value[..WordSize];
-                goto case WordSize;
+            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
+            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+        }
+        else
+        {
+            ref byte bytes = ref PushBytesRef();
+            Unsafe.As<byte, Word>(ref bytes) = default; // Not full entry, clear first
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
         }
     }
 
-    public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value) where TTracingInst : struct, IFlag => PushBytes<TTracingInst>(value.Span);
+
+    public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(value);
+
+        ReadOnlySpan<byte> valueSpan = value.Span;
+        if (valueSpan.Length >= WordSize)
+        {
+            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
+            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
+        }
+        else
+        {
+            ref byte bytes = ref PushBytesRef();
+            Unsafe.As<byte, Word>(ref bytes) = default; // Not full entry, clear first
+            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
+        }
+    }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushByte<TTracingInst>(byte value)
