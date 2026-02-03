@@ -162,11 +162,12 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         for (int i = 0; i < 16; i++)
         {
             bool needsDelete;
-            // Note: for inline node, the child hash is null, hence range will be deleted.
+            // Note: for inline node, the child hash is null, hence range will be deleted. But the existingNode child may
+            // also be inline node, in which case, it still need to be deleted instead of just assuming its empty.
             if (existingIsBranch)
             {
                 // Branch→Branch: only delete where existing had hash ref but new doesn't
-                needsDelete = !newNode.GetChildHashAsValueKeccak(i, out _) && existingNode!.GetChildHashAsValueKeccak(i, out _);
+                needsDelete = !newNode.GetChildHashAsValueKeccak(i, out _) && !existingNode!.IsChildNull(i);
             }
             else
             {
@@ -211,8 +212,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     {
         if (existingNode is { NodeType: NodeType.Extension } && newNode.Key.SequenceEqual(existingNode.Key))
             return;
-
-        // Note: an extension can only have branch child. Branch child cannot be inline.
 
         TreePath extendedPath = path.Append(newNode.Key);
 

@@ -17,6 +17,7 @@ namespace Nethermind.State.Flat.Test;
 public class DeletionRangeCalculationTests
 {
     private static readonly byte[] DummyValue = new byte[33];
+    private static readonly byte[] InlineValue = new byte[5]; // Small enough for inline (RLP < 32 bytes)
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
     [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ff", "0x0000000000000000000000000000000000000000000000000000000000000100", Description = "Byte boundary carry")]
@@ -54,6 +55,15 @@ public class DeletionRangeCalculationTests
             for (int i = 0; i < 16; i++)
                 if ((childBitset & (1 << i)) != 0)
                     branch[i] = TrieNodeFactory.CreateLeaf([0], DummyValue);
+            return branch;
+        }
+
+        TrieNode CreateBranchWithInlineChildren(ushort childBitset)
+        {
+            TrieNode branch = TrieNodeFactory.CreateBranch();
+            for (int i = 0; i < 16; i++)
+                if ((childBitset & (1 << i)) != 0)
+                    branch[i] = TrieNodeFactory.CreateLeaf([0], InlineValue);
             return branch;
         }
 
@@ -239,6 +249,35 @@ public class DeletionRangeCalculationTests
                 ("0xabcde60000000000000000000000000000000000000000000000000000000000", "0xabcdefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
             }
         ).SetDescription("Branch→Branch: All children to single child deletes 0-4, 6-15");
+
+        // Branch(inline)→Branch(inline): Both have inline children at shared positions
+        // newNode: inline at 0, 3 (bitset 0b1001); existingNode: inline at 0, 1 (bitset 0b0011)
+        // Position 0: newNode has inline (no hash), existing has inline → DELETE
+        // Position 1: newNode is null, existing has inline → DELETE
+        // Position 3: newNode has inline, existing is null → no delete
+        yield return new TestCaseData(
+            "abcde",
+            CreateBranchWithInlineChildren(0b0000_0000_0000_1001),
+            CreateBranchWithInlineChildren(0b0000_0000_0000_0011),
+            new (string, string)[]
+            {
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Branch(inline)→Branch(inline): Inline children at shared positions trigger deletion");
+
+        // Branch(hash)→Branch(inline): Existing has hash refs, new has inline children
+        // newNode: inline at 0, 3 (bitset 0b1001); existingNode: hash ref at 0, 1 (bitset 0b0011)
+        // Position 0: newNode has inline (no hash), existing has hash → DELETE
+        // Position 1: newNode is null, existing has hash → DELETE
+        yield return new TestCaseData(
+            "abcde",
+            CreateBranchWithInlineChildren(0b0000_0000_0000_1001),
+            CreateBranchWithChildren(0b0000_0000_0000_0011),
+            new (string, string)[]
+            {
+                ("0xabcde00000000000000000000000000000000000000000000000000000000000", "0xabcde1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            }
+        ).SetDescription("Branch(hash)→Branch(inline): Inline new replaces hash existing");
 
         // Same type, same key: No deletion - Leaf → Leaf with same key
         yield return new TestCaseData(
