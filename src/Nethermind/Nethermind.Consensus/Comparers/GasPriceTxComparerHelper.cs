@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Comparers
 {
@@ -10,17 +11,17 @@ namespace Nethermind.Consensus.Comparers
     {
         public static int Compare(Transaction? x, Transaction? y, in UInt256 baseFee, bool isEip1559Enabled)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (y is null) return 1;
-            if (x is null) return -1;
+            if (ReferenceEquals(x, y)) return TxComparisonResult.Equal;
+            if (y is null) return TxComparisonResult.SecondIsBetter;
+            if (x is null) return TxComparisonResult.FirstIsBetter;
 
             // EIP1559 changed the way we're sorting transactions. The transaction with a higher miner tip should go first
             if (isEip1559Enabled)
             {
                 UInt256 xGasPrice = UInt256.Min(x.MaxFeePerGas, x.MaxPriorityFeePerGas + baseFee);
                 UInt256 yGasPrice = UInt256.Min(y.MaxFeePerGas, y.MaxPriorityFeePerGas + baseFee);
-                if (xGasPrice < yGasPrice) return 1;
-                if (xGasPrice > yGasPrice) return -1;
+                if (xGasPrice < yGasPrice) return TxComparisonResult.SecondIsBetter;
+                if (xGasPrice > yGasPrice) return TxComparisonResult.FirstIsBetter;
 
                 return y.MaxFeePerGas.CompareTo(x.MaxFeePerGas);
             }

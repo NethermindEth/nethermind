@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Comparers
 {
@@ -22,9 +23,9 @@ namespace Nethermind.Consensus.Comparers
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (y is null) return 1;
-            if (x is null) return -1;
+            if (ReferenceEquals(x, y)) return TxComparisonResult.Equal;
+            if (y is null) return TxComparisonResult.SecondIsBetter;
+            if (x is null) return TxComparisonResult.FirstIsBetter;
 
             // if gas bottleneck was calculated, it's highest priority for sorting
             // if not, different method of sorting by gas price is needed

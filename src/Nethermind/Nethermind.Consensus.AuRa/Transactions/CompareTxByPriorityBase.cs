@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -51,9 +52,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public int Compare(Transaction x, Transaction y)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (y is null) return 1;
-            if (x is null) return -1;
+            if (ReferenceEquals(x, y)) return TxComparisonResult.Equal;
+            if (y is null) return TxComparisonResult.SecondIsBetter;
+            if (x is null) return TxComparisonResult.FirstIsBetter;
 
             // we already have nonce ordered by previous code, we don't deal with it here
 
