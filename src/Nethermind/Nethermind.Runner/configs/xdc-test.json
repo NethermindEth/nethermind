@@ -10,9 +10,12 @@
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
+  "Network": {
+    "P2PPort": 30300
+  },
   "Sync": {
     "FastSync": true,
-    "NeedToWaitForHeader": false,
+    "NeedToWaitForHeader": true,
     "PivotNumber": 387871,
     "PivotHash": "0x7e5eb4c31772bb5f9851b470c2e95d099309faf6e6fc54c658f595c5cf939ad5",
     "PivotTotalDifficulty": 387872,
@@ -26,6 +29,5 @@
   },
   "TraceStore": {
     "Enabled": false
-
   }
 }

@@ -42,12 +42,18 @@ internal class CreateSnapshotOnStateSyncFinished
 
         var result = _epochSwitchManager.IsEpochSwitchAtBlock(pivot);
 
-        long gapBlockNum = Math.Max(0, pivot.Number - pivot.Number % spec.EpochLength - spec.Gap);
+        var number = pivot.Number;
+        long gapBlockNum = Math.Max(0, number - number % spec.EpochLength - spec.Gap);
 
         BlockHeader gapBlockForPivotEpoch = _blockTree.FindHeader(gapBlockNum);
 
         Snapshot snapshot = new(gapBlockForPivotEpoch.Number, gapBlockForPivotEpoch.Hash, XdcExtensions.ExtractAddresses(pivot.Validators));
         _snapshotManager.StoreSnapshot(snapshot);
+
+        if (Math.Max(0, (number + spec.EpochLength) % spec.EpochLength - spec.Gap ) < number)
+        {
+
+        }
 
     }
 }
