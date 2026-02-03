@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
@@ -45,12 +44,10 @@ internal static class FlatEntryWriter
         }
         else if (node.IsExtension)
         {
-            ExtensionInlineChildLeafEnumerator enumerator = new(ref path, node);
-            while (enumerator.MoveNext())
-            {
-                Account account = AccountDecoder.Instance.Decode(enumerator.CurrentValue)!;
-                writeBatch.SetAccountRaw(enumerator.CurrentPath.ToCommitment(), account);
-            }
+            // Extension children are never inline branches in practice. An inline branch
+            // (RLP < 32 bytes) requires ≥2 keys sharing 224+ bits of prefix. Even a large
+            // contract with 2^20 storage slots gives collision probability of ~(2^20)² / 2^224
+            // = 2^(-184). Effectively zero - safe to assume hash references.
         }
     }
 
@@ -80,11 +77,10 @@ internal static class FlatEntryWriter
         }
         else if (node.IsExtension)
         {
-            ExtensionInlineChildLeafEnumerator enumerator = new(ref path, node);
-            while (enumerator.MoveNext())
-            {
-                WriteStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentValue);
-            }
+            // Extension children are never inline branches in practice. An inline branch
+            // (RLP < 32 bytes) requires ≥2 keys sharing 224+ bits of prefix. Even a large
+            // contract with 2^20 storage slots gives collision probability of ~(2^20)² / 2^224
+            // = 2^(-184). Effectively zero - safe to assume hash references.
         }
     }
 
@@ -196,106 +192,6 @@ internal static class FlatEntryWriter
             return false;
         }
 
-    }
-
-    /// <summary>
-    /// High-performance enumerator for inline leaf child of an extension node.
-    /// Operates directly on RLP data to avoid TrieNode wrapper allocations.
-    /// Extension has exactly one child at path + Key.
-    /// </summary>
-    public ref struct ExtensionInlineChildLeafEnumerator
-    {
-        private readonly ReadOnlySpan<byte> _rlp;
-        private readonly int _originalPathLength;
-        private ref TreePath _path;
-        private bool _done;
-
-        private readonly ReadOnlySpan<byte> _extensionKey;
-
-        private ValueHash256 _currentFullPath;
-        private ReadOnlySpan<byte> _currentValue;
-        private ReadOnlySpan<byte> _currentRlp;
-
-        public ExtensionInlineChildLeafEnumerator(ref TreePath path, TrieNode node)
-        {
-            _path = ref path;
-            _rlp = node.FullRlp.Span;
-            _originalPathLength = path.Length;
-            _done = false;
-            _currentFullPath = default;
-            _currentValue = default;
-            _currentRlp = default;
-
-            // Extract extension key for path building
-            Rlp.ValueDecoderContext ctx = new(_rlp);
-            ctx.ReadSequenceLength();
-            _extensionKey = ctx.DecodeByteArraySpan();
-        }
-
-        public ValueHash256 CurrentPath => _currentFullPath;
-        public TreePath IntermediatePath => _path;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
-
-        /// <summary>
-        /// Creates a TrieNode from the current inline leaf RLP.
-        /// Use this when you need the full TrieNode object (e.g., for deletion range computation).
-        /// </summary>
-        public TrieNode CurrentNode
-        {
-            get
-            {
-                TrieNode node = new(NodeType.Unknown, _currentRlp.ToArray());
-                node.ResolveNode(NullTrieNodeResolver.Instance, _path);
-                return node;
-            }
-        }
-
-        public bool MoveNext()
-        {
-            if (_done)
-            {
-                _path.TruncateMut(_originalPathLength);
-                return false;
-            }
-
-            _done = true;
-
-            // Position at child (index 1)
-            Rlp.ValueDecoderContext ctx = new(_rlp);
-            ctx.ReadSequenceLength();
-            ctx.SkipItem(); // Skip key
-
-            int prefix = ctx.ReadByte();
-
-
-            switch (prefix)
-            {
-                case 0:
-                case 128: // Empty - should not happen for valid extension
-                case 160: // Hash reference - not inline
-                    _path.TruncateMut(_originalPathLength);
-                    return false;
-
-                default: // Inline node
-                    ctx.Position--;
-                    ReadOnlySpan<byte> inlineRlp = ctx.PeekNextItem();
-
-                    if (TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
-                    {
-                        /*
-                        _currentRlp = inlineRlp;
-                        // Append extension key nibbles to path
-                        (byte[] extensionKeyNibbles, _) = HexPrefix.FromBytes(_extensionKey);
-                        _path.AppendMut(extensionKeyNibbles);
-                        _currentFullPath = _path.Append(currentKey).Path;
-                        */
-                        throw new Exception("Extension actually have inline node");
-                    }
-
-                    _path.TruncateMut(_originalPathLength);
-                    return false;
-            }
-        }
     }
 
     private static bool TryExtractLeafData(

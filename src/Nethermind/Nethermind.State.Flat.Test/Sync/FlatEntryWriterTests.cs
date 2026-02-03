@@ -224,43 +224,4 @@ public class FlatEntryWriterTests
     }
 
     #endregion
-
-    #region ExtensionInlineChildLeafEnumerator Tests
-
-    [Test]
-    public void ExtensionEnumerator_WithInlineLeaf_YieldsOnceWithFullPath()
-    {
-        TrieNode extension = TrieNodeFactory.CreateExtension(Nibbles("56"), TrieNodeFactory.CreateLeaf([0xc], SmallSlotValue));
-        TreePath empty = TreePath.Empty;
-        extension.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-
-        TreePath path = TreePath.FromHexString("1234");
-        FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref path, extension);
-
-        int count = 0;
-        while (enumerator.MoveNext())
-        {
-            count++;
-            // CurrentPath is now ValueHash256 (complete 64-nibble path)
-            Assert.That(enumerator.CurrentPath, Is.Not.EqualTo(default(ValueHash256)));
-            Assert.That(enumerator.CurrentNode.IsLeaf, Is.True);
-        }
-
-        Assert.That(count, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void ExtensionEnumerator_WithHashReference_YieldsNothing()
-    {
-        TrieNode extension = TrieNodeFactory.CreateExtension([0x5], TrieNodeFactory.CreateLeaf(Nibbles(LargeKeyHex), SmallSlotValue));
-        TreePath empty = TreePath.Empty;
-        extension.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-
-        TreePath path = TreePath.FromHexString("abcd");
-        FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref path, extension);
-
-        Assert.That(enumerator.MoveNext(), Is.False);
-    }
-
-    #endregion
 }
