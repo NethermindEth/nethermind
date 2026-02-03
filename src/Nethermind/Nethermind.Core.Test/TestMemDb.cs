@@ -121,29 +121,8 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
     {
         ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
-        int filter1 = 0;
-        int filter2 = 0;
-
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
-        {
-            if (Bytes.BytesComparer.CompareWithCorrectLength(keyValuePair.Key, firstKeyInclusive) < 0)
-            {
-                filter1++;
-                continue;
-            }
-
-            if (Bytes.BytesComparer.CompareWithCorrectLength(keyValuePair.Key, lastKeyExclusive) >= 0)
-            {
-                filter2++;
-                continue;
-            }
-            sortedValue.Add((keyValuePair.Key, keyValuePair.Value));
-        }
-
-        Console.Error.WriteLine($"Filtered {filter1} and {filter2} out of {sortedValue.Count}");
-
+        sortedValue.AddRange(GetAll().Select(kv => (kv.Key, kv.Value)));
         sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.CompareWithCorrectLength(it1.Item1, it2.Item1));
-
         return new FakeSortedView(sortedValue);
     }
 

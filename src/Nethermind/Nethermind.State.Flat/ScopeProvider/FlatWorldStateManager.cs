@@ -42,7 +42,7 @@ public class FlatWorldStateManager(
     public IStateReader GlobalStateReader => flatStateReader;
     public ISnapServer? SnapServer => _snapServer ??= new FlatSnapServer(
         flatDbManager,
-        new ReadOnlyDb(codeDb, true),
+        codeDb,
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;

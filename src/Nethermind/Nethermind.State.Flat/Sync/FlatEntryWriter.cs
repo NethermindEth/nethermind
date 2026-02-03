@@ -12,8 +12,8 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Flat.Sync;
 
 /// <summary>
-/// Utility for writing flat entries during sync. Handles both direct leaf nodes
-/// and inline leaf children (nodes with RLP &lt; 32 bytes embedded in parent).
+/// Utility for writing flat entries during sync. The purpose is to cerrectly identify the required flat entry to
+/// save given a trie node. Handles both direct leaf nodes and inline leaf children (nodes with RLP &lt; 32 bytes embedded in parent).
 /// </summary>
 internal static class FlatEntryWriter
 {
@@ -130,7 +130,6 @@ internal static class FlatEntryWriter
         }
 
         public ValueHash256 CurrentPath => _currentFullPath;
-        public TreePath IntermediatePath => _path;
         public ReadOnlySpan<byte> CurrentValue => _currentValue;
 
         /// <summary>
@@ -178,8 +177,7 @@ internal static class FlatEntryWriter
                         if (TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
                         {
                             _currentRlp = inlineRlp;
-                            _path.AppendMut(_index);
-                            _currentFullPath = _path.Append(currentKey).Path;
+                            _currentFullPath = _path.Append(_index).Append(currentKey).Path;
                             _rlpPosition = ctx.Position + length;
                             return true;
                         }

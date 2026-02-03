@@ -193,8 +193,7 @@ public class FlatTrieVerifier
                 Interlocked.Increment(ref _accountCount);
                 Interlocked.Increment(ref _missingInTrie);
                 if (_logger.IsWarn) _logger.Warn($"Account in flat not found in trie. FlatKey: {flatIter.CurrentKey}");
-                TreePath targetPath = TreePath.FromPath(flatIter.CurrentKey.Bytes[..FlatKeyLength]);
-                DiagnoseTriePath(trieStore, stateRoot, targetPath, flatIter.CurrentKey);
+                DiagnoseTriePath(trieStore, stateRoot, flatIter.CurrentKey);
                 hasFlat = flatIter.MoveNext();
             }
             else
@@ -254,8 +253,7 @@ public class FlatTrieVerifier
                 {
                     Interlocked.Increment(ref _missingInTrie);
                     if (_logger.IsWarn) _logger.Warn($"Account in flat not found in trie. Address: {new Address(flatKey.Bytes[..20].ToArray())}");
-                    TreePath targetPath = TreePath.FromPath(trieHash.Bytes);
-                    DiagnoseTriePath(trieStore, stateRoot, targetPath, flatKey);
+                    DiagnoseTriePath(trieStore, stateRoot, flatKey);
                     continue;
                 }
 
@@ -407,7 +405,7 @@ public class FlatTrieVerifier
             if (cmp == 0)
             {
                 Interlocked.Increment(ref _slotCount);
-                VerifySlotMatch(flatIter.CurrentValue, trieIter.CurrentLeaf!, job.FlatAccountKey, flatIter.CurrentKey, trieIter.CurrentPath);
+                VerifySlotMatch(flatIter.CurrentValue, trieIter.CurrentLeaf!, job.FlatAccountKey, flatIter.CurrentKey);
                 hasFlat = flatIter.MoveNext();
                 hasTrie = trieIter.MoveNext();
             }
@@ -418,6 +416,7 @@ public class FlatTrieVerifier
                 {
                     Interlocked.Increment(ref _missingInTrie);
                     if (_logger.IsWarn) _logger.Warn($"Storage slot in flat not in trie. Account: {job.FlatAccountKey}, Slot: {flatIter.CurrentKey}");
+                    DiagnoseTriePath(storageTrieStore, job.StorageRoot, flatIter.CurrentKey);
                 }
                 hasFlat = flatIter.MoveNext();
             }
@@ -499,7 +498,7 @@ public class FlatTrieVerifier
             _ => Bytes.BytesComparer.Compare(flatKey.Bytes, triePath.Path.Bytes)
         };
 
-    private void VerifySlotMatch(ReadOnlySpan<byte> flatValue, TrieNode trieLeaf, in ValueHash256 accountKey, in ValueHash256 slotKey, in TreePath triePath)
+    private void VerifySlotMatch(ReadOnlySpan<byte> flatValue, TrieNode trieLeaf, in ValueHash256 accountKey, in ValueHash256 slotKey)
     {
         ReadOnlySpan<byte> trieValue = trieLeaf.Value.Span;
         if (trieValue.IsEmpty)
@@ -552,11 +551,9 @@ public class FlatTrieVerifier
     private void DiagnoseTriePath(
         IScopedTrieStore trieStore,
         Hash256 stateRoot,
-        TreePath targetPath,
         in ValueHash256 flatKey)
     {
         if (_logger.IsInfo) _logger.Info($"=== Diagnosing trie path for flat key {flatKey} ===");
-        if (_logger.IsInfo) _logger.Info($"Target path: {targetPath}");
 
         TreePath currentPath = TreePath.Empty;
         TrieNode? currentNode = trieStore.FindCachedOrUnknown(currentPath, stateRoot);
@@ -574,7 +571,7 @@ public class FlatTrieVerifier
             catch (TrieNodeException ex)
             {
                 if (_logger.IsWarn) _logger.Warn($"  Path: {currentPath} | Failed to resolve: {ex.Message}");
-                ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
+                ScanRemainingPathWithZeroHash(trieStore, currentPath, flatKey);
                 return;
             }
 
@@ -590,49 +587,40 @@ public class FlatTrieVerifier
             }
 
             // Navigate based on node type
+            TreePath fullPath = new TreePath(flatKey, 64);
             switch (currentNode.NodeType)
             {
                 case NodeType.Branch:
-                    // Get the nibble to follow from flatKey (full 64-nibble path)
-                    TreePath fullPath = new TreePath(flatKey, 64);
                     int nibble = fullPath[currentPath.Length];
 
                     if (currentNode.IsChildNull(nibble))
                     {
                         TreePath nullChildPath = currentPath.Append(nibble);
                         if (_logger.IsWarn) _logger.Warn($"  -> Branch child {nibble:X} is null");
-                        if (_logger.IsWarn) _logger.Warn($"  -> Remaining nibbles: {targetPath.Length - nullChildPath.Length}");
-                        ScanRemainingPathWithZeroHash(trieStore, nullChildPath, targetPath);
+                        if (_logger.IsWarn) _logger.Warn($"  -> Remaining nibbles: {64 - nullChildPath.Length}");
+                        ScanRemainingPathWithZeroHash(trieStore, nullChildPath, flatKey);
                         return;
                     }
 
                     // Get next hash (null for inline nodes) and then get the actual child node
                     expectedHash = currentNode.GetChildHash(nibble);
-                    TreePath branchChildPath = currentPath.Append(nibble);
-                    currentNode = currentNode.GetChildWithChildPath(trieStore, ref branchChildPath, nibble);
-                    currentPath = branchChildPath;
+                    currentPath.AppendMut(nibble);
+                    currentNode = currentNode.GetChildWithChildPath(trieStore, ref currentPath, nibble);
                     break;
 
                 case NodeType.Extension:
-                    byte[]? key = currentNode.Key;
+                    byte[] key = currentNode.Key!;
                     if (_logger.IsInfo) _logger.Info($"  -> Extension key: {key?.ToHexString() ?? "null"}");
 
-                    if (key is null)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"  -> Extension has null key");
-                        ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
-                        return;
-                    }
-
                     // Check if path matches (only if we haven't passed target)
-                    if (currentPath.Length < targetPath.Length)
+                    if (currentPath.Length < 64)
                     {
-                        for (int i = 0; i < key.Length && currentPath.Length + i < targetPath.Length; i++)
+                        for (int i = 0; i < key!.Length && currentPath.Length + i < 64; i++)
                         {
-                            if (key[i] != targetPath[currentPath.Length + i])
+                            if (key[i] != fullPath[currentPath.Length + i])
                             {
-                                if (_logger.IsWarn) _logger.Warn($"  -> Extension key mismatch at position {i}: expected {targetPath[currentPath.Length + i]:X}, got {key[i]:X}");
-                                ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
+                                if (_logger.IsWarn) _logger.Warn($"  -> Extension key mismatch at position {i}: expected {fullPath[currentPath.Length + i]:X}, got {key[i]:X}");
+                                ScanRemainingPathWithZeroHash(trieStore, currentPath, flatKey);
                                 return;
                             }
                         }
@@ -640,9 +628,8 @@ public class FlatTrieVerifier
 
                     // Get next hash (null for inline nodes) and then get the actual child node
                     expectedHash = currentNode.GetChildHash(0);
-                    TreePath extensionChildPath = currentPath.Append(key);
-                    currentNode = currentNode.GetChildWithChildPath(trieStore, ref extensionChildPath, 0);
-                    currentPath = extensionChildPath;
+                    currentPath.AppendMut(key);
+                    currentNode = currentNode.GetChildWithChildPath(trieStore, ref currentPath, 0);
                     break;
 
                 case NodeType.Leaf:
@@ -652,7 +639,7 @@ public class FlatTrieVerifier
 
                 default:
                     if (_logger.IsWarn) _logger.Warn($"  -> Unknown node type: {currentNode.NodeType}");
-                    ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
+                    ScanRemainingPathWithZeroHash(trieStore, currentPath, flatKey);
                     return;
             }
         }
@@ -660,7 +647,7 @@ public class FlatTrieVerifier
         if (_logger.IsInfo) _logger.Info($"  -> Traversal ended with null node at path {currentPath}");
 
         // Continue scanning remaining path with zero hash to see what's stored
-        ScanRemainingPathWithZeroHash(trieStore, currentPath, targetPath);
+        ScanRemainingPathWithZeroHash(trieStore, currentPath, flatKey);
     }
 
     /// <summary>
@@ -670,16 +657,17 @@ public class FlatTrieVerifier
     private void ScanRemainingPathWithZeroHash(
         IScopedTrieStore trieStore,
         TreePath currentPath,
-        TreePath targetPath)
+        in ValueHash256 flatKey)
     {
-        if (currentPath.Length >= targetPath.Length)
+        if (currentPath.Length >= 64)
             return;
 
         if (_logger.IsInfo) _logger.Info($"  -> Scanning remaining path with zero hash...");
 
-        while (currentPath.Length < targetPath.Length)
+        TreePath fullPath = new TreePath(flatKey, 64);
+        while (currentPath.Length < 64)
         {
-            int nibble = targetPath[currentPath.Length];
+            int nibble = fullPath[currentPath.Length];
             currentPath = currentPath.Append(nibble);
 
             byte[]? zeroHashRlp = trieStore.TryLoadRlp(currentPath, Keccak.Zero, ReadFlags.None);
