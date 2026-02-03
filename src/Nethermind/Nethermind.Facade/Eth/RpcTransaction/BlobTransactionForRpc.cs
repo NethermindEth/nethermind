@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -34,10 +35,33 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
-        var tx = base.ToTransaction();
+        if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
+            return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
 
+        foreach (byte[]? hash in BlobVersionedHashes)
+        {
+            if (hash is null || hash.Length != Eip4844Constants.BytesPerBlobVersionedHash)
+                return RpcTransactionErrors.InvalidBlobVersionedHashSize;
+
+            if (hash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                return RpcTransactionErrors.InvalidBlobVersionedHashVersion;
+        }
+
+        if (To is null)
+            return RpcTransactionErrors.MissingToInBlobTx;
+
+        if (validateUserInput)
+        {
+            if (MaxFeePerBlobGas?.IsZero == true)
+                return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
+        }
+
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        if (!baseResult) return baseResult;
+
+        Transaction tx = baseResult.Data;
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
 

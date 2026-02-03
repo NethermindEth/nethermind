@@ -58,7 +58,11 @@ public class L2Api(
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()
         };
-        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t => t.ToTransaction()).ToArray();
+        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t =>
+        {
+            Result<Transaction> result = t.ToTransaction();
+            return !result ? throw new InvalidOperationException($"Failed to convert transaction: {result.Error}") : result.Data!;
+        }).ToArray();
 
         payloadAttributes.SetTransactions(txs);
 

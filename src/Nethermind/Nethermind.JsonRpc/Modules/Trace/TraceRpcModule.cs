@@ -58,9 +58,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             blockParameter ??= BlockParameter.Latest;
             call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-            Transaction tx = call.ToTransaction();
-
-            return TraceTx(tx, traceTypes, blockParameter, stateOverride);
+            Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+            return !txResult
+                ? ResultWrapper<ParityTxTraceFromReplay>.Fail(txResult.Error!, ErrorCodes.InvalidInput)
+                : TraceTx(txResult.Data!, traceTypes, blockParameter, stateOverride);
         }
 
         /// <summary>
@@ -87,7 +88,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             for (int i = 0; i < calls.Length; i++)
             {
                 calls[i].Transaction.EnsureDefaults(jsonRpcConfig.GasCap);
-                Transaction tx = calls[i].Transaction.ToTransaction();
+                Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true);
+                if (!txResult)
+                {
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(txResult.Error!, ErrorCodes.InvalidInput);
+                }
+
+
+                Transaction tx = txResult.Data!;
                 tx.Hash = new Hash256(new UInt256((ulong)i).ToValueHash());
                 ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
                 txs[i] = tx;

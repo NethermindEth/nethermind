@@ -17,50 +17,75 @@ using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong? secondsPerSlot = null)
+public class SimulateTxExecutor<TTrace>(
+    IBlockchainBridge blockchainBridge,
+    IBlockFinder blockFinder,
+    IJsonRpcConfig rpcConfig,
+    ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
+    ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
+    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call)
     {
-        SimulatePayload<TransactionWithSourceDetails> result = new()
+        List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
+
+        if (call.BlockStateCalls is not null)
         {
-            TraceTransfers = call.TraceTransfers,
-            Validation = call.Validation,
-            ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
-            BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
+            blockStateCalls = new List<BlockStateCall<TransactionWithSourceDetails>>(call.BlockStateCalls.Count);
+
+            foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {
-                return new BlockStateCall<TransactionWithSourceDetails>
+                TransactionWithSourceDetails[]? calls = null;
+
+                if (blockStateCall.Calls is not null)
                 {
-                    BlockOverrides = blockStateCall.BlockOverrides,
-                    StateOverrides = blockStateCall.StateOverrides,
-                    Calls = blockStateCall.Calls?.Select(callTransactionModel =>
+                    calls = new TransactionWithSourceDetails[blockStateCall.Calls.Length];
+
+                    for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
+                        var callTransactionModel = blockStateCall.Calls[i];
+                        LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        Transaction tx = callTransactionModel.ToTransaction();
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: true);
+                        if (!txResult)
+                        {
+                            return txResult.Error!;
+                        }
 
+                        Transaction tx = txResult.Data!;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
-                        TransactionWithSourceDetails? result = new()
+                        calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };
+                    }
+                }
 
-                        return result;
-                    }).ToArray()
-                };
-            }).ToList()
+                blockStateCalls.Add(new BlockStateCall<TransactionWithSourceDetails>
+                {
+                    BlockOverrides = blockStateCall.BlockOverrides,
+                    StateOverrides = blockStateCall.StateOverrides,
+                    Calls = calls
+                });
+            }
+        }
+
+        return new SimulatePayload<TransactionWithSourceDetails>
+        {
+            TraceTransfers = call.TraceTransfers,
+            Validation = call.Validation,
+            ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
+            BlockStateCalls = blockStateCalls
         };
-
-        return result;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -105,18 +130,14 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? (ulong)lastBlockNumber + 1;
 
                 if (givenNumber > long.MaxValue)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                        $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
                 if (givenNumber <= (ulong)lastBlockNumber)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                        $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
                 if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                        $"too many blocks",
-                        ErrorCodes.ClientLimitExceededError);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"too many blocks", ErrorCodes.ClientLimitExceededError);
 
                 for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
@@ -136,8 +157,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 {
                     if (blockToSimulate.BlockOverrides.Time <= lastBlockTime)
                     {
-                        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                            $"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
+                        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
                     }
                     lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
                 }
@@ -154,8 +174,11 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         }
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call);
+        return !prepareResult
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(prepareResult.Error!, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), prepareResult.Data!, stateOverride, timeout.Token);
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -172,9 +195,9 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             {
                 foreach (SimulateCallResult? call in result.Calls)
                 {
-                    if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
+                    if (call is { Error: not null } && !string.IsNullOrEmpty(call.Error.Message))
                     {
-                        var exception = simulateResult.Error.EvmException;
+                        EvmExceptionType exception = call.Error.EvmException;
                         call.Error.Code = MapEvmExceptionType(exception);
                         if (exception != EvmExceptionType.Revert)
                         {

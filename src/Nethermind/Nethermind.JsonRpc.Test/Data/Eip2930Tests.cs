@@ -109,11 +109,13 @@ public class Eip2930Tests
     [Test]
     public void can_deserialize_no_accessList()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":"0x00"}""";
 
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
-        var transaction = transactionForRpc.ToTransaction();
+        Result<Transaction> txResult = transactionForRpc.ToTransaction();
+        txResult.ResultType.Should().Be(ResultType.Success);
 
+        Transaction transaction = txResult.Data!;
         transaction.Type.Should().Be(TxType.Legacy);
         transaction.AccessList.Should().BeNull();
     }
@@ -229,11 +231,14 @@ public class Eip2930Tests
             AccessList = GetTestAccessList(),
             ChainId = BlockchainIds.Mainnet,
             SenderAddress = Address.SystemUser,
+            To = TestItem.AddressA,
             Data = Memory<byte>.Empty,
         };
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
 
-        Transaction afterConversion = transactionForRpc.ToTransaction();
+        Result<Transaction> txResult = transactionForRpc.ToTransaction();
+        txResult.ResultType.Should().Be(ResultType.Success);
+        Transaction afterConversion = txResult.Data!;
 
         afterConversion.Should().BeEquivalentTo(transaction, static option => option.ComparingByMembers<Transaction>().Excluding(static tx => tx.Data));
         afterConversion.Data.AsArray().Should().BeEquivalentTo(transaction.Data.AsArray());

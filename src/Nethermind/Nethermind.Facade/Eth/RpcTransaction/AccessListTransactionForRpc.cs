@@ -36,10 +36,12 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         V = YParity ?? 0;
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
-        var tx = base.ToTransaction();
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        if (!baseResult) return baseResult;
 
+        Transaction tx = baseResult.Data!;
         tx.AccessList = AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
 
         return tx;

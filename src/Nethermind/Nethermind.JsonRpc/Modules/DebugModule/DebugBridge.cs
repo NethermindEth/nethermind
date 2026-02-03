@@ -224,25 +224,28 @@ public class DebugBridge : IDebugBridge
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
-            Transaction tx = txForRpc.ToTransaction();
             GethLikeTxTrace? trace;
-
-            try
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
+            if (!txResult)
             {
-                trace = _tracer.Trace(
-                    blockParameter,
-                    tx,
-                    gethTraceOptions ?? GethTraceOptions.Default,
-                    cancellationToken);
+                trace = new GethLikeTxTrace { Failed = true, ReturnValue = [] };
             }
-            catch (Exception)
+            else
             {
-                trace = new GethLikeTxTrace
+                Transaction tx = txResult.Data!;
+
+                try
                 {
-                    Failed = true,
-                    Gas = tx.GasLimit,
-                    ReturnValue = []
-                };
+                    trace = _tracer.Trace(
+                        blockParameter,
+                        tx,
+                        gethTraceOptions ?? GethTraceOptions.Default,
+                        cancellationToken);
+                }
+                catch (Exception)
+                {
+                    trace = new GethLikeTxTrace { Failed = true, Gas = tx.GasLimit, ReturnValue = [] };
+                }
             }
 
             if (trace is not null)
