@@ -306,7 +306,7 @@ public class DeletionRangeCalculationTests
     {
         TreePath path = hexPath == "" ? TreePath.Empty : TreePath.FromHexString(hexPath);
         RefList16<FlatTreeSyncStore.DeletionRange> ranges = new();
-        FlatTreeSyncStore.ComputeDeletionRanges(path, node, ref ranges);
+        FlatTreeSyncStore.ComputeDeletionRanges(path, node, null, ref ranges);
 
         Assert.That(ranges.Count, Is.EqualTo(expectedRanges.Length));
         for (int i = 0; i < expectedRanges.Length; i++)
@@ -335,7 +335,7 @@ public class DeletionRangeCalculationTests
     private static FlatTreeSyncStore.DeletionRange[] ComputeRanges(TreePath path, TrieNode node)
     {
         RefList16<FlatTreeSyncStore.DeletionRange> ranges = new();
-        FlatTreeSyncStore.ComputeDeletionRanges(path, node, ref ranges);
+        FlatTreeSyncStore.ComputeDeletionRanges(path, node, null, ref ranges);
         return ranges.AsSpan().ToArray();
     }
 

@@ -77,7 +77,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             }
 
             writeBatch.SetStateTrieNode(path, node);
-            WriteAccountFlatEntriesWithDeletion(writeBatch, path, node);
+            TreePath reffablePath = path;
+            FlatEntryWriter.WriteAccountFlatEntries(writeBatch, ref reffablePath, node);
         }
         else
         {
@@ -87,128 +88,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             }
 
             writeBatch.SetStorageTrieNode(address, path, node);
-            WriteStorageFlatEntriesWithDeletion(writeBatch, address, path, node);
+            FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
         }
-    }
-
-    private void WriteAccountFlatEntriesWithDeletion(
-        IPersistence.IWriteBatch writeBatch,
-        in TreePath path,
-        TrieNode node)
-    {
-        if (node.IsLeaf)
-        {
-            ValueHash256 fullPath = path.Append(node.Key).Path;
-            Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
-            writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
-            return;
-        }
-
-        TreePath mutablePath = path;
-
-        if (node.IsBranch)
-        {
-            FlatEntryWriter.BranchInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
-            while (enumerator.MoveNext())
-            {
-                ProcessInlineAccountLeaf(writeBatch, enumerator.IntermediatePath, enumerator.CurrentNode);
-            }
-        }
-        else if (node.IsExtension)
-        {
-            FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
-            while (enumerator.MoveNext())
-            {
-                ProcessInlineAccountLeaf(writeBatch, enumerator.IntermediatePath, enumerator.CurrentNode);
-            }
-        }
-    }
-
-    private void ProcessInlineAccountLeaf(
-        IPersistence.IWriteBatch writeBatch,
-        in TreePath childPath,
-        TrieNode childNode)
-    {
-        // Check for existing node at this inline leaf's path
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        byte[]? existingData = reader.TryLoadStateRlp(childPath, ReadFlags.None);
-
-        if (existingData is not null)
-        {
-            TrieNode existingChildNode = new(NodeType.Unknown, existingData);
-            existingChildNode.ResolveNode(NullTrieNodeResolver.Instance, childPath);
-            RequestStateDeletion(writeBatch, childPath, childNode, existingChildNode);
-        }
-
-        // Write the flat entry
-        ValueHash256 fullPath = childPath.Append(childNode.Key).Path;
-        Account account = AccountDecoder.Instance.Decode(childNode.Value.Span)!;
-        writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
-    }
-
-    private void WriteStorageFlatEntriesWithDeletion(
-        IPersistence.IWriteBatch writeBatch,
-        Hash256 address,
-        in TreePath path,
-        TrieNode node)
-    {
-        if (node.IsLeaf)
-        {
-            WriteStorageLeafEntry(writeBatch, address, path, node);
-            return;
-        }
-
-        TreePath mutablePath = path;
-
-        if (node.IsBranch)
-        {
-            FlatEntryWriter.BranchInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
-            while (enumerator.MoveNext())
-            {
-                ProcessInlineStorageLeaf(writeBatch, address, enumerator.IntermediatePath, enumerator.CurrentNode);
-            }
-        }
-        else if (node.IsExtension)
-        {
-            FlatEntryWriter.ExtensionInlineChildLeafEnumerator enumerator = new(ref mutablePath, node);
-            while (enumerator.MoveNext())
-            {
-                ProcessInlineStorageLeaf(writeBatch, address, enumerator.IntermediatePath, enumerator.CurrentNode);
-            }
-        }
-    }
-
-    private void ProcessInlineStorageLeaf(
-        IPersistence.IWriteBatch writeBatch,
-        Hash256 address,
-        in TreePath childPath,
-        TrieNode childNode)
-    {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        byte[]? existingData = reader.TryLoadStorageRlp(address, childPath, ReadFlags.None);
-
-        if (existingData is not null)
-        {
-            TrieNode existingChildNode = new(NodeType.Unknown, existingData);
-            existingChildNode.ResolveNode(NullTrieNodeResolver.Instance, childPath);
-            RequestStorageDeletion(writeBatch, address, childPath, childNode, existingChildNode);
-        }
-
-        WriteStorageLeafEntry(writeBatch, address, childPath, childNode);
-    }
-
-    private static void WriteStorageLeafEntry(
-        IPersistence.IWriteBatch writeBatch,
-        Hash256 address,
-        in TreePath path,
-        TrieNode node)
-    {
-        ValueHash256 fullPath = path.Append(node.Key).Path;
-        ReadOnlySpan<byte> value = node.Value.Span;
-        byte[] toWrite = value.IsEmpty
-            ? StorageTree.ZeroBytes
-            : value.AsRlpValueContext().DecodeByteArray();
-        writeBatch.SetStorageRaw(address, fullPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
     }
 
     private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode existingNode)
@@ -248,46 +129,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         }
     }
 
-    private static readonly byte[] SingleNibble = [0];
-    private static readonly byte[] DummyValue = [0x01];
-
-    /// <summary>
-    /// Computes the deletion ranges for a new node, assuming existing node covers the full subtree.
-    /// Used for testing and backward compatibility.
-    /// </summary>
-    internal static void ComputeDeletionRanges(in TreePath path, TrieNode newNode, ref RefList16<DeletionRange> ranges)
-    {
-        // Create a synthetic "full coverage" existing node (branch with all children non-null)
-        TrieNode fullCoverageNode = TrieNodeFactory.CreateBranch();
-        for (int i = 0; i < 16; i++)
-            fullCoverageNode[i] = TrieNodeFactory.CreateLeaf(SingleNibble, DummyValue);
-        ComputeDeletionRanges(path, newNode, fullCoverageNode, ref ranges);
-    }
-
     /// <summary>
     /// Computes the deletion ranges when replacing an existing node with a new node.
     /// Only generates ranges for areas where existing had data but new doesn't.
+    /// When existingNode is null, assumes full coverage and deletes everything outside new node's coverage.
     /// </summary>
-    internal static void ComputeDeletionRanges(in TreePath path, TrieNode newNode, TrieNode existingNode, ref RefList16<DeletionRange> ranges)
+    internal static void ComputeDeletionRanges(in TreePath path, TrieNode newNode, TrieNode? existingNode, ref RefList16<DeletionRange> ranges)
     {
-        // Optimization: Both nodes have the same key prefix - no deletion needed for matching subtrees
-        if (newNode.NodeType == existingNode.NodeType)
-        {
-            if (newNode.NodeType == NodeType.Branch)
-            {
-                ComputeBranchToBranchDeletionRanges(path, newNode, existingNode, ref ranges);
-                return;
-            }
-
-            // Leaf/Extension with same key: existing data is within new coverage, skip deletion
-            if ((newNode.NodeType == NodeType.Leaf || newNode.NodeType == NodeType.Extension) &&
-                newNode.Key.SequenceEqual(existingNode.Key))
-            {
-                return;
-            }
-        }
-
-        // Cross-type transitions or same-type with different keys
         switch (newNode.NodeType)
         {
             case NodeType.Branch:
@@ -303,16 +151,28 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     }
 
     /// <summary>
-    /// Branch to Branch: Only delete children that went from non-null to null.
+    /// To Branch: If existing is also Branch, only delete where existing had hash ref but new doesn't.
+    /// Otherwise delete all ranges where new has no hash reference.
     /// </summary>
-    private static void ComputeBranchToBranchDeletionRanges(TreePath path, TrieNode newNode, TrieNode existingNode, ref RefList16<DeletionRange> ranges)
+    private static void ComputeToBranchDeletionRanges(TreePath path, TrieNode newNode, TrieNode? existingNode, ref RefList16<DeletionRange> ranges)
     {
         int? nibbleRangeStart = null;
+        bool existingIsBranch = existingNode is { NodeType: NodeType.Branch };
 
         for (int i = 0; i < 16; i++)
         {
-            // Only delete if: new has null AND existing had non-null
-            bool needsDelete = newNode.IsChildNull(i) && !existingNode.IsChildNull(i);
+            bool needsDelete;
+            // Note: for inline node, the child hash is null, hence range will be deleted.
+            if (existingIsBranch)
+            {
+                // Branch→Branch: only delete where existing had hash ref but new doesn't
+                needsDelete = !newNode.GetChildHashAsValueKeccak(i, out _) && existingNode!.GetChildHashAsValueKeccak(i, out _);
+            }
+            else
+            {
+                // Other→Branch: delete all where new has no hash reference
+                needsDelete = !newNode.GetChildHashAsValueKeccak(i, out _);
+            }
 
             if (needsDelete)
             {
@@ -320,177 +180,55 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             }
             else if (nibbleRangeStart.HasValue)
             {
-                AddMergedRange(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, i - 1), ref ranges);
+                ranges.Add(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, i - 1));
                 nibbleRangeStart = null;
             }
         }
 
         if (nibbleRangeStart.HasValue)
         {
-            AddMergedRange(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, 15), ref ranges);
+            ranges.Add(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, 15));
         }
     }
 
     /// <summary>
-    /// Any node type to Branch: Delete existing coverage that falls in new null children.
+    /// To Leaf: If existing is also Leaf with same key, no deletion needed.
+    /// Otherwise delete the whole subtree.
     /// </summary>
-    private static void ComputeToBranchDeletionRanges(TreePath path, TrieNode newNode, TrieNode existingNode, ref RefList16<DeletionRange> ranges)
+    private static void ComputeToLeafDeletionRanges(TreePath path, TrieNode newNode, TrieNode? existingNode, ref RefList16<DeletionRange> ranges)
     {
-        DeletionRange existingCoverage = ComputeExistingNodeCoverage(path, existingNode);
+        if (existingNode is { NodeType: NodeType.Leaf } && newNode.Key.SequenceEqual(existingNode.Key))
+            return;
 
-        int? nibbleRangeStart = null;
-
-        void CompleteCurrentRange(int nibble, ref RefList16<DeletionRange> ranges)
-        {
-            if (nibbleRangeStart.HasValue)
-            {
-                AddMergedRangeIntersected(ComputeSubtreeRangeForNibble(path, nibbleRangeStart.Value, nibble - 1), existingCoverage, ref ranges);
-                nibbleRangeStart = null;
-            }
-        }
-
-        for (int i = 0; i < 16; i++)
-        {
-            if (!newNode.IsChildNull(i))
-            {
-                CompleteCurrentRange(i, ref ranges);
-                continue;
-            }
-
-            // New has null at position i - check if existing covered this area
-            DeletionRange childRange = ComputeSubtreeRange(path.Append(i));
-            bool shouldDeleteNibble = RangesOverlap(childRange, existingCoverage);
-            if (shouldDeleteNibble)
-            {
-                nibbleRangeStart ??= i;
-            }
-            else
-            {
-                CompleteCurrentRange(i, ref ranges);
-            }
-        }
-
-        CompleteCurrentRange(16, ref ranges);
+        ranges.Add(ComputeSubtreeRange(path));
     }
 
     /// <summary>
-    /// Any node type to Leaf: Delete existing coverage outside the new leaf's exact path.
+    /// To Extension: If existing is also Extension with same key, no deletion needed.
+    /// Otherwise delete gaps before and after the extension's subtree.
     /// </summary>
-    private static void ComputeToLeafDeletionRanges(TreePath path, TrieNode newNode, TrieNode existingNode, ref RefList16<DeletionRange> ranges)
+    private static void ComputeToExtensionDeletionRanges(TreePath path, TrieNode newNode, TrieNode? existingNode, ref RefList16<DeletionRange> ranges)
     {
-        TreePath newFullPath = path.Append(newNode.Key);
-        DeletionRange existingCoverage = ComputeExistingNodeCoverage(path, existingNode);
+        if (existingNode is { NodeType: NodeType.Extension } && newNode.Key.SequenceEqual(existingNode.Key))
+            return;
 
-        // Gap before the leaf - only if existing covered it
-        ValueHash256 subtreeStart = path.ToLowerBoundPath();
-        if (newFullPath.Path.CompareTo(subtreeStart) > 0)
-        {
-            DeletionRange gapBefore = new(subtreeStart, DecrementPath(newFullPath.Path));
-            if (RangesOverlap(gapBefore, existingCoverage))
-            {
-                DeletionRange clipped = IntersectRanges(gapBefore, existingCoverage);
-                if (clipped.To.CompareTo(clipped.From) >= 0)
-                    ranges.Add(clipped);
-            }
-        }
+        // Note: an extension can only have branch child. Branch child cannot be inline.
 
-        // Gap after the leaf - only if existing covered it
-        ValueHash256 afterLeaf = IncrementPath(newFullPath.Path);
-        ValueHash256 subtreeEnd = path.ToUpperBoundPath();
-        if (afterLeaf.CompareTo(subtreeEnd) <= 0)
-        {
-            DeletionRange gapAfter = new(afterLeaf, subtreeEnd);
-            if (RangesOverlap(gapAfter, existingCoverage))
-            {
-                DeletionRange clipped = IntersectRanges(gapAfter, existingCoverage);
-                if (clipped.To.CompareTo(clipped.From) >= 0)
-                    ranges.Add(clipped);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Any node type to Extension: Delete existing coverage outside the new extension's subtree.
-    /// </summary>
-    private static void ComputeToExtensionDeletionRanges(TreePath path, TrieNode newNode, TrieNode existingNode, ref RefList16<DeletionRange> ranges)
-    {
         TreePath extendedPath = path.Append(newNode.Key);
-        DeletionRange existingCoverage = ComputeExistingNodeCoverage(path, existingNode);
 
-        // Gap before the extension - only if existing covered it
+        // Gap before the extension
         ValueHash256 subtreeStart = path.ToLowerBoundPath();
         ValueHash256 extensionStart = extendedPath.ToLowerBoundPath();
         if (extensionStart.CompareTo(subtreeStart) > 0)
-        {
-            DeletionRange gapBefore = new(subtreeStart, DecrementPath(extensionStart));
-            if (RangesOverlap(gapBefore, existingCoverage))
-            {
-                DeletionRange clipped = IntersectRanges(gapBefore, existingCoverage);
-                if (clipped.To.CompareTo(clipped.From) >= 0)
-                    ranges.Add(clipped);
-            }
-        }
+            ranges.Add(new DeletionRange(subtreeStart, DecrementPath(extensionStart)));
 
-        // Gap after the extension - only if existing covered it
+        // Gap after the extension
         ValueHash256 extensionEnd = extendedPath.ToUpperBoundPath();
         ValueHash256 afterExtension = IncrementPath(extensionEnd);
         ValueHash256 subtreeEnd = path.ToUpperBoundPath();
         if (afterExtension.CompareTo(subtreeEnd) <= 0)
-        {
-            DeletionRange gapAfter = new(afterExtension, subtreeEnd);
-            if (RangesOverlap(gapAfter, existingCoverage))
-            {
-                DeletionRange clipped = IntersectRanges(gapAfter, existingCoverage);
-                if (clipped.To.CompareTo(clipped.From) >= 0)
-                    ranges.Add(clipped);
-            }
-        }
+            ranges.Add(new DeletionRange(afterExtension, subtreeEnd));
     }
-
-    /// <summary>
-    /// Computes the coverage range of an existing node at the given path.
-    /// </summary>
-    private static DeletionRange ComputeExistingNodeCoverage(in TreePath path, TrieNode existingNode) =>
-        existingNode.NodeType switch
-        {
-            NodeType.Branch => ComputeSubtreeRange(path),
-            NodeType.Leaf => new DeletionRange(path.Append(existingNode.Key).Path, path.Append(existingNode.Key).Path),
-            NodeType.Extension => ComputeSubtreeRange(path.Append(existingNode.Key)),
-            _ => new DeletionRange(ValueKeccak.Zero, ValueKeccak.Zero)
-        };
-
-    /// <summary>
-    /// Adds a deletion range to the list.
-    /// </summary>
-    private static void AddMergedRange(DeletionRange range, ref RefList16<DeletionRange> ranges) =>
-        ranges.Add(range);
-
-    /// <summary>
-    /// Adds a deletion range, but clips it to only the portion that overlaps with the existing node's coverage.
-    ///
-    /// Example: New branch has null children 3-7, existing was a leaf at "5abc..."
-    ///
-    ///   New branch null range:     |-------- 3... to 7fff... --------|
-    ///   Existing leaf coverage:              |5abc|
-    ///   Result (intersection):               |5abc|  (only delete what existed)
-    ///
-    /// Without intersection, we'd issue unnecessary deletes for empty ranges 3..., 4..., 6..., 7...
-    /// </summary>
-    private static void AddMergedRangeIntersected(DeletionRange range, DeletionRange existingCoverage, ref RefList16<DeletionRange> ranges)
-    {
-        if (!RangesOverlap(range, existingCoverage)) return;
-
-        DeletionRange clipped = IntersectRanges(range, existingCoverage);
-        if (clipped.To.CompareTo(clipped.From) >= 0)
-            ranges.Add(clipped);
-    }
-
-    private static bool RangesOverlap(DeletionRange a, DeletionRange b) =>
-        a.From.CompareTo(b.To) <= 0 && b.From.CompareTo(a.To) <= 0;
-
-    private static DeletionRange IntersectRanges(DeletionRange a, DeletionRange b) =>
-        new(a.From.CompareTo(b.From) > 0 ? a.From : b.From,
-            a.To.CompareTo(b.To) < 0 ? a.To : b.To);
 
     /// <summary>
     /// Compute the range of full paths covered by a subtree rooted at childPath.
@@ -609,18 +347,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
-
-        public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-            address is null ? this : new FlatSyncStorageTrieStore(reader, address);
-    }
-
-    private class FlatSyncStorageTrieStore(IPersistence.IPersistenceReader reader, Hash256 address) : AbstractMinimalTrieStore
-    {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            new(NodeType.Unknown, hash);
-
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
     }
 
     /// <summary>

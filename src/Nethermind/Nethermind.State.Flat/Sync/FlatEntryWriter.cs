@@ -282,12 +282,14 @@ internal static class FlatEntryWriter
 
                     if (TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
                     {
+                        /*
                         _currentRlp = inlineRlp;
                         // Append extension key nibbles to path
                         (byte[] extensionKeyNibbles, _) = HexPrefix.FromBytes(_extensionKey);
                         _path.AppendMut(extensionKeyNibbles);
                         _currentFullPath = _path.Append(currentKey).Path;
-                        return true;
+                        */
+                        throw new Exception("Extension actually have inline node");
                     }
 
                     _path.TruncateMut(_originalPathLength);
