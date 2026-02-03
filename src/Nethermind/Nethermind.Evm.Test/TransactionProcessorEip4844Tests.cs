@@ -18,7 +18,6 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
