@@ -54,6 +54,21 @@ internal class XdcSortTests
         expectedOrder = [TestItem.AddressA, TestItem.AddressC, TestItem.AddressB];
 
         yield return new TestCaseData(candidatesAndStake, expectedOrder);
+        // Test with 20 items with same stake to verify unstable sort behavior
+        candidatesAndStake = Enumerable.Range(0, 20)
+            .Select(i => new CandidateStake()
+            {
+                Address = new Address($"0x{i:D40}"),
+                Stake = 10_000_000
+            })
+            .ToArray();
+        
+        // Sort is deterministic but not stable: equal elements are reordered from original positions
+        expectedOrder = new[] { 5, 4, 3, 2, 1, 12, 11, 19, 17, 15, 13, 6, 14, 7, 16, 8, 18, 9, 0, 10 }
+            .Select(i => new Address($"0x{i:D40}"))
+            .ToArray();
+        
+        yield return new TestCaseData(candidatesAndStake, expectedOrder);
     }
 
     [TestCaseSource(nameof(CandidatesWithStake))]
