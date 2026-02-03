@@ -38,8 +38,8 @@ public class EthSimulateTestsBlocksAndTransactions
             [
                 new()
                 {
-                    BlockOverrides = new BlockOverride { Number = 10 },
-                    Calls = [TransactionForRpc.FromTransaction(txToFail), TransactionForRpc.FromTransaction(tx)],
+                    BlockOverrides = new BlockOverride { Number = 10, BaseFeePerGas = 0 },
+                    Calls = [ToRpcForInput(txToFail), ToRpcForInput(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
@@ -72,8 +72,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = [TransactionForRpc.FromTransaction(txAtoB1), TransactionForRpc.FromTransaction(txAtoB2)
-                    ]
+                    Calls = [ToRpcForInput(txAtoB1), ToRpcForInput(txAtoB2)]
                 },
                 new()
                 {
@@ -85,11 +84,20 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = [TransactionForRpc.FromTransaction(txAtoB3), TransactionForRpc.FromTransaction(txAtoB4)]
+                    Calls = [ToRpcForInput(txAtoB3), ToRpcForInput(txAtoB4)]
                 }
             },
             TraceTransfers = true
         };
+    }
+
+    // Helper to convert Transaction to RPC format suitable for input (clears GasPrice for EIP-1559+ to avoid ambiguity)
+    private static TransactionForRpc ToRpcForInput(Transaction tx)
+    {
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+        if (rpc is EIP1559TransactionForRpc eip1559Rpc)
+            eip1559Rpc.GasPrice = null;
+        return rpc;
     }
 
     public static SimulatePayload<TransactionForRpc> CreateTransactionsForcedFail(TestRpcBlockchain chain, UInt256 nonceA)
@@ -102,9 +110,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
 
-        LegacyTransactionForRpc transactionForRpc = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(txAtoB2);
+        LegacyTransactionForRpc transactionForRpc = (LegacyTransactionForRpc)ToRpcForInput(txAtoB2);
         transactionForRpc.Nonce = null;
-        LegacyTransactionForRpc transactionForRpc2 = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(txAtoB1);
+        LegacyTransactionForRpc transactionForRpc2 = (LegacyTransactionForRpc)ToRpcForInput(txAtoB1);
         transactionForRpc2.Nonce = null;
 
         return new()
@@ -151,7 +159,8 @@ public class EthSimulateTestsBlocksAndTransactions
             GasLimit = 50_000,
             SenderAddress = from.Address,
             To = to,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei(),
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei() : 0
         };
 
         ethereumEcdsa.Sign(from, tx);

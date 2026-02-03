@@ -50,7 +50,6 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
                 return RpcTransactionErrors.ZeroMaxFeePerGas;
         }
 
-        // Structural validation (always runs)
         if (MaxFeePerGas < MaxPriorityFeePerGas)
             return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
 
