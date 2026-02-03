@@ -36,7 +36,8 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         ISpecProvider specProvider,
         BaseSnapshotDecoder<TSnapshot> snapshotDecoder,
         string cacheName
-    ) {
+    )
+    {
         _blockTree = blockTree;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
         _snapshotDb = snapshotDb;
