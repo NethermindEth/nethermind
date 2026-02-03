@@ -4,12 +4,10 @@ on:
   merge_group:
     types: [checks_requested]
   pull_request:
-    branches: [master]
     paths:
       - "tools/StatelessExecution/**"
       - ".github/workflows/build-stateless-execution-riscv.yml"
   push:
-    branches: [master]
     paths:
       - "tools/StatelessExecution/**"
       - ".github/workflows/build-stateless-execution-riscv.yml"
