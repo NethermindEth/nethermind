@@ -26,6 +26,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -576,9 +577,12 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_maxFeePerBlobGas_is_zero()
     {
         using Context ctx = await Context.Create();
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01; // KZG version
         BlobTransactionForRpc transaction = new(Build.A.Transaction
             .WithGasLimit(100000)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes([validHash])
+            .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
         transaction.MaxFeePerBlobGas = 0;
@@ -596,11 +600,13 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01; // KZG version
         BlobTransactionForRpc transaction = new(Build.A.Transaction
             .WithData(code)
             .WithGasLimit(100000)
             .WithMaxFeePerBlobGas(1)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes([validHash])
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject);
         transaction.To = null;
@@ -642,6 +648,27 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
+    }
+
+    [TestCase(null, EthRpcModule.InvalidBlobVersionedHashSizeError, TestName = "BlobVersionedHash null")]
+    [TestCase(new byte[] { 0x01 }, EthRpcModule.InvalidBlobVersionedHashSizeError, TestName = "BlobVersionedHash too short")]
+    [TestCase(new byte[] { 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, EthRpcModule.InvalidBlobVersionedHashSizeError, TestName = "BlobVersionedHash too long")]
+    [TestCase(new byte[] { 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, EthRpcModule.InvalidBlobVersionedHashVersionError, TestName = "BlobVersionedHash invalid version 0x00")]
+    [TestCase(new byte[] { 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, EthRpcModule.InvalidBlobVersionedHashVersionError, TestName = "BlobVersionedHash invalid version 0x02")]
+    public async Task Eth_call_invalid_blob_versioned_hash(byte[]? hash, string expectedError)
+    {
+        using Context ctx = await Context.Create();
+        BlobTransactionForRpc transaction = new(Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes([hash!])
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+        transaction.GasPrice = null;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{expectedError}\"}},\"id\":67}}"));
     }
 
     [Test]

@@ -20,6 +20,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
     //General executor
     public partial class EthRpcModule
     {
+        private const string GasPriceInEip1559Error = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
+        private const string AtLeastOneBlobInBlobTransactionError = "need at least 1 blob for a blob transaction";
+        public const string InvalidBlobVersionedHashSizeError = "blob versioned hash must be 32 bytes";
+        public const string InvalidBlobVersionedHashVersionError = "blob versioned hash version must be 0x01";
+        private const string MissingToInBlobTxError = "missing \"to\" in blob transaction";
+        private const string ZeroMaxFeePerBlobGasError = "maxFeePerBlobGas, if specified, must be non-zero";
+        private const string ZeroMaxFeePerGasError = "maxFeePerGas must be non-zero";
+        private const string ContractCreationWithoutDataError = "contract creation without any data provided";
+
         // Single call executor
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
@@ -143,19 +152,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<TResult>.Success(bodyData);
             }
 
-            private const string GasPriceInEip1559Error = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
-            private const string AtLeastOneBlobInBlobTransactionError = "need at least 1 blob for a blob transaction";
-            private const string InvalidBlobVersionedHashSizeError = "blob versioned hash must be 32 bytes";
-            private const string InvalidBlobVersionedHashVersionError = "blob versioned hash version must be 0x01";
-            private const string MissingToInBlobTxError = "missing \"to\" in blob transaction";
-            private const string ZeroMaxFeePerBlobGasError = "maxFeePerBlobGas, if specified, must be non-zero";
-            private const string ZeroMaxFeePerGasError = "maxFeePerGas must be non-zero";
             private static string MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
                 UInt256? maxFeePerGas,
                 UInt256? maxPriorityFeePerGas)
                 => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
-
-            private const string ContractCreationWithoutDataError = "contract creation without any data provided";
         }
 
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
