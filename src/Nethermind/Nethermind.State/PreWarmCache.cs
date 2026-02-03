@@ -62,10 +62,17 @@ public sealed class PreWarmCache<TKey, TValue>
     /// </summary>
     private long _epoch;
 
+    /// <summary>
+    /// Pre-computed shifted epoch: (_epoch &lt;&lt; EpochShift) &amp; EpochMask.
+    /// Updated atomically in Clear() to avoid shift/mask in hot path.
+    /// </summary>
+    private long _shiftedEpoch;
+
     public PreWarmCache()
     {
         _entries = new Entry[Count];
         _epoch = 0;
+        _shiftedEpoch = 0;
     }
 
     /// <summary>
@@ -81,8 +88,8 @@ public sealed class PreWarmCache<TKey, TValue>
         long hashCode = key.GetHashCode64();
         int index = (int)hashCode & BucketMask;
 
-        // Current epoch shifted into position
-        long currentEpoch = (Volatile.Read(ref _epoch) << EpochShift) & EpochMask;
+        // Pre-computed shifted epoch - avoids shift/mask in hot path
+        long currentEpoch = Volatile.Read(ref _shiftedEpoch);
         // Hash signature: bits 15-50 of 64-bit hashCode in bits 1-36 (bucket uses bits 0-14)
         // Full 51-bit collision resistance: 15 bucket + 36 signature
         long hashSignature = ((hashCode >> 14) & HashMask) | OccupiedBit;
@@ -95,7 +102,8 @@ public sealed class PreWarmCache<TKey, TValue>
         long seq1 = Volatile.Read(ref entry.HashEpochLock);
 
         // Early exit: epoch/hash mismatch or write in progress
-        if ((seq1 & ~LockMarker) != expected || (seq1 & LockMarker) != 0)
+        // Since expected never has LockMarker set, seq1 != expected catches both cases
+        if (seq1 != expected)
         {
             value = default;
             return false;
@@ -159,8 +167,8 @@ public sealed class PreWarmCache<TKey, TValue>
         long hashCode = key.GetHashCode64();
         int index = (int)hashCode & BucketMask;
 
-        // Current epoch shifted into position
-        long currentEpoch = (Volatile.Read(ref _epoch) << EpochShift) & EpochMask;
+        // Pre-computed shifted epoch - avoids shift/mask in hot path
+        long currentEpoch = Volatile.Read(ref _shiftedEpoch);
         // Hash signature: bits 15-50 of 64-bit hashCode in bits 1-36
         long hashSignature = ((hashCode >> 14) & HashMask) | OccupiedBit;
         // Value to store: current epoch + hash signature (no lock initially)
@@ -200,6 +208,8 @@ public sealed class PreWarmCache<TKey, TValue>
     /// </remarks>
     public void Clear()
     {
-        Interlocked.Increment(ref _epoch);
+        long newEpoch = Interlocked.Increment(ref _epoch);
+        // Update pre-computed shifted epoch (readers may see brief inconsistency, but seqlock handles it)
+        Volatile.Write(ref _shiftedEpoch, (newEpoch << EpochShift) & EpochMask);
     }
 }
