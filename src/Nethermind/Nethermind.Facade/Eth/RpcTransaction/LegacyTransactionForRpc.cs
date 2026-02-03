@@ -90,7 +90,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
-        if (To is null && Input is null or { Length: 0 })
+        if (validateUserInput && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
