@@ -30,7 +30,7 @@ public static unsafe class KeccakCache
     public const int Count = BucketMask + 1;
 
     private const int BucketMask = 0x0001_FFFF;
-    private const ulong HashMask = 0xFFFF_FFFF_FFFF_0000;  // Bits 16-63: 48-bit hash
+    private const ulong HashMask = 0xFFFF_FFFF_FFFF_0000;  // Bits 16-63: up to 48-bit hash (currently using 16 bits from 32-bit FastHash)
     private const ulong LockMarker = 0x0000_0000_0000_8000;
     private const ulong VersionMask = 0x0000_0000_0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
     private const ulong VersionIncrement = 0x0000_0000_0000_0080;  // Bit 7: increment step for version
@@ -82,7 +82,7 @@ public static unsafe class KeccakCache
 
         // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
-        ulong combined = (HashMask & ((ulong)(uint)hashCode << 16)) | (uint)input.Length;
+        ulong combined = (HashMask & ((ulong)hashCode << 16)) | (uint)input.Length;
 
         // Seqlock pattern: read sequence, speculatively read data, verify sequence unchanged.
         // This is lock-free for reads - no CAS required unless we need to write.
