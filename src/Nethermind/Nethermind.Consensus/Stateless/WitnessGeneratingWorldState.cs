@@ -18,7 +18,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState, IWitnessBytecodeRecorder
+public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
