@@ -23,9 +23,9 @@ public readonly struct TxComparisonResult
 
     // General comparison/sorting semantics (aliases)
     /// <summary>The first argument has higher priority and should come first in sort order.</summary>
-    public const int FirstIsBetter = TakeNew;
+    public const int XFirst = TakeNew;
     /// <summary>Transactions are equal in priority.</summary>
     public const int Equal = NotDecided;
     /// <summary>The second argument has higher priority and should come first in sort order.</summary>
-    public const int SecondIsBetter = KeepOld;
+    public const int YFirst = KeepOld;
 }

@@ -120,7 +120,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = transactionComparerProvider.GetDefaultProducerComparer(
             new BlockPreparationContext(UInt256.Zero, 1));
         int compareResult = comparer.Compare(highPriorityBlobTx, lowerPriorityRegularTx);
-        compareResult.Should().Be(TxComparisonResult.FirstIsBetter, "Higher priority transaction should compare as FirstIsBetter (negative)");
+        compareResult.Should().Be(TxComparisonResult.XFirst, "Higher priority transaction should compare as XFirst (negative)");
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
