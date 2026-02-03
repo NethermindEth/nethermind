@@ -17,12 +17,11 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal abstract class BaseSnapshotManager<TSnapshot, TDecoder> : ISnapshotManager
+internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     where TSnapshot : Snapshot
-    where TDecoder : BaseSnapshotDecoder<TSnapshot>, new()
 {
     private readonly LruCache<Hash256, TSnapshot> _snapshotCache;
-    private readonly TDecoder _snapshotDecoder = new();
+    private readonly BaseSnapshotDecoder<TSnapshot> _snapshotDecoder;
     private readonly IDb _snapshotDb;
     private readonly IBlockTree _blockTree;
     private readonly IMasternodeVotingContract _votingContract;
@@ -35,14 +34,16 @@ internal abstract class BaseSnapshotManager<TSnapshot, TDecoder> : ISnapshotMana
         IPenaltyHandler penaltyHandler,
         IMasternodeVotingContract votingContract,
         ISpecProvider specProvider,
-        string cacheName)
-    {
+        BaseSnapshotDecoder<TSnapshot> snapshotDecoder,
+        string cacheName
+    ) {
         _blockTree = blockTree;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
         _snapshotDb = snapshotDb;
         _votingContract = votingContract;
         _specProvider = specProvider;
         _penaltyHandler = penaltyHandler;
+        _snapshotDecoder = snapshotDecoder;
         _snapshotCache = new LruCache<Hash256, TSnapshot>(128, 128, cacheName);
     }
 

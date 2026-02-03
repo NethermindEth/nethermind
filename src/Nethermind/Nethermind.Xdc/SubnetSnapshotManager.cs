@@ -15,10 +15,10 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal class SubnetSnapshotManager : BaseSnapshotManager<SubnetSnapshot, SubnetSnapshotDecoder>
+internal class SubnetSnapshotManager : BaseSnapshotManager<SubnetSnapshot>
 {
     public SubnetSnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-        : base(snapshotDb, blockTree, penaltyHandler, votingContract, specProvider, "XDC Subnet Snapshot cache")
+        : base(snapshotDb, blockTree, penaltyHandler, votingContract, specProvider, new SubnetSnapshotDecoder(), "XDC Subnet Snapshot cache")
     {
     }
 
