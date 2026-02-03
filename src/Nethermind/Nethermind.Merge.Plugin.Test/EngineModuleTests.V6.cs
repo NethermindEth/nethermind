@@ -16,6 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.TxPool;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -37,7 +39,15 @@ public partial class EngineModuleTests
             Withdrawals = []
         };
 
-        // inject tx into txpool
+        Transaction tx = Build.A.Transaction
+            .WithValue(1)
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        AcceptTxResult txPoolRes = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        Assert.That(txPoolRes, Is.EqualTo(AcceptTxResult.Accepted));
+
         ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV3(fcuState, payloadAttributes);
@@ -50,7 +60,26 @@ public partial class EngineModuleTests
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
         BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
-        Assert.That(bal, Is.EqualTo(Build.A.BlockAccessList.WithPrecompileChanges(genesis.Header.Hash!, timestamp).TestObject));
+
+        BlockAccessList expected = Build.A.BlockAccessList
+            .WithAccountChanges([
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new(1, new UInt256(Bytes.FromHexString("0x3635c9adc5de9fadf7"), isBigEndian: true))])
+                    .WithNonceChanges([new(1, 1)])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressB)
+                    .WithBalanceChanges([new(1, new UInt256(Bytes.FromHexString("0x3635c9adc5dea00001"), isBigEndian: true))])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(Address.Zero)
+                    .WithBalanceChanges([new(1, 0x5208)])
+                    .TestObject,
+            ])
+            .WithPrecompileChanges(genesis.Header.Hash!, timestamp)
+            .TestObject;
+        Assert.That(bal, Is.EqualTo(expected));
     }
 
     [Test]
