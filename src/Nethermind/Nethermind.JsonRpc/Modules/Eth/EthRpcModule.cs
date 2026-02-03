@@ -840,13 +840,13 @@ public partial class EthRpcModule(
         }
         else if (block.BlockAccessListHash is null)
         {
-            return ResultWrapper<BlockAccessList?>.Fail("Cannot return block access list for block from before Amsterdam fork.");
+            return ResultWrapper<BlockAccessList?>.Fail("Cannot return block access list for block from before Amsterdam fork.", ErrorCodes.UnavailableBeforeFork);
         }
 
         BlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
 
         return bal is null ?
-            ResultWrapper<BlockAccessList?>.Fail("Cannot return pruned historical block access list.")
+            ResultWrapper<BlockAccessList?>.Fail("Cannot return pruned historical block access list.", ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<BlockAccessList?>.Success(bal);
     }
     

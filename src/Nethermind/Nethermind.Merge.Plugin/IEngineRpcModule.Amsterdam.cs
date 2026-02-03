@@ -17,7 +17,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId);
+    Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
@@ -35,23 +35,11 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes);
+    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the provided number range",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
-
-    // [JsonRpcMethod(
-    //     Description = "Returns an array of block access lists for the list of provided block hashes.",
-    //     IsSharable = true,
-    //     IsImplemented = true)]
-    // Task<ResultWrapper<IEnumerable<byte[]?>>> engine_getBALSByHashV1(Hash256[] blockHashes);
-
-    // [JsonRpcMethod(
-    //     Description = "Returns an array of block access lists for the provided number range.",
-    //     IsSharable = true,
-    //     IsImplemented = true)]
-    // Task<ResultWrapper<IEnumerable<byte[]>?>> engine_getBALSByRangeV1(long start, long count);
 }
