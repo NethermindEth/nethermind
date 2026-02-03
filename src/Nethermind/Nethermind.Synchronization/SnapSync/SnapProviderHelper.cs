@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithAccount account = accounts[index];
 
-                if (account.Path > limitHash)
+                if (account.Path >= limitHash)
                 {
                     if (hasExtraStorageIdx == -1)
                     {
@@ -130,7 +130,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     PathWithAccount account = accounts[index];
 
-                    if (account.Path > limitHash) continue;
+                    if (account.Path >= limitHash) continue;
                     else if (account.Path < startingHash) continue;
 
                     Account accountValue = account.Account;
