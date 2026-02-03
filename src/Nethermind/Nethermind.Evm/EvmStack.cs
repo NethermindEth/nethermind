@@ -65,7 +65,7 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         if (TTracingInst.IsActive)
-            _tracer.ReportStackPush(value[..WordSize]);
+            _tracer.ReportStackPush(value);
 
         ref byte bytes = ref PushBytesRef();
         switch (value.Length)
