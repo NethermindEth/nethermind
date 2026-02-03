@@ -623,6 +623,7 @@
     "segmentations",
     "selfbalance",
     "selfdestruct",
+    "seqlock",
     "serialised",
     "setcode",
     "sete",
