@@ -153,9 +153,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
         UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
 
         StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
-        StorageChange calldataStorageChange = new(0, 0);
         StorageChange timestampStorageChange = new(0, 0xF4240);
-        StorageChange zeroStorageChangeEnd = new(3, 0);
 
         UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
         UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;

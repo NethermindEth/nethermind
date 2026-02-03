@@ -117,7 +117,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
-        // Console.WriteLine("Created block access list:\n" +  (block.BlockAccessList is null ? "null" : block.BlockAccessList.ToString()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
