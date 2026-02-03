@@ -1,4 +1,4 @@
-FROM maximmenshikov/bflat-riscv64-zk
+FROM maximmenshikov/bflat-riscv64-zk-test6
 
 COPY nethermind /nethermind/
 
