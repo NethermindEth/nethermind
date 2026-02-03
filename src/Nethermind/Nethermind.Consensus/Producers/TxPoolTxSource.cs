@@ -139,7 +139,7 @@ namespace Nethermind.Consensus.Producers
             while (selectedBlobTxs.Count > 0)
             {
                 Transaction blobTx = selectedBlobTxs[0];
-                if (comparer.Compare(blobTx, tx) == FirstIsBetter)
+                if (comparer.Compare(blobTx, tx) < Equal)
                 {
                     yield return blobTx;
                     selectedBlobTxs.Remove(blobTx);
