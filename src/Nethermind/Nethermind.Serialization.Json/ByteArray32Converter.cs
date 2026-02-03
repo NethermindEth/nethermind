@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Json
 
     public class Bytes32Converter : JsonConverter<byte[]>
     {
-        private const int HexPrefix = 0x7830;
+        private const ushort HexPrefix = 0x7830;
 
         [SkipLocalsInit]
         public override byte[] Read(
