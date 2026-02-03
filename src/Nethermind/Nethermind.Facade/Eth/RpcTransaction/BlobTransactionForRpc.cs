@@ -35,7 +35,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = true)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
         if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;

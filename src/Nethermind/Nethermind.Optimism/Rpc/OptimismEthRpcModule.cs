@@ -105,7 +105,7 @@ public class OptimismEthRpcModule(
 
     public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction();
+        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
         if (!txResult)
         {
             return ResultWrapper<Hash256>.Fail(txResult.Error!, ErrorCodes.InvalidInput);

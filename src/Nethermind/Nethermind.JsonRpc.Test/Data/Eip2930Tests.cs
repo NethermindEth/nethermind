@@ -236,7 +236,7 @@ public class Eip2930Tests
         };
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
 
-        Result<Transaction> txResult = transactionForRpc.ToTransaction(validateUserInput: false);
+        Result<Transaction> txResult = transactionForRpc.ToTransaction();
         txResult.ResultType.Should().Be(ResultType.Success);
         Transaction afterConversion = txResult.Data!;
 

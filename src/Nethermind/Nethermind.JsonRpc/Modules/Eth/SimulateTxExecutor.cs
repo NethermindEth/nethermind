@@ -52,7 +52,7 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction();
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: true);
                         if (!txResult)
                         {
                             return txResult.Error!;

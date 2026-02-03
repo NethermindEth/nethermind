@@ -63,7 +63,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = true)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
         if (!baseResult) return baseResult;
