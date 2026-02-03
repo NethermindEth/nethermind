@@ -18,11 +18,6 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public interface IWitnessBytecodeRecorder
-{
-    void RecordBytecode(byte[] code);
-}
-
 public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState, IWitnessBytecodeRecorder
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
@@ -31,8 +26,12 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
 
     public void RecordBytecode(byte[] code)
     {
-        Hash256 codeHash = Keccak.Compute(code);
-        _bytecodes.TryAdd(codeHash, code);
+        // Unnecessary to record empty code
+        if (code.Length != 0)
+        {
+            Hash256 codeHash = Keccak.Compute(code);
+            _bytecodes.TryAdd(codeHash, code);
+        }
     }
 
     public Witness GetWitness(BlockHeader parentHeader)
@@ -44,7 +43,7 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         // were modified but reset to their original value within a block processing. Otherwise, the
         // WitnessCapturingTrie only would not capture these nodes and they would not be included in the witness.
         // For example, these nodes are captured in geth. But this solution might capture additional nodes not
-        // necessarily needed for the witness. There might be a better solution.
+        // necessarily needed for the witness. There might be a better solution, it is just not the priority now.
         HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
         stateNodes.UnionWith(trieStore.TouchedNodesRlp);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
@@ -104,7 +103,7 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
 
     public IWorldStateScopeProvider ScopeProvider => inner.ScopeProvider;
 
-    public byte[]? GetCode(Address address)
+    public byte[] GetCode(Address address)
     {
         _storageSlots.TryAdd(address, []);
         byte[] code = inner.GetCode(address);
@@ -112,7 +111,7 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         return code;
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash)
+    public byte[] GetCode(in ValueHash256 codeHash)
     {
         byte[] code = inner.GetCode(in codeHash);
         RecordBytecode(code);
