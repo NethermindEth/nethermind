@@ -42,7 +42,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     Calls = [ToRpcForInput(txToFail), ToRpcForInput(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether() } }
                     }
                 }
             ],
@@ -183,7 +183,8 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
-        Assert.That(data.Count, Is.EqualTo(7));
+        Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
+        Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
         blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });

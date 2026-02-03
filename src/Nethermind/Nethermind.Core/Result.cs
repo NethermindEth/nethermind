@@ -17,6 +17,7 @@ namespace Nethermind.Core
         public static bool operator false(Result result) => result.ResultType == ResultType.Failure;
         // This provides the short-circuit behavior
         public static Result operator &(Result left, Result right) => left ? right : left;  // If left fails, return left (short-circuit)
+        public override string ToString() => ResultType == ResultType.Success ? "Success" : $"Failure: {Error}";
     }
 
     public readonly record struct Result<TData>(ResultType ResultType, TData? Data = default, string? Error = null)

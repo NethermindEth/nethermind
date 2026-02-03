@@ -48,10 +48,10 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             // Reject zero maxFeePerGas from user input
             if (MaxFeePerGas?.IsZero == true)
                 return RpcTransactionErrors.ZeroMaxFeePerGas;
-        }
 
-        if (MaxFeePerGas < MaxPriorityFeePerGas)
-            return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
+            if (MaxFeePerGas < MaxPriorityFeePerGas)
+                return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
+        }
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
         if (baseResult.IsError) return baseResult;
