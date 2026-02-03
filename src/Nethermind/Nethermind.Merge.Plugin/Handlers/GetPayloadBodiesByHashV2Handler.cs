@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore)
     : GetPayloadBodiesByHashV1Handler(blockTree, logManager),
     IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
-    
+
 {
     public new ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> Handle(IReadOnlyList<Hash256> blockHashes) =>
         !CheckHashCount(blockHashes, out string? error)
