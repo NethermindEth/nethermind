@@ -115,7 +115,7 @@ public class Eip2930Tests
         Result<Transaction> txResult = transactionForRpc.ToTransaction();
         txResult.ResultType.Should().Be(ResultType.Success);
 
-        Transaction transaction = txResult.Data!;
+        Transaction transaction = (Transaction)txResult;
         transaction.Type.Should().Be(TxType.Legacy);
         transaction.AccessList.Should().BeNull();
     }
@@ -238,7 +238,7 @@ public class Eip2930Tests
 
         Result<Transaction> txResult = transactionForRpc.ToTransaction();
         txResult.ResultType.Should().Be(ResultType.Success);
-        Transaction afterConversion = txResult.Data!;
+        Transaction afterConversion = (Transaction)txResult;
 
         afterConversion.Should().BeEquivalentTo(transaction, static option => option.ComparingByMembers<Transaction>().Excluding(static tx => tx.Data));
         afterConversion.Data.AsArray().Should().BeEquivalentTo(transaction.Data.AsArray());

@@ -36,15 +36,12 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         Result<TProcessing> prepareResult = Prepare(call);
-        return !prepareResult ? ResultWrapper<TResult>.Fail(prepareResult.Error!, ErrorCodes.InvalidInput) : Execute(header.Clone(), prepareResult.Data!, stateOverride, timeout.Token);
+        return !prepareResult.Success(out TProcessing? data, out string? error)
+            ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, timeout.Token);
     }
 
     protected abstract Result<TProcessing> Prepare(TRequest call);
 
     protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
-
-    protected ResultWrapper<TResult>? TryGetInputError(CallOutput result)
-    {
-        return result.InputError ? ResultWrapper<TResult>.Fail(result.Error!, ErrorCodes.InvalidInput) : null;
-    }
 }

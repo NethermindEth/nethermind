@@ -33,9 +33,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 Result<Transaction> result = call.ToTransaction(validateUserInput: true);
-                if (!result) return result;
+                if (result.IsError) return result;
 
-                Transaction tx = result.Data!;
+                Transaction tx = result.Data;
                 tx.ChainId = _blockchainBridge.GetChainId();
                 return tx;
             }

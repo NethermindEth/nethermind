@@ -106,12 +106,11 @@ public class OptimismEthRpcModule(
     public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
-        if (!txResult)
+        if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<Hash256>.Fail(txResult.Error!, ErrorCodes.InvalidInput);
+            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
         }
 
-        Transaction tx = txResult.Data!;
         tx.ChainId = _blockchainBridge.GetChainId();
         tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
 

@@ -94,9 +94,9 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
             return RpcTransactionErrors.ContractCreationWithoutData;
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
-        if (!baseResult) return baseResult;
+        if (baseResult.IsError) return baseResult;
 
-        Transaction tx = baseResult.Data!;
+        Transaction tx = baseResult.Data;
         tx.Nonce = Nonce ?? UInt256.Zero; // TODO: Should we pick the last nonce?
         tx.To = To;
         tx.GasLimit = Gas ?? 90_000;

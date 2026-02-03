@@ -55,9 +55,9 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
-        if (!baseResult) return baseResult;
+        if (baseResult.IsError) return baseResult;
 
-        Transaction tx = baseResult.Data!;
+        Transaction tx = baseResult.Data;
         tx.GasPrice = MaxPriorityFeePerGas ?? UInt256.Zero;
         tx.DecodedMaxFeePerGas = MaxFeePerGas ?? UInt256.Zero;
 

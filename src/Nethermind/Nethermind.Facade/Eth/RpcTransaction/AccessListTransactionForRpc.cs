@@ -39,9 +39,9 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
-        if (!baseResult) return baseResult;
+        if (baseResult.IsError) return baseResult;
 
-        Transaction tx = baseResult.Data!;
+        Transaction tx = baseResult.Data;
         tx.AccessList = AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
 
         return tx;

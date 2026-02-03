@@ -66,9 +66,9 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
-        if (!baseResult) return baseResult;
+        if (baseResult.IsError) return baseResult;
 
-        Transaction tx = baseResult.Data!;
+        Transaction tx = baseResult.Data;
         tx.SourceHash = SourceHash ?? throw new ArgumentNullException(nameof(SourceHash));
         tx.SenderAddress = From ?? throw new ArgumentNullException(nameof(From));
         tx.To = To;

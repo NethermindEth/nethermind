@@ -225,13 +225,13 @@ public class DebugBridge : IDebugBridge
         {
             GethLikeTxTrace? trace;
             Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
-            if (!txResult)
+            if (txResult.IsError)
             {
                 trace = new GethLikeTxTrace { Failed = true, ReturnValue = [] };
             }
             else
             {
-                Transaction tx = txResult.Data!;
+                Transaction tx = txResult.Data;
 
                 try
                 {

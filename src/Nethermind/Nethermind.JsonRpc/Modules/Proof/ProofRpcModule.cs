@@ -65,12 +65,11 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.Hash = callHeader.CalculateHash();
 
             Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
-            if (!txResult)
+            if (!txResult.Success(out Transaction? transaction, out string? error))
             {
-                return ResultWrapper<CallResultWithProof>.Fail(txResult.Error!, ErrorCodes.InvalidInput);
+                return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
             }
 
-            Transaction transaction = txResult.Data!;
             transaction.SenderAddress ??= Address.Zero;
 
             if (transaction.GasLimit == 0)

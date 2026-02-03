@@ -293,12 +293,11 @@ public partial class EthRpcModule(
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
-        if (!txResult)
+        if (!txResult.Success(out Transaction tx, out string error))
         {
-            return Task.FromResult(ResultWrapper<Hash256>.Fail(txResult.Error!, ErrorCodes.InvalidInput));
+            return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));
         }
 
-        Transaction tx = txResult.Data!;
         tx.ChainId = _blockchainBridge.GetChainId();
 
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;

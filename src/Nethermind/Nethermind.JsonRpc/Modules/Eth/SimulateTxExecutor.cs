@@ -53,12 +53,11 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
                         Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: true);
-                        if (!txResult)
+                        if (!txResult.Success(out Transaction? tx, out string? error))
                         {
-                            return txResult.Error!;
+                            return error;
                         }
 
-                        Transaction tx = txResult.Data!;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         calls[i] = new TransactionWithSourceDetails
@@ -176,9 +175,9 @@ public class SimulateTxExecutor<TTrace>(
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
 
         Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call);
-        return !prepareResult
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(prepareResult.Error!, ErrorCodes.InvalidInput)
-            : Execute(header.Clone(), prepareResult.Data!, stateOverride, timeout.Token);
+        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, timeout.Token);
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(

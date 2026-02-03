@@ -98,12 +98,11 @@ public class DebugRpcModule(
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
         Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
-        if (!txResult)
+        if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(txResult.Error!, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
-        Transaction tx = txResult.Data!;
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
