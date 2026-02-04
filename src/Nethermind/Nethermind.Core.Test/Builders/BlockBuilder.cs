@@ -3,6 +3,7 @@
 
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -310,6 +311,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithSlotNumber(ulong? slotNumber)
         {
             TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
+        {
+            TestObjectInternal.BlockAccessList = bal;
             return this;
         }
     }

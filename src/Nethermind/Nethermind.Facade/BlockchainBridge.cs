@@ -404,6 +404,10 @@ namespace Nethermind.Facade
         public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
             => balStore.Get(blockHash);
 
+        // for testing
+        public void DeleteBlockAccessList(Hash256 blockHash)
+            => balStore.Delete(blockHash);
+
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
             var error = txResult switch

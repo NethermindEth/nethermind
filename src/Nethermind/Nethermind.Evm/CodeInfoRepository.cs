@@ -21,13 +21,13 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly ParallelWorldState? _parallelWorldState;
+    private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _parallelWorldState = _worldState as ParallelWorldState;
+        _balBuilder = _worldState as IBlockAccessListBuilder;
     }
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -35,9 +35,9 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
-            if (_parallelWorldState is not null && _parallelWorldState.Enabled)
+            if (_balBuilder is not null && _balBuilder.TracingEnabled)
             {
-                _parallelWorldState.AddAccountRead(codeSource);
+                _balBuilder.AddAccountRead(codeSource);
             }
             return _localPrecompiles[codeSource];
         }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,15 +8,16 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
+public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
     public ushort Index = 0;
-    public readonly IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
 
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
     private readonly Stack<Change> _changes;
@@ -33,13 +34,13 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         _changes = new();
     }
 
-    public readonly bool Equals(BlockAccessList other) =>
-        _accountChanges.SequenceEqual(other._accountChanges);
+    public bool Equals(BlockAccessList? other) =>
+        other is not null && _accountChanges.SequenceEqual(other._accountChanges);
 
-    public override readonly bool Equals(object? obj) =>
+    public override bool Equals(object? obj) =>
         obj is BlockAccessList other && Equals(other);
 
-    public override readonly int GetHashCode() =>
+    public override int GetHashCode() =>
         _accountChanges.Count.GetHashCode();
 
     public static bool operator ==(BlockAccessList left, BlockAccessList right) =>
@@ -48,7 +49,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
 
-    public readonly AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
+    public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
 
     public void IncrementBlockAccessIndex()
     {
@@ -158,7 +159,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         accountChanges.AddNonceChange(nonceChange);
     }
 
-    public readonly void AddAccountRead(Address address)
+    public void AddAccountRead(Address address)
     {
         if (!_accountChanges.ContainsKey(address))
         {
@@ -179,10 +180,10 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public void AddStorageChange(in StorageCell storageCell, UInt256 before, UInt256 after)
         => AddStorageChange(storageCell.Address, storageCell.Index, before, after);
 
-    public readonly void AddStorageRead(in StorageCell storageCell) =>
+    public void AddStorageRead(in StorageCell storageCell) =>
         AddStorageRead(storageCell.Address, storageCell.Index);
 
-    public readonly void AddStorageRead(Address address, UInt256 key)
+    public void AddStorageRead(Address address, UInt256 key)
     {
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
@@ -218,15 +219,13 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            // byte[] newValue = new byte[32];
-            // after.CopyTo(newValue.AsSpan()[(32 - after.Length)..]);
             StorageChange storageChange = new()
             {
                 BlockAccessIndex = Index,
                 NewValue = after
             };
 
-            slotChanges.Changes.Add(storageChange);
+            slotChanges.Changes.Add(Index, storageChange);
             accountChanges.RemoveStorageRead(key);
         }
         else
@@ -235,10 +234,10 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public readonly int TakeSnapshot()
+    public int TakeSnapshot()
         => _changes.Count;
 
-    public readonly void Restore(int snapshot)
+    public void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)
@@ -283,7 +282,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     slotChanges.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
-                        slotChanges.Changes.Add(previousStorage.Value);
+                        slotChanges.Changes.Add(previousStorage.Value.BlockAccessIndex, previousStorage.Value);
                         accountChanges.RemoveStorageRead(change.Slot.Value);
                     }
 
@@ -293,10 +292,14 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public override readonly string? ToString()
+    public override string? ToString()
         => JsonSerializer.Serialize(this);
 
-    private readonly bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
+    // for testing
+    internal void AddAccountChanges(params AccountChanges[] accountChanges)
+        => _accountChanges.AddRange(accountChanges.ToDictionary(x => x.Address, x => x));
+
+    private bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
         int count = accountChanges.BalanceChanges.Count();
@@ -332,7 +335,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         return true;
     }
 
-    private readonly bool HasStorageChangedDuringTx(Address address, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
+    private bool HasStorageChangedDuringTx(Address address, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
 
@@ -343,7 +346,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             return beforeInstr != afterInstr;
         }
 
-        foreach (StorageChange storageChange in slotChanges.Changes.AsEnumerable().Reverse())
+        foreach (StorageChange storageChange in slotChanges.Changes.Values.AsEnumerable().Reverse())
         {
             if (storageChange.BlockAccessIndex != Index)
             {
@@ -371,7 +374,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         return true;
     }
 
-    private readonly bool HasCodeChangedDuringTx(Address address, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
+    private bool HasCodeChangedDuringTx(Address address, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
         int count = accountChanges.CodeChanges.Count();
@@ -407,7 +410,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         return true;
     }
 
-    private readonly AccountChanges GetOrAddAccountChanges(Address address)
+    private AccountChanges GetOrAddAccountChanges(Address address)
     {
         if (!_accountChanges.TryGetValue(address, out AccountChanges? existing))
         {

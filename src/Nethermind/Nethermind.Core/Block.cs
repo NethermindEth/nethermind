@@ -19,10 +19,11 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader header, BlockBody body)
+    public Block(BlockHeader header, BlockBody body, BlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = body ?? throw new ArgumentNullException(nameof(body));
+        BlockAccessList = bal;
     }
 
     public Block(BlockHeader header,
@@ -45,11 +46,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
 
     public BlockHeader Header { get; }
 

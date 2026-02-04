@@ -1,5 +1,5 @@
 
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,11 +12,11 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(UInt256 slot, List<StorageChange> changes) : IEquatable<SlotChanges>
+public class SlotChanges(UInt256 slot, SortedList<ushort, StorageChange> changes) : IEquatable<SlotChanges>
 {
     [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Slot { get; init; } = slot;
-    public List<StorageChange> Changes { get; init; } = changes;
+    public SortedList<ushort, StorageChange> Changes { get; init; } = changes;
 
     public SlotChanges(UInt256 slot) : this(slot, [])
     {
@@ -46,7 +46,7 @@ public class SlotChanges(UInt256 slot, List<StorageChange> changes) : IEquatable
         if (Changes.Count == 0)
             return false;
 
-        StorageChange lastChange = Changes.Last();
+        StorageChange lastChange = Changes.Values.Last();
 
         if (lastChange.BlockAccessIndex == index)
         {

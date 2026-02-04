@@ -53,5 +53,6 @@ namespace Nethermind.Facade
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         BlockAccessList? GetBlockAccessList(Hash256 blockHash);
+        void DeleteBlockAccessList(Hash256 blockHash);
     }
 }

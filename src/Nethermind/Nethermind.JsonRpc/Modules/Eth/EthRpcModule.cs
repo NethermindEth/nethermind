@@ -830,7 +830,6 @@ public partial class EthRpcModule(
 
     public ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long blockNumber)
         => GetBlockAccessList(null, blockNumber);
-
     private ResultWrapper<BlockAccessList?> GetBlockAccessList(Hash256? blockHash, long? blockNumber)
     {
         Block block = blockHash is null ? _blockFinder.FindBlock(blockNumber.Value) : _blockFinder.FindBlock(blockHash);
@@ -849,7 +848,6 @@ public partial class EthRpcModule(
             ResultWrapper<BlockAccessList?>.Fail("Cannot return pruned historical block access list.", ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<BlockAccessList?>.Success(bal);
     }
-
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
 }

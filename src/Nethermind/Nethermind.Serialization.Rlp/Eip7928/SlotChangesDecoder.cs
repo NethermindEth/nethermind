@@ -1,7 +1,9 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -22,7 +24,20 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
 
         UInt256 slot = ctx.DecodeUInt256();
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
-        SlotChanges slotChanges = new(slot, [.. changes]);
+
+        ushort? lastIndex = null;
+        SortedList<ushort, StorageChange> changesList = new(changes.ToDictionary(s =>
+        {
+            ushort index = s.BlockAccessIndex;
+            if (lastIndex is not null && index <= lastIndex)
+            {
+                Console.WriteLine($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
+                throw new RlpException("Storage changes were in incorrect order.");
+            }
+            lastIndex = index;
+            return index;
+        }, s => s));
+        SlotChanges slotChanges = new(slot, changesList);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -49,14 +64,14 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Slot);
-        stream.EncodeArray([.. item.Changes], rlpBehaviors);
+        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
     }
 
     public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
         int storageChangesLen = 0;
 
-        foreach (StorageChange slotChange in item.Changes)
+        foreach (StorageChange slotChange in item.Changes.Values)
         {
             storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
         }
