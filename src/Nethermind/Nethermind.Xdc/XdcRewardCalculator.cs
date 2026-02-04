@@ -206,9 +206,9 @@ namespace Nethermind.Xdc
         /// Calculates a proportional reward based on the number of signatures.
         /// Uses UInt256 arithmetic to maintain precision with large Wei values.
         ///
-        /// Formula: (signatureCount / totalSignatures) * totalReward
+        /// Formula: (totalReward / totalSignatures) * signatureCount
         /// </summary>
-        private UInt256 CalculateProportionalReward(
+        internal UInt256 CalculateProportionalReward(
             long signatureCount,
             long totalSignatures,
             UInt256 totalReward)
@@ -222,15 +222,14 @@ namespace Nethermind.Xdc
             var signatures = (UInt256)signatureCount;
             var total = (UInt256)totalSignatures;
 
-            // Calculate: (signatures * totalReward) / total
-            // Order of operations matters to maintain precision
-            UInt256 numerator = signatures * totalReward;
-            UInt256 reward = numerator / total;
+
+            UInt256 portion = totalReward / total;
+            UInt256 reward = portion * signatures;
 
             return reward;
         }
 
-        private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
+        internal (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
             Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
         {
             Address owner = masternodeVotingContract.GetCandidateOwner(header, masternodeAddress);
