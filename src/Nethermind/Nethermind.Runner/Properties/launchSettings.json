@@ -133,6 +133,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Xdc-mine": {
+      "commandName": "Project",
+      "commandLineArgs": "-c xdc-mine --data-dir .data -l info --Network.DiagTracerEnabled false --Network.StaticPeers enode://cfed69985acd8af3f32c96688b7e2c4e244bc67b845aaad0946aaf12940bccaae267b68e79802a23b5c0e3e3ec7282e998f6544e1d89b5729eaec0398d2f9e5c@localhost:20307 --Network.OnlyStaticPeers true --Init.DiscoveryEnabled false",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Docker": {
       "commandName": "Docker",
       "commandLineArgs": "-c hoodi --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"

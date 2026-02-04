@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/xdc-mine.json",
+    "BaseDbPath": "nethermind_db/xdc-mine",
+    "LogFileName": "xdc.log",
+    "StateDbKeyScheme": "Hash",
+    "AutoDump": "All"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Network": {
+    "P2PPort": 30300
+  },
+  "Sync": {
+  },
+  "Mining": {
+    "Enabled": true
+  },
+  "JsonRpc": {
+    "Enabled": false
+  },
+  "Merge": {
+    "Enabled": false
+  },
+  "TraceStore": {
+    "Enabled": false
+  }
+}
