@@ -26,12 +26,12 @@ partial class LogIndexStorage
     /// <list type="number">
     /// <item>
     /// In case if operand is a sequence of <see cref="Int32"/> block numbers -
-    /// directly concatenates with the existing DB value, validating order remains correct. <br/>
+    /// directly concatenates with the existing DB value, validating order remains correct (see <see cref="AddEnsureSorted"/>). <br/>
     /// If value size grows to or over <see cref="ILogIndexConfig.CompressionDistance"/> block numbers -
     /// queues it for compression (via <see cref="ICompressor.TryEnqueue"/>).
     /// </item>
     /// <item>
-    /// In operand is one of <see cref="MergeOp"/> - performs specified operation on the previously obtained sequence.
+    /// If operand from <see cref="MergeOps"/> - performs specified operation on the previously obtained sequence.
     /// </item>
     /// </list>
     /// Check MergeOperator tests for the expected behavior.

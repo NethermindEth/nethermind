@@ -42,7 +42,7 @@ namespace Nethermind.Db.LogIndex
     ///     <b>value</b> is a sequence of concatenated <see cref="Int32"/> block numbers in strictly descending order using little-endian encoding;
     /// </item>
     /// <item>
-    ///     1 for newly coming numbers from backward sync; <br/>
+    ///     1 for newly coming numbers from forward sync; <br/>
     ///     <b>key</b> is <c>filter || <see cref="Postfix.ForwardMerge"/></c>; <br/>
     ///     <b>value</b> is a sequence of concatenated <see cref="Int32"/> block numbers in strictly ascending order using little-endian encoding;
     /// </item>
@@ -75,8 +75,8 @@ namespace Nethermind.Db.LogIndex
     ///
     /// <para>
     /// Fetching block numbers for the given filters (see <see cref="GetEnumerator(int?, byte[], int, int)"/>)
-    /// is done by iterating keys with the <c>filter</c> using <see cref="ISortedView"/>,
-    /// with DB values being decomposed back into number sequences, and block numbers returned in ascending order.
+    /// is done by iterating keys via <see cref="ISortedView"/> (with the provided filter as a prefix),
+    /// decomposing DB values back into block number sequences, and returning obtained numbers in ascending order.
     /// Check <see cref="LogIndexEnumerator"/> for details.
     /// </para>
     /// </remarks>

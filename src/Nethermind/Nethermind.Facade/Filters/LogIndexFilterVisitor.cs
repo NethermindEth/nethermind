@@ -17,7 +17,8 @@ using Nethermind.Db.LogIndex;
 namespace Nethermind.Facade.Filters;
 
 /// <summary>
-/// Converts <see cref="LogFilter"/> tree and block range into a block numbers enumerator.
+/// Converts <see cref="LogFilter"/> tree and block range into an enumerator of block numbers from <see cref="LogIndexStorage"/>,
+/// by building corresponding "tree of enumerators".
 /// </summary>
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {

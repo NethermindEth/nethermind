@@ -16,10 +16,6 @@ public partial class LogIndexStorage
     /// Enumerates block numbers from <see cref="LogIndexStorage"/> for the given <c>key</c>,
     /// within the specified <c>from</c>/<c>to</c> range.
     /// </summary>
-    /// <remarks>
-    /// Explicit enumerator approach is chosen over <see cref="IEnumerable"/>
-    /// to be later used in building enumerators "tree" for a given <c>eth_getLogs</c> filter.
-    /// </remarks>
     public sealed class LogIndexEnumerator : IEnumerator<int>
     {
         private const int CompletedIndex = int.MinValue;
