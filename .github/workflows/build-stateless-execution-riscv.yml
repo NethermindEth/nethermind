@@ -61,6 +61,15 @@ jobs:
           fi
           echo "::notice::Program executed successfully with exit code 0"
 
+      - name: Execute Zisk Sim binary on on RISC-V host
+        working-directory: tools/StatelessExecution
+        env:
+          STATELESS_EXECUTOR_RISCV_HOST: ${{ secrets.STATELESS_EXECUTOR_RISCV_HOST }}
+          STATELESS_EXECUTOR_RISCV_USERNAME: ${{ secrets.STATELESS_EXECUTOR_RISCV_USERNAME }}
+          STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY: ${{ secrets.STATELESS_EXECUTOR_RISCV_SSH_PRIVATE_KEY }}
+        run: |
+          ./stateless_exec_test.sh
+
       - name: Upload ZISK Simulator binary
         uses: actions/upload-artifact@v4
         with:
