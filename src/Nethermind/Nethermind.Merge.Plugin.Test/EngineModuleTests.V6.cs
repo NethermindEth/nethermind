@@ -321,7 +321,7 @@ public partial class EngineModuleTests
             [],
             [withdrawal],
             expectedBlockAccessList);
-        
+
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -384,7 +384,7 @@ public partial class EngineModuleTests
             [],
             [],
             new());
-        
+
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -413,7 +413,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
         Block genesis = chain.BlockFinder.FindGenesisBlock()!;
-        PayloadAttributes payloadAttributes = new() {
+        PayloadAttributes payloadAttributes = new()
+        {
             Timestamp = timestamp,
             PrevRandao = genesis.Header.Random!,
             SuggestedFeeRecipient = Address.Zero,

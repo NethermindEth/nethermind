@@ -45,7 +45,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
         Transaction createTx = Build.A.Transaction.WithCode(code).WithGasLimit(_gasLimit).WithValue(0).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext( new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
         BlockAccessList bal = worldState.GeneratedBlockAccessList;
@@ -65,7 +65,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
             Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
         }
 
-        foreach(AccountChanges expectedAccountChanges in expected)
+        foreach (AccountChanges expectedAccountChanges in expected)
         {
             Assert.That(bal.GetAccountChanges(expectedAccountChanges.Address), Is.EqualTo(expectedAccountChanges));
         }
