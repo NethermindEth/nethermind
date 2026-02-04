@@ -24,7 +24,6 @@ using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
-using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -646,12 +645,15 @@ public partial class EthRpcModuleTests
         Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject);
+            .TestObject;
+
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
             MaxFeePerGas = 1,
             MaxPriorityFeePerGas = 2,
             GasPrice = null
         };
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -666,13 +668,15 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_invalid_blob_versioned_hash(byte[]? hash, string expectedError)
     {
         using Context ctx = await Context.Create();
-        BlobTransactionForRpc transaction = new(Build.A.Transaction
+        Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
             .WithMaxFeePerBlobGas(1)
             .WithBlobVersionedHashes([hash!])
             .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject)
+            .TestObject;
+
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
         {
             GasPrice = null
         };
