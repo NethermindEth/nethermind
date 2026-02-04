@@ -29,8 +29,8 @@ namespace Nethermind.Db
         private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
         private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #else
-         private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
-         private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+        private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
+        private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #endif
 
         public MemDb(string name)
