@@ -345,7 +345,7 @@ public partial class EngineModuleTests
     [TestCase(
         "0xb8e829825b96cad7e1aba01195eb752ca2c07ef403c402b1b507c695936e2c21",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
-        "0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c")]
+        "0xf33cd1904c18109e882bfa965997ba802d408bd834a61920aba651fbaeb78dd3")]
     public async Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
     {
         using MergeTestBlockchain chain =
