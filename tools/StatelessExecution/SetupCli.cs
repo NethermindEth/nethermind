@@ -123,7 +123,7 @@ internal static class SetupCli
         for (int j = 0; j < transactions.Length; j++)
         {
             var tx = (JsonElement)suggestedBlockForRpc.Transactions[j];
-            transactions[j] = serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction().Data!;
+            transactions[j] = (Transaction)serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction();
         }
 
         Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);

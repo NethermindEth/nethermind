@@ -32,7 +32,8 @@ namespace Nethermind.Core
         // Required for short-circuit && operator
         public static bool operator true(Result<TData> result) => result.IsSuccess;
         public static bool operator false(Result<TData> result) => result.IsError;
-        public static explicit operator TData(Result<TData> result) => result.Data ?? throw new InvalidOperationException($"Cannot convert {nameof(Result<>)} to TData when {nameof(result.ResultType)} is {nameof(ResultType.Failure)}");
+        public static explicit operator TData(Result<TData> result) =>
+            result.Data ?? throw new InvalidOperationException($"Cannot convert {nameof(Result<>)} to TData when {nameof(result.ResultType)} is {nameof(ResultType.Failure)} with error: {result.Error}");
 
         // This provides the short-circuit behavior
         public static Result<TData> operator &(Result<TData> left, Result<TData> right) => left ? right : left;  // If left fails, return left (short-circuit)
