@@ -227,7 +227,7 @@ public class DebugBridge : IDebugBridge
             Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
             if (txResult.IsError)
             {
-                trace = new GethLikeTxTrace { Failed = true, ReturnValue = [] };
+                trace = CreateFailTrace(txForRpc.Gas);
             }
             else
             {
@@ -243,7 +243,7 @@ public class DebugBridge : IDebugBridge
                 }
                 catch (Exception)
                 {
-                    trace = new GethLikeTxTrace { Failed = true, Gas = tx.GasLimit, ReturnValue = [] };
+                    trace = CreateFailTrace(tx.GasLimit);
                 }
             }
 
@@ -252,5 +252,7 @@ public class DebugBridge : IDebugBridge
                 yield return trace;
             }
         }
+
+        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
     }
 }
