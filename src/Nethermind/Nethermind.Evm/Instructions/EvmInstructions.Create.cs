@@ -30,6 +30,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type corresponding to the create operation.
         /// </summary>
         abstract static ExecutionType ExecutionType { get; }
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        abstract static bool CheckStackUnderflow(ref EvmStack stack);
     }
 
     /// <summary>
@@ -41,6 +46,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type for the CREATE opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 3;
+        }
     }
 
     /// <summary>
@@ -52,6 +62,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type for the CREATE2 opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE2;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 4;
+        }
     }
 
     /// <summary>
@@ -80,6 +95,9 @@ internal static partial class EvmInstructions
         // Increment metrics counter for contract creation operations.
         Metrics.IncrementCreates();
 
+        if (TOpCreate.CheckStackUnderflow(ref stack))
+            goto StackUnderflow;
+
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
         if (vm.VmState.IsStatic)
@@ -92,10 +110,9 @@ internal static partial class EvmInstructions
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
-        if (!stack.PopUInt256(out UInt256 value) ||
-            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
-            !stack.PopUInt256(out UInt256 initCodeLength))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 value);
+        stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
+        stack.PopUInt256(out UInt256 initCodeLength);
 
         Span<byte> salt = default;
         // For CREATE2, an extra salt value is required. Use type check to differentiate.

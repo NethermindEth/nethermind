@@ -32,6 +32,14 @@ internal static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The resulting shifted value.</param>
         abstract static void Operation(in UInt256 a, in UInt256 b, out UInt256 result);
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        virtual static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 2;
+        }
     }
 
     /// <summary>
@@ -55,23 +63,25 @@ internal static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
+        if (TOpShift.CheckStackUnderflow(ref stack)) goto StackUnderflow;
+
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
         // Pop the shift amount from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
 
         // If the shift amount is 256 or more, per EVM semantics, discard the second operand and push zero.
         if (a >= 256)
         {
             // Pop the second operand without using its value.
-            if (!stack.PopLimbo()) goto StackUnderflow;
+            stack.PopLimbo();
             stack.PushZero<TTracingInst>();
         }
         else
         {
             // Otherwise, pop the value to be shifted.
-            if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+            stack.PopUInt256(out UInt256 b);
             // Perform the shift operation using the specific implementation.
             TOpShift.Operation(in a, in b, out UInt256 result);
             stack.PushUInt256<TTracingInst>(in result);
@@ -102,11 +112,19 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        static bool CheckStackUnderflow(ref EvmStack stack) => stack.Head < 2;
+
+        if (CheckStackUnderflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
+
         // Deduct the gas cost for the arithmetic shift operation.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the shift amount and the value to be shifted.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         if (a >= 256)

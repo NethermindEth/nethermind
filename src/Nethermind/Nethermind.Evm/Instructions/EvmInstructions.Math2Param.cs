@@ -31,6 +31,14 @@ internal static partial class EvmInstructions
         /// <param name="b">The second operand.</param>
         /// <param name="result">The result of the operation.</param>
         abstract static void Operation(in UInt256 a, in UInt256 b, out UInt256 result);
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        virtual static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 2;
+        }
     }
 
     /// <summary>
@@ -54,11 +62,17 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
+        if (TOpMath.CheckStackUnderflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
+
         // Deduct the gas cost for the specific math operation.
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
         // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
 
         // Execute the math operation defined by TOpMath.
         TOpMath.Operation(in a, in b, out UInt256 result);
@@ -275,15 +289,17 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Charge the fixed gas cost for exponentiation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
-
-        // Pop the base value and exponent from the stack.
-        if (!stack.PopUInt256(out UInt256 a) ||
-            !stack.PopUInt256(out UInt256 exponent))
+        if (CheckStackUnderflow(ref stack, 2))
         {
             goto StackUnderflow;
         }
+
+        // Charge the fixed gas cost for exponentiation.
+        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
+
+        // Pop the base value from the stack.
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 exponent);
 
         // Determine the effective byte-length of the exponent.
         int leadingZeros = exponent.CountLeadingZeros() >> 3;

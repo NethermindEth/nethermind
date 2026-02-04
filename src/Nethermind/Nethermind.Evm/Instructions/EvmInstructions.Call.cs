@@ -31,6 +31,11 @@ internal static partial class EvmInstructions
         /// Returns the specific execution type of the call.
         /// </summary>
         abstract static ExecutionType ExecutionType { get; }
+
+        /// <summary>
+        /// Checks the stack for underflow conditions specific to call operations.
+        /// </summary>
+        abstract static bool CheckStackUnderflow(ref EvmStack stack);
     }
 
     /// <summary>
@@ -39,6 +44,11 @@ internal static partial class EvmInstructions
     public struct OpCall : IOpCall
     {
         public static ExecutionType ExecutionType => ExecutionType.CALL;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 7;
+        }
     }
 
     /// <summary>
@@ -47,6 +57,11 @@ internal static partial class EvmInstructions
     public struct OpCallCode : IOpCall
     {
         public static ExecutionType ExecutionType => ExecutionType.CALLCODE;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 7;
+        }
     }
 
     /// <summary>
@@ -55,6 +70,11 @@ internal static partial class EvmInstructions
     public struct OpDelegateCall : IOpCall
     {
         public static ExecutionType ExecutionType => ExecutionType.DELEGATECALL;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 6;
+        }
     }
 
     /// <summary>
@@ -64,6 +84,11 @@ internal static partial class EvmInstructions
     {
         public static bool IsStatic => true;
         public static ExecutionType ExecutionType => ExecutionType.STATICCALL;
+
+        public static bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 6;
+        }
     }
 
     /// <summary>
@@ -103,11 +128,15 @@ internal static partial class EvmInstructions
         // Clear previous return data.
         vm.ReturnData = null;
 
+        if (TOpCall.CheckStackUnderflow(ref stack))
+        {
+            goto StackUnderflow;
+        }
+
         // Pop the gas limit for the call.
-        if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 gasLimit);
         // Pop the code source address from the stack.
         Address codeSource = stack.PopAddress();
-        if (codeSource is null) goto StackUnderflow;
 
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
@@ -122,17 +151,13 @@ internal static partial class EvmInstructions
             // Delegate calls use the value from the current execution context.
             callValue = env.Value;
         }
-        else if (!stack.PopUInt256(out callValue))
-        {
-            goto StackUnderflow;
-        }
+        else stack.PopUInt256(out callValue);
 
         // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataLength);
+        stack.PopUInt256(out UInt256 outputOffset);
+        stack.PopUInt256(out UInt256 outputLength);
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         bool _ = vm.TxExecutionContext.CodeInfoRepository
@@ -347,10 +372,14 @@ internal static partial class EvmInstructions
             goto BadInstruction;
         }
 
-        // Pop memory position and length for the return data.
-        if (!stack.PopUInt256(out UInt256 position) ||
-            !stack.PopUInt256(out UInt256 length))
+        if (CheckStackUnderflow(ref stack, 2))
+        {
             goto StackUnderflow;
+        }
+
+        // Pop memory position and length for the return data.
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
 
         // Update the memory cost for the region being returned.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||

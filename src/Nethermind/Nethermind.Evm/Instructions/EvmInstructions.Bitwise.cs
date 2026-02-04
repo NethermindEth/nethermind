@@ -29,6 +29,11 @@ internal static partial class EvmInstructions
         /// <param name="b">The second operand vector.</param>
         /// <returns>The result of the bitwise operation.</returns>
         static abstract Word Operation(in Word a, in Word b);
+
+        static virtual bool CheckStackUnderflow(ref EvmStack stack)
+        {
+            return stack.Head < 2;
+        }
     }
 
     /// <summary>
@@ -47,18 +52,19 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
+        if (TOpBitwise.CheckStackUnderflow(ref stack))
+            goto StackUnderflow;
+
         // Deduct the operation's gas cost.
         TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         // Read the 256-bit vector from unaligned memory.
         Word aVec = ReadUnaligned<Word>(ref bytesRef);
 
         // Peek at the top of the stack for the second operand without removing it.
         bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         Word bVec = ReadUnaligned<Word>(ref bytesRef);
 
         // Write the result directly into the memory of the top stack element.

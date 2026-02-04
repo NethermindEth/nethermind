@@ -18,6 +18,18 @@ using Int256;
 /// </summary>
 internal static partial class EvmInstructions
 {
+    const int TStoreStackRequiredItems = 2;
+    const int TLoadStackRequiredItems = 1;
+
+    const int SStoreStackRequiredItems = 2;
+    const int SLoadStackRequiredItems = 1;
+
+    const int MStoreStackRequiredItems = 2;
+    const int MStore8StackRequiredItems = 2;
+    const int MLoadStackRequiredItems = 1;
+    const int MCopyStackRequiredItems = 3;
+
+    const int CallDataLoadStackRequiredItems = 1;
 
     /// <summary>
     /// Executes the transient load (TLOAD) instruction.
@@ -36,14 +48,18 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+
         // Increment the opcode metric for TLOAD.
         Metrics.TloadOpcode++;
+
+        if (CheckStackUnderflow(ref stack, TLoadStackRequiredItems))
+            goto StackUnderflow;
 
         // Deduct the fixed gas cost for TLOAD.
         TGasPolicy.Consume(ref gas, GasCostOf.TLoad);
 
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Construct a transient storage cell using the executing account and the provided offset.
         StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in result);
@@ -88,6 +104,9 @@ internal static partial class EvmInstructions
         // Increment the opcode metric for TSTORE.
         Metrics.TstoreOpcode++;
 
+        if (CheckStackUnderflow(ref stack, TStoreStackRequiredItems))
+            goto StackUnderflow;
+
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Disallow storage modification during static calls.
@@ -97,7 +116,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.TStore);
 
         // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -144,10 +163,13 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, MStoreStackRequiredItems))
+            goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the memory offset; if not available, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Retrieve the 32-byte word to be stored.
         Span<byte> bytes = stack.PopWord256();
@@ -190,10 +212,13 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, MStore8StackRequiredItems))
+            goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Pop a single byte from the stack.
         byte data = stack.PopByte();
@@ -237,10 +262,13 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, MLoadStackRequiredItems))
+            goto StackUnderflow;
+
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the memory offset; if missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
@@ -287,8 +315,13 @@ internal static partial class EvmInstructions
         // Increment the opcode metric for MCOPY.
         Metrics.MCopyOpcode++;
 
+        if (CheckStackUnderflow(ref stack, MCopyStackRequiredItems))
+            goto StackUnderflow;
+
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
+        stack.PopUInt256(out UInt256 c);
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
@@ -344,6 +377,9 @@ internal static partial class EvmInstructions
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
 
+        if (CheckStackUnderflow(ref stack, SStoreStackRequiredItems))
+            goto StackUnderflow;
+
         VmState<TGasPolicy> vmState = vm.VmState;
         // Disallow storage modifications in static calls.
         if (vmState.IsStatic) goto StaticCallViolation;
@@ -355,7 +391,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
         ReadOnlySpan<byte> bytes = stack.PopWord256();
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
@@ -447,6 +483,9 @@ internal static partial class EvmInstructions
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
 
+        if (CheckStackUnderflow(ref stack, SStoreStackRequiredItems))
+            goto StackUnderflow;
+
         VmState<TGasPolicy> vmState = vm.VmState;
         // Disallow storage modifications in static calls.
         if (vmState.IsStatic) goto StaticCallViolation;
@@ -463,7 +502,7 @@ internal static partial class EvmInstructions
         }
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
         ReadOnlySpan<byte> bytes = stack.PopWord256();
 
         // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
@@ -617,11 +656,14 @@ internal static partial class EvmInstructions
         // Increment the SLOAD opcode metric.
         Metrics.IncrementSLoadOpcode();
 
+        if (CheckStackUnderflow(ref stack, SLoadStackRequiredItems))
+            goto StackUnderflow;
+
         // Deduct the gas cost for performing an SLOAD.
         TGasPolicy.Consume(ref gas, spec.GetSLoadCost());
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        stack.PopUInt256(out UInt256 result);
 
         // Construct the storage cell for the executing account.
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
@@ -661,9 +703,11 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
-        // Pop the offset from which to load call data.
-        if (!stack.PopUInt256(out UInt256 result))
+        if (CheckStackUnderflow(ref stack, CallDataLoadStackRequiredItems))
             goto StackUnderflow;
+
+        // Pop the offset from which to load call data.
+        stack.PopUInt256(out UInt256 result);
         // Load 32 bytes from input data, applying zero padding as needed.
         stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
 

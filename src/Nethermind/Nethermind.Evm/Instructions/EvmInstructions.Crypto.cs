@@ -23,9 +23,11 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        if (CheckStackUnderflow(ref stack, 2)) goto StackUnderflow;
+
         // Ensure two 256-bit words are available (memory offset and length).
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b))
-            goto StackUnderflow;
+        stack.PopUInt256(out UInt256 a);
+        stack.PopUInt256(out UInt256 b);
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
         TGasPolicy.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas));
