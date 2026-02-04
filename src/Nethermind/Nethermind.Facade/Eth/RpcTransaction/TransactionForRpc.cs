@@ -60,13 +60,7 @@ public abstract class TransactionForRpc
         BlockTimestamp = extraData.BlockTimestamp;
     }
 
-    public virtual Transaction ToTransaction()
-    {
-        return new Transaction
-        {
-            Type = Type ?? default,
-        };
-    }
+    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false) => new Transaction { Type = Type ?? default };
 
     public abstract void EnsureDefaults(long? gasCap);
     public abstract bool ShouldSetBaseFee();

@@ -579,9 +579,12 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_maxFeePerBlobGas_is_zero()
     {
         using Context ctx = await Context.Create();
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01; // KZG version
         Transaction tx = Build.A.Transaction
             .WithGasLimit(100000)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes([validHash])
+            .To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
@@ -600,11 +603,13 @@ public partial class EthRpcModuleTests
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01; // KZG version
         Transaction tx = Build.A.Transaction
             .WithData(code)
             .WithGasLimit(100000)
             .WithMaxFeePerBlobGas(1)
-            .WithBlobVersionedHashes([[]])
+            .WithBlobVersionedHashes([validHash])
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
@@ -641,14 +646,43 @@ public partial class EthRpcModuleTests
             .WithGasLimit(100000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
-        transaction.MaxFeePerGas = 1;
-        transaction.MaxPriorityFeePerGas = 2;
-        transaction.GasPrice = null;
+
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
+            MaxFeePerGas = 1,
+            MaxPriorityFeePerGas = 2,
+            GasPrice = null
+        };
+
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
+    }
+
+    [TestCase(null, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash null")]
+    [TestCase(new byte[] { 0x01 }, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash too short")]
+    [TestCase(new byte[] { 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash too long")]
+    [TestCase(new byte[] { 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RpcTransactionErrors.InvalidBlobVersionedHashVersion, TestName = "BlobVersionedHash invalid version 0x00")]
+    [TestCase(new byte[] { 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RpcTransactionErrors.InvalidBlobVersionedHashVersion, TestName = "BlobVersionedHash invalid version 0x02")]
+    public async Task Eth_call_invalid_blob_versioned_hash(byte[]? hash, string expectedError)
+    {
+        using Context ctx = await Context.Create();
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes([hash!])
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
+            GasPrice = null
+        };
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{expectedError}\"}},\"id\":67}}"));
     }
 
     [Test]

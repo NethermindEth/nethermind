@@ -65,7 +65,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
-            Transaction transaction = tx.ToTransaction();
+            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
+            if (!txResult.Success(out Transaction? transaction, out string? error))
+            {
+                return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
+            }
+
             transaction.SenderAddress ??= Address.Zero;
 
             if (transaction.GasLimit == 0)
