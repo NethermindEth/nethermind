@@ -27,8 +27,9 @@ partial class LogIndexStorage
     /// <list type="number">
     /// <item> reads the latest (uncompressed) value from the database; </item>
     /// <item> truncates potentially reorgable blocks from the sequence (as compressed values become immutable); </item>
+    /// <item> reverts sequence if needed - so the new value is always in ascending order; </item>
     /// <item> compresses the sequence using specified TurboPFor <see cref="CompressionAlgorithm"/>; </item>
-    /// <item> stores the compressed value at a new pair using <c>filter || {first-block-number-in-the-sequence}</c> as a key; </item>
+    /// <item> stores the compressed value at a new pair using <c>{address-or-topic} || ({first-block-number-in-the-sequence} + 1)</c> as a key; </item>
     /// <item> queues truncation for the "transient" key via <see cref="MergeOp.Truncate"/> - to remove finalized blocks from the old sequence. </item>
     /// </list>
     /// </para>

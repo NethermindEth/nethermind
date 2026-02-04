@@ -48,7 +48,7 @@ namespace Nethermind.Db.LogIndex
     /// </item>
     /// <item>
     ///     any number of "finalized" mappings, storing block numbers in strictly ascending order, compressed via TurboPFor; <br/>
-    ///     key is <c>filter || {first-block-number-in-the-sequence}</c> with number encoded in big-endian (for correct RocksDB sorting); <br/>
+    ///     <b>key</b> is <c>filter || ({first-block-number-in-the-sequence} + 1)</c> with number being encoded in big-endian (for correct RocksDB sorting); <br/>
     ///     <b>value</b> is a sequence of block numbers compressed via TurboPFor (see <see cref="CompressionAlgorithm"/>).
     /// </item>
     /// </list>
