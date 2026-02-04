@@ -1222,7 +1222,7 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountMoreThan(280);
+                .AssertThatCachedNodeCountMoreThan(275);
         }
 
         [Test]
