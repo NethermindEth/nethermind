@@ -52,11 +52,8 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         if (To is null)
             return RpcTransactionErrors.MissingToInBlobTx;
 
-        if (validateUserInput)
-        {
-            if (MaxFeePerBlobGas?.IsZero == true)
-                return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
-        }
+        if (validateUserInput && MaxFeePerBlobGas?.IsZero == true)
+            return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
         if (!baseResult) return baseResult;
