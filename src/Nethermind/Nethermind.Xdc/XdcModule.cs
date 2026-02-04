@@ -26,6 +26,8 @@ using Nethermind.Logging;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Api.Steps;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Xdc;
 
@@ -93,6 +95,9 @@ public class XdcModule : Module
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+
+            // state sync allocation strategy - override default to use protocol version 100 check
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
             ;
     }
 
