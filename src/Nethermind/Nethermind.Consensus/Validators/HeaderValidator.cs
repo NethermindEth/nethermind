@@ -95,6 +95,7 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
                    && ValidateRequestsHash(header, spec, ref error)
+                   && ValidateBlockAccessListHash(header, spec, ref error)
                    && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
         }
 
@@ -387,6 +388,29 @@ namespace Nethermind.Consensus.Validators
             return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         }
 
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7928Enabled)
+            {
+                if (header.BlockAccessListHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlockAccessListHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
         protected virtual bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip7843Enabled)
@@ -398,8 +422,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                // how to validate at fork boundary?
-                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
+                if (parent.SlotNumber is not null && header.SlotNumber <= parent.SlotNumber)
                 {
                     error = BlockErrorMessages.InvalidSlotNumber;
                     if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");

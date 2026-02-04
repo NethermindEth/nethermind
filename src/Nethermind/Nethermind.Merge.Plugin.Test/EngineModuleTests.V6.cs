@@ -270,9 +270,7 @@ public partial class EngineModuleTests
                     .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
                     .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
                     .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressB)
-                    .TestObject,
+                new(TestItem.AddressB),
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
                     .WithBalanceChanges([new(4, 1.GWei())])
@@ -399,7 +397,7 @@ public partial class EngineModuleTests
                 {
                     LatestValidHash = Keccak.Zero,
                     Status = PayloadStatus.Invalid,
-                    ValidationError = $"InvalidBlockLevelAccessListRoot: Expected 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347, got {balHash}"
+                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347, got {balHash}"
                 }
             })));
         }
