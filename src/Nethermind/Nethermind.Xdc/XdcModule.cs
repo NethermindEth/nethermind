@@ -56,6 +56,9 @@ public class XdcModule : Module
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
+            .Add<StartXdcBlockProducer>()
+
+
             // stores
             .AddSingleton<IHeaderStore, XdcHeaderStore>()
             .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
@@ -109,6 +112,8 @@ public class XdcModule : Module
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+            .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
+            .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
 
             //Sync
             .AddSingleton<CreateSnapshotOnStateSyncFinished>()

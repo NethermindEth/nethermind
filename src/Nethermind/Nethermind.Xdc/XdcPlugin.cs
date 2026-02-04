@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Autofac.Core;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -43,12 +47,27 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     }
 
     // IConsensusPlugin
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
     {
-        throw new NotSupportedException();
+        return new XdcHotStuff(
+            _nethermindApi.Context.Resolve<IBlockTree>(),
+            _nethermindApi.Context.Resolve<IXdcConsensusContext>(),
+            _nethermindApi.Context.Resolve<ISpecProvider>(),
+            blockProducer,
+            _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
+            _nethermindApi.Context.Resolve<ISnapshotManager>(),
+            _nethermindApi.Context.Resolve<IQuorumCertificateManager>(),
+            _nethermindApi.Context.Resolve<IVotesManager>(),
+            _nethermindApi.Context.Resolve<ISigner>(),
+            _nethermindApi.Context.Resolve<ITimeoutTimer>(),
+            _nethermindApi.ProcessExit,
+            _nethermindApi.Context.Resolve<ISignTransactionManager>(),
+            _nethermindApi.Context.Resolve<ILogManager>()
+            );
     }
     public IBlockProducer InitBlockProducer()
     {
-        throw new NotSupportedException();
+        StartXdcBlockProducer start = _nethermindApi.Context.Resolve<StartXdcBlockProducer>();
+        return start.BuildProducer();
     }
 }
