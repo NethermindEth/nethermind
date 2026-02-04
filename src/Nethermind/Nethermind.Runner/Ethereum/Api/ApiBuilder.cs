@@ -70,7 +70,7 @@ public class ApiBuilder
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
+        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logManager);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
 
         //overwriting NetworkId which is useful for some devnets (like bloatnet)

@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 using G2 = Nethermind.Crypto.Bls.P2;
 using System.Runtime.CompilerServices;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 

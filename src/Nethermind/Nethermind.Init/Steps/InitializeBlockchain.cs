@@ -18,7 +18,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 

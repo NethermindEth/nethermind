@@ -5,11 +5,9 @@ using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
 
 namespace Nethermind.State.OverridableEnv;
 
@@ -42,15 +40,22 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
             Reset();
             _worldScopeCloser = _worldState.BeginScope(header);
-            IDisposable scope = new Scope(this);
 
-            if (stateOverride is not null)
+            try
             {
-                _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
-                header.StateRoot = _worldState.StateRoot;
-            }
+                if (stateOverride is not null)
+                {
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                    header.StateRoot = _worldState.StateRoot;
+                }
 
-            return scope;
+                return new Scope(this);
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
         }
 
         private class Scope(OverridableEnv env) : IDisposable
