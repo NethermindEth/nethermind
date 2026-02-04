@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -18,14 +23,15 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
+        private readonly ConcurrentDictionary<nint, GCHandle> _pinnedHandles = new();
+
 #if ZK
-        private readonly Dictionary<byte[], byte[]?> _db;
+        private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
         private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #else
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
-        private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+         private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
+         private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #endif
-
 
         public MemDb(string name)
             : this(0, 0)
@@ -35,7 +41,7 @@ namespace Nethermind.Db
 
         public static MemDb CopyFrom(IDb anotherDb)
         {
-            MemDb newDb = new MemDb();
+            MemDb newDb = new();
             foreach (KeyValuePair<byte[], byte[]> kv in anotherDb.GetAll())
             {
                 newDb[kv.Key] = kv.Value;
@@ -52,11 +58,6 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-#if ZK
-            _db = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
-#else
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
-#endif
             _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
 
@@ -64,14 +65,8 @@ namespace Nethermind.Db
 
         public virtual byte[]? this[ReadOnlySpan<byte> key]
         {
-            get
-            {
-                return Get(key);
-            }
-            set
-            {
-                Set(key, value);
-            }
+            get => Get(key);
+            set => Set(key, value);
         }
 
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
@@ -84,18 +79,11 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount += keys.Length;
-                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.TryGetValue(k, out var value) ? value : null)).ToArray();
+                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.GetValueOrDefault(k))).ToArray();
             }
         }
 
-        public virtual void Remove(ReadOnlySpan<byte> key)
-        {
-#if ZK
-            _spanDb.Remove(key);
-#else
-            _spanDb.TryRemove(key, out _);
-#endif
-        }
+        public virtual void Remove(ReadOnlySpan<byte> key) => _spanDb.TryRemove(key, out _);
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _spanDb.ContainsKey(key);
 
@@ -120,9 +108,16 @@ namespace Nethermind.Db
 
         public bool PreferWriteByArray => true;
 
-        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key) => Get(key).AsSpan();
+        public unsafe void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            if (span.IsEmpty) return;
 
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+            nint ptr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(span));
+            if (_pinnedHandles.TryRemove(ptr, out GCHandle handle))
+            {
+                handle.Free();
+            }
+        }
 
         public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -133,6 +128,18 @@ namespace Nethermind.Db
 
             ReadsCount++;
             return _spanDb.TryGetValue(key, out byte[] value) ? value : null;
+        }
+
+        public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? data = Get(key, flags);
+            if (data is null) return default;
+
+            GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+            nint ptr = handle.AddrOfPinnedObject();
+            _pinnedHandles[ptr] = handle;
+
+            return new Span<byte>((void*)ptr, data.Length);
         }
 
         public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
