@@ -1476,7 +1476,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private void AddTransferLog(VmState<TGasPolicy> currentState)
     {
-        if (currentState.ExecutionType != ExecutionType.DELEGATECALL)
+        // DELEGATECALL: no value transfer (inherits from parent)
+        // CALLCODE: value is transferred from ExecutingAccount to ExecutingAccount (self-transfer), so no log
+        if (currentState.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
         {
             AddTransferLog(currentState.From, currentState.To, currentState.Env.Value);
         }
@@ -1484,7 +1486,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     internal void AddTransferLog(Address from, Address to, in UInt256 value)
     {
-        if (Spec.IsEip7708Enabled && value > UInt256.Zero)
+        // Self-transfers don't change balances, so don't log them
+        if (Spec.IsEip7708Enabled && value > UInt256.Zero && from != to)
         {
             AddLog(TransferLog.CreateTransfer(from, to, value));
         }
