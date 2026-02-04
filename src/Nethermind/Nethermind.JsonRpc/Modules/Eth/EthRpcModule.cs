@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
@@ -67,6 +68,8 @@ public partial class EthRpcModule(
     IForkInfo forkInfo,
     ulong? secondsPerSlot) : IEthRpcModule
 {
+    private static FrozenDictionary<ForkId, ForkConfig>? forkConfigCache = null;
+
     public const int GetProofStorageKeyLimit = 1000;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -785,30 +788,52 @@ public partial class EthRpcModule(
         };
     }
 
-    public ResultWrapper<JsonNode> eth_config()
+    public ResultWrapper<JsonNode> eth_config(bool showAllForks = false)
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
+        if (forkConfigCache is null)
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
-        }), UnchangedDictionaryKeyOptions)));
+            ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+            Dictionary<ForkId, ForkConfig> allForks = new(forkSchedule.Length);
 
-        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
-        {
-            if (fork is null)
+            foreach (Fork scheduledFork in forkSchedule)
             {
-                return null;
+                allForks.Add(scheduledFork.Id, BuildForkConfig(scheduledFork, _specProvider));
             }
 
-            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
+            forkConfigCache = allForks.ToFrozenDictionary();
+        }
+
+        List<ForkConfig>? allForkConfigs = null;
+
+        if (showAllForks)
+        {
+            ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+            allForkConfigs = new(forkSchedule.Length);
+
+            foreach (Fork scheduledFork in forkSchedule)
+            {
+                allForkConfigs.Add(forkConfigCache[scheduledFork.Id]);
+            }
+        }
+
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(new ForkConfigSummary
+        {
+            Current = showAllForks ? null : forkConfigCache[forks.Current.Id],
+            Next = showAllForks || forks.Next is null ? null : forkConfigCache[forks.Next.Value.Id],
+            Last = showAllForks || forks.Last is null ? null : forkConfigCache[forks.Last.Value.Id],
+            All = allForkConfigs
+        }, UnchangedDictionaryKeyOptions)));
+
+        static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider)
+        {
+            IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, fork.Activation.Timestamp);
 
             return new ForkConfig
             {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
+                ActivationTime = fork.Activation.Timestamp is not null ? (int)fork.Activation.Timestamp : null,
+                ActivationBlock = fork.Activation.Timestamp is null ? (int)fork.Activation.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
@@ -816,7 +841,7 @@ public partial class EthRpcModule(
                     Target = (int)spec.TargetBlobCount,
                 } : null,
                 ChainId = specProvider.ChainId,
-                ForkId = fork.Value.Id.HashBytes,
+                ForkId = fork.Id.HashBytes,
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
             };

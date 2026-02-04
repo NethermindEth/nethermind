@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -13,6 +16,8 @@ public class ForkConfigSummary
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public required ForkConfig? Last { get; init; }
+
+    public IReadOnlyList<ForkConfig>? All { get; init; }
 }
 
 public class ForkConfig

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -292,7 +292,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Account with code and no storageRoot via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
 
-        [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
-        ResultWrapper<JsonNode> eth_config();
+        [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork or the full fork schedule", IsSharable = true)]
+        ResultWrapper<JsonNode> eth_config([JsonRpcParameter(Description = "[Nethermind only] Additionally returns all scheduled forks when true", ExampleValue = "[true]")] bool showAllForks = false);
     }
 }
