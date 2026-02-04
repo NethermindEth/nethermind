@@ -17,19 +17,23 @@ partial class LogIndexStorage
     /// <summary>
     /// Does background compression for keys with the number of blocks above the threshold.
     /// </summary>
-    public interface ICompressor : IDisposable
-    {
-        int MinLengthToCompress { get; }
-        PostMergeProcessingStats GetAndResetStats();
-
-        bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
-        Task EnqueueAsync(int? topicIndex, byte[] dbKey);
-        Task WaitUntilEmptyAsync(TimeSpan waitTime = default, CancellationToken cancellationToken = default);
-
-        void Start();
-        Task StopAsync();
-    }
-
+    /// <remarks>
+    /// Consumes "transient" keys with value being too big (see <see cref="ILogIndexConfig.CompressionDistance"/>)
+    /// from <see cref="MergeOperator"/> and performs compression in the background. <br/>
+    /// Can utilize multiple threads, as per <see cref="ILogIndexConfig.MaxCompressionParallelism"/>.
+    ///
+    /// <para>
+    /// For each "transient" key in the queue performs the following:
+    /// <list type="number">
+    /// <item> reads the latest (uncompressed) value from the database; </item>
+    /// <item> truncates potentially reorgable blocks from the sequence (as compressed values become immutable); </item>
+    /// <item> compresses the sequence using specified TurboPFor <see cref="CompressionAlgorithm"/>; </item>
+    /// <item> stores the compressed value at a new pair using <c>filter || {first-block-number-in-the-sequence}</c> as a key; </item>
+    /// <item> queues truncation for the "transient" key via <see cref="MergeOp.Truncate"/> - to remove finalized blocks from the old sequence. </item>
+    /// </list>
+    /// </para>
+    /// Last 2 operations are done via a single <see cref="IWriteBatch"/> to maintain data consistency.
+    /// </remarks>
     private class Compressor : ICompressor
     {
         public int MinLengthToCompress { get; }
@@ -190,5 +194,18 @@ partial class LogIndexStorage
         public void Start() { }
         public Task StopAsync() => Task.CompletedTask;
         public void Dispose() { }
+    }
+
+    public interface ICompressor : IDisposable
+    {
+        int MinLengthToCompress { get; }
+        PostMergeProcessingStats GetAndResetStats();
+
+        bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
+        Task EnqueueAsync(int? topicIndex, byte[] dbKey);
+        Task WaitUntilEmptyAsync(TimeSpan waitTime = default, CancellationToken cancellationToken = default);
+
+        void Start();
+        Task StopAsync();
     }
 }

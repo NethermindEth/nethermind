@@ -7,21 +7,34 @@ namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {
+    /// <summary>
+    /// Custom operations for <see cref="MergeOperator"/>.
+    /// </summary>
     public enum MergeOp : byte
     {
         /// <summary>
         /// Reorgs from the provided block number,
         /// removing any numbers starting from it.
         /// </summary>
+        /// <remarks>
+        /// Added to support "fast" reorgs - without explicitly fetching value from the database.
+        /// </remarks>
         Reorg = 1,
 
         /// <summary>
         /// Truncates data up to the provided block number,
         /// removing it and anything coming before.
         /// </summary>
+        /// <remarks>
+        /// Added to remove numbers already saved in "finalized" keys (via <see cref="Compressor"/>)
+        /// from "transient" keys, without the need for a lock (in case of concurrent merges).
+        /// </remarks>
         Truncate = 2
     }
 
+    /// <summary>
+    /// Helper class to create and parse <see cref="MergeOp"/> operations.
+    /// </summary>
     public static class MergeOps
     {
         public const int Size = BlockNumberSize + 1;

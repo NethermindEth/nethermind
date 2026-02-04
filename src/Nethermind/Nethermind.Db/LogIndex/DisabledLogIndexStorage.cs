@@ -23,7 +23,7 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
         throw new NotSupportedException();
 
-    public IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to) =>
+    public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
         throw new NotSupportedException();
 
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>

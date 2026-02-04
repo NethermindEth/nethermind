@@ -12,6 +12,14 @@ namespace Nethermind.Db.LogIndex;
 public partial class LogIndexStorage
 {
     // TODO: pre-fetch next value?
+    /// <summary>
+    /// Enumerates block numbers from <see cref="LogIndexStorage"/> for the given <c>key</c>,
+    /// within the specified <c>from</c>/<c>to</c> range.
+    /// </summary>
+    /// <remarks>
+    /// Explicit enumerator approach is chosen over <see cref="IEnumerable"/>
+    /// to be later used in building enumerators "tree" for a given <c>eth_getLogs</c> filter.
+    /// </remarks>
     public sealed class LogIndexEnumerator : IEnumerator<int>
     {
         private const int CompletedIndex = int.MinValue;
@@ -34,12 +42,12 @@ public partial class LogIndexStorage
             _key = key;
             (_from, _to) = (from, to);
 
-            ReadOnlySpan<byte> fromKey = CreateDbKey(_key, SpecialPostfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
-            ReadOnlySpan<byte> toKey = CreateDbKey(_key, SpecialPostfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
+            ReadOnlySpan<byte> fromKey = CreateDbKey(_key, Postfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
+            ReadOnlySpan<byte> toKey = CreateDbKey(_key, Postfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
             _view = db.GetViewBetween(fromKey, toKey);
         }
 
-        private bool IsValid()
+        private bool IsWithinRange()
         {
             var current = Current;
             return current >= _from && current <= _to;
@@ -73,8 +81,8 @@ public partial class LogIndexStorage
                 _index = FindFromIndex();
             }
 
-            // If failed to find a valid segment
-            if (!IsValid())
+            // Check if the end of the range is reached
+            if (!IsWithinRange())
             {
                 _index = CompletedIndex;
                 return false;
@@ -94,8 +102,8 @@ public partial class LogIndexStorage
                 _index = 0;
             }
 
-            // If failed to find a valid segment
-            if (!IsValid())
+            // Check if the end of the range is reached
+            if (!IsWithinRange())
             {
                 _index = CompletedIndex;
                 return false;
@@ -107,6 +115,9 @@ public partial class LogIndexStorage
         private bool TryStartView()
         {
             ReadOnlySpan<byte> startKey = CreateDbKey(_key, _from, stackalloc byte[MaxDbKeyLength]);
+
+            // need to start either just before the startKey
+            // or at the beginning of a view otherwise
             return _view.StartBefore(startKey) || _view.MoveNext();
         }
 

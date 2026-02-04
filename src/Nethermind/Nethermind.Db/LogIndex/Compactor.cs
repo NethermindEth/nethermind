@@ -15,14 +15,6 @@ partial class LogIndexStorage
     /// <summary>
     /// Periodically forces background log index compaction for every N added blocks.
     /// </summary>
-    private interface ICompactor
-    {
-        CompactingStats GetAndResetStats();
-        bool TryEnqueue();
-        Task StopAsync();
-        Task<CompactingStats> ForceAsync();
-    }
-
     private class Compactor : ICompactor
     {
         private int? _lastAtMin;
@@ -150,5 +142,13 @@ partial class LogIndexStorage
         public bool TryEnqueue() => false;
         public Task StopAsync() => Task.CompletedTask;
         public Task<CompactingStats> ForceAsync() => Task.FromResult(new CompactingStats());
+    }
+
+    private interface ICompactor
+    {
+        CompactingStats GetAndResetStats();
+        bool TryEnqueue();
+        Task StopAsync();
+        Task<CompactingStats> ForceAsync();
     }
 }

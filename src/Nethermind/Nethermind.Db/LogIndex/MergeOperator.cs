@@ -4,14 +4,39 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {
-    // TODO: check if success=false + paranoid_checks=true is better than throwing exception
-    // TODO: tests for MergeOperator specifically
+    // TODO: check if success=false + paranoid_checks=true is better than throwing an exception
+    /// <summary>
+    /// Merges log index incoming block number sequences into a single DB value.
+    /// </summary>
+    /// <remarks>
+    /// Handles <see cref="IMergeableKeyValueStore.Merge"/> calls from <see cref="LogIndexStorage"/>.
+    /// Operator works <b>only</b> with uncompressed data under "transient" keys. <br/>
+    /// Each log index column family has its own merge operator instance,
+    /// <paramref name="topicIndex"/> parameter is used to find corresponding DB. <br/>
+    ///
+    /// <para>
+    /// Supports 2 different use cases depending on the incoming operand:
+    /// <list type="number">
+    /// <item>
+    /// In case if operand is a sequence of <see cref="Int32"/> block numbers -
+    /// directly concatenates with the existing DB value, validating order remains correct. <br/>
+    /// If value size grows to or over <see cref="ILogIndexConfig.CompressionDistance"/> block numbers -
+    /// queues it for compression (via <see cref="ICompressor.TryEnqueue"/>).
+    /// </item>
+    /// <item>
+    /// In operand is one of <see cref="MergeOp"/> - performs specified operation on the previously obtained sequence.
+    /// </item>
+    /// </list>
+    /// Check MergeOperator tests for the expected behavior.
+    /// </para>
+    /// </remarks>
     public class MergeOperator(ILogIndexStorage storage, ICompressor compressor, int? topicIndex) : IMergeOperator
     {
         private LogIndexUpdateStats _stats = new(storage);
@@ -30,7 +55,7 @@ partial class LogIndexStorage
             LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
 
         // Validate we are merging non-intersecting segments - to prevent data corruption
-        private static void AddEnsureSorted(ReadOnlySpan<byte> key, ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackwards)
+        private static void AddEnsureSorted(ReadOnlySpan<byte> key, ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackward)
         {
             if (value.Length == 0)
                 return;
@@ -38,8 +63,8 @@ partial class LogIndexStorage
             var nextBlock = ReadBlockNumber(value);
             var lastBlock = result.Count > 0 ? ReadLastBlockNumber(result.AsSpan()) : (int?)null;
 
-            if (!IsBlockNewer(next: nextBlock, last: lastBlock, isBackwards))
-                throw new LogIndexStateException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backwards: {isBackwards}).", key);
+            if (!IsBlockNewer(next: nextBlock, last: lastBlock, isBackward))
+                throw new LogIndexStateException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backward: {isBackward}).", key);
 
             result.AddRange(value);
         }

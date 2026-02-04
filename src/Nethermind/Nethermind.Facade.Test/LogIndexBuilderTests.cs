@@ -51,7 +51,7 @@ public class LogIndexBuilderTests
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
             throw new NotImplementedException();
 
-        public IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to) =>
+        public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
         public string GetDbSize() => 0L.SizeToString();

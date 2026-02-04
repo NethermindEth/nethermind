@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
@@ -32,6 +33,12 @@ public static class LogIndexStorageTestExtensions
                 result.Add(enumerator.Current);
 
             return result;
+        }
+
+        public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        {
+            LogIndexAggregate aggregate = storage.Aggregate(batch, isBackwardSync, stats);
+            return storage.AddReceiptsAsync(aggregate, stats);
         }
     }
 }

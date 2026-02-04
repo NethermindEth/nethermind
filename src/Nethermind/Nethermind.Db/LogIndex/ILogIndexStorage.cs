@@ -32,19 +32,14 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 
     /// <summary>
     /// Gets enumerator of block numbers between <paramref name="from"/> and <paramref name="to"/>
-    /// where given <paramref name="topic"/> has occurred at the given <paramref name="index"/>.
+    /// where given <paramref name="topic"/> has occurred at the given <paramref name="topicIndex"/>.
     /// </summary>
-    IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to);
+    IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to);
 
     /// <summary>
     /// Aggregates receipts from the <paramref name="batch"/> into in-memory <see cref="LogIndexAggregate"/>.
     /// </summary>
     LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
-
-    /// <summary>
-    /// Adds receipts from the <paramref name="batch"/> to the index.
-    /// </summary>
-    Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
 
     /// <summary>
     /// Adds receipts from the <paramref name="aggregate"/> to the index.

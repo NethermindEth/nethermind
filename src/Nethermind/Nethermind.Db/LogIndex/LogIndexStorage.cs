@@ -18,7 +18,68 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.LogIndex
 {
-    // TODO: use uint for block number?
+    // TODO: use uint instead of int for block number?
+    /// <summary>
+    /// Database for log index, mapping addresses/topics to a set of blocks they occur in.
+    /// </summary>
+    /// <remarks>
+    ///
+    /// <para>
+    /// Uses 6 column families (see <see cref="LogIndexColumns"/>):
+    /// <list type="bullet">
+    /// <item> 1 for metadata (for now stores only the earliest and the latest added block numbers); </item>
+    /// <item> 1 for address mappings; </item>
+    /// <item> 4 for topic mappings (separate 1 for each topic position). </item>
+    /// </list>
+    /// </para>
+    ///
+    /// <para>
+    /// Each unique filter (topic/address) has a set of DB mappings <c>filter -> block numbers</c>:
+    /// <list type="number">
+    /// <item>
+    ///     1 for newly coming numbers from backward sync; <br/>
+    ///     <b>key</b> here is formed as <c>filter || <see cref="Postfix.BackwardMerge"/></c>; <br/>
+    ///     <b>value</b> is a sequence of concatenated <see cref="Int32"/> block numbers in strictly descending order using little-endian encoding;
+    /// </item>
+    /// <item>
+    ///     1 for newly coming numbers from backward sync; <br/>
+    ///     <b>key</b> is <c>filter || <see cref="Postfix.ForwardMerge"/></c>; <br/>
+    ///     <b>value</b> is a sequence of concatenated <see cref="Int32"/> block numbers in strictly ascending order using little-endian encoding;
+    /// </item>
+    /// <item>
+    ///     any number of "finalized" mappings, storing block numbers in strictly ascending order, compressed via TurboPFor; <br/>
+    ///     key is <c>filter || {first-block-number-in-the-sequence}</c> with number encoded in big-endian (for correct RocksDB sorting); <br/>
+    ///     <b>value</b> is a sequence of block numbers compressed via TurboPFor (see <see cref="CompressionAlgorithm"/>).
+    /// </item>
+    /// </list>
+    /// Keys (1) and (2) are called "transient", as their content can change frequently,
+    /// while keys from (3) - "finalized", as their data is immutable. <br/>
+    /// Block sequences are not-intersecting and following a strict order, such that: <br/>
+    /// <code>
+    /// max({backward-sync-numbers}) &lt; any({finalized-numbers}) &lt; min({forward-sync-numbers})
+    /// </code>
+    /// </para>
+    ///
+    /// <para>
+    /// New blocks are added in batches in a strictly ascending or descending (backward sync) order without gaps. <br/>
+    /// Process is separated into 2 steps to improve parallelization:
+    /// <list type="number">
+    /// <item> in-memory dictionary is aggregated, mapping filter to a sequence of block numbers (see <see cref="Aggregate"/>); </item>
+    /// <item> each dictionary pair is saved to DB via <see cref="IMergeableKeyValueStore.Merge"/> call (see <see cref="AddReceiptsAsync"/>). </item>
+    /// </list>
+    /// Whole block batch is added in a single cross-family <see cref="IWriteBatch"/>. <br/>
+    /// Merging always happens to a "transient" (backward- or forward-sync) key, depending on the direction (passed as a parameter during aggregation).
+    /// After that, <see cref="MergeOperator"/> is responsible for concatenating sequences into a single <b>uncompressed</b> DB value,
+    /// and <see cref="Compressor"/> is forming "finalized" <b>compressed</b> values when "transient" sequences grow too big.
+    /// </para>
+    ///
+    /// <para>
+    /// Fetching block numbers for the given filters (see <see cref="GetEnumerator(int?, byte[], int, int)"/>)
+    /// is done by iterating keys with the <c>filter</c> using <see cref="ISortedView"/>,
+    /// with DB values being decomposed back into number sequences, and block numbers returned in ascending order.
+    /// Check <see cref="LogIndexEnumerator"/> for details.
+    /// </para>
+    /// </remarks>
     public partial class LogIndexStorage : ILogIndexStorage
     {
         private static class SpecialKey
@@ -29,7 +90,7 @@ namespace Nethermind.Db.LogIndex
             public static readonly byte[] CompressionAlgo = "alg"u8.ToArray();
         }
 
-        public static class SpecialPostfix
+        public static class Postfix
         {
             // Any ordered prefix seeking will start on it
             public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BlockNumberSize).ToArray();
@@ -447,12 +508,12 @@ namespace Nethermind.Db.LogIndex
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
             GetEnumerator(null, address.Bytes, from, to);
 
-        public IEnumerator<int> GetEnumerator(int index, Hash256 topic, int from, int to) =>
-            GetEnumerator(index, topic.BytesToArray(), from, to);
+        public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
+            GetEnumerator(topicIndex, topic.BytesToArray(), from, to);
 
-        public IEnumerator<int> GetEnumerator(int? index, byte[] key, int from, int to)
+        public IEnumerator<int> GetEnumerator(int? topicIndex, byte[] key, int from, int to)
         {
-            IDb db = GetDb(index);
+            IDb db = GetDb(topicIndex);
             ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
                 ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
 
@@ -695,12 +756,6 @@ namespace Nethermind.Db.LogIndex
             stats?.Adding.Include(Stopwatch.GetElapsedTime(totalTimestamp));
         }
 
-        public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
-        {
-            LogIndexAggregate aggregate = Aggregate(batch, isBackwardSync, stats);
-            return AddReceiptsAsync(aggregate, stats);
-        }
-
         protected virtual void MergeBlockNumbers(
             IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<int> numbers,
             bool isBackwardSync, LogIndexUpdateStats? stats
@@ -764,13 +819,13 @@ namespace Nethermind.Db.LogIndex
         }
 
         private static ReadOnlySpan<byte> CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> buffer, bool isBackwardSync) =>
-            CreateDbKey(key, isBackwardSync ? SpecialPostfix.BackwardMerge : SpecialPostfix.ForwardMerge, buffer);
+            CreateDbKey(key, isBackwardSync ? Postfix.BackwardMerge : Postfix.ForwardMerge, buffer);
 
         // RocksDB uses big-endian (lexicographic) ordering
         // +1 is needed as 0 is used for the backward-merge key
         private static void WriteKeyBlockNumber(Span<byte> dbKeyEnd, int number) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, number + 1);
 
-        private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.EndsWith(SpecialPostfix.BackwardMerge);
+        private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.EndsWith(Postfix.BackwardMerge);
 
         private static int BinarySearch(ReadOnlySpan<int> blocks, int from)
         {
