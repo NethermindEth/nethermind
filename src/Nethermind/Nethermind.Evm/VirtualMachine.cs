@@ -1487,7 +1487,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     internal void AddTransferLog(Address from, Address to, in UInt256 value)
     {
         // Self-transfers don't change balances, so don't log them
-        if (Spec.IsEip7708Enabled && value > UInt256.Zero && from != to)
+        if (Spec.IsEip7708Enabled && !value.IsZero && from != to)
         {
             AddLog(TransferLog.CreateTransfer(from, to, value));
         }
@@ -1495,7 +1495,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     internal void AddSelfDestructLog(Address contract, in UInt256 value)
     {
-        if (Spec.IsEip7708Enabled && value > UInt256.Zero)
+        if (Spec.IsEip7708Enabled && !value.IsZero)
         {
             AddLog(TransferLog.CreateSelfDestruct(contract, value));
         }
