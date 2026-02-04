@@ -10,7 +10,6 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -44,17 +43,21 @@ public abstract class TransactionForRpc
     public long? BlockNumber { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public ulong? BlockTimestamp { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    protected TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
     {
         Hash = transaction.Hash;
-        TransactionIndex = txIndex;
-        BlockHash = blockHash;
-        BlockNumber = blockNumber;
+        TransactionIndex = extraData.TxIndex;
+        BlockHash = extraData.BlockHash;
+        BlockNumber = extraData.BlockNumber;
+        BlockTimestamp = extraData.BlockTimestamp;
     }
 
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false) => new Transaction { Type = Type ?? default };
@@ -65,7 +68,7 @@ public abstract class TransactionForRpc
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
-        private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
+        private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
         /// <summary>
         /// Transaction type is determined based on type field or type-specific fields present in the request
@@ -157,7 +160,7 @@ public abstract class TransactionForRpc
             JsonSerializer.Serialize(writer, value, value.GetType(), options);
         }
 
-        public static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         {
             return _txTypes.FirstOrDefault(t => t.TxType == tx.Type)?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");
@@ -172,15 +175,8 @@ public abstract class TransactionForRpc
         }
     }
 
-    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null, ulong? chainId = null) =>
-        TransactionJsonConverter.FromTransaction(transaction, new()
-        {
-            ChainId = chainId,
-            TxIndex = txIndex,
-            BlockHash = blockHash,
-            BlockNumber = blockNumber,
-            BaseFee = baseFee
-        });
+    public static TransactionForRpc FromTransaction(Transaction transaction, in TransactionForRpcContext? extraData = null) =>
+        TransactionJsonConverter.FromTransaction(transaction, extraData ?? default);
 
     public static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
 }

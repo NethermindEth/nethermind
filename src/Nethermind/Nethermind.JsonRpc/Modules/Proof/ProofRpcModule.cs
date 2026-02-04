@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.Proofs;
@@ -115,7 +116,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = txs[receipt.Index];
 
             TransactionForRpcWithProof txWithProof = new();
-            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas, specProvider.ChainId);
+            TransactionForRpcContext extraData = new(
+                chainId: specProvider.ChainId,
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: receipt.Index,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: receipt);
+            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {
