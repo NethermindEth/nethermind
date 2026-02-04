@@ -13,8 +13,6 @@ using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
-using System.Linq;
-
 using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;

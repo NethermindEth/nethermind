@@ -13,7 +13,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
