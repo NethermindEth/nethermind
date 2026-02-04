@@ -51,7 +51,7 @@ public sealed class SimulateTxTracer : TxTracer
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         if (callType == ExecutionType.DELEGATECALL) return;
-        if (value > UInt256.Zero)
+        if (!value.IsZero)
         {
             _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
         }
@@ -60,7 +60,7 @@ public sealed class SimulateTxTracer : TxTracer
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         base.ReportSelfDestruct(address, balance, refundAddress);
-        if (balance > UInt256.Zero)
+        if (!balance.IsZero)
         {
             _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
         }
