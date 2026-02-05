@@ -5,19 +5,12 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging
 {
-    public class OneLoggerLogManager : ILogManager
+    public class OneLoggerLogManager(ILogger logger) : ILogManager
     {
-        private readonly ILogger _logger;
+        public ILogger GetClassLogger<T>() => logger;
 
-        public OneLoggerLogManager(ILogger logger)
-        {
-            _logger = logger;
-        }
+        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => logger;
 
-        public ILogger GetClassLogger<T>() => _logger;
-
-        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => _logger;
-
-        public ILogger GetLogger(string loggerName) => _logger;
+        public ILogger GetLogger(string loggerName) => logger;
     }
 }

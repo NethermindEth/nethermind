@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly ITxGossipPolicy _txGossipPolicy;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
-        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
+        private readonly Func<TransactionsMessageChunk, CancellationToken, ValueTask> _handleSlow;
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -233,19 +233,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
+        protected readonly record struct TransactionsMessageChunk(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
+
         protected void Handle(TransactionsMessage msg)
         {
-            IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsMessageChunk(msg.Transactions, 0), _handleSlow);
         }
 
-        protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        protected virtual ValueTask HandleSlow(TransactionsMessageChunk request, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
             try
             {
-                int startIdx = request.startIndex;
+                int startIdx = request.StartIndex;
                 bool isTrace = Logger.IsTrace;
 
                 for (int i = startIdx; i < transactionsSpan.Length; i++)
@@ -254,15 +255,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (i == startIdx)
                         {
-                            // Timeout immediately on the first transaction. This indicate that this task spent too much
-                            // time in the queue as the queue is probably full. In this case, queuing again wont help
+                            // Timeout immediately on the first transaction. This indicates that this task spent too much
+                            // time in the queue as the queue is probably full. In this case, queuing again won't help
                             // as it later will just take as much time in the queue, then timing out again.
                             if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
                             return ValueTask.CompletedTask;
                         }
 
                         // Reschedule and with different start index
-                        BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow);
+                        BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsMessageChunk(transactions, i), HandleSlow);
                         return ValueTask.CompletedTask;
                     }
 

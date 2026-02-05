@@ -258,7 +258,7 @@ public class HistoryPruner : IHistoryPruner
                 {
                     try
                     {
-                        if (!_backgroundTaskScheduler.TryScheduleTask(1,
+                        if (!_backgroundTaskScheduler.TryScheduleTask(nameof(HistoryPruner),
                                 (_, backgroundTaskToken) =>
                                 {
                                     try
