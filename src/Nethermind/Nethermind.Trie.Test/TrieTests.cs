@@ -1084,6 +1084,7 @@ namespace Nethermind.Trie.Test
 
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
         [Retry(3)]
+        [NonParallelizable]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
                 int accountsCount,

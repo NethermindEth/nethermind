@@ -897,6 +897,7 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [Retry(3)]
+        [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()
         {
             MemDb memDb = new();
@@ -937,6 +938,7 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [Retry(3)]
+        [NonParallelizable]
         public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
             // TODO: Check why slow
