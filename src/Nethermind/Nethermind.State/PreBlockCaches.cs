@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
-using Nethermind.Evm.State;
 using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;

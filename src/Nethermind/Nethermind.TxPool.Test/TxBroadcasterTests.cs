@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using FastEnumUtility;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;

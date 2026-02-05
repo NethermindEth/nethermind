@@ -170,6 +170,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         => Consume(ref gas, baseCost + dataCost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void OnBeforeInstructionTrace(in EthereumGasPolicy gas, int pc, Instruction instruction, int depth) { }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void OnAfterInstructionTrace(in EthereumGasPolicy gas) { }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
 
