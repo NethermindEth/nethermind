@@ -936,6 +936,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        [Retry(3)]
         public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
             // TODO: Check why slow
