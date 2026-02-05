@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.State;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
@@ -93,7 +94,7 @@ public class BlockAccessListTests()
     {
         // Note: UInt256 constructor from bytes needs isBigEndian: true to match RLP encoding
         StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-        SlotChanges expected = new(0, [parentHashStorageChange]);
+        SlotChanges expected = new(0, new SortedList<ushort, StorageChange> { { parentHashStorageChange.BlockAccessIndex, parentHashStorageChange } });
 
         // Generate expected RLP from the object (uses variable-length encoding per EIP-7928)
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
@@ -171,7 +172,7 @@ public class BlockAccessListTests()
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SlotChanges slotChanges = new(0xbad, [storageChange, storageChange]);
+        SlotChanges slotChanges = new(0xbad, new SortedList<ushort, StorageChange> { { storageChange.BlockAccessIndex, storageChange } });
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
@@ -269,16 +270,16 @@ public class BlockAccessListTests()
     {
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer());
 
-        // Get the main world state which should be a TracedAccessWorldState after DI fix
+        // Get the main world state which should be a ParallelWorldState after DI fix
         IWorldState mainWorldState = testBlockchain.MainWorldState;
-        TracedAccessWorldState? tracedWorldState = mainWorldState as TracedAccessWorldState;
-        Assert.That(tracedWorldState, Is.Not.Null, "Main world state should be TracedAccessWorldState");
+        ParallelWorldState? parallelWorldState = mainWorldState as ParallelWorldState;
+        Assert.That(parallelWorldState, Is.Not.Null, "Main world state should be ParallelWorldState");
 
         // Begin scope and initialize state
         using IDisposable _ = mainWorldState.BeginScope(IWorldState.PreGenesis);
         InitWorldState(mainWorldState);
 
-        tracedWorldState!.BlockAccessList = new();
+        parallelWorldState!.GeneratedBlockAccessList = new();
 
         const long gasUsed = 167340;
         const long gasUsedBeforeFinal = 92100;
@@ -365,7 +366,7 @@ public class BlockAccessListTests()
         // Block processedBlock = Build.A.Block.TestObject;
 
         // GeneratedBlockAccessList is set by the block processor during execution
-        BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList!.Value;
+        BlockAccessList blockAccessList = processedBlock.GeneratedBlockAccessList!;
         Assert.That(blockAccessList.AccountChanges.Count, Is.EqualTo(10));
 
         Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
@@ -456,7 +457,7 @@ public class BlockAccessListTests()
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange> { { parentHashStorageChange.BlockAccessIndex, parentHashStorageChange } }) } },
                 [],
                 [],
                 [],
@@ -469,7 +470,7 @@ public class BlockAccessListTests()
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
                 Eip4788Constants.BeaconRootsAddress,
                 new SortedDictionary<UInt256, SlotChanges>() {
-                    { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) }
+                    { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange> { { timestampStorageChange.BlockAccessIndex, timestampStorageChange } }) }
                 },
                 [new(eip4788Slot2)],
                 [],
@@ -541,9 +542,10 @@ public class BlockAccessListTests()
             yield return new TestCaseData(storageReadsRlp, storageReadsExpected)
             { TestName = "storage_reads" };
 
+            StorageChange sc = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
             AccountChanges storageChangesExpected = new(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange> { { sc.BlockAccessIndex, sc } }) } },
                 [],
                 [],
                 [],
@@ -585,7 +587,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip2935Constants.BlockHashHistoryAddress, new(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, new SortedList<ushort, StorageChange> { { parentHashStorageChange.BlockAccessIndex, parentHashStorageChange } }) } },
                     [],
                     [],
                     [],
@@ -593,7 +595,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip4788Constants.BeaconRootsAddress, new(
                     Eip4788Constants.BeaconRootsAddress,
-                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<ushort, StorageChange> { { timestampStorageChange.BlockAccessIndex, timestampStorageChange } }) } },
                     [new(0x200b)],
                     [],
                     [],
@@ -727,7 +729,7 @@ public class BlockAccessListTests()
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
         SlotChanges slotChanges = accountChanges.StorageChanges.First();
         Assert.That(slotChanges.Changes.Count, Is.EqualTo(1));
-        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(firstWriteValue));
+        Assert.That(slotChanges.Changes.First().Value.NewValue, Is.EqualTo(firstWriteValue));
 
         // Take snapshot before second write
         int snapshot = bal.TakeSnapshot();
@@ -739,7 +741,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         slotChanges = accountChanges!.StorageChanges.First();
         Assert.That(slotChanges.Changes.Count, Is.EqualTo(1));
-        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(secondWriteValue));
+        Assert.That(slotChanges.Changes.First().Value.NewValue, Is.EqualTo(secondWriteValue));
 
         // Revert to before second write
         bal.Restore(snapshot);
@@ -751,7 +753,7 @@ public class BlockAccessListTests()
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should have no storage reads");
         slotChanges = accountChanges.StorageChanges.First();
         Assert.That(slotChanges.Changes.Count, Is.EqualTo(1));
-        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(firstWriteValue), "First write value should be restored");
+        Assert.That(slotChanges.Changes.First().Value.NewValue, Is.EqualTo(firstWriteValue), "First write value should be restored");
     }
 
     [Test]
@@ -792,7 +794,7 @@ public class BlockAccessListTests()
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should have first storage change");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have storage read - it was converted to change");
         SlotChanges slotChanges = accountChanges.StorageChanges.First();
-        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(firstWriteValue));
+        Assert.That(slotChanges.Changes.First().Value.NewValue, Is.EqualTo(firstWriteValue));
     }
 
     [Test]
@@ -1005,7 +1007,7 @@ public class BlockAccessListTests()
         // Verify we have v3
         AccountChanges? accountChanges = bal.GetAccountChanges(address);
         SlotChanges slotChanges = accountChanges!.StorageChanges.First();
-        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(v3));
+        Assert.That(slotChanges.Changes.First().Value.NewValue, Is.EqualTo(v3));
 
         // Revert to after first write
         bal.Restore(snapshotAfterFirst);
@@ -1014,7 +1016,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
         slotChanges = accountChanges.StorageChanges.First();
-        Assert.That(slotChanges.Changes.First().NewValue, Is.EqualTo(v1), "Should restore to first write value");
+        Assert.That(slotChanges.Changes.First().Value.NewValue, Is.EqualTo(v1), "Should restore to first write value");
     }
 
     [Test]
@@ -1120,7 +1122,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v2));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v2));
 
         // Revert second write - this triggers the code path with previousStorage != null
         bal.Restore(snapshot);
@@ -1129,7 +1131,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "First change should be restored");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have any storage reads");
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Should have v1 value");
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1), "Should have v1 value");
     }
 
     [Test]
@@ -1172,7 +1174,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "First change should be restored");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Should NOT have read - it was removed by first SSTORE");
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1));
     }
 
     [Test]
@@ -1201,7 +1203,7 @@ public class BlockAccessListTests()
 
         // Verify subcall value
         AccountChanges? accountChanges = bal.GetAccountChanges(address);
-        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v2));
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v2));
 
         // Subcall reverts
         bal.Restore(subcallSnapshot);
@@ -1210,7 +1212,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1));
     }
 
     [Test]
@@ -1252,7 +1254,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1));
     }
 
     [Test]
@@ -1285,18 +1287,18 @@ public class BlockAccessListTests()
 
         // Verify v3
         AccountChanges? accountChanges = bal.GetAccountChanges(address);
-        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v3));
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v3));
 
         // Revert Sub2
         bal.Restore(snapshot2);
         accountChanges = bal.GetAccountChanges(address);
-        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v2), "Should have v2 after Sub2 revert");
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v2), "Should have v2 after Sub2 revert");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "No reads");
 
         // Revert Sub1
         bal.Restore(snapshot1);
         accountChanges = bal.GetAccountChanges(address);
-        Assert.That(accountChanges!.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Should have v1 after Sub1 revert");
+        Assert.That(accountChanges!.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1), "Should have v1 after Sub1 revert");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "No reads");
     }
 
@@ -1316,7 +1318,7 @@ public class BlockAccessListTests()
         // Should have a change (not a read)
         AccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Should track change to zero");
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(UInt256.Zero));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(UInt256.Zero));
 
         // Take snapshot
         int snapshot = bal.TakeSnapshot();
@@ -1330,7 +1332,7 @@ public class BlockAccessListTests()
         // Should have change back to zero
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1));
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(UInt256.Zero));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -1402,7 +1404,7 @@ public class BlockAccessListTests()
         Assert.That(accountChanges!.BalanceChanges.Count(), Is.EqualTo(0), "Balance change should be reverted");
         Assert.That(accountChanges.StorageChanges.Count(), Is.EqualTo(1), "Storage changes should be restored after revert");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0), "Storage reads from selfdestruct should be removed after revert");
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1), "Storage change value should be restored");
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1), "Storage change value should be restored");
     }
 
     [Test]
@@ -1463,9 +1465,9 @@ public class BlockAccessListTests()
 
         // Verify each slot's value
         SlotChanges[] slots = [.. accountChanges.StorageChanges];
-        Assert.That(slots.Any(s => s.Slot == slot1 && s.Changes.First().NewValue == v1), "Slot 1 should be restored");
-        Assert.That(slots.Any(s => s.Slot == slot2 && s.Changes.First().NewValue == v2), "Slot 2 should be restored");
-        Assert.That(slots.Any(s => s.Slot == slot3 && s.Changes.First().NewValue == v3), "Slot 3 should be restored");
+        Assert.That(slots.Any(s => s.Slot == slot1 && s.Changes.First().Value.NewValue == v1), "Slot 1 should be restored");
+        Assert.That(slots.Any(s => s.Slot == slot2 && s.Changes.First().Value.NewValue == v2), "Slot 2 should be restored");
+        Assert.That(slots.Any(s => s.Slot == slot3 && s.Changes.First().Value.NewValue == v3), "Slot 3 should be restored");
     }
 
     [Test]
@@ -1540,7 +1542,7 @@ public class BlockAccessListTests()
         accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges!.StorageChanges.Count(), Is.EqualTo(1), "Main call's storage change should be restored");
         Assert.That(accountChanges.StorageReads.Count(), Is.EqualTo(0));
-        Assert.That(accountChanges.StorageChanges.First().Changes.First().NewValue, Is.EqualTo(v1));
+        Assert.That(accountChanges.StorageChanges.First().Changes.First().Value.NewValue, Is.EqualTo(v1));
     }
 
     [Test]
