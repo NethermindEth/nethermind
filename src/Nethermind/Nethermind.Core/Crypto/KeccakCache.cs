@@ -30,11 +30,11 @@ public static unsafe class KeccakCache
     public const int Count = BucketMask + 1;
 
     private const int BucketMask = 0x0001_FFFF;
-    private const ulong HashMask = 0xFFFF_FFFF_FFFF_0000;  // Bits 16-63: hash storage (currently 32 bits in 16-47, expandable to 48 bits)
-    private const ulong LockMarker = 0x0000_0000_0000_8000;
-    private const ulong VersionMask = 0x0000_0000_0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
-    private const ulong VersionIncrement = 0x0000_0000_0000_0080;  // Bit 7: increment step for version
-    private const ulong HashLengthMask = HashMask | 0x7F;  // Hash (bits 16-63) + Length (bits 0-6)
+    private const uint HashMask = unchecked((uint)~BucketMask);
+    private const uint LockMarker = 0x0000_8000;
+    private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
+    private const uint VersionIncrement = 0x0000_0080;  // Bit 7: increment step for version
+    private const uint HashLengthMask = HashMask | 0x7F;  // Hash (bits 17-31) + Length (bits 0-6)
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
@@ -82,11 +82,11 @@ public static unsafe class KeccakCache
 
         // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
-        ulong combined = (HashMask & ((ulong)hashCode << 16)) | ((ulong)input.Length & 0x7F);
+        uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
         // Seqlock pattern: read sequence, speculatively read data, verify sequence unchanged.
         // This is lock-free for reads - no CAS required unless we need to write.
-        ulong seq1 = Volatile.Read(ref e.Combined);
+        uint seq1 = Volatile.Read(ref e.Combined);
 
         // Early exit: lock held or hash/length mismatch (ignoring version bit).
         if ((seq1 & LockMarker) == 0 && (seq1 & HashLengthMask) == combined)
@@ -153,7 +153,7 @@ public static unsafe class KeccakCache
 
         keccak256 = ValueKeccak.Compute(input);
 
-        ulong existing = Volatile.Read(ref e.Combined);
+        uint existing = Volatile.Read(ref e.Combined);
 
         // Skip write if hash/length match (regardless of version) - reduces cache line invalidation.
         if ((existing & HashLengthMask) == combined)
@@ -163,8 +163,8 @@ public static unsafe class KeccakCache
 
         // Increment 8-bit version counter (wraps after 256) to detect ABA in seqlock readers.
         // 256 writes needed to wrap = ~8-13μs, far exceeding ~50ns read window.
-        ulong newVersion = ((existing & VersionMask) + VersionIncrement) & VersionMask;
-        ulong toStore = combined | newVersion;
+        uint newVersion = ((existing & VersionMask) + VersionIncrement) & VersionMask;
+        uint toStore = combined | newVersion;
 
         // Try to set to the combined locked state, if not already locked.
         if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, toStore | LockMarker, existing) == existing)
@@ -219,14 +219,14 @@ public static unsafe class KeccakCache
         /// </summary>
         public const int Size = 128;
 
-        private const int PayloadStart = sizeof(ulong);
+        private const int PayloadStart = sizeof(uint);
         private const int ValueStart = Size - ValueHash256.MemorySize;
         public const int MaxPayloadLength = ValueStart - PayloadStart;
 
         /// <summary>
         /// Represents a combined value for: hash, length and a potential <see cref="KeccakCache.LockMarker"/>.
         /// </summary>
-        [FieldOffset(0)] public ulong Combined;
+        [FieldOffset(0)] public uint Combined;
 
         /// <summary>
         /// The actual value
