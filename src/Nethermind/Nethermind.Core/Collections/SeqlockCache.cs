@@ -55,7 +55,7 @@ public sealed class SeqlockCache<TKey, TValue>
     private const long HashMask = 0x0000_0001_FFFF_FE00;                   // bits 9-36 (28 bits)
 
     private const long SeqMask = 0x0000_0000_0000_01FE;                    // bits 1-8 (8 bits)
-    private const long SeqInc  = 0x0000_0000_0000_0002;                    // +1 in seq field
+    private const long SeqInc = 0x0000_0000_0000_0002;                    // +1 in seq field
 
     private const long OccupiedBit = 1L;                                   // bit 0
 
