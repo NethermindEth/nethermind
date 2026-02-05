@@ -36,7 +36,7 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = new FilterStore(new TimerFactory(), 600, 300);
+        _filterStore = new FilterStore(new TimerFactory(), 400, 100);
         _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
         _logManager = LimboLogs.Instance;
