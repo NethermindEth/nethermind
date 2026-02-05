@@ -21,6 +21,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.None)]
 public class FilterManagerTests
 {
     private FilterStore _filterStore = null!;
