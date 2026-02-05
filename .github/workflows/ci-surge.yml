@@ -1,11 +1,11 @@
-name: "Taiko Integration Tests"
+name: "Surge Integration Tests"
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "src/Nethermind/Nethermind.Taiko/**"
-      - ".github/workflows/ci-taiko.yml"
+      - ".github/workflows/ci-taiko-surge.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,7 +20,7 @@ jobs:
     runs-on: [ubuntu-latest]
     timeout-minutes: 30
     env:
-      TAIKO_MONO_DIR: taiko-mono
+      SURGE_TAIKO_MONO_DIR: surge-taiko-mono
       PACAYA_FORK_TAIKO_MONO_DIR: pacaya-fork-taiko-mono
       SHASTA_FORK_TAIKO_MONO_DIR: shasta-fork-taiko-mono
 
@@ -33,9 +33,9 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          repository: taikoxyz/taiko-mono
-          path: ${{ env.TAIKO_MONO_DIR }}
-          ref: main
+          repository: NethermindEth/surge-taiko-mono
+          path: ${{ env.SURGE_TAIKO_MONO_DIR }}
+          ref: surge-shasta
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: ${{ env.TAIKO_MONO_DIR }}/go.mod
+          go-version-file: ${{ env.SURGE_TAIKO_MONO_DIR }}/go.mod
           cache: true
 
       - name: Set up Git to use HTTPS
@@ -62,10 +62,10 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: ${{ env.TAIKO_MONO_DIR }}/pnpm-lock.yaml
+          cache-dependency-path: ${{ env.SURGE_TAIKO_MONO_DIR }}/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: ${{ env.TAIKO_MONO_DIR }}
+        working-directory: ${{ env.SURGE_TAIKO_MONO_DIR }}
         shell: bash
         run: pnpm install
 
@@ -73,27 +73,27 @@ jobs:
         with:
           repository: taikoxyz/taiko-mono
           path: >-
-            ${{ format('{0}/{1}', env.TAIKO_MONO_DIR,
+            ${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR,
             env.PACAYA_FORK_TAIKO_MONO_DIR) }}
           ref: taiko-alethia-protocol-v2.3.0-devnet-shasta-test
 
       - uses: actions/checkout@v6
         with:
-          repository: taikoxyz/taiko-mono
+          repository: NethermindEth/surge-taiko-mono
           path: >-
-            ${{ format('{0}/{1}', env.TAIKO_MONO_DIR,
+            ${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR,
             env.SHASTA_FORK_TAIKO_MONO_DIR) }}
-          ref: taiko-alethia-protocol-v3.0.0
+          ref: surge-alethia-protocol-v3.0.0
 
       - name: Install pnpm dependencies for pacaya fork taiko-mono
         working-directory: >-
-          ${{ format('{0}/{1}', env.TAIKO_MONO_DIR,
+          ${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR,
           env.PACAYA_FORK_TAIKO_MONO_DIR) }}
         run: cd ./packages/protocol && pnpm install
 
       - name: Install pnpm dependencies for shasta fork taiko-mono
         working-directory: >-
-          ${{ format('{0}/{1}', env.TAIKO_MONO_DIR,
+          ${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR,
           env.SHASTA_FORK_TAIKO_MONO_DIR) }}
         run: cd ./packages/protocol && pnpm install
 
@@ -131,7 +131,7 @@ jobs:
 
       - name: Update taiko-client docker-compose.yml with new image
         working-directory: >-
-          ${{ env.TAIKO_MONO_DIR }}/packages/taiko-client/internal/docker/nodes
+          ${{ env.SURGE_TAIKO_MONO_DIR }}/packages/taiko-client/internal/docker/nodes
         run: |
           docker_compose_file="docker-compose.yml"
           if [ -f "$docker_compose_file" ]; then
@@ -155,18 +155,18 @@ jobs:
 
       - name: Run Tests on ${{ matrix.execution_node }} execution engine
         working-directory: >-
-          ${{ env.TAIKO_MONO_DIR }}/packages/taiko-client
+          ${{ env.SURGE_TAIKO_MONO_DIR }}/packages/taiko-client
         env:
           L2_NODE: ${{ matrix.execution_node }}
         run: >-
-          SHASTA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.TAIKO_MONO_DIR, env.SHASTA_FORK_TAIKO_MONO_DIR) }}
-          PACAYA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.TAIKO_MONO_DIR, env.PACAYA_FORK_TAIKO_MONO_DIR) }}
+          SHASTA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR, env.SHASTA_FORK_TAIKO_MONO_DIR) }}
+          PACAYA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR, env.PACAYA_FORK_TAIKO_MONO_DIR) }}
           make test
 
       - name: Codecov.io
         uses: codecov/codecov-action@v5
         with:
-          files: ${{ env.TAIKO_MONO_DIR }}/packages/taiko-client/coverage.out
+          files: ${{ env.SURGE_TAIKO_MONO_DIR }}/packages/taiko-client/coverage.out
           flags: taiko-client
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
