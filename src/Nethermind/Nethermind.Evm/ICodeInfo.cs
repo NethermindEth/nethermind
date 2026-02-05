@@ -43,6 +43,11 @@ public interface ICodeInfo
     /// </summary>
     ReadOnlyMemory<byte> CodeSection => Code;
     ReadOnlySpan<byte> CodeSpan { get; }
+    /// <summary>
+    /// Gets the effective code size for <see cref="Instruction.EXTCODESIZE"/>.
+    /// By default, this returns the length of <see cref="CodeSpan"/>.
+    /// </summary>
+    uint ExtCodeSize => (uint)CodeSpan.Length;
 
     /// <summary>
     /// Gets the data section, which is reserved for additional data segments in EOF.

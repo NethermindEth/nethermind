@@ -75,6 +75,11 @@ public sealed class BlockCachePreWarmer(
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
             }
+
+            if (parent is not null && !cancellationToken.IsCancellationRequested)
+            {
+                WarmupAccessListsSequential(suggestedBlock, parent, spec, systemAccessLists);
+            }
         }
 
         return Task.CompletedTask;
@@ -219,6 +224,43 @@ public sealed class BlockCachePreWarmer(
         catch (Exception ex)
         {
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
+        }
+    }
+
+    private void WarmupAccessListsSequential(Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    {
+        if (!spec.UseTxAccessLists && systemAccessLists.Length == 0) return;
+
+        IReadOnlyTxProcessorSource env = _envPool.Get();
+        try
+        {
+            using IReadOnlyTxProcessingScope scope = env.Build(parent);
+
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                scope.WorldState.WarmUp(systemAccessList.GetAccessList(block, spec));
+            }
+
+            if (spec.UseTxAccessLists)
+            {
+                foreach (Transaction tx in block.Transactions)
+                {
+                    AccessList? accessList = tx.AccessList;
+                    if (accessList is null || accessList.IsEmpty) continue;
+                    scope.WorldState.WarmUp(accessList);
+                }
+            }
+        }
+        catch (MissingTrieNodeException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming access lists", ex);
+        }
+        finally
+        {
+            _envPool.Return(env);
         }
     }
 

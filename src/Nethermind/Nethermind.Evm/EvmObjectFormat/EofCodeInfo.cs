@@ -12,6 +12,7 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
     public ReadOnlyMemory<byte> Code => EofContainer.Container;
     public int Version => EofContainer.Header.Version;
     public bool IsEmpty => EofContainer.IsEmpty;
+    public uint ExtCodeSize => (uint)EofValidator.MAGIC.Length;
     public ReadOnlyMemory<byte> TypeSection => EofContainer.TypeSection;
     public ReadOnlyMemory<byte> CodeSection => EofContainer.CodeSection;
     public ReadOnlyMemory<byte> DataSection => EofContainer.DataSection;
