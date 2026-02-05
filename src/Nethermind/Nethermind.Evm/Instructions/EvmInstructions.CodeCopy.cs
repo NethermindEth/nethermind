@@ -293,20 +293,8 @@ internal static partial class EvmInstructions
             }
         }
 
-        // No optimization applied: load the account's code from storage.
-        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
-            .CodeSpan;
-        // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
-        if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
-        {
-            stack.PushUInt32<TTracingInst>(2);
-        }
-        else
-        {
-            // Otherwise, push the actual code length.
-            stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
-        }
+        uint codeSize = vm.GetExtCodeSizeCached(address, spec);
+        stack.PushUInt32<TTracingInst>(codeSize);
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
