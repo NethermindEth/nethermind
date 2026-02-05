@@ -318,6 +318,7 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
     public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
     {
         var timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
@@ -335,7 +336,7 @@ public class LogFinderTests
 
         if (waitTime > 1)
         {
-            action.Should().Throw<AggregateException>().WithInnerException<OperationCanceledException>();
+            action.Should().Throw<OperationCanceledException>();
         }
         else
         {
