@@ -29,6 +29,7 @@ using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
