@@ -398,14 +398,14 @@ public class BlockValidator(
 
     public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
-        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
-        {
-            error = BlockErrorMessages.MissingBlockLevelAccessList;
+        // if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
+        // {
+        //     error = BlockErrorMessages.MissingBlockLevelAccessList;
 
-            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
+        //     if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
 
-            return false;
-        }
+        //     return false;
+        // }
 
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
