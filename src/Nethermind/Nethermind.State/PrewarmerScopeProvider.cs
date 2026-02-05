@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
@@ -46,7 +46,7 @@ public class PrewarmerScopeProvider(
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
     {
-        ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
+        SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
@@ -154,7 +154,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
+        SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache
     ) : IWorldStateScopeProvider.IStorageTree

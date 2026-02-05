@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -13,7 +14,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public readonly struct StorageCell : IEquatable<StorageCell>
+    public readonly struct StorageCell : IEquatable<StorageCell>, IHash64bit<StorageCell>
     {
         private readonly UInt256 _index;
         private readonly bool _isHash;
@@ -44,10 +45,15 @@ namespace Nethermind.Core
             _isHash = true;
         }
 
-        public bool Equals(StorageCell other) =>
+        public bool Equals(in StorageCell other) =>
             _isHash == other._isHash &&
             Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) == Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)) &&
             Address.Equals(other.Address);
+
+        public bool Equals(StorageCell other) => Equals(in other);
+
+        public long GetHashCode64()
+            => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index))) ^ Address.GetHashCode64();
 
         public override bool Equals(object? obj)
         {
