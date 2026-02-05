@@ -60,9 +60,11 @@ namespace Nethermind.Core
                 if (db.PreferWriteByArray)
                 {
                     db.Set(key.Bytes, value, writeFlags);
-                    return;
                 }
-                db.PutSpan(key.Bytes, value, writeFlags);
+                else
+                {
+                    db.PutSpan(key.Bytes, value, writeFlags);
+                }
             }
 
             public void Set(Hash256 key, in CappedArray<byte> value, WriteFlags writeFlags = WriteFlags.None)
