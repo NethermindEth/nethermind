@@ -8,7 +8,8 @@ namespace Nethermind.Core.Collections;
 /// </summary>
 /// <remarks>
 /// Types implementing this interface can be used with caches that require extended hash bits
-/// for collision resistance (e.g., PreWarmCache with 50-bit collision detection).
+/// for collision resistance (e.g., SeqlockCache, which currently uses 28 bits for hash signature
+/// and 15 bits for bucket index, for 43 bits of total hash coverage).
 /// The 64-bit hash should have good distribution across all bits.
 /// </remarks>
 public interface IHash64bit<TKey>
