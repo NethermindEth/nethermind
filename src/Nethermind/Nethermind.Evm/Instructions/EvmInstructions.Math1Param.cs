@@ -120,8 +120,10 @@ internal static partial class EvmInstructions
             Instruction opPush2 = (Instruction)Add(ref codeRef, programCounter);
             Instruction opJumpi = (Instruction)Add(ref codeRef, programCounter + 3);
 
+
             if (opPush2 == Instruction.PUSH2 && opJumpi == Instruction.JUMPI)
             {
+                vm.OpCodeCount += 2;
                 stack.PopLimbo(); // remove ISZERO argument from stack
 
                 TGasPolicy.Consume(ref gas, GasCostOf.JumpI + GasCostOf.VeryLow);
