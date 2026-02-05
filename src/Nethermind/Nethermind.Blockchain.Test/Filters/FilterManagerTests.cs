@@ -254,6 +254,7 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     [TestCase(1, 1)]
     [TestCase(5, 3)]
+    [NonParallelizable]
     public void logs_should_have_correct_log_indexes(int filtersCount, int logsPerTx)
     {
         const int txCount = 10;

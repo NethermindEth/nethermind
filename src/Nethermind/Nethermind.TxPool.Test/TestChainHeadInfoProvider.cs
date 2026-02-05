@@ -26,5 +26,10 @@ internal class TestChainHeadInfoProvider : IChainHeadInfoProvider
     public ProofVersion CurrentProofVersion { get; set; }
     public bool IsSyncing { get; set; }
     public bool IsProcessingBlock { get; set; }
-    public event EventHandler<BlockReplacementEventArgs>? HeadChanged { add { } remove { } }
+    public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
+
+    public void RaiseHeadChanged(BlockReplacementEventArgs args)
+    {
+        HeadChanged?.Invoke(this, args);
+    }
 }

@@ -2272,33 +2272,13 @@ namespace Nethermind.TxPool.Test
             return peer;
         }
 
-        private static ISpecProvider GetLondonSpecProvider()
-        {
-            var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
-            return specProvider;
-        }
+        private static ISpecProvider GetLondonSpecProvider() => new TestSpecProvider(London.Instance);
 
-        private static ISpecProvider GetCancunSpecProvider()
-        {
-            var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
-            return specProvider;
-        }
+        private static ISpecProvider GetCancunSpecProvider() => new TestSpecProvider(Cancun.Instance);
 
-        private static ISpecProvider GetPragueSpecProvider()
-        {
-            var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Prague.Instance);
-            return specProvider;
-        }
+        private static ISpecProvider GetPragueSpecProvider() => new TestSpecProvider(Prague.Instance);
 
-        private static ISpecProvider GetOsakaSpecProvider()
-        {
-            var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-            return specProvider;
-        }
+        private static ISpecProvider GetOsakaSpecProvider() => new TestSpecProvider(Osaka.Instance);
 
         private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer = false, int transactionsPerPeer = 10)
         {
