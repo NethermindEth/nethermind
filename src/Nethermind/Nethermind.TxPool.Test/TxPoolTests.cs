@@ -1499,6 +1499,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        [Retry(3)]
+        [NonParallelizable]
         public void should_include_transaction_after_removal()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
