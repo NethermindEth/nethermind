@@ -35,7 +35,7 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = new FilterStore(new TimerFactory(), 20, 10);
+        _filterStore = new FilterStore(new TimerFactory(), 600, 300);
         _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
         _logManager = LimboLogs.Instance;
@@ -52,7 +52,7 @@ public class FilterManagerTests
     {
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
         _filterManager.GetLogs(0).Should().NotBeEmpty();
-        await Task.Delay(60);
+        await Task.Delay(600);
         _filterManager.GetLogs(0).Should().BeEmpty();
     }
 

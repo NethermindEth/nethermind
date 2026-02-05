@@ -28,6 +28,7 @@ namespace Nethermind.Trie.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
         private ILogger _logger;
