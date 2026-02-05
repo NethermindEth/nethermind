@@ -19,6 +19,7 @@ using Nethermind.Core.Test;
 
 namespace Nethermind.TxPool.Test;
 
+[Parallelizable(ParallelScope.All)]
 internal class DelegatedAccountFilterTest
 {
     [Test]

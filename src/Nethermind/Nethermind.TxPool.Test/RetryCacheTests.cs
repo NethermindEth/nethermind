@@ -13,6 +13,8 @@ using Nethermind.Core.Test;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class RetryCacheTests
 {
     public readonly struct ResourceRequestMessage : INew<int, ResourceRequestMessage>
