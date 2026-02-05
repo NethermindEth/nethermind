@@ -164,7 +164,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         OpCodeCount = 0;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
-        ResetExtCodeSizeCache();
+        ResetExtCodeCache();
         _currentState = vmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;

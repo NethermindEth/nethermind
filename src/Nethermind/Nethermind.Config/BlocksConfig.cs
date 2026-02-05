@@ -61,6 +61,8 @@ namespace Nethermind.Config
 
         public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
 
+        public int ExtCodeCacheEntries { get; set; } = 1024;
+
         public int PreWarmStateConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;

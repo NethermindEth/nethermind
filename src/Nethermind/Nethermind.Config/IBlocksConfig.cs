@@ -43,6 +43,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 
+    [ConfigItem(Description = "The max entries in the per-transaction EXTCODE* cache. Set to 0 to disable.", DefaultValue = "1024", HiddenFromDocs = true)]
+    int ExtCodeCacheEntries { get; set; }
+
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
