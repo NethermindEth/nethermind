@@ -35,11 +35,24 @@ public class XdcPool<T> where T : IXdcPoolItem
     {
         using var lockRelease = _lock.Acquire();
         {
+            List<(ulong Round, Hash256 Hash)>? keysToRemove = null;
             foreach (var key in _items.Keys)
             {
-                if (key.Round <= round && _items.Remove(key, out ArrayPoolList<T> list))
+                if (key.Round <= round)
                 {
-                    list?.Dispose();
+                    keysToRemove ??= new List<(ulong, Hash256)>();
+                    keysToRemove.Add(key);
+                }
+            }
+
+            if (keysToRemove is not null)
+            {
+                foreach (var key in keysToRemove)
+                {
+                    if (_items.Remove(key, out ArrayPoolList<T> list))
+                    {
+                        list?.Dispose();
+                    }
                 }
             }
         }
