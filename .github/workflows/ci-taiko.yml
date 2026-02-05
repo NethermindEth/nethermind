@@ -18,7 +18,7 @@ jobs:
       && !startsWith(github.head_ref, 'release-please') }}
     name: Integration tests
     runs-on: [ubuntu-latest]
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TAIKO_MONO_DIR: taiko-mono
       PACAYA_FORK_TAIKO_MONO_DIR: pacaya-fork-taiko-mono

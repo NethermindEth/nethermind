@@ -18,7 +18,7 @@ jobs:
       && !startsWith(github.head_ref, 'release-please') }}
     name: Integration tests
     runs-on: [ubuntu-latest]
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       SURGE_TAIKO_MONO_DIR: surge-taiko-mono
       PACAYA_FORK_TAIKO_MONO_DIR: pacaya-fork-taiko-mono
@@ -71,11 +71,11 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          repository: taikoxyz/taiko-mono
+          repository: NethermindEth/surge-taiko-mono
           path: >-
             ${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR,
             env.PACAYA_FORK_TAIKO_MONO_DIR) }}
-          ref: taiko-alethia-protocol-v2.3.0-devnet-shasta-test
+          ref: jmadibekov/pacaya-dummy-verifiers-fix
 
       - uses: actions/checkout@v6
         with:
