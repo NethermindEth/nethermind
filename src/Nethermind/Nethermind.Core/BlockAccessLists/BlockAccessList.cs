@@ -202,16 +202,15 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         // Push ALL changes per slot in reverse order so they restore in correct order (LIFO).
         foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
         {
-            ReadOnlySpan<StorageChange> changes = CollectionsMarshal.AsSpan(slotChanges.Changes);
             // Push changes in reverse order so they restore in original order
-            for (int i = changes.Length - 1; i >= 0; i--)
+            foreach (KeyValuePair<ushort, StorageChange> change in slotChanges.Changes)
             {
                 _changes.Push(new()
                 {
                     Address = address,
                     Type = ChangeType.StorageChange,
                     Slot = slotChanges.Slot,
-                    PreviousValue = changes[i],
+                    PreviousValue = change.Value,
                     BlockAccessIndex = Index
                 });
             }
