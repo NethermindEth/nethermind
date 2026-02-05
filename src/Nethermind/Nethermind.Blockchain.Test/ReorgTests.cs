@@ -131,7 +131,9 @@ public class ReorgTests
                 specProvider,
                 LimboLogs.Instance),
             stateReader,
-            LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            LimboLogs.Instance,
+            BlockchainProcessor.Options.Default,
+            Substitute.For<IProcessingStats>());
     }
 
     [OneTimeTearDown]

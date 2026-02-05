@@ -46,19 +46,25 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
-                    blockTree,
-                    branchProcessor,
-                    compositeBlockPreprocessorStep,
-                    worldStateManager.GlobalStateReader,
-                    logManager,
-                    new BlockchainProcessor.Options
-                    {
-                        StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                        DumpOptions = initConfig.AutoDump
-                    })
+                .AddScoped<BlockchainProcessor>((ctx) =>
                 {
-                    IsMainProcessor = true // Manual construction because of this flag
+                    IBranchProcessor branchProcessor = ctx.Resolve<IBranchProcessor>();
+                    IProcessingStats processingStats = ctx.Resolve<IProcessingStats>();
+                    return new BlockchainProcessor(
+                        blockTree,
+                        branchProcessor,
+                        compositeBlockPreprocessorStep,
+                        worldStateManager.GlobalStateReader,
+                        logManager,
+                        new BlockchainProcessor.Options
+                        {
+                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                            DumpOptions = initConfig.AutoDump
+                        },
+                        processingStats)
+                    {
+                        IsMainProcessor = true // Manual construction because of this flag
+                    };
                 })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
