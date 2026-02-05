@@ -27,6 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class PruningScenariosTests
     {
         private ILogger _logger;
