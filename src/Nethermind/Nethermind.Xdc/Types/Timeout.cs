@@ -10,7 +10,7 @@ namespace Nethermind.Xdc.Types;
 
 public class Timeout(ulong round, Signature? signature, ulong gapNumber) : IXdcPoolItem
 {
-    private readonly TimeoutDecoder _decoder = new();
+    private static readonly TimeoutDecoder _decoder = new();
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;

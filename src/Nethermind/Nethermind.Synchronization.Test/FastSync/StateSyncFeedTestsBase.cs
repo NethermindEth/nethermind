@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -34,7 +33,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
@@ -301,8 +299,6 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
             Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth68" };
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
-            IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
-            alwaysAvailableRootTracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
             PruningConfig pruningConfig = new PruningConfig();
             TestFinalizedStateProvider testFinalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
@@ -311,7 +307,6 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
             _snapServer = new SnapServer(
                 trieStore.AsReadOnly(),
                 codeDb,
-                alwaysAvailableRootTracker,
                 LimboLogs.Instance);
         }
 
