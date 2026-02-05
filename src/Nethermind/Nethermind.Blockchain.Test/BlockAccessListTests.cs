@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -29,7 +27,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
 
-//move all to correct folder
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
@@ -43,7 +40,6 @@ public class BlockAccessListTests()
     private static readonly ISpecProvider _specProvider = new TestSpecProvider(_spec);
     private static readonly UInt256 _accountBalance = 10.Ether();
 
-    // todo: move to RLP tests?
     [TestCaseSource(nameof(BlockAccessListTestSource))]
     public void Can_decode_then_encode(string rlp, BlockAccessList expected)
     {
@@ -383,17 +379,11 @@ public class BlockAccessListTests()
         AccountChanges eip7002Changes = blockAccessList.GetAccountChanges(Eip7002Constants.WithdrawalRequestPredeployAddress)!;
         AccountChanges eip7251Changes = blockAccessList.GetAccountChanges(Eip7251Constants.ConsolidationRequestPredeployAddress)!;
 
-        UInt256 slot0 = 0;
-        UInt256 slot1 = 1;
-        UInt256 slot2 = 2;
-        UInt256 slot3 = 3;
         UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
         UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
         // UInt256 from bytes needs isBigEndian: true to match EVM storage encoding
         StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
-        StorageChange calldataStorageChange = new(0, 0);
         StorageChange timestampStorageChange = new(0, 0xF4240);
-        StorageChange zeroStorageChangeEnd = new(3, 0);
 
         UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
         UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;
