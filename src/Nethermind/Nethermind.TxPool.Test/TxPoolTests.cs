@@ -36,16 +36,25 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public partial class TxPoolTests
     {
+        private const long Timeout = 5000;
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
         private TxPool _txPool;
         private TestReadOnlyStateProvider _stateProvider;
-        private IBlockTree _blockTree;
+        private TestBlockTree _blockTree;
 
-        private readonly int _txGasLimit = 1_000_000;
+        private const int TxGasLimit = 1_000_000;
+
+        [OneTimeSetUp]
+        public static void OneTimeSetup()
+        {
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+        }
 
         [SetUp]
         public void Setup()
@@ -54,19 +63,17 @@ namespace Nethermind.TxPool.Test
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             _stateProvider = new TestReadOnlyStateProvider();
-            _blockTree = Substitute.For<IBlockTree>();
+            _blockTree = new TestBlockTree();
             Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
-            _blockTree.Head.Returns(block);
-            _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
-
-            KzgPolynomialCommitments.InitializeAsync().Wait();
+            _blockTree.Head = block;
+            _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).TestObject;
         }
 
         [Test]
         public void should_add_peers()
         {
             _txPool = CreatePool();
-            var peers = GetPeers();
+            IDictionary<ITxPoolPeer, PrivateKey> peers = GetPeers();
 
             foreach ((ITxPoolPeer peer, _) in peers)
             {
@@ -78,7 +85,7 @@ namespace Nethermind.TxPool.Test
         public void should_delete_peers()
         {
             _txPool = CreatePool();
-            var peers = GetPeers();
+            IDictionary<ITxPoolPeer, PrivateKey> peers = GetPeers();
 
             foreach ((ITxPoolPeer peer, _) in peers)
             {
@@ -152,7 +159,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(_txGasLimit)
+                .WithGasLimit(TxGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             tx.SenderAddress = null;
@@ -166,7 +173,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(_txGasLimit)
+                .WithGasLimit(TxGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _stateProvider.InsertCode(TestItem.AddressA, "A"u8.ToArray(), _specProvider.GetSpec((ForkActivation)1));
@@ -192,7 +199,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(5.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
             AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactionsCount().Should().Be(eip1559Enabled ? 1 : 0);
             result.Should().Be(eip1559Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
@@ -215,7 +222,7 @@ namespace Nethermind.TxPool.Test
 
             var headProcessed = new ManualResetEventSlim(false);
             txPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
-            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
 
             headProcessed.Wait();
             result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -332,7 +339,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_overflow_transactions_gas_premium_and_fee_cap()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
-            var txPool = CreatePool(null, specProvider);
+            TxPool txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
@@ -366,7 +373,7 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
 
-            var txPoolConfig = new TxPoolConfig() { MaxTxSize = tx.GetLength() - (sizeExceeded ? 1 : 0) };
+            TxPoolConfig txPoolConfig = new() { MaxTxSize = tx.GetLength() - (sizeExceeded ? 1 : 0) };
             _txPool = CreatePool(txPoolConfig);
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -399,7 +406,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(_txGasLimit + 1)
+                .WithGasLimit(TxGasLimit + 1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -558,7 +565,7 @@ namespace Nethermind.TxPool.Test
         {
             const int gasPrice = 10;
             const int value = 1;
-            int oneTxPrice = _txGasLimit * gasPrice + value;
+            int oneTxPrice = TxGasLimit * gasPrice + value;
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[10];
 
@@ -570,7 +577,7 @@ namespace Nethermind.TxPool.Test
                     .WithSenderAddress(TestItem.AddressA)
                     .WithNonce((UInt256)i)
                     .WithGasPrice((UInt256)gasPrice)
-                    .WithGasLimit(_txGasLimit)
+                    .WithGasLimit(TxGasLimit)
                     .WithValue(value)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             });
@@ -591,7 +598,7 @@ namespace Nethermind.TxPool.Test
         {
             const int gasPrice = 10;
             const int value = 1;
-            int oneTxPrice = _txGasLimit * gasPrice + value;
+            int oneTxPrice = TxGasLimit * gasPrice + value;
             _txPool = CreatePool();
 
             EnsureSenderBalance(TestItem.AddressA, (UInt256)(oneTxPrice * numberOfTxsPossibleToExecuteBeforeGasExhaustion));
@@ -604,7 +611,7 @@ namespace Nethermind.TxPool.Test
                     .WithSenderAddress(TestItem.AddressA)
                     .WithNonce((UInt256)i)
                     .WithGasPrice((UInt256)gasPrice)
-                    .WithGasLimit(_txGasLimit)
+                    .WithGasLimit(TxGasLimit)
                     .WithValue(value)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             });
@@ -631,7 +638,7 @@ namespace Nethermind.TxPool.Test
             const int count = 10;
             const int gasPrice = 10;
             const int value = 1;
-            int oneTxPrice = _txGasLimit * gasPrice + value;
+            int oneTxPrice = TxGasLimit * gasPrice + value;
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[count];
 
@@ -643,7 +650,7 @@ namespace Nethermind.TxPool.Test
                     .WithSenderAddress(TestItem.AddressA)
                     .WithNonce((UInt256)i)
                     .WithGasPrice((UInt256)gasPrice)
-                    .WithGasLimit(_txGasLimit)
+                    .WithGasLimit(TxGasLimit)
                     .WithValue(value)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             });
@@ -777,7 +784,7 @@ namespace Nethermind.TxPool.Test
             var headProcessed = new ManualResetEventSlim(false);
             _txPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
 
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.TestObject));
 
             headProcessed.Wait();
             _txPool.IsKnown(higherPriorityTx.Hash).Should().BeTrue();
@@ -888,10 +895,11 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
+            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
 
+            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             // transactions[nonceIncludedInBlock] was included in the block and should be removed, as well as all lower nonces.
             _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs - nonceIncludedInBlock - 1);
         }
@@ -926,10 +934,11 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
+            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
 
+            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             _txPool.GetPendingTransactionsCount().Should().Be(1);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
         }
@@ -960,7 +969,7 @@ namespace Nethermind.TxPool.Test
         public void should_add_transactions_concurrently()
         {
             int size = 3;
-            TxPoolConfig config = new() { GasLimit = _txGasLimit, Size = size };
+            TxPoolConfig config = new() { GasLimit = TxGasLimit, Size = size };
             _txPool = CreatePool(config);
 
             foreach (PrivateKey privateKey in TestItem.PrivateKeys)
@@ -1007,10 +1016,11 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
+            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
 
+            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             _txPool.GetPendingTransactionsCount().Should().Be(0);
         }
 
@@ -1030,10 +1040,11 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            _txPool.TxPoolHeadChanged += (o, e) => manualResetEvent.Set();
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
+            bool signaled = manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(Timeout));
 
+            signaled.Should().BeTrue("TxPoolHeadChanged event should have been raised");
             foreach (Transaction transaction in transactions)
             {
                 _txPool.IsKnown(transaction.Hash).Should().BeTrue();
@@ -1168,9 +1179,9 @@ namespace Nethermind.TxPool.Test
         {
             if (!eip2930Enabled)
             {
-                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
+                _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject;
                 Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 2).TestObject;
-                _blockTree.Head.Returns(block);
+                _blockTree.Head = block;
             }
 
             _txPool = CreatePool(null, new TestSpecProvider(eip2930Enabled ? Berlin.Instance : Istanbul.Instance));
@@ -1189,9 +1200,9 @@ namespace Nethermind.TxPool.Test
         {
             if (!isSynced)
             {
-                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
+                _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject;
                 Block block = Build.A.Block.WithNumber(1).TestObject;
-                _blockTree.Head.Returns(block);
+                _blockTree.Head = block;
             }
 
             _txPool = CreatePool(null, new TestSpecProvider(Berlin.Instance));
@@ -1523,12 +1534,10 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(expensiveTx2, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
             // Rise new block event to cleanup cash and remove one expensive tx
-            _blockTree.BlockAddedToMain +=
-                Raise.Event<EventHandler<BlockReplacementEventArgs>>(this,
-                    new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
 
             // Wait for event processing and send txA again => should be Accepted
-            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(100, 10));
+            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(1000, 10));
         }
 
         [TestCase(true, 1, 1, true)]
@@ -2245,7 +2254,7 @@ namespace Nethermind.TxPool.Test
                 _ethereumEcdsa,
                 txStorage,
                 _headInfo,
-                config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
+                config ?? new TxPoolConfig() { GasLimit = TxGasLimit },
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
@@ -2397,10 +2406,10 @@ namespace Nethermind.TxPool.Test
 
             SemaphoreSlim semaphoreSlim = new(0, txCount);
             _txPool.NewPending += (o, e) => semaphoreSlim.Release();
-            _blockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
             for (int i = 0; i < txCount; i++)
             {
-                await semaphoreSlim.WaitAsync(10);
+                await semaphoreSlim.WaitAsync(1000);
             }
         }
 
@@ -2417,7 +2426,7 @@ namespace Nethermind.TxPool.Test
                 e => e.Number == block.Number
             );
 
-            _blockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
+            _blockTree.RaiseBlockAddedToMain(blockReplacementEventArgs);
             await waitTask;
         }
 

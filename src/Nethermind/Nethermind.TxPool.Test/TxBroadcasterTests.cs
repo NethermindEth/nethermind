@@ -39,6 +39,8 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class TxBroadcasterTests
 {
     private ILogManager _logManager;
@@ -66,16 +68,17 @@ public class TxBroadcasterTests
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
-    public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
+    public void should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
+        ManualTimestamper timestamper = new(DateTime.UtcNow);
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 100 };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, timestamper: timestamper);
         _headInfo.CurrentBaseFee.Returns(0.GWei());
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        Parallel.For(0, addedTxsCount, i =>
+        for (int i = 0; i < addedTxsCount; i++)
         {
             transactions[i] = Build.A.Transaction
                 .WithGasPrice(i.GWei())
@@ -83,7 +86,7 @@ public class TxBroadcasterTests
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
-        });
+        }
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
@@ -102,7 +105,8 @@ public class TxBroadcasterTests
 
         peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(1001));
+        // Advance time by 2 seconds (throttle is 1 second)
+        timestamper.Add(TimeSpan.FromSeconds(2));
 
         peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
 
