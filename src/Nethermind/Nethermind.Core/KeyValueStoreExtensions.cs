@@ -67,13 +67,14 @@ namespace Nethermind.Core
 
             public void Set(Hash256 key, in CappedArray<byte> value, WriteFlags writeFlags = WriteFlags.None)
             {
-                if (value.IsUncapped && db.PreferWriteByArray)
+                if (db.PreferWriteByArray && value.IsUncapped)
+                {
+                    db.Set(key.Bytes, value.UnderlyingArray, writeFlags);
+                }
+                else
                 {
                     db.PutSpan(key.Bytes, value.AsSpan(), writeFlags);
-                    return;
                 }
-
-                db.PutSpan(key.Bytes, value.AsSpan(), writeFlags);
             }
 
             public void Set(long blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)

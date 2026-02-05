@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,8 +9,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -22,8 +19,6 @@ namespace Nethermind.Db
         private readonly int _readDelay; // for testing scenarios
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
-
-        private readonly ConcurrentDictionary<nint, GCHandle> _pinnedHandles = new();
 
 #if ZK
         private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
@@ -108,16 +103,7 @@ namespace Nethermind.Db
 
         public bool PreferWriteByArray => true;
 
-        public unsafe void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-        {
-            if (span.IsEmpty) return;
-
-            nint ptr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(span));
-            if (_pinnedHandles.TryRemove(ptr, out GCHandle handle))
-            {
-                handle.Free();
-            }
-        }
+        public unsafe void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -131,16 +117,7 @@ namespace Nethermind.Db
         }
 
         public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            byte[]? data = Get(key, flags);
-            if (data is null) return default;
-
-            GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-            nint ptr = handle.AddrOfPinnedObject();
-            _pinnedHandles[ptr] = handle;
-
-            return new Span<byte>((void*)ptr, data.Length);
-        }
+            => Get(key).AsSpan();
 
         public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
