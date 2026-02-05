@@ -46,11 +46,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor>((ctx) =>
-                {
-                    IBranchProcessor branchProcessor = ctx.Resolve<IBranchProcessor>();
-                    IProcessingStats processingStats = ctx.Resolve<IProcessingStats>();
-                    return new BlockchainProcessor(
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                    new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
                         compositeBlockPreprocessorStep,
@@ -64,8 +61,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                         processingStats)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
-                    };
-                })
+                    })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.
