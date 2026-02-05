@@ -335,7 +335,7 @@ public class LogFinderTests
 
         if (waitTime > 1)
         {
-            action.Should().Throw<AggregateException>().WithInnerException<OperationCanceledException>();
+            action.Should().Throw<OperationCanceledException>();
         }
         else
         {
