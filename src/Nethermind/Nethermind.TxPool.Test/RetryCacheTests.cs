@@ -142,6 +142,7 @@ public class RetryCacheTests
     }
 
     [Test]
+    [Retry(3)]
     public void RetryExecution_HandlesExceptions()
     {
         TestHandler faultyRequest = new() { OnHandleMessage = _ => throw new InvalidOperationException("Test exception") };

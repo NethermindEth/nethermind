@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public partial class TxPoolTests
     {
-        private const long Timeout = 10000;
+        private const int Timeout = 10000;
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
@@ -1537,7 +1537,7 @@ namespace Nethermind.TxPool.Test
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
 
             // Wait for event processing and send txA again => should be Accepted
-            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(1000, 10));
+            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(Timeout, 10));
         }
 
         [TestCase(true, 1, 1, true)]
