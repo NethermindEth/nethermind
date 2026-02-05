@@ -24,10 +24,6 @@ using Nethermind.Evm.State;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 using static Nethermind.Evm.VirtualMachineStatics;
 
-#if DEBUG
-using Nethermind.Evm.Tracing.Debugger;
-#endif
-
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
@@ -1220,11 +1216,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Initialize the exception type to "None".
         EvmExceptionType exceptionType = EvmExceptionType.None;
-#if DEBUG
-        // In debug mode, retrieve a tracer for interactive debugging.
-        DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
-#endif
-
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = VmState.ProgramCounter;
 
@@ -1239,10 +1230,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
-#if DEBUG
-                // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
 
@@ -1325,10 +1312,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return CallResult.Empty(codeInfo.Version);
 
     DataReturn:
-#if DEBUG
-        // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
         // Process the return data based on its runtime type.
         if (ReturnData is VmState<TGasPolicy> state)
         {
