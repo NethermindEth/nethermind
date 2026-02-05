@@ -236,9 +236,26 @@ public sealed class SeqlockCache<TKey, TValue>
             return;
         }
 
-        if ((existing & TagMask) == tagToStore && entry.Key.Equals(in key) && ReferenceEquals(entry.Value, value))
+        // Fast-path: if tag matches, speculatively check if key/value already match.
+        // Must follow seqlock protocol to avoid reading torn data from concurrent writers.
+        if ((existing & TagMask) == tagToStore)
         {
-            return;
+            ref readonly TKey storedKey = ref entry.Key;
+            TValue? storedValue = entry.Value;
+
+            // Re-read header to verify no concurrent write occurred
+            long h2 = Volatile.Read(ref entry.HashEpochSeqLock);
+            if (existing == h2 && storedKey.Equals(in key) && ReferenceEquals(storedValue, value))
+            {
+                return;
+            }
+
+            // Header changed - re-read for CAS
+            existing = h2;
+            if (existing < 0)
+            {
+                return;
+            }
         }
 
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
@@ -290,12 +307,26 @@ public sealed class SeqlockCache<TKey, TValue>
             return;
         }
 
-        // Optional "avoid invalidation" fast-path:
-        // If tag matches and key matches and value already matches, do nothing.
-        // Requires unlocked (guaranteed by existing < 0 check).
-        if ((existing & TagMask) == tagToStore && entry.Key.Equals(in key) && ReferenceEquals(entry.Value, value))
+        // Fast-path: if tag matches, speculatively check if key/value already match.
+        // Must follow seqlock protocol to avoid reading torn data from concurrent writers.
+        if ((existing & TagMask) == tagToStore)
         {
-            return;
+            ref readonly TKey storedKey = ref entry.Key;
+            TValue? storedValue = entry.Value;
+
+            // Re-read header to verify no concurrent write occurred
+            long h2 = Volatile.Read(ref entry.HashEpochSeqLock);
+            if (existing == h2 && storedKey.Equals(in key) && ReferenceEquals(storedValue, value))
+            {
+                return;
+            }
+
+            // Header changed - re-read for CAS
+            existing = h2;
+            if (existing < 0)
+            {
+                return;
+            }
         }
 
         // Bump Seq for every successful write so readers can detect same-tag rewrites.

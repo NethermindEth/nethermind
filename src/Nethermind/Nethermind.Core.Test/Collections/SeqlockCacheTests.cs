@@ -361,4 +361,68 @@ public class SeqlockCacheTests
         found.Should().BeTrue();
         result.Should().BeSameAs(account);
     }
+
+    [Test]
+    public void Concurrent_set_same_value_fast_path_is_safe()
+    {
+        // Tests the fast-path optimization where Set skips write if value matches.
+        // This exercises the seqlock protocol in the fast-path to avoid torn reads.
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[] value = CreateValue(1);
+
+        cache.Set(in key, value);
+
+        const int threadCount = 8;
+        const int iterations = 10000;
+
+        // Multiple threads all trying to set the same key to the same value
+        // This hammers the fast-path check
+        Parallel.For(0, threadCount, _ =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                cache.Set(in key, value);
+            }
+        });
+
+        // Value should still be retrievable and correct
+        bool found = cache.TryGetValue(in key, out byte[]? result);
+        found.Should().BeTrue();
+        result.Should().BeSameAs(value);
+    }
+
+    [Test]
+    public void Concurrent_set_alternating_values_is_safe()
+    {
+        // Tests concurrent writes with different values interleaved with same-value writes.
+        // Exercises both the fast-path (same value) and slow-path (different value).
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[][] values = new byte[4][];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = CreateValue(i);
+        }
+
+        const int threadCount = 8;
+        const int iterations = 5000;
+
+        Parallel.For(0, threadCount, t =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                // Each thread cycles through values, creating both fast-path and slow-path scenarios
+                cache.Set(in key, values[(t + i) % values.Length]);
+            }
+        });
+
+        // After all writes, cache should contain one of the valid values
+        bool found = cache.TryGetValue(in key, out byte[]? result);
+        if (found)
+        {
+            bool isValid = Array.Exists(values, v => ReferenceEquals(v, result));
+            isValid.Should().BeTrue("cached value should be one of the written values");
+        }
+    }
 }
