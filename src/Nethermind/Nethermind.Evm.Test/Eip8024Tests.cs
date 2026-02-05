@@ -94,9 +94,9 @@ public class Eip8024Tests : VirtualMachineTestsBase
         result.StatusCode.Should().Be(StatusCode.Success);
 
         // Stack: [1, 2, 3, 4, 5, ..., 20] with 20 on top (20 items)
-        // SWAPN 17: swap top (20) with position 17 from top (index 3 = value 4)
-        // After swap: top = 4
-        new UInt256(result.ReturnValue, true).Should().Be(4);
+        // SWAPN decode(0x00)=17: swap top (20) with (n+1)th=18th item from top (value 3)
+        // After swap: top = 3
+        new UInt256(result.ReturnValue, true).Should().Be(3);
     }
 
     [Test]
@@ -417,8 +417,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
         // EIP test: 600160008080808080808080808080808080806002e700
         // PUSH1 01, PUSH1 00, DUP1 x15, PUSH1 02, SWAPN 0x00
         // After setup: stack = [1, 0, 0, ..., 0, 2] (18 items with 2 on top, 1 at bottom)
-        // SWAPN 17: swap top (2) with position 17 from top (value 0)
-        // Result: top = 0
+        // SWAPN decode(0x00)=17: swap top (2) with (n+1)th=18th item from top (value 1)
+        // Result: top = 1
         byte[] code = Prepare.EvmCode
             .PushData(1)
             .PushData(0)
@@ -434,8 +434,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
-        // After SWAPN 17: swap top (2) with position 17 from top = 0
-        new UInt256(result.ReturnValue, true).Should().Be(0);
+        // After SWAPN decode(0)=17: swap top (2) with (n+1)th=18th from top = 1
+        new UInt256(result.ReturnValue, true).Should().Be(1);
     }
 
     [Test]

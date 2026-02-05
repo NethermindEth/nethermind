@@ -604,7 +604,7 @@ internal static partial class EvmInstructions
         if (!TryDecodeSingle(vm, ref programCounter, out int depth))
             goto BadInstruction;
 
-        return stack.Swap<TTracingInst>(depth);
+        return stack.Swap<TTracingInst>(depth + 1);
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
