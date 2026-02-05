@@ -26,6 +26,8 @@ using Nethermind.Logging;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Xdc;
 
@@ -88,6 +90,9 @@ public class XdcModule : Module
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
+
+            // beacon sync strategy
+            .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
