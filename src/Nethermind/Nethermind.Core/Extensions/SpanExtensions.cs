@@ -266,55 +266,43 @@ namespace Nethermind.Core.Extensions
                     // Process 64 bytes at a time with 4 independent lanes
                     while (remaining >= 64)
                     {
-                        if (x64.Aes.IsSupported)
-                        {
-                            acc0 = x64.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref p), acc0);
-                            acc1 = x64.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 16)), acc1);
-                            acc2 = x64.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 32)), acc2);
-                            acc3 = x64.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 48)), acc3);
-                        }
-                        else
-                        {
-                            acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref p), acc0));
-                            acc1 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 16)), acc1));
-                            acc2 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 32)), acc2));
-                            acc3 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 48)), acc3));
-                        }
+                        Vector128<byte> b0 = Unsafe.As<byte, Vector128<byte>>(ref p);
+                        Vector128<byte> b1 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 16));
+                        Vector128<byte> b2 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 32));
+                        Vector128<byte> b3 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref p, 48));
+
+                        acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(b0, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(b0, acc0));
+                        acc1 = x64.Aes.IsSupported ? x64.Aes.Encrypt(b1, acc1) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(b1, acc1));
+                        acc2 = x64.Aes.IsSupported ? x64.Aes.Encrypt(b2, acc2) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(b2, acc2));
+                        acc3 = x64.Aes.IsSupported ? x64.Aes.Encrypt(b3, acc3) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(b3, acc3));
+
                         p = ref Unsafe.Add(ref p, 64);
                         remaining -= 64;
                     }
 
                     // Fold 4 lanes into 1 using AES for mixing
-                    if (x64.Aes.IsSupported)
+                    acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(acc1, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(acc1, acc0));
+                    acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(acc2, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(acc2, acc0));
+                    acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(acc3, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(acc3, acc0));
+
+                    // Drain remaining 0-63 bytes in forward order
+                    while (remaining >= 16)
                     {
-                        acc0 = x64.Aes.Encrypt(acc1, acc0);
-                        acc0 = x64.Aes.Encrypt(acc2, acc0);
-                        acc0 = x64.Aes.Encrypt(acc3, acc0);
-                    }
-                    else
-                    {
-                        acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(acc1, acc0));
-                        acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(acc2, acc0));
-                        acc0 = Arm.Aes.MixColumns(Arm.Aes.Encrypt(acc3, acc0));
+                        Vector128<byte> block = Unsafe.As<byte, Vector128<byte>>(ref p);
+                        acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(block, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(block, acc0));
+                        p = ref Unsafe.Add(ref p, 16);
+                        remaining -= 16;
                     }
 
-                    // Handle remaining 1-63 bytes with fold-back
-                    if (remaining > 0)
+                    if (remaining > 0) // 1-15
                     {
-                        // Load last 16 bytes, last 32 bytes, last 48 bytes as needed
-                        Vector128<byte> last = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
-                        acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(last, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
+                        Vector128<byte> tail = default; // zero padded
+                        Unsafe.CopyBlockUnaligned(
+                            ref Unsafe.As<Vector128<byte>, byte>(ref tail),
+                            ref p,
+                            (uint)remaining);
 
-                        if (remaining > 16)
-                        {
-                            Vector128<byte> last32 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 32));
-                            acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(last32, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(last32, acc0));
-                        }
-                        if (remaining > 32)
-                        {
-                            Vector128<byte> last48 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 48));
-                            acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(last48, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(last48, acc0));
-                        }
+                        acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(tail, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(tail, acc0));
                     }
                 }
                 else if (len > 32)
@@ -326,26 +314,20 @@ namespace Nethermind.Core.Extensions
                     while (remaining > 16)
                     {
                         Vector128<byte> block = Unsafe.As<byte, Vector128<byte>>(ref p);
-                        acc0 = x64.Aes.IsSupported
-                            ? x64.Aes.Encrypt(block, acc0)
-                            : Arm.Aes.MixColumns(Arm.Aes.Encrypt(block, acc0));
+                        acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(block, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(block, acc0));
                         p = ref Unsafe.Add(ref p, 16);
                         remaining -= 16;
                     }
 
                     // Final block: last 16 bytes (may overlap with previous, that's fine)
                     Vector128<byte> last = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
-                    acc0 = x64.Aes.IsSupported
-                        ? x64.Aes.Encrypt(last, acc0)
-                        : Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
+                    acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(last, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(last, acc0));
                 }
                 else
                 {
                     // 16-32 bytes: load first 16 and last 16 (overlap is fine)
                     Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
-                    acc0 = x64.Aes.IsSupported
-                        ? x64.Aes.Encrypt(data, acc0)
-                        : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, acc0));
+                    acc0 = x64.Aes.IsSupported ? x64.Aes.Encrypt(data, acc0) : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, acc0));
                 }
 
                 // Fold 128 bits to 32 bits
