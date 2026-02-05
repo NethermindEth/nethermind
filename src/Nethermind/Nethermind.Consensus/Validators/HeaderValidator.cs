@@ -422,7 +422,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                if (parent.SlotNumber is not null && header.SlotNumber <= parent.SlotNumber)
+                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
                 {
                     error = BlockErrorMessages.InvalidSlotNumber;
                     if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
