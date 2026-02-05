@@ -166,8 +166,7 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
                 goto OutOfGas;
 
-            ICodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            ICodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;

@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -674,20 +675,20 @@ internal static partial class EvmInstructions
         {
             stack.PushZero<TTracingInst>();
         }
-        else
-        {
-            Memory<byte> code = state.GetCode(address);
-            // If the code passes EOF validation, push the EOF-specific hash.
-            if (EofValidator.IsEof(code, out _))
-            {
-                stack.PushBytes<TTracingInst>(EofHash256);
-            }
             else
             {
-                // Otherwise, push the standard code hash.
-                stack.PushBytes<TTracingInst>(state.GetCodeHash(address).Bytes);
+                ICodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
+                // If the code is EOF, push the EOF-specific hash.
+                if (codeInfo is EofCodeInfo)
+                {
+                    stack.PushBytes<TTracingInst>(EofHash256);
+                }
+                else
+                {
+                    // Otherwise, push the standard code hash.
+                    stack.PushBytes<TTracingInst>(state.GetCodeHash(address).Bytes);
+                }
             }
-        }
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
