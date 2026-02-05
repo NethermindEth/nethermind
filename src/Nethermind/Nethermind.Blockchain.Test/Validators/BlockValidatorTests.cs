@@ -15,6 +15,8 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -249,7 +251,8 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             Substitute.For<ISpecProvider>(),
-            "InvalidUnclesHash");
+            "InvalidUnclesHash")
+        { TestName = "InvalidUnclesHash" };
 
         yield return new TestCaseData(
             Build.A.Block
@@ -257,7 +260,8 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             Substitute.For<ISpecProvider>(),
-            "InvalidTxRoot");
+            "InvalidTxRoot")
+        { TestName = "InvalidTxRoot" };
 
         yield return new TestCaseData(
             Build.A.Block.WithBlobGasUsed(131072)
@@ -272,13 +276,60 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            "InsufficientMaxFeePerBlobGas");
+            "InsufficientMaxFeePerBlobGas")
+        { TestName = "InsufficientMaxFeePerBlobGas" };
 
         yield return new TestCaseData(
             Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
-            "ExceededBlockSizeLimit");
+            "ExceededBlockSizeLimit")
+        { TestName = "ExceededBlockSizeLimit" };
+
+        yield return new TestCaseData(
+            Build.A.Block
+                .WithParent(parent)
+                .WithBlobGasUsed(0)
+                .WithWithdrawals([]).TestObject,
+            parent,
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
+            "MissingBlockLevelAccessList")
+        { TestName = "MissingBlockLevelAccessList" };
+
+        yield return new TestCaseData(
+            Build.A.Block
+                .WithParent(parent)
+                .WithBlobGasUsed(0)
+                .WithWithdrawals([])
+                .WithBlockAccessList(new())
+                .WithEncodedBlockAccessList(Rlp.Encode(new BlockAccessList()).Bytes).TestObject,
+            parent,
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
+            "InvalidBlockLevelAccessListHash")
+        { TestName = "InvalidBlockLevelAccessListHash" };
+
+        yield return new TestCaseData(
+            Build.A.Block
+                .WithParent(parent)
+                .WithBlobGasUsed(0)
+                .WithWithdrawals([])
+                .WithBlockAccessList(new())
+                .WithEncodedBlockAccessList([0xfa]).TestObject,
+            parent,
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
+            "InvalidBlockLevelAccessList")
+        { TestName = "InvalidBlockLevelAccessList" };
+
+        yield return new TestCaseData(
+            Build.A.Block
+                .WithParent(parent)
+                .WithBlobGasUsed(0)
+                .WithWithdrawals([])
+                .WithBlockAccessList(new()).TestObject,
+            parent,
+            new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
+            "BlockLevelAccessListNotEnabled")
+        { TestName = "BlockLevelAccessListNotEnabled" };
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]

@@ -314,5 +314,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.BlockAccessList = bal;
             return this;
         }
+
+        public BlockBuilder WithEncodedBlockAccessList(byte[]? bal)
+        {
+            TestObjectInternal.EncodedBlockAccessList = bal;
+            return this;
+        }
     }
 }

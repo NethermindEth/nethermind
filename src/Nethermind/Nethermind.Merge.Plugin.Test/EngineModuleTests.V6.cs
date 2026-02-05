@@ -180,8 +180,11 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task NewPayloadV5_accepts_valid_BAL()
+    [TestCase(
+        "0x1e11df85db9df143816b319b33ad72dc488d63baa6d3d477b72803b352897ef4",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -264,9 +267,7 @@ public partial class EngineModuleTests
                     .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
                     .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
                     .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressB)
-                    .TestObject,
+               new(TestItem.AddressB),
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
                     .WithBalanceChanges([new(4, 1.GWei())])
@@ -304,11 +305,11 @@ public partial class EngineModuleTests
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = gasUsed,
-                Hash = new("0x1e11df85db9df143816b319b33ad72dc488d63baa6d3d477b72803b352897ef4"),
+                Hash = new(blockHash),
                 MixHash = Keccak.Zero,
                 ParentBeaconBlockRoot = Keccak.Zero,
-                ReceiptsRoot = new("0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569"),
-                StateRoot = new("0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b"),
+                ReceiptsRoot = new(receiptsRoot),
+                StateRoot = new(stateRoot),
             },
             [tx, tx2, tx3],
             [],
@@ -335,8 +336,11 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task NewPayloadV5_rejects_invalid_BAL()
+    [TestCase(
+        "0x9a3d6266cbcf7c374ea990e4b4dd543cee9096efedc9aac5ddefe149ce90dad4",
+        "0xee19f9b94832e8855eee01f304f9479d15a4e690ef63145094a726006bc6d1b2",
+        "0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c")]
+    public async Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -362,11 +366,11 @@ public partial class EngineModuleTests
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = 0,
-                Hash = new("0x9a3d6266cbcf7c374ea990e4b4dd543cee9096efedc9aac5ddefe149ce90dad4"),
+                Hash = new(blockHash),
                 MixHash = Keccak.Zero,
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
-                StateRoot = new("0xee19f9b94832e8855eee01f304f9479d15a4e690ef63145094a726006bc6d1b2"),
+                StateRoot = new(stateRoot),
             },
             [],
             [],
@@ -387,7 +391,7 @@ public partial class EngineModuleTests
                 {
                     LatestValidHash = Keccak.Zero,
                     Status = PayloadStatus.Invalid,
-                    ValidationError = "InvalidBlockLevelAccessListRoot: Expected 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347, got 0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c"
+                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347, got {balHash}"
                 }
             })));
         }
@@ -458,14 +462,16 @@ public partial class EngineModuleTests
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
+        List<Hash256> blockHashes = [];
         for (var i = 1; i < 5; i++)
         {
-            await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
+            ExecutionPayloadV3 payload = await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
+            blockHashes.Add(payload.BlockHash);
         }
 
         ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2([
-            new Hash256("0x415a91edfcb5cc6b432b9ec556b5b5b7e6a0b2d0f2d93a281995730c8fd53213"),
-            new Hash256("0xfa59ce89da70514dce8c4e04daa90e0a7b7612f8c45af4ffa46a39a32466710d"),
+            blockHashes.ElementAt(1),
+            blockHashes.ElementAt(2),
             Hash256.Zero
         ]);
 

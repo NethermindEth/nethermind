@@ -26,7 +26,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [TestFixture]
-public class BlockAccessListTests() : VirtualMachineTestsBase
+public class Eip7928Tests() : VirtualMachineTestsBase
 {
     private static readonly IReleaseSpec _spec = Amsterdam.Instance;
     private static readonly TestSpecProvider _specProvider = new(_spec);
@@ -136,8 +136,8 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.BALANCE)
                 .Done;
-            AccountChanges emptyTestAccount = Build.An.AccountChanges.WithAddress(_testAddress).TestObject;
-            AccountChanges emptyBAccount = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
+            AccountChanges emptyTestAccount = new(_testAddress);
+            AccountChanges emptyBAccount = new(TestItem.AddressB);
             changes = [emptyTestAccount, emptyBAccount];
             yield return new TestCaseData(code, changes) { TestName = "balance" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct" };
@@ -147,7 +147,7 @@ public class BlockAccessListTests() : VirtualMachineTestsBase
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call_oog" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "callcode" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delgatecall" };
+            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegatecall" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "staticcall" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create2" };

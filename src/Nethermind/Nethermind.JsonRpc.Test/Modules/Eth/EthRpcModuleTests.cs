@@ -1582,7 +1582,8 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_access_list_by_hash()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", new Hash256("0xc6444d9b4ab5180055fd877be9231ffae98404e9eb871d19affe9702fc05b095"));
+        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"slot\":\"0x2\",\"changes\":{\"0\":{\"blockAccessIndex\":0,\"newValue\":\"0x179d875956f4d9ec8d54fc9f973a3ce5800b4f0a836a5f89cfc2842359d02b9e\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0xa410\"},{\"blockAccessIndex\":2,\"postBalance\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5dea00002\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5de9f5bee\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"blockAccessIndex\":1,\"newNonce\":\"0x2\"},{\"blockAccessIndex\":2,\"newNonce\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
     }
 
@@ -1598,15 +1599,16 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_access_list_by_hash_unavailable_before_fork()
     {
         using Context ctx = await Context.Create(); // Amsterdam disabled
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", new Hash256("0x49e7d7466be0927347ff2f654c014a768b5a5fcd8c483635210466dd0d6d204c"));
+        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
     }
 
     [Test]
     public async Task Eth_get_block_access_list_by_hash_pruned()
     {
-        Hash256 blockHash = new("0xc6444d9b4ab5180055fd877be9231ffae98404e9eb871d19affe9702fc05b095");
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
         ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
@@ -1639,8 +1641,9 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_block_access_list_by_number_pruned()
     {
-        Hash256 blockHash = new("0xc6444d9b4ab5180055fd877be9231ffae98404e9eb871d19affe9702fc05b095");
+        const long number = 3;
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
         ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));

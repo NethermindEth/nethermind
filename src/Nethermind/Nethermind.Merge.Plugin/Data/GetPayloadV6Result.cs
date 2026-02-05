@@ -13,5 +13,5 @@ public class GetPayloadV6Result(Block block, UInt256 blockFees, BlobsBundleV2 bl
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
 
-    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp).IsEip7594Enabled;
+    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp).IsEip7928Enabled;
 }

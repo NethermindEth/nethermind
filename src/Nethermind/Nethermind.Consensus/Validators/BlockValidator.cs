@@ -75,7 +75,8 @@ public class BlockValidator(
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
-               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
+               ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
@@ -215,7 +216,7 @@ public class BlockValidator(
         if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
         {
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
-            error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
             if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
             suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
@@ -389,7 +390,7 @@ public class BlockValidator(
         return true;
     }
 
-    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, out string? error)
+    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
         if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
         {
@@ -411,10 +412,10 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
-            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListRoot))
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
             {
-                error = BlockErrorMessages.InvalidBlockLevelAccessListRoot(block.Header.BlockAccessListHash, blockLevelAccessListRoot);
-                if (_logger.IsWarn) _logger.Warn($"Block level access list root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListRoot}");
+                error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");
 
                 return false;
             }

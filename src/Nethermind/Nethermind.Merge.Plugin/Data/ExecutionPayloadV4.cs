@@ -35,24 +35,19 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return baseResult;
         }
 
-        BlockAccessList? blockAccessList = null;
-
         if (BlockAccessList is not null)
         {
-            //tmp
-            // Console.WriteLine("Decoding BAL from execution payload:\n" + Bytes.ToHexString(BlockAccessList));
             try
             {
-                blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+                block.BlockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
             }
             catch (RlpException e)
             {
-                Console.Error.Write("Could not decode block access list from execution payload: " + e);
-                return new("Could not decode block access list.");
+                return new($"Error decoding block access list: {e}");
             }
         }
 
-        block.BlockAccessList = blockAccessList;
+        block.EncodedBlockAccessList = BlockAccessList;
         block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes);
 
         return baseResult;
