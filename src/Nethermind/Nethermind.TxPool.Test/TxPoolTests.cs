@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public partial class TxPoolTests
     {
-        private const long Timeout = 5000;
+        private const long Timeout = 10000;
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
@@ -64,9 +64,9 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             _stateProvider = new TestReadOnlyStateProvider();
             _blockTree = new TestBlockTree();
-            Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
+            Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0).TestObject;
             _blockTree.Head = block;
-            _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).TestObject;
+            _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).WithBaseFee(0).TestObject;
         }
 
         [Test]

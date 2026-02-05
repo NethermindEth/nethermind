@@ -607,7 +607,8 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(firstIsBlob ? 0 : 1);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(firstIsBlob ? 1 : 0);
             _stateProvider.IncrementNonce(TestItem.AddressA);
-            await RaiseBlockAddedToMainAndWaitForTransactions(1);
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
@@ -1053,12 +1054,12 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private Task AddEmptyBlock()
+        private async Task AddEmptyBlock()
         {
             BlockHeader bh = new(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
             _blockTree.BestSuggestedHeader = bh;
-            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(new Block(bh, new BlockBody([], [])), _blockTree.Head));
-            return Task.Delay(300);
+            Block block = new Block(bh, new BlockBody([], []));
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
         }
 
         private Transaction CreateBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default)
