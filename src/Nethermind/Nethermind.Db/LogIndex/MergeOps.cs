@@ -39,10 +39,8 @@ partial class LogIndexStorage
     {
         public const int Size = BlockNumberSize + 1;
 
-        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand)
-        {
-            return operand.Length == Size && operand[0] == (byte)op;
-        }
+        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand) =>
+            operand.Length == Size && operand[0] == (byte)op;
 
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out int fromBlock)
         {
@@ -71,23 +69,26 @@ partial class LogIndexStorage
         public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, int block, bool isBackward)
         {
             // In most cases the searched block will be near or at the end of the operand, if present there
-            var i = LastBlockSearch(operand, block, isBackward);
+            int i = LastBlockSearch(operand, block, isBackward);
 
-            if (op is MergeOp.Reorg)
+            return op switch
             {
-                if (i < 0) return Span<byte>.Empty;
-                if (i >= operand.Length) return operand;
-                return operand[..i];
-            }
+                MergeOp.Reorg => i switch
+                {
+                    < 0 => Span<byte>.Empty,
+                    _ when i >= operand.Length => operand,
+                    _ => operand[..i]
+                },
 
-            if (op is MergeOp.Truncate)
-            {
-                if (i < 0) return operand;
-                if (i >= operand.Length) return Span<byte>.Empty;
-                return operand[(i + BlockNumberSize)..];
-            }
+                MergeOp.Truncate => i switch
+                {
+                    < 0 => operand,
+                    _ when i >= operand.Length => Span<byte>.Empty,
+                    _ => operand[(i + BlockNumberSize)..]
+                },
 
-            throw new ArgumentOutOfRangeException(nameof(op), op, "Unsupported merge operation.");
+                _ => throw new ArgumentOutOfRangeException(nameof(op))
+            };
         }
     }
 }

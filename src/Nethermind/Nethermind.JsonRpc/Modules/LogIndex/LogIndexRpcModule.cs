@@ -17,7 +17,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
 {
     public ResultWrapper<IEnumerable<long>> logIndex_blockNumbers(Filter filter)
     {
-        LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock!, filter.ToBlock!, filter.Address, filter.Topics);
+        LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
 
         if (GetBlockNumber(logFilter.FromBlock) is not { } from)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.FromBlock} is not found.", ErrorCodes.UnknownBlockError);
@@ -49,11 +49,8 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         });
     }
 
-    private int? GetBlockNumber(BlockParameter parameter)
-    {
-        if (parameter.BlockNumber is { } number)
-            return (int)number;
-
-        return (int?)blockFinder.FindBlock(parameter)?.Number;
-    }
+    private int? GetBlockNumber(BlockParameter parameter) =>
+        parameter.BlockNumber is { } number
+            ? (int)number
+            : (int?)blockFinder.FindBlock(parameter)?.Number;
 }

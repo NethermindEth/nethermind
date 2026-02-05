@@ -21,22 +21,13 @@ namespace Nethermind.Facade.Find;
 // TODO: reduce periodic logging
 public sealed class LogIndexBuilder : ILogIndexBuilder
 {
-    private sealed class ProcessingQueue
+    private sealed class ProcessingQueue(
+        TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock,
+        ActionBlock<LogIndexAggregate> addReceiptsBlock)
     {
-        private readonly TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> _aggregateBlock;
-        private readonly ActionBlock<LogIndexAggregate> _addReceiptsBlock;
-
-        public int QueueCount => _aggregateBlock.InputCount + _addReceiptsBlock.InputCount;
-        public Task WriteAsync(IReadOnlyList<BlockReceipts> batch, CancellationToken cancellation) => _aggregateBlock.SendAsync(batch, cancellation);
-        public Task Completion => Task.WhenAll(_aggregateBlock.Completion, _addReceiptsBlock.Completion);
-
-        public ProcessingQueue(
-            TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock,
-            ActionBlock<LogIndexAggregate> addReceiptsBlock)
-        {
-            _aggregateBlock = aggregateBlock;
-            _addReceiptsBlock = addReceiptsBlock;
-        }
+        public int QueueCount => aggregateBlock.InputCount + addReceiptsBlock.InputCount;
+        public Task WriteAsync(IReadOnlyList<BlockReceipts> batch, CancellationToken cancellation) => aggregateBlock.SendAsync(batch, cancellation);
+        public Task Completion => Task.WhenAll(aggregateBlock.Completion, addReceiptsBlock.Completion);
     }
 
     private readonly IBlockTree _blockTree;
