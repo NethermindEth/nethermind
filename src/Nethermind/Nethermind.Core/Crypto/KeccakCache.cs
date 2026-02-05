@@ -155,12 +155,6 @@ public static unsafe class KeccakCache
 
         uint existing = Volatile.Read(ref e.Combined);
 
-        // Skip write if hash/length match (regardless of version) - reduces cache line invalidation.
-        if ((existing & HashLengthMask) == combined)
-        {
-            return;
-        }
-
         // Increment 8-bit version counter (wraps after 256) to detect ABA in seqlock readers.
         // 256 writes needed to wrap = ~8-13μs, far exceeding ~50ns read window.
         uint newVersion = ((existing & VersionMask) + VersionIncrement) & VersionMask;

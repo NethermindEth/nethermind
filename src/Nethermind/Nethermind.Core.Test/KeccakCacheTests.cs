@@ -163,7 +163,6 @@ namespace Nethermind.Core.Test
             const int iterations = 100_000;
             var bytes = new byte[32];
             new Random(123).NextBytes(bytes);
-            ValueHash256 expected = ValueKeccak.Compute(bytes);
 
             // Prime the cache
             KeccakCache.Compute(bytes);
