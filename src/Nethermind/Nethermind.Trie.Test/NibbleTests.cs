@@ -6,6 +6,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class NibbleTests
 {
     private readonly byte[][] _hexEncoding =

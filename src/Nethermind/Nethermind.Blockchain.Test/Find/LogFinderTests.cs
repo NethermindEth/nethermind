@@ -26,6 +26,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Find;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;
