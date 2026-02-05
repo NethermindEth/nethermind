@@ -17,14 +17,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private const int DefaultMaxExtCodeCacheEntries = 1024;
     private static int _maxExtCodeCacheEntries = DefaultMaxExtCodeCacheEntries;
     private Dictionary<AddressAsKey, ExtCodeCacheEntry>? _extCodeCache;
+    private long _extCodeCacheBlockNumber = long.MinValue;
 
     /// <summary>
-    /// Gets the maximum number of entries kept in the per-transaction EXTCODE* cache.
+    /// Gets the maximum number of entries kept in the EXTCODE* cache.
     /// </summary>
     public static int MaxExtCodeCacheEntries => _maxExtCodeCacheEntries;
 
     /// <summary>
-    /// Sets the maximum number of entries kept in the per-transaction EXTCODE* cache.
+    /// Sets the maximum number of entries kept in the EXTCODE* cache.
     /// Use <c>0</c> to disable the cache.
     /// </summary>
     /// <param name="maxEntries">The maximum number of cache entries. Must be non-negative.</param>
@@ -40,8 +41,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (_maxExtCodeCacheEntries == 0)
         {
-            ICodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
-            return codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
+            ICodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            return uncachedCodeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)uncachedCodeInfo.CodeSpan.Length;
         }
 
         _extCodeCache ??= new Dictionary<AddressAsKey, ExtCodeCacheEntry>(8);
@@ -68,11 +69,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ResetExtCodeCacheForBlock()
+    {
+        long blockNumber = BlockExecutionContext.Header.Number;
+        if (_extCodeCacheBlockNumber != blockNumber)
+        {
+            _extCodeCacheBlockNumber = blockNumber;
+            ResetExtCodeCache();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ICodeInfo GetExtCodeInfoCached(Address address, IReleaseSpec spec)
     {
         if (_maxExtCodeCacheEntries == 0)
         {
-            return _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            ICodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            return uncachedCodeInfo;
         }
 
         _extCodeCache ??= new Dictionary<AddressAsKey, ExtCodeCacheEntry>(8);
