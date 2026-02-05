@@ -135,7 +135,7 @@ public class SeqlockCacheTests
         byte[] expected = CreateValue(1);
 
         cache.Set(in key, expected);
-        byte[]? result = cache.GetOrAdd(in key, static _ => new byte[32]);
+        byte[]? result = cache.GetOrAdd(in key, static (in _) => new byte[32]);
 
         result.Should().BeSameAs(expected);
     }
@@ -147,7 +147,7 @@ public class SeqlockCacheTests
         StorageCell key = CreateKey(1);
         byte[] factoryResult = CreateValue(1);
 
-        byte[]? result = cache.GetOrAdd(in key, _ => factoryResult);
+        byte[]? result = cache.GetOrAdd(in key, (in _) => factoryResult);
 
         result.Should().BeSameAs(factoryResult);
     }

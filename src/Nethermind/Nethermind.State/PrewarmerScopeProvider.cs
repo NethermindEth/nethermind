@@ -146,7 +146,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        private Account? GetFromBaseTree(AddressAsKey address)
+        private Account? GetFromBaseTree(in AddressAsKey address)
         {
             return baseScope.Get(address);
         }
@@ -206,7 +206,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
-        private byte[] LoadFromTreeStorage(StorageCell storageCell)
+        private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
             Db.Metrics.IncrementStorageTreeReads();
 

@@ -256,29 +256,6 @@ public sealed class SeqlockCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Gets a value from the cache, or adds it using the factory if not present.
-    /// Note: Func&lt;TKey, TValue?&gt; takes TKey by value - for large TKey this can be a measurable copy.
-    /// </summary>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public TValue? GetOrAdd(in TKey key, Func<TKey, TValue?> valueFactory)
-    {
-        // Compute hash once, reuse for both TryGet and Set
-        long hashCode = key.GetHashCode64();
-        int index = (int)hashCode & BucketMask;
-        long hashPart = (hashCode >> HashShift) & HashMask;
-
-        if (TryGetValueCore(in key, index, hashPart, out TValue? value))
-        {
-            return value;
-        }
-
-        value = valueFactory(key);
-        SetCore(in key, value, index, hashPart);
-        return value;
-    }
-
-    /// <summary>
     /// Sets a key-value pair in the cache.
     /// This is a direct-mapped cache: a hash collision overwrites the existing entry in that slot.
     /// 
