@@ -109,6 +109,12 @@ namespace Nethermind.Db.LogIndex
             private IWriteBatch _element;
         }
 
+        [InlineArray(MaxTopics + 1)]
+        private struct AllMergeOperators
+        {
+            private MergeOperator _element;
+        }
+
         private ref struct DbBatches : IDisposable
         {
             private bool _completed;
@@ -182,7 +188,7 @@ namespace Nethermind.Db.LogIndex
 
         private readonly int _maxReorgDepth;
 
-        private readonly Dictionary<LogIndexColumns, MergeOperator> _mergeOperators;
+        private readonly AllMergeOperators _mergeOperators;
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
         private readonly CompressionAlgorithm _compressionAlgorithm;
@@ -236,19 +242,22 @@ namespace Nethermind.Db.LogIndex
                     ? new Compactor(this, _logger, config.CompactionDistance)
                     : new NoOpCompactor();
 
-                _mergeOperators = new()
-                {
-                    { LogIndexColumns.Addresses, new(this, _compressor, topicIndex: null) },
-                    { LogIndexColumns.Topics0, new(this, _compressor, topicIndex: 0) },
-                    { LogIndexColumns.Topics1, new(this, _compressor, topicIndex: 1) },
-                    { LogIndexColumns.Topics2, new(this, _compressor, topicIndex: 2) },
-                    { LogIndexColumns.Topics3, new(this, _compressor, topicIndex: 3) }
-                };
+                _mergeOperators[0] = new(this, _compressor, topicIndex: null);
+                _mergeOperators[1] = new(this, _compressor, topicIndex: 0);
+                _mergeOperators[2] = new(this, _compressor, topicIndex: 1);
+                _mergeOperators[3] = new(this, _compressor, topicIndex: 2);
+                _mergeOperators[4] = new(this, _compressor, topicIndex: 3);
 
                 _rootDb = CreateRootDb(dbFactory, config.Reset);
                 _metaDb = GetMetaDb(_rootDb);
                 _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
-                _topicDbs = _mergeOperators.Keys.Where(cl => $"{cl}".Contains("Topic")).Select(cl => _rootDb.GetColumnDb(cl)).ToArray();
+                _topicDbs =
+                [
+                    _rootDb.GetColumnDb(LogIndexColumns.Topics0),
+                    _rootDb.GetColumnDb(LogIndexColumns.Topics1),
+                    _rootDb.GetColumnDb(LogIndexColumns.Topics2),
+                    _rootDb.GetColumnDb(LogIndexColumns.Topics3),
+                ];
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
@@ -307,7 +316,14 @@ namespace Nethermind.Db.LogIndex
             {
                 IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
                 {
-                    ColumnsMergeOperators = _mergeOperators.ToDictionary(x => $"{x.Key}", x => (IMergeOperator)x.Value)
+                    ColumnsMergeOperators = new Dictionary<string, IMergeOperator>
+                    {
+                        [$"{LogIndexColumns.Addresses}"] = _mergeOperators[0],
+                        [$"{LogIndexColumns.Topics0}"] = _mergeOperators[1],
+                        [$"{LogIndexColumns.Topics1}"] = _mergeOperators[2],
+                        [$"{LogIndexColumns.Topics2}"] = _mergeOperators[3],
+                        [$"{LogIndexColumns.Topics3}"] = _mergeOperators[4],
+                    }
                 });
 
                 return (db, GetMetaDb(db));
@@ -489,11 +505,11 @@ namespace Nethermind.Db.LogIndex
 
         private (int min, int max) SaveRange(DbBatches batches, int firstBlock, int lastBlock, bool isBackwardSync, bool isReorg = false)
         {
-            var batchMin = Math.Min(firstBlock, lastBlock);
-            var batchMax = Math.Max(firstBlock, lastBlock);
+            int batchMin = Math.Min(firstBlock, lastBlock);
+            int batchMax = Math.Max(firstBlock, lastBlock);
 
-            var min = _minBlock ?? SaveRangeBound(batches.Meta, SpecialKey.MinBlockNum, batchMin);
-            var max = _maxBlock ?? SaveRangeBound(batches.Meta, SpecialKey.MaxBlockNum, batchMax);
+            int min = _minBlock ?? SaveRangeBound(batches.Meta, SpecialKey.MinBlockNum, batchMin);
+            int max = _maxBlock ?? SaveRangeBound(batches.Meta, SpecialKey.MaxBlockNum, batchMax);
 
             if (isBackwardSync)
             {
@@ -549,10 +565,10 @@ namespace Nethermind.Db.LogIndex
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
 
-            var timestamp = Stopwatch.GetTimestamp();
+            long timestamp = Stopwatch.GetTimestamp();
 
-            var aggregate = new LogIndexAggregate(batch);
-            foreach ((var blockNumber, TxReceipt[] receipts) in batch)
+            LogIndexAggregate aggregate = new(batch);
+            foreach ((int blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
@@ -574,7 +590,7 @@ namespace Nethermind.Db.LogIndex
                         if (addressBlocks.Count == 0 || addressBlocks[^1] != blockNumber)
                             addressBlocks.Add(blockNumber);
 
-                        var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
+                        int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
                         for (byte topicIndex = 0; topicIndex < topicsLength; topicIndex++)
                         {
                             stats?.IncrementTopics();
@@ -692,7 +708,7 @@ namespace Nethermind.Db.LogIndex
             CompactingStats compactStats = await _compactor.ForceAsync();
             stats?.Compacting.Combine(compactStats);
 
-            foreach (MergeOperator mergeOperator in _mergeOperators.Values)
+            foreach (MergeOperator mergeOperator in _mergeOperators)
                 stats?.Combine(mergeOperator.Stats);
 
             if (_logger.IsInfo)
@@ -766,7 +782,7 @@ namespace Nethermind.Db.LogIndex
                 semaphore.Release();
             }
 
-            foreach (MergeOperator mergeOperator in _mergeOperators.Values)
+            foreach (MergeOperator mergeOperator in _mergeOperators)
                 stats?.Combine(mergeOperator.GetAndResetStats());
             stats?.Compressing.Combine(_compressor.GetAndResetStats());
             stats?.Compacting.Combine(_compactor.GetAndResetStats());
