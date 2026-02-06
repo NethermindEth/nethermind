@@ -92,11 +92,9 @@ public ref struct TrieLeafIterator
                     // Check range bounds if applicable
                     if (_hasRange)
                     {
-                        int cmpStart = ComparePath(_currentPath, _startPath);
-                        if (cmpStart < 0) continue; // Before start, skip
+                        if (_currentPath.Path.CompareTo(_startPath) < 0) continue; // Before start, skip
 
-                        int cmpEnd = ComparePath(_currentPath, _endPath);
-                        if (cmpEnd >= 0)
+                        if (_currentPath.Path.CompareTo(_endPath) >= 0)
                         {
                             // At or past end, stop iteration
                             _stackDepth = 0;
@@ -115,9 +113,9 @@ public ref struct TrieLeafIterator
                         TreePath childPath = frame.Path.Append(frame.Node.Key);
 
                         // Range check for extension: skip if max path of subtree < start
-                        if (_hasRange && IsSubtreeBeforeStart(childPath)) break;
+                        if (_hasRange && childPath.ToUpperBoundPath() < _startPath) break;
                         // Range check: stop if min path of subtree >= end
-                        if (_hasRange && IsSubtreeAtOrPastEnd(childPath))
+                        if (_hasRange && childPath.ToLowerBoundPath() >= _endPath)
                         {
                             _stackDepth = 0;
                             continue;
@@ -153,7 +151,7 @@ public ref struct TrieLeafIterator
                         TreePath childPath = frame.Path.Append(childIdx);
 
                         // Range check: stop if child's min path >= end
-                        if (_hasRange && IsSubtreeAtOrPastEnd(childPath))
+                        if (_hasRange && childPath.ToLowerBoundPath() >= _endPath)
                         {
                             _stackDepth = 0;
                             foundChild = true; // Exit the outer loop cleanly
@@ -188,96 +186,6 @@ public ref struct TrieLeafIterator
     }
 
     /// <summary>
-    /// Compare a TreePath against a ValueHash256 path for range checking.
-    /// Returns negative if path &lt; target, 0 if equal, positive if path &gt; target.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ComparePath(in TreePath path, in ValueHash256 target)
-    {
-        ReadOnlySpan<byte> pathBytes = path.Path.Bytes;
-        ReadOnlySpan<byte> targetBytes = target.Bytes;
-        return pathBytes.SequenceCompareTo(targetBytes);
-    }
-
-    /// <summary>
-    /// Check if the maximum possible path in a subtree is before startPath.
-    /// Max path for a subtree at 'path' has all remaining nibbles as 0xF.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsSubtreeBeforeStart(in TreePath path)
-    {
-        // Compare path prefix - if path prefix > start prefix, subtree is not before start
-        int prefixNibbles = path.Length;
-        int prefixBytes = prefixNibbles / 2;
-        bool halfNibble = (prefixNibbles & 1) == 1;
-
-        ReadOnlySpan<byte> pathPrefix = path.Path.Bytes[..prefixBytes];
-        ReadOnlySpan<byte> startPrefix = _startPath.Bytes[..prefixBytes];
-
-        int cmp = pathPrefix.SequenceCompareTo(startPrefix);
-        if (cmp > 0) return false; // Path prefix greater, subtree overlaps or is after
-        if (cmp < 0) return true;  // Path prefix less, max(subtree) could still be < start
-
-        // Prefix bytes are equal, check the half nibble if present
-        if (halfNibble)
-        {
-            int pathNibble = (path.Path.Bytes[prefixBytes] >> 4) & 0xF;
-            int startNibble = (_startPath.Bytes[prefixBytes] >> 4) & 0xF;
-            // Max path at this level has this nibble + 0xF in the rest
-            // So if pathNibble < startNibble, max could still be < start
-            if (pathNibble < startNibble) return true;
-            if (pathNibble > startNibble) return false;
-        }
-
-        // At this point prefixes match exactly up to path.Length
-        // The max of subtree has 0xFF... for remaining bytes, which is >= start
-        return false;
-    }
-
-    /// <summary>
-    /// Check if the minimum possible path in a subtree is at or past endPath.
-    /// Min path for a subtree at 'path' has all remaining nibbles as 0x0.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsSubtreeAtOrPastEnd(in TreePath path)
-    {
-        // Compare path prefix against end prefix
-        int prefixNibbles = path.Length;
-        int prefixBytes = prefixNibbles / 2;
-        bool halfNibble = (prefixNibbles & 1) == 1;
-
-        ReadOnlySpan<byte> pathPrefix = path.Path.Bytes[..prefixBytes];
-        ReadOnlySpan<byte> endPrefix = _endPath.Bytes[..prefixBytes];
-
-        int cmp = pathPrefix.SequenceCompareTo(endPrefix);
-        if (cmp > 0) return true;  // Path prefix greater, subtree is past end
-        if (cmp < 0) return false; // Path prefix less, subtree min is before end
-
-        // Prefix bytes are equal, check the half nibble if present
-        if (halfNibble)
-        {
-            int pathNibble = (path.Path.Bytes[prefixBytes] >> 4) & 0xF;
-            int endNibble = (_endPath.Bytes[prefixBytes] >> 4) & 0xF;
-            if (pathNibble > endNibble) return true;
-            if (pathNibble < endNibble) return false;
-        }
-
-        // At this point prefixes match exactly up to path.Length
-        // The min of subtree has 0x00... for remaining bytes
-        // This is < end (unless end is also all zeros from here, which would make it ==)
-        // Check if end has any non-zero bytes remaining
-        for (int i = halfNibble ? prefixBytes : prefixBytes; i < 32; i++)
-        {
-            byte endByte = _endPath.Bytes[i];
-            byte mask = (i == prefixBytes && halfNibble) ? (byte)0x0F : (byte)0xFF;
-            if ((endByte & mask) != 0) return false; // end has non-zero remainder, min < end
-        }
-
-        // end is exactly the path prefix with zeros, so min == end, which means >= end
-        return true;
-    }
-
-    /// <summary>
     /// Get the starting child index for a branch node based on the start path.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -286,23 +194,14 @@ public ref struct TrieLeafIterator
         int nibbleIndex = branchPath.Length;
         if (nibbleIndex >= FullPathLength) return 0;
 
-        // Compare prefix - if branch path > start, start from 0
+        // If branch lower bound >= startPath, start from child 0
+        if (branchPath.Path.CompareTo(startPath) >= 0) return 0;
+
+        // Extract the nibble from startPath at branch depth
         int byteIndex = nibbleIndex / 2;
         bool isHighNibble = (nibbleIndex & 1) == 0;
-
-        // Compare the path up to this point
-        int prefixBytes = byteIndex;
-        ReadOnlySpan<byte> pathPrefix = branchPath.Path.Bytes[..prefixBytes];
-        ReadOnlySpan<byte> startPrefix = startPath.Bytes[..prefixBytes];
-        int cmp = pathPrefix.SequenceCompareTo(startPrefix);
-        if (cmp > 0) return 0;
-        if (cmp < 0) return 16; // Branch is before start entirely - but this shouldn't happen in normal traversal
-
-        // Prefixes match, extract the nibble
         byte startByte = startPath.Bytes[byteIndex];
-        int startNibble = isHighNibble ? (startByte >> 4) & 0xF : startByte & 0xF;
-
-        return startNibble;
+        return isHighNibble ? (startByte >> 4) & 0xF : startByte & 0xF;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
