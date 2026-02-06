@@ -4,6 +4,8 @@
 using System.CommandLine;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
+using System.Text.Json;
 using Spectre.Console;
 
 namespace JitAsm;
@@ -310,13 +312,45 @@ internal static class Program
             }
         }
 
+        // Set up dependency resolution for the target assembly.
+        // Without this, RuntimeHelpers.PrepareMethod silently fails when the
+        // JIT can't resolve types from transitive NuGet packages (e.g. Nethermind.Int256).
+        bool verbose = Environment.GetEnvironmentVariable("JITASM_VERBOSE") == "1";
+
+        // Build assembly name → file path mapping from the deps.json file.
+        // This resolves both project references (in the same directory) and
+        // NuGet packages (from the global packages cache).
+        var assemblyDir = Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!;
+        var assemblyMap = BuildAssemblyMap(assemblyPath, assemblyDir, verbose);
+
+        AssemblyLoadContext.Default.Resolving += (context, name) =>
+        {
+            // First check the target assembly's directory
+            var localPath = Path.Combine(assemblyDir, name.Name + ".dll");
+            if (File.Exists(localPath))
+            {
+                if (verbose)
+                    Console.Error.WriteLine($"[DEBUG] AssemblyResolve: {name.Name} → {localPath} (local)");
+                return context.LoadFromAssemblyPath(localPath);
+            }
+
+            // Then check deps.json mapped paths
+            if (assemblyMap.TryGetValue(name.Name!, out var mappedPath) && File.Exists(mappedPath))
+            {
+                if (verbose)
+                    Console.Error.WriteLine($"[DEBUG] AssemblyResolve: {name.Name} → {mappedPath} (deps.json)");
+                return context.LoadFromAssemblyPath(mappedPath);
+            }
+
+            if (verbose)
+                Console.Error.WriteLine($"[DEBUG] AssemblyResolve: {name.Name} → NOT FOUND");
+            return null;
+        };
+
         try
         {
-            // Load the assembly
-            var assembly = Assembly.LoadFrom(assemblyPath);
+            var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
 
-            // Debug: Check if verbose environment variable is set
-            bool verbose = Environment.GetEnvironmentVariable("JITASM_VERBOSE") == "1";
             if (verbose)
             {
                 Console.Error.WriteLine($"[DEBUG] Loaded assembly: {assembly.FullName}");
@@ -350,7 +384,6 @@ internal static class Program
             {
                 if (verbose)
                 {
-                    // Try to provide more info about what was found
                     var types = assembly.GetTypes().Where(t => t.Name.Contains(typeName ?? "")).Take(5);
                     Console.Error.WriteLine($"[DEBUG] Possible types: {string.Join(", ", types.Select(t => t.FullName))}");
                 }
@@ -360,19 +393,6 @@ internal static class Program
 
             if (tier1)
             {
-                // Tier-1 simulation: invoke the method to trigger Tier-0 JIT and
-                // increment the call counter. After enough calls, the runtime queues
-                // Tier-1 recompilation on a background thread.
-                // DOTNET_JitDisasm captures all compilations, and the DisassemblyParser
-                // will pick up the last (Tier-1) output.
-                // NOTE: Do NOT call PrepareMethod first — it can bypass call counting.
-
-                // With PGO, tiered compilation has 3 stages:
-                //   Tier-0 → Instrumented Tier-0 (PGO) → Tier-1 (FullOpts + PGO)
-                // Each transition requires hitting the call count threshold, then
-                // a background recompilation. We invoke → wait → invoke → wait to
-                // drive through all stages.
-
                 var parameters = method.GetParameters();
                 var invokeArgs = new object?[parameters.Length];
                 object? target = method.IsStatic ? null : TryCreateInstance(method.DeclaringType!);
@@ -389,28 +409,34 @@ internal static class Program
                 if (verbose)
                     Console.Error.WriteLine("[DEBUG] Phase 1: Invoking to trigger Tier-0 → Instrumented Tier-0...");
                 InvokeN(50);
-
-                // Wait for Instrumented Tier-0 to be installed
                 Thread.Sleep(1000);
 
                 if (verbose)
                     Console.Error.WriteLine("[DEBUG] Phase 2: Invoking to trigger Instrumented Tier-0 → Tier-1...");
                 InvokeN(50);
-
-                // Wait for Tier-1 recompilation
                 Thread.Sleep(2000);
 
                 if (verbose)
                     Console.Error.WriteLine("[DEBUG] Phase 3: Final invocations to ensure Tier-1 is installed...");
                 InvokeN(50);
-
-                // Final wait for any pending recompilation
                 Thread.Sleep(1000);
             }
             else
             {
-                // Standard mode: single FullOpts compilation
                 RuntimeHelpers.PrepareMethod(method.MethodHandle);
+                if (verbose)
+                    Console.Error.WriteLine($"[DEBUG] PrepareMethod completed for {method.DeclaringType?.FullName}:{method.Name}");
+
+                // Also invoke the method to ensure all code paths are JIT-compiled.
+                // PrepareMethod alone may not trigger DOTNET_JitDisasm output for
+                // methods from dynamically loaded assemblies.
+                var parameters = method.GetParameters();
+                var invokeArgs = new object?[parameters.Length];
+                object? target = method.IsStatic ? null : TryCreateInstance(method.DeclaringType!);
+                try { method.Invoke(target, invokeArgs); }
+                catch { /* Expected - args are null/default */ }
+                if (verbose)
+                    Console.Error.WriteLine("[DEBUG] Method invocation completed");
             }
 
             return 0;
@@ -484,4 +510,72 @@ internal static class Program
         // Try Type.GetType as last resort (requires assembly-qualified names for cross-assembly)
         return Type.GetType(typeName);
     }
+
+    /// <summary>
+    /// Build a mapping from assembly name to file path using the deps.json file.
+    /// Resolves NuGet package references via the global packages cache.
+    /// </summary>
+    private static Dictionary<string, string> BuildAssemblyMap(string assemblyPath, string assemblyDir, bool verbose)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string depsPath = Path.ChangeExtension(assemblyPath, ".deps.json");
+        if (!File.Exists(depsPath))
+            return map;
+
+        string nugetPackages = Environment.GetEnvironmentVariable("NUGET_PACKAGES")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+
+        try
+        {
+            using var stream = File.OpenRead(depsPath);
+            using var doc = JsonDocument.Parse(stream);
+
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("targets", out var targets))
+                return map;
+
+            // Get the first (and usually only) target
+            foreach (var target in targets.EnumerateObject())
+            {
+                foreach (var package in target.Value.EnumerateObject())
+                {
+                    if (!package.Value.TryGetProperty("runtime", out var runtime))
+                        continue;
+
+                    foreach (var dll in runtime.EnumerateObject())
+                    {
+                        string dllRelativePath = dll.Name; // e.g. "lib/net10.0/Nethermind.Int256.dll"
+                        string asmName = Path.GetFileNameWithoutExtension(dllRelativePath);
+
+                        // Skip if already in the local directory
+                        if (File.Exists(Path.Combine(assemblyDir, asmName + ".dll")))
+                            continue;
+
+                        // Resolve from NuGet cache: packages/{id}/{version}/{path}
+                        string packageId = package.Name; // e.g. "Nethermind.Numerics.Int256/1.4.0"
+                        string[] parts = packageId.Split('/');
+                        if (parts.Length == 2)
+                        {
+                            string fullPath = Path.Combine(nugetPackages, parts[0].ToLowerInvariant(), parts[1], dllRelativePath);
+                            if (File.Exists(fullPath))
+                            {
+                                map[asmName] = fullPath;
+                                if (verbose)
+                                    Console.Error.WriteLine($"[DEBUG] Deps map: {asmName} → {fullPath}");
+                            }
+                        }
+                    }
+                }
+                break; // Only process the first target
+            }
+        }
+        catch (Exception ex)
+        {
+            if (verbose)
+                Console.Error.WriteLine($"[DEBUG] Failed to parse deps.json: {ex.Message}");
+        }
+
+        return map;
+    }
 }
+
