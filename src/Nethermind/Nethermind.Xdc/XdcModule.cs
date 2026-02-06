@@ -98,6 +98,10 @@ public class XdcModule : Module
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+
+            //Sync
+            .AddSingleton<XdcStateSyncSnapshotManager>()
+            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             ;
     }
 
