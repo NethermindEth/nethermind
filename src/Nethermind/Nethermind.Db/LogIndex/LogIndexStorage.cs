@@ -279,7 +279,7 @@ namespace Nethermind.Db.LogIndex
 
             return versionBytes.SequenceEqual(VersionBytes)
                 ? root
-                : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} < {VersionBytes}, resetting data...");
+                : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} <> {VersionBytes[0]}, resetting data...");
 
             IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
             {
@@ -355,21 +355,23 @@ namespace Nethermind.Db.LogIndex
             db.GetAllValues().ForEach(static _ => { });
         }
 
-        public async Task StopAsync()
-        {
-            if (_stopped)
-                return;
+        public Task StopAsync() => StopAsync(acquireLock: true);
 
-            await _writeSemaphores[false].WaitAsync();
-            await _writeSemaphores[true].WaitAsync();
+        private async Task StopAsync(bool acquireLock)
+        {
+            if (Interlocked.Exchange(ref _stopped, true))
+            {
+                return;
+            }
+
+            if (acquireLock)
+            {
+                await _writeSemaphores[false].WaitAsync();
+                await _writeSemaphores[true].WaitAsync();
+            }
 
             try
             {
-                if (_stopped)
-                    return;
-
-                _stopped = true;
-
                 // Disposing RocksDB during any write operation will cause 0xC0000005
                 await Task.WhenAll(
                     _compactor.StopAsync(),
@@ -380,8 +382,11 @@ namespace Nethermind.Db.LogIndex
             }
             finally
             {
-                _writeSemaphores[false].Release();
-                _writeSemaphores[true].Release();
+                if (acquireLock)
+                {
+                    _writeSemaphores[false].Release();
+                    _writeSemaphores[true].Release();
+                }
             }
         }
 
@@ -407,19 +412,17 @@ namespace Nethermind.Db.LogIndex
 
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
-            if (_disposed)
+            if (Interlocked.Exchange(ref _disposed, true))
+            {
                 return;
-
-            await StopAsync();
+            }
 
             await _writeSemaphores[false].WaitAsync();
             await _writeSemaphores[true].WaitAsync();
 
-            if (_disposed)
-                return;
+            await StopAsync(acquireLock: false);
 
-            _disposed = true;
-
+            // No need to free semaphores now
             DisposeCore();
         }
 

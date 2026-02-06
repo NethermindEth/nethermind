@@ -353,10 +353,11 @@ namespace Nethermind.Facade.Find
         protected BlockHeader? FindHeaderOrLogError(long blockNumber, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            var block = _blockFinder.FindHeader(blockNumber);
-            if (block is null)
+
+            BlockHeader? block = _blockFinder.FindHeader(blockNumber);
+            if (block is null && _logger.IsError)
             {
-                if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
             }
 
             return block;
