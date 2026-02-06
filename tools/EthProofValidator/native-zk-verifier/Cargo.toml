@@ -1,0 +1,41 @@
+[package]
+name = "native-zk-verifier"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"] 
+
+[dependencies]
+# Zisk / ZKCLoud
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.15.0" }
+proofman-verifier_fallback = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", package = 'proofman-verifier', tag = "v0.12.0" }
+# OpenVM
+verify-stark = { git = "https://github.com/openvm-org/openvm.git", branch = "feat/v1-verify-stark", package = "verify-stark" }
+# Pico
+pico-prism-vm = { git = "https://github.com/ethproofs/pico.git", package = "pico-vm", branch = "ethproofs-pico-prism" }
+# SP1
+sp1-verifier = { git = "https://github.com/succinctlabs/hypercube-verifier.git", branch = "ethproofs_demo" }
+# Airbender
+flate2 = "1"
+full_statement_verifier = { git = "https://github.com/matter-labs/zksync-airbender", branch = "dev", default-features = false, features = ["unified_verifier_only_security_80"] }
+verifier_common = { git = "https://github.com/matter-labs/zksync-airbender", branch = "dev", default-features = false, features = ["proof_utils"] }
+prover = { git = "https://github.com/matter-labs/zksync-airbender", branch = "dev", default-features = false, features = ["definitions_only"] }
+cs = { git = "https://github.com/matter-labs/zksync-airbender", branch = "dev", default-features = false, features = ["compiler"] }
+field = { git = "https://github.com/matter-labs/zksync-airbender", branch = "dev", default-features = false, features = ["no_inline"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"
+bincode_airbender = { version = "2", package = 'bincode', features = ["serde"] }
+bitcode = { version = "0.6.5", default-features = false, features = ["serde"] }
+base64 = "0.22.1"
+
+# Error handling
+anyhow = "1.0"
+
+# Optimize for size in release builds
+[profile.release]
+opt-level = 3   # Max speed
+lto = true      # Link Time Optimization (makes code faster)
+strip = true    # Remove symbols to make the .dll smaller
+ 
