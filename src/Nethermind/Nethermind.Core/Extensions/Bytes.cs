@@ -76,6 +76,8 @@ namespace Nethermind.Core.Extensions
                     return y is null ? 0 : -1;
                 }
 
+                if (y is null) return 1;
+
                 return x.SequenceCompareTo(y);
             }
 
