@@ -150,7 +150,7 @@ partial class LogIndexStorage
             }
             finally
             {
-                while (_channel.Reader.TryRead(out TaskCompletionSource? remaining) &&  remaining is not null)
+                while (_channel.Reader.TryRead(out TaskCompletionSource? remaining) && remaining is not null)
                 {
                     remaining.TrySetCanceled();
                     Interlocked.CompareExchange(ref _pendingForcedCompaction, null, remaining);
