@@ -110,7 +110,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return copy;
     }
 
-    internal void AppendMut(ReadOnlySpan<byte> nibbles)
+    public void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
@@ -340,6 +340,30 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         }
 
         return length.CompareTo(otherTree.Length);
+    }
+
+    /// <summary>
+    /// Returns the Path as lower bound (remaining nibbles are 0x0, which TreePath already guarantees).
+    /// </summary>
+    public readonly ValueHash256 ToLowerBoundPath() => Path;
+
+    /// <summary>
+    /// Returns the Path extended to 64 nibbles with 0xF (upper bound of subtree).
+    /// </summary>
+    public readonly ValueHash256 ToUpperBoundPath()
+    {
+        ValueHash256 result = Path;
+        Span<byte> bytes = result.BytesAsSpan;
+
+        int startByte = Length / 2;
+        if (Length % 2 == 1)
+        {
+            bytes[startByte] |= 0x0F;
+            startByte++;
+        }
+        bytes[startByte..].Fill(0xFF);
+
+        return result;
     }
 
     private static ReadOnlySpan<byte> ZeroMasksData => new byte[]
