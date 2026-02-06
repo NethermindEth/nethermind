@@ -19,8 +19,8 @@ partial class LogIndexStorage
         CompressionAlgorithm.DecompressFunc decompressionFunc
     )
     {
-        public delegate nuint CompressFunc(ReadOnlySpan<int> @in, nuint n, Span<byte> @out);
-        public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<int> @out);
+        public delegate nuint CompressFunc(ReadOnlySpan<uint> @in, nuint n, Span<byte> @out);
+        public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<uint> @out);
 
         private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = new();
 
@@ -50,9 +50,9 @@ partial class LogIndexStorage
         public string Name => name;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public nuint Compress(ReadOnlySpan<int> @in, nuint n, Span<byte> @out) => compressionFunc(@in, n, @out);
+        public nuint Compress(ReadOnlySpan<uint> @in, nuint n, Span<byte> @out) => compressionFunc(@in, n, @out);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public nuint Decompress(ReadOnlySpan<byte> @in, nuint n, Span<int> @out) => decompressionFunc(@in, n, @out);
+        public nuint Decompress(ReadOnlySpan<byte> @in, nuint n, Span<uint> @out) => decompressionFunc(@in, n, @out);
     }
 }

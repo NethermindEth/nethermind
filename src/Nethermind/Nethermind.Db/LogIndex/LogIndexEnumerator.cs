@@ -114,13 +114,14 @@ public partial class LogIndexStorage
         {
             _value?.Dispose();
 
+            ReadOnlySpan<byte> viewKey = _view.CurrentKey;
             ReadOnlySpan<byte> viewValue = _view.CurrentValue;
 
-            if (IsCompressed(viewValue, out var length))
+            if (IsCompressed(viewKey, viewValue, out var length))
             {
                 // +1 fixes TurboPFor reading outside of array bounds
                 _value = new(capacity: length + 1, count: length);
-                _storage.DecompressDbValue(viewValue, _value.AsSpan());
+                _storage.DecompressDbValue(viewKey, viewValue, _value.AsSpan());
             }
             else
             {

@@ -853,30 +853,56 @@ namespace Nethermind.Db.LogIndex
 
         private static int BinarySearch(ReadOnlySpan<uint> blocks, uint from)
         {
-            int index = MemoryMarshal.Cast<uint, int>(blocks).BinarySearch((int)from);
-            return index < 0 ? ~index : index;
+            int lo = 0, hi = blocks.Length - 1;
+            while (lo <= hi)
+            {
+                int mid = lo + (hi - lo) / 2;
+                uint midVal = blocks[mid];
+                if (midVal == from) return mid;
+                if (midVal < from) lo = mid + 1;
+                else hi = mid - 1;
+            }
+            return ~lo;
         }
 
         private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
-            ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
+            ReadOnlySpan<uint> blockNumbers = MemoryMarshal.Cast<byte, uint>(data);
             int length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
             return buffer[..length];
         }
 
-        private static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
-        private static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
+        private static int ReadCompressionMarker(ReadOnlySpan<byte> source) =>
+            (int)BinaryPrimitives.ReadUInt32LittleEndian(source);
+        private static void WriteCompressionMarker(Span<byte> source, int len) =>
+            BinaryPrimitives.WriteUInt32LittleEndian(source, (uint)len);
 
-        private static bool IsCompressed(ReadOnlySpan<byte> source, out int len)
+        /// <summary>
+        /// Determines whether a DB value is compressed based on its key postfix.
+        /// Transient keys (BackwardMerge / ForwardMerge) are never compressed;
+        /// finalized keys (postfix = first_block_number + 1) are always compressed.
+        /// </summary>
+        /// <remarks>
+        /// Finalized key postfix collides with BackwardMerge at block 0xFFFFFFFF and
+        /// ForwardMerge at block 0xFFFFFFFE — both ~1600 years away at 12s/block.
+        /// </remarks>
+        private static bool IsCompressed(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out int len)
         {
-            if (source.Length == 0)
+            if (value.Length == 0)
             {
                 len = 0;
                 return false;
             }
 
-            len = ReadCompressionMarker(source);
-            return len > 0;
+            bool isTransient = key.EndsWith(Postfix.ForwardMerge) || key.EndsWith(Postfix.BackwardMerge);
+            if (isTransient)
+            {
+                len = 0;
+                return false;
+            }
+
+            len = ReadCompressionMarker(value);
+            return true;
         }
 
         private static void WriteBlockNumber(Span<byte> destination, uint number) => BinaryPrimitives.WriteUInt32LittleEndian(destination, number);
@@ -916,7 +942,7 @@ namespace Nethermind.Db.LogIndex
 
         private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data)
         {
-            if (IsCompressed(data, out _))
+            if (IsCompressed(key, data, out _))
                 throw new LogIndexStateException("Attempt to compress already compressed data.", key);
             if (data.Length % BlockNumberSize != 0)
                 throw new LogIndexStateException($"Invalid length of data to compress: {data.Length}.", key);
@@ -935,15 +961,15 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<uint> buffer)
+        private void DecompressDbValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> data, Span<uint> buffer)
         {
-            if (!IsCompressed(data, out int len))
+            if (!IsCompressed(key, data, out int len))
                 throw new ValidationException("Data is not compressed");
 
             if (buffer.Length < len)
                 throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            _ = _compressionAlgorithm.Decompress(data[BlockNumberSize..], (nuint)len, MemoryMarshal.Cast<uint, int>(buffer));
+            _ = _compressionAlgorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
         }
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
