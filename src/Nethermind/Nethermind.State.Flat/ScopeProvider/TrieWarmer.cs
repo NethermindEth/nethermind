@@ -279,6 +279,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         catch (NodeHashMismatchException) { }
         // Because it runs in parallel, it could be that the scope is disposed of early.
         catch (ObjectDisposedException) { }
+        // When the scope is disposed, it set some of the dictionary to null to prevent corrupting later state
+        catch (NullReferenceException) { }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
