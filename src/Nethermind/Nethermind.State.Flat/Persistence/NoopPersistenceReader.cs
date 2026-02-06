@@ -26,9 +26,9 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) => false;
 
-    public IPersistence.IFlatIterator CreateAccountIterator() => new EmptyIterator();
+    public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => new EmptyIterator();
 
-    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) => new EmptyIterator();
+    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => new EmptyIterator();
 
     public bool IsPreimageMode => false;
 

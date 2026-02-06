@@ -218,11 +218,11 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
-        public IPersistence.IFlatIterator CreateAccountIterator() =>
-            _flatReader.CreateAccountIterator();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+            _flatReader.CreateAccountIterator(startKey, endKey);
 
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
-            _flatReader.CreateStorageIterator(accountKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
     }

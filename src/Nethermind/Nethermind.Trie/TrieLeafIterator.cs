@@ -15,6 +15,7 @@ namespace Nethermind.Trie;
 public ref struct TrieLeafIterator
 {
     private const int MaxStackDepth = 128; // Generous depth for any practical trie
+    private const int FullPathLength = 64; // 32 bytes = 64 nibbles
 
     private struct StackFrame
     {
@@ -25,15 +26,28 @@ public ref struct TrieLeafIterator
     }
 
     private readonly ITrieNodeResolver _resolver;
+    private readonly Action<TrieNodeException>? _onException;
     private readonly StackFrame[] _stack;
+    private readonly ValueHash256 _startPath;
+    private readonly ValueHash256 _endPath;
+    private readonly bool _hasRange;
     private int _stackDepth;
     private TreePath _currentPath;
     private TrieNode? _currentLeaf;
 
-    public TrieLeafIterator(ITrieNodeResolver resolver, Hash256? rootHash)
+    public TrieLeafIterator(
+        ITrieNodeResolver resolver,
+        Hash256? rootHash,
+        Action<TrieNodeException>? onException = null,
+        in ValueHash256 startPath = default,
+        in ValueHash256 endPath = default)
     {
         _resolver = resolver;
+        _onException = onException;
         _stack = new StackFrame[MaxStackDepth];
+        _startPath = startPath;
+        _endPath = endPath;
+        _hasRange = startPath != default || endPath != default;
         _stackDepth = 0;
         _currentPath = default;
         _currentLeaf = null;
@@ -56,15 +70,39 @@ public ref struct TrieLeafIterator
             ref StackFrame frame = ref _stack[_stackDepth - 1];
 
             // Resolve the node if needed
-            frame.Node.ResolveNode(_resolver, frame.Path);
+            try
+            {
+                frame.Node.ResolveNode(_resolver, frame.Path);
+            }
+            catch (TrieNodeException ex)
+            {
+                _onException?.Invoke(ex);
+                Pop();
+                continue;
+            }
 
             switch (frame.Node.NodeType)
             {
                 case NodeType.Leaf:
-                    // Found a leaf - return it
+                    // Found a leaf - compute full path and check range
                     _currentPath = frame.Path.Append(frame.Node.Key);
                     _currentLeaf = frame.Node;
                     Pop();
+
+                    // Check range bounds if applicable
+                    if (_hasRange)
+                    {
+                        if (_currentPath.Path.CompareTo(_startPath) < 0) continue; // Before start, skip
+
+                        if (_currentPath.Path.CompareTo(_endPath) >= 0)
+                        {
+                            // At or past end, stop iteration
+                            _stackDepth = 0;
+                            _currentLeaf = null;
+                            _currentPath = default;
+                            return false;
+                        }
+                    }
                     return true;
 
                 case NodeType.Extension:
@@ -73,6 +111,16 @@ public ref struct TrieLeafIterator
                         frame.Processed = true;
                         // Follow the extension to its child
                         TreePath childPath = frame.Path.Append(frame.Node.Key);
+
+                        // Range check for extension: skip if max path of subtree < start
+                        if (_hasRange && childPath.ToUpperBoundPath() < _startPath) break;
+                        // Range check: stop if min path of subtree >= end
+                        if (_hasRange && childPath.ToLowerBoundPath() >= _endPath)
+                        {
+                            _stackDepth = 0;
+                            continue;
+                        }
+
                         TrieNode? child = frame.Node.GetChildWithChildPath(_resolver, ref childPath, 0);
                         if (child is not null)
                         {
@@ -86,23 +134,36 @@ public ref struct TrieLeafIterator
                     break;
 
                 case NodeType.Branch:
-                    // Find next non-null child
+                    // Find next non-null child within range
                     bool foundChild = false;
+
+                    // Compute start child index based on range (skip children before startPath)
+                    if (_hasRange && frame.ChildIndex == 0)
+                    {
+                        frame.ChildIndex = GetStartChildIndex(frame.Path, _startPath);
+                    }
+
                     while (frame.ChildIndex < 16)
                     {
                         int childIdx = frame.ChildIndex;
                         frame.ChildIndex++;
 
-                        if (!frame.Node.IsChildNull(childIdx))
+                        TreePath childPath = frame.Path.Append(childIdx);
+
+                        // Range check: stop if child's min path >= end
+                        if (_hasRange && childPath.ToLowerBoundPath() >= _endPath)
                         {
-                            TreePath childPath = frame.Path.Append(childIdx);
-                            TrieNode? child = frame.Node.GetChildWithChildPath(_resolver, ref childPath, childIdx);
-                            if (child is not null)
-                            {
-                                Push(child, childPath);
-                                foundChild = true;
-                                break;
-                            }
+                            _stackDepth = 0;
+                            foundChild = true; // Exit the outer loop cleanly
+                            break;
+                        }
+
+                        TrieNode? child = frame.Node.GetChildWithChildPath(_resolver, ref childPath, childIdx);
+                        if (child is not null)
+                        {
+                            Push(child, childPath);
+                            foundChild = true;
+                            break;
                         }
                     }
 
@@ -122,6 +183,16 @@ public ref struct TrieLeafIterator
         _currentLeaf = null;
         _currentPath = default;
         return false;
+    }
+
+    /// <summary>
+    /// Get the starting child index for a branch node based on the start path.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetStartChildIndex(in TreePath branchPath, in ValueHash256 startPath)
+    {
+        if (branchPath.Path.CompareTo(startPath) >= 0) return 0;
+        return new TreePath(startPath, FullPathLength)[branchPath.Length];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

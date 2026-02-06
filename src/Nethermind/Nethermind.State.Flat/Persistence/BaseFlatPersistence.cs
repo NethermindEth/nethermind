@@ -43,8 +43,6 @@ public static class BaseFlatPersistence
     private const int StoragePostfixPortion = 16;
     private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
-    private static readonly byte[] AccountIteratorUpperBound = Bytes.FromHexString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
-
     private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
@@ -115,16 +113,28 @@ public static class BaseFlatPersistence
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
 
-        public IPersistence.IFlatIterator CreateAccountIterator() => new AccountIterator(state.GetViewBetween([], AccountIteratorUpperBound));
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
+        {
+            // Need to copy to arrays since spans from Value.Bytes might not survive the call
+            byte[] start = new byte[AccountKeyLength];
+            startKey.Bytes[..AccountKeyLength].CopyTo(start);
+
+            byte[] end = new byte[AccountKeyLength];
+            endKey.Bytes[..AccountKeyLength].CopyTo(end);
+
+            return new AccountIterator(state.GetViewBetween(start, end));
+        }
 
         [SkipLocalsInit]
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey)
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey)
         {
             // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
             // We need to iterate all keys with the same 4-byte prefix and 16-byte suffix
-            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
+            Span<byte> firstKey = stackalloc byte[StorageKeyLength];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
-            BasePersistence.CreateStorageRange(accountKey.Bytes, firstKey, lastKey);
+            EncodeStorageKeyHashedWithShortPrefix(firstKey, accountKey, startSlotKey);
+            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], accountKey, endSlotKey);
+            lastKey[StorageKeyLength] = 0; // Exclusive upper bound
 
             return new StorageIterator(
                 storage.GetViewBetween(firstKey, lastKey),

@@ -52,11 +52,11 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) =>
         _innerReader.TryGetStorageRaw(addrHash, slotHash, ref value);
 
-    public IPersistence.IFlatIterator CreateAccountIterator() =>
-        _innerReader.CreateAccountIterator();
+    public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+        _innerReader.CreateAccountIterator(startKey, endKey);
 
-    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
-        _innerReader.CreateStorageIterator(accountKey);
+    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+        _innerReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
     public bool IsPreimageMode => _innerReader.IsPreimageMode;
 
