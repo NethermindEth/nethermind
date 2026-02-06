@@ -33,11 +33,13 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
+                _balBuilder.ValidateTransactionStorageChanges(0);
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                    _balBuilder.ValidateTransactionStorageChanges((ushort)(i + 1));
                 }
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 

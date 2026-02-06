@@ -11,4 +11,6 @@ public interface IBlockAccessListBuilder
     public bool TracingEnabled { get; set; }
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void AddAccountRead(Address address);
+    public void LoadSuggestedBlockAccessList(BlockAccessList suggested);
+    public void ValidateTransactionStorageChanges(ushort index);
 }

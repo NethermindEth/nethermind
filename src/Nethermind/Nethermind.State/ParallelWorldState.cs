@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -18,6 +22,14 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public PreBlockCaches? Caches => (_innerWorldState as IPreBlockCaches)?.Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
+    public class InvalidBlockLevelAccessListException(string message) : Exception(message);
+
+    private BlockAccessList _suggestedBlockAccessList;
+
+    public void LoadSuggestedBlockAccessList(BlockAccessList suggested)
+    {
+        _suggestedBlockAccessList = suggested;
+    }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => AddToBalance(address, balanceChange, spec, out _);
@@ -220,9 +232,84 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public override void ClearStorage(Address address)
     {
-        // todo: change all storage slots to nothing
-        // consensus issue?
         AddAccountRead(address);
         _innerWorldState.ClearStorage(address);
     }
+
+    public void ValidateTransactionStorageChanges(ushort index)
+    {
+        if (_suggestedBlockAccessList is null)
+        {
+            return;
+        }
+
+        var generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        var suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+
+        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges)? generatedHead;
+        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges)? suggestedHead;
+
+        generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+        suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+        while (generatedHead is not null || suggestedHead is not null)
+        {
+            if (suggestedHead is null)
+            {
+                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+            }
+            else if (generatedHead is null)
+            {
+                if (HasNoChanges(suggestedHead.Value))
+                {
+                    // keep scanning rest of suggested
+                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+                    continue;
+                }
+                else
+                {
+                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                }
+            }
+
+            int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
+
+            if (cmp == 0)
+            {
+                if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
+                    generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
+                    generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
+                    !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
+                {
+                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+                }
+            }
+            else if (cmp > 0)
+            {
+                if (HasNoChanges(suggestedHead.Value))
+                {
+                    // skip suggested with no changes
+                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+                    continue;
+                }
+                else
+                {
+                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                }
+            }
+            else
+            {
+                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+            }
+
+            generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+            suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+        }
+    }
+
+    private bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges) c)
+        => c.BalanceChange is null &&
+            c.NonceChange is null &&
+            c.CodeChange is null &&
+            !c.SlotChanges.GetEnumerator().MoveNext();
 }

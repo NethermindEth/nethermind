@@ -180,167 +180,26 @@ public partial class EngineModuleTests
         }
     }
 
+
     [TestCase(
         "0x1e11df85db9df143816b319b33ad72dc488d63baa6d3d477b72803b352897ef4",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
     public async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
-    {
-        using MergeTestBlockchain chain =
-            await CreateBlockchain(Amsterdam.Instance);
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        const long gasUsed = 167340;
-        const long gasUsedBeforeFinal = 92100;
-        const ulong gasPrice = 2;
-        const long gasLimit = 100000;
-        const ulong timestamp = 1000000;
-        Hash256 parentHash = new(chain.BlockTree.HeadHash);
-
-        Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithValue(0)
-            .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Transaction tx2 = Build.A.Transaction
-            .WithTo(null)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithValue(0)
-            .WithNonce(1)
-            .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
-            .WithCode(Eip2935TestConstants.InitCode)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        // Store followed by revert should undo storage change
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(1)
-            .SSTORE()
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.PUSH0)
-            .REVERT()
-            .Done;
-        Console.WriteLine(Bytes.ToHexString(code));
-        Transaction tx3 = Build.A.Transaction
-            .WithTo(null)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithValue(0)
-            .WithNonce(2)
-            .WithGasPrice(gasPrice)
-            .WithGasLimit(gasLimit)
-            .WithCode(code)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Withdrawal withdrawal = new()
-        {
-            Index = 0,
-            ValidatorIndex = 0,
-            Address = TestItem.AddressD,
-            AmountInGwei = 1
-        };
-
-        Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
-        Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
-
-        UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
-        UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
-
-        StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
-        StorageChange timestampStorageChange = new(0, 0xF4240);
-
-        UInt256 accountBalance = chain.StateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressA);
-        UInt256 addressABalance = accountBalance - gasPrice * GasCostOf.Transaction;
-        UInt256 addressABalance2 = accountBalance - gasPrice * gasUsedBeforeFinal;
-        UInt256 addressABalance3 = accountBalance - gasPrice * gasUsed;
-
-        BlockAccessList expectedBlockAccessList = Build.A.BlockAccessList
-            .WithAccountChanges(
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressA)
-                    .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
-                    .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
-                    .TestObject,
-               new(TestItem.AddressB),
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressD)
-                    .WithBalanceChanges([new(4, 1.GWei())])
-                    .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressE)
-                    .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction * gasPrice)), new(2, new UInt256(gasUsedBeforeFinal * gasPrice)), new(3, new UInt256(gasUsed * gasPrice))])
-                    .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(newContractAddress)
-                    .WithNonceChanges([new(2, 1)])
-                    .WithCodeChanges([new(2, Eip2935TestConstants.Code)])
-                    .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(newContractAddress2)
-                    .WithStorageReads(1)
-                    .TestObject)
-            .WithPrecompileChanges(parentHash, timestamp)
-            .TestObject;
-
-        Block block = new(
-            new(
-                parentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                TestItem.AddressE,
-                UInt256.Zero,
-                1,
-                chain.BlockTree.Head!.GasLimit,
-                timestamp,
-                []
-            )
-            {
-                BlobGasUsed = 0,
-                ExcessBlobGas = 0,
-                BaseFeePerGas = 0,
-                Bloom = Bloom.Empty,
-                GasUsed = gasUsed,
-                Hash = new(blockHash),
-                MixHash = Keccak.Zero,
-                ParentBeaconBlockRoot = Keccak.Zero,
-                ReceiptsRoot = new(receiptsRoot),
-                StateRoot = new(stateRoot),
-            },
-            [tx, tx2, tx3],
-            [],
-            [withdrawal],
-            expectedBlockAccessList);
-        
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(successResponse, Is.Not.Null);
-            Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-            {
-                Id = successResponse.Id,
-                Result = new PayloadStatusV1
-                {
-                    LatestValidHash = block.Hash,
-                    Status = PayloadStatus.Valid,
-                    ValidationError = null
-                }
-            })));
-        }
-    }
+        => await NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            null,
+            false,
+            false,
+            false);
 
     [TestCase(
-        "0x9a3d6266cbcf7c374ea990e4b4dd543cee9096efedc9aac5ddefe149ce90dad4",
+        "0xfeff419072d4141abc1fed0fd15360e8a521a5544c0c6f4413cd84f0d07a5fb5",
         "0xee19f9b94832e8855eee01f304f9479d15a4e690ef63145094a726006bc6d1b2",
         "0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c")]
-    public async Task NewPayloadV5_rejects_invalid_BAL(string blockHash, string stateRoot, string balHash)
+    public async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string balHash)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -349,6 +208,10 @@ public partial class EngineModuleTests
         const ulong timestamp = 1000000;
         Hash256 parentHash = new(chain.BlockTree.HeadHash);
 
+        BlockAccessList invalidBal = Build.A.BlockAccessList
+            .WithPrecompileChanges(parentHash, timestamp)
+            .WithAccountChanges([new(TestItem.AddressA)]) // additional address
+            .TestObject;
         Block block = new(
             new(
                 parentHash,
@@ -375,7 +238,7 @@ public partial class EngineModuleTests
             [],
             [],
             [],
-            new());
+            invalidBal);
         
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
@@ -391,11 +254,53 @@ public partial class EngineModuleTests
                 {
                     LatestValidHash = Keccak.Zero,
                     Status = PayloadStatus.Invalid,
-                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347, got {balHash}"
+                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected 0x6455e7ed6d666a3e421f97ffadaf1bbc18be8ca752bfa9cdb5ff4863ff3db38d, got {balHash}"
                 }
             })));
         }
     }
+
+    [TestCase(
+        "0x00c884d490708f36fd9b8f8b666a27b06d60ed3abc267d3416619e1b4a5eaa1a",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public async Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        => await NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
+            true,
+            false,
+            false);
+
+    [TestCase(
+        "0x969025cfc580665697a9fb224547ada9a792d9673f8f5f376caed043e5595c26",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public async Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        => await NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
+            false,
+            false,
+            true);
+
+    [TestCase(
+        "0xfd090a339659d2ca17dfdcf8550d5667c1e30f5aa49af1f074d4bda8110005ff",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+        => await NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
+            false,
+            true,
+            false);
 
     [Test]
     public async Task GetPayloadV6_builds_block_with_BAL()
@@ -541,6 +446,202 @@ public partial class EngineModuleTests
         await rpcModule.engine_forkchoiceUpdatedV3(newForkchoiceState, null);
 
         return payload.ExecutionPayload;
+    }
+
+    private async Task NewPayloadV5(
+        string blockHash,
+        string receiptsRoot,
+        string stateRoot,
+        string? expectedError,
+        bool withIncorrectChange,
+        bool withSurplusChange,
+        bool withMissingChange)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        const long gasUsed = 167340;
+        const long gasUsedBeforeFinal = 92100;
+        const ulong gasPrice = 2;
+        const long gasLimit = 100000;
+        const ulong timestamp = 1000000;
+        Hash256 parentHash = new(chain.BlockTree.HeadHash);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Transaction tx2 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(1)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(Eip2935TestConstants.InitCode)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        // Store followed by revert should undo storage change
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(1)
+            .SSTORE()
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .REVERT()
+            .Done;
+        Transaction tx3 = Build.A.Transaction
+            .WithTo(null)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithValue(0)
+            .WithNonce(2)
+            .WithGasPrice(gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithCode(code)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Withdrawal withdrawal = new()
+        {
+            Index = 0,
+            ValidatorIndex = 0,
+            Address = TestItem.AddressD,
+            AmountInGwei = 1
+        };
+
+        Address newContractAddress = ContractAddress.From(TestItem.AddressA, 1);
+        Address newContractAddress2 = ContractAddress.From(TestItem.AddressA, 2);
+
+        UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+
+        StorageChange parentHashStorageChange = new(0, new UInt256(parentHash.BytesToArray(), isBigEndian: true));
+        StorageChange timestampStorageChange = new(0, 0xF4240);
+
+        UInt256 accountBalance = chain.StateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        UInt256 addressABalance = accountBalance - gasPrice * GasCostOf.Transaction;
+        UInt256 addressABalance2 = accountBalance - gasPrice * gasUsedBeforeFinal;
+        UInt256 addressABalance3 = accountBalance - gasPrice * gasUsed;
+
+        AccountChangesBuilder newContractAccount = Build.An.AccountChanges
+            .WithAddress(newContractAddress)
+            .WithNonceChanges([new(2, 1)])
+            .WithCodeChanges([new(2, Eip2935TestConstants.Code)]);
+        
+        if (withIncorrectChange)
+        {
+            newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei())]); // incorrect change
+        }
+
+        BlockAccessListBuilder expectedBlockAccessListBuilder = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new(1, addressABalance), new(2, addressABalance2), new(3, addressABalance3)])
+                    .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
+                    .TestObject,
+                new(TestItem.AddressB),
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressD)
+                    .WithBalanceChanges([new(4, 1.GWei())])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressE)
+                    .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction * gasPrice)), new(2, new UInt256(gasUsedBeforeFinal * gasPrice)), new(3, new UInt256(gasUsed * gasPrice))])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(newContractAddress2)
+                    .WithStorageReads(1)
+                    .TestObject)
+            .WithPrecompileChanges(parentHash, timestamp);
+        
+        if (!withMissingChange)
+        {
+            expectedBlockAccessListBuilder.WithAccountChanges(newContractAccount.TestObject);
+        }
+
+        if (withSurplusChange)
+        {
+            expectedBlockAccessListBuilder.WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressF)
+                    .WithNonceChanges([new(2, 5)])
+                    .TestObject);
+        }
+
+        Block block = new(
+            new(
+                parentHash,
+                Keccak.OfAnEmptySequenceRlp,
+                TestItem.AddressE,
+                UInt256.Zero,
+                1,
+                chain.BlockTree.Head!.GasLimit,
+                timestamp,
+                []
+            )
+            {
+                BlobGasUsed = 0,
+                ExcessBlobGas = 0,
+                BaseFeePerGas = 0,
+                Bloom = Bloom.Empty,
+                GasUsed = gasUsed,
+                Hash = new(blockHash),
+                MixHash = Keccak.Zero,
+                ParentBeaconBlockRoot = Keccak.Zero,
+                ReceiptsRoot = new(receiptsRoot),
+                StateRoot = new(stateRoot),
+            },
+            [tx, tx2, tx3],
+            [],
+            [withdrawal],
+            expectedBlockAccessListBuilder.TestObject);
+        
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
+            chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+
+        if (expectedError is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(successResponse, Is.Not.Null);
+                Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+                {
+                    Id = successResponse.Id,
+                    Result = new PayloadStatusV1
+                    {
+                        LatestValidHash = block.Hash,
+                        Status = PayloadStatus.Valid,
+                        ValidationError = null
+                    }
+                })));
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(successResponse, Is.Not.Null);
+                Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+                {
+                    Id = successResponse.Id,
+                    Result = new PayloadStatusV1
+                    {
+                        LatestValidHash = Keccak.Zero,
+                        Status = PayloadStatus.Invalid,
+                        ValidationError = expectedError
+                    }
+                })));
+            }
+        }
     }
 
 }

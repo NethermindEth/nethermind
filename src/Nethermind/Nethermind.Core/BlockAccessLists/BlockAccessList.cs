@@ -292,6 +292,20 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
+    public IEnumerable<(Address, BalanceChange?, NonceChange?, CodeChange?, IEnumerable<SlotChanges>)> GetChangesAtIndex(ushort index)
+    {
+        foreach (AccountChanges accountChanges in AccountChanges)
+        {
+            yield return
+            (
+                accountChanges.Address,
+                accountChanges.BalanceChangeAtIndex(index),
+                accountChanges.NonceChangeAtIndex(index),
+                accountChanges.CodeChangeAtIndex(index),
+                accountChanges.SlotChangesAtIndex(index)
+            );
+        }
+    }
     public override string? ToString()
         => JsonSerializer.Serialize(this);
 

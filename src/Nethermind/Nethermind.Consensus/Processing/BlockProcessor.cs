@@ -88,6 +88,13 @@ public partial class BlockProcessor
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            _balBuilder.TracingEnabled = true;
+            _balBuilder.GeneratedBlockAccessList.ResetBlockAccessIndex();
+            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
+        }
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -131,17 +138,19 @@ public partial class BlockProcessor
 
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        if (_balBuilder is not null)
-        {
-            _balBuilder.TracingEnabled = spec.BlockLevelAccessListsEnabled;
-            _balBuilder.GeneratedBlockAccessList.ResetBlockAccessIndex();
-        }
-
         StoreBeaconRoot(block, spec);
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
+        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+        {
+            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+        }
 
         _stateProvider.Commit(spec, commitRoots: false);
 

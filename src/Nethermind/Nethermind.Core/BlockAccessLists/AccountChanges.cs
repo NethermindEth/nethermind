@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -18,19 +19,19 @@ public class AccountChanges : IEquatable<AccountChanges>
     public Address Address { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<SlotChanges> StorageChanges => _storageChanges.Values;
+    public EnumerableWithCount<SlotChanges> StorageChanges => new(_storageChanges.Values, _storageChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<StorageRead> StorageReads => _storageReads;
+    public EnumerableWithCount<StorageRead> StorageReads => new(_storageReads, _storageReads.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<BalanceChange> BalanceChanges => _balanceChanges.Values;
+    public EnumerableWithCount<BalanceChange> BalanceChanges => new(_balanceChanges.Values, _balanceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<NonceChange> NonceChanges => _nonceChanges.Values;
+    public EnumerableWithCount<NonceChange> NonceChanges => new(_nonceChanges.Values, _nonceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<CodeChange> CodeChanges => _codeChanges.Values;
+    public EnumerableWithCount<CodeChange> CodeChanges => new(_codeChanges.Values, _codeChanges.Count);
 
     private readonly SortedDictionary<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
@@ -115,6 +116,17 @@ public class AccountChanges : IEquatable<AccountChanges>
         return existing;
     }
 
+    public IEnumerable<SlotChanges> SlotChangesAtIndex(ushort index)
+    {
+        foreach (SlotChanges slotChanges in StorageChanges)
+        {
+            if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
+            {
+                yield return new(slotChanges.Slot, new SortedList<ushort, StorageChange>() {{index, storageChange}});
+            }
+        }
+    }
+
     public void AddStorageRead(UInt256 key)
         => _storageReads.Add(new(key));
 
@@ -147,6 +159,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
+    public BalanceChange? BalanceChangeAtIndex(ushort index)
+        => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
+
     public void AddNonceChange(NonceChange nonceChange)
         => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
 
@@ -161,6 +176,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
+    public NonceChange? NonceChangeAtIndex(ushort index)
+        => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
+
     public void AddCodeChange(CodeChange codeChange)
         => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
 
@@ -174,6 +192,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
         return false;
     }
+
+    public CodeChange? CodeChangeAtIndex(ushort index)
+        => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
 
     private static bool PopChange<T>(SortedList<ushort, T> changes, ushort index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {
