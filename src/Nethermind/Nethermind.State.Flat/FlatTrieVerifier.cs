@@ -658,11 +658,11 @@ public class FlatTrieVerifier
             if (!isInline)
             {
                 bool hashValid = currentNode.Keccak == expectedHash;
-                string branchChilds = "";
+                string branchChildren = "";
                 if (currentNode.IsBranch)
                 {
                     // Plot its child information, is it exist, is it in DB or missing.
-                    branchChilds = $"| Branch childs: {string.Join("", Enumerable.Range(0, 16).Select((idx) =>
+                    branchChildren = $"| Branch children: {string.Join("", Enumerable.Range(0, 16).Select((idx) =>
                     {
                         TreePath childPath = currentPath.Append(idx);
                         TrieNode? child = currentNode.GetChildWithChildPath(trieStore, ref childPath, idx);
@@ -679,7 +679,7 @@ public class FlatTrieVerifier
                         }
                     }))}";
                 }
-                if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {currentNode.NodeType} | Hash: {expectedHash!.ToShortString()} | HashValid: {hashValid} {branchChilds}");
+                if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | Type: {currentNode.NodeType} | Hash: {expectedHash!.ToShortString()} | HashValid: {hashValid} {branchChildren}");
             }
             else
             {

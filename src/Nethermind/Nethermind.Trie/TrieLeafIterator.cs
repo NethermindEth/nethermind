@@ -191,17 +191,8 @@ public ref struct TrieLeafIterator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetStartChildIndex(in TreePath branchPath, in ValueHash256 startPath)
     {
-        int nibbleIndex = branchPath.Length;
-        if (nibbleIndex >= FullPathLength) return 0;
-
-        // If branch lower bound >= startPath, start from child 0
         if (branchPath.Path.CompareTo(startPath) >= 0) return 0;
-
-        // Extract the nibble from startPath at branch depth
-        int byteIndex = nibbleIndex / 2;
-        bool isHighNibble = (nibbleIndex & 1) == 0;
-        byte startByte = startPath.Bytes[byteIndex];
-        return isHighNibble ? (startByte >> 4) & 0xF : startByte & 0xF;
+        return new TreePath(startPath, FullPathLength)[branchPath.Length];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
