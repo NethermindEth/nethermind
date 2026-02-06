@@ -222,7 +222,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (number is 0)
             return false;
 
-        if (GetBlockReceipts(number) == default)
+        if (!TryGetBlockReceipts(number, out _))
             return false;
 
         if (!_pivotSource.TrySetResult(number))
@@ -443,9 +443,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         // Check the immediate next block first
         var nextIndex = isForward ? from : to - 1;
-        buffer[0] = GetBlockReceipts(nextIndex);
-
-        if (buffer[0] == default)
+        if (!TryGetBlockReceipts(nextIndex, out buffer[0]))
             return ReadOnlySpan<BlockReceipts>.Empty;
 
         Parallel.For(from, to, new()
@@ -456,28 +454,38 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         {
             var bufferIndex = isForward ? i - from : to - 1 - i;
             if (buffer[bufferIndex] == default)
-                buffer[bufferIndex] = GetBlockReceipts(i);
+                TryGetBlockReceipts(i, out buffer[bufferIndex]);
         });
 
         var endIndex = Array.IndexOf(buffer, default);
         return endIndex < 0 ? buffer : buffer.AsSpan(..endIndex);
     }
 
-    // TODO: move to IReceiptStorage as `TryGet`?
-    private BlockReceipts GetBlockReceipts(int i)
+    // TODO: move to IReceiptStorage?
+    private bool TryGetBlockReceipts(int i, out BlockReceipts blockReceipts)
     {
+        blockReceipts = default;
+
         if (_blockTree.FindBlock(i, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
-            return default;
+        {
+            return false;
+        }
 
         if (!block.Header.HasTransactions)
-            return new(i, []);
+        {
+            blockReceipts = new(i, []);
+            return true;
+        }
 
         TxReceipt[] receipts = _receiptStorage.Get(block) ?? [];
 
         if (receipts.Length == 0)
-            return default;
+        {
+            return false; // block should have transactions but nothing in storage
+        }
 
-        return new(i, receipts);
+        blockReceipts = new(i, receipts);
+        return true;
     }
 
     private static string GetLogPrefix(bool? isForward = null) => isForward switch

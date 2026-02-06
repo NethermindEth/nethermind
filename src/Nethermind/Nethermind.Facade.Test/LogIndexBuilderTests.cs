@@ -167,7 +167,7 @@ public class LogIndexBuilderTests
         [Values(1, 10)] int minBarrier,
         [Values(1, 16, MaxBlock)] int batchSize,
         [Values(
-            new[] { -1, -1 },
+            new[] { -1, -1 }, // -1 is treated as null
             new[] { 0, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock },
