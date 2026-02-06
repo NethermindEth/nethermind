@@ -193,6 +193,7 @@ public partial class EngineModuleTests
             null,
             false,
             false,
+            false,
             false);
 
     [TestCase(
@@ -272,6 +273,7 @@ public partial class EngineModuleTests
             "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
             true,
             false,
+            false,
             false);
 
     [TestCase(
@@ -286,7 +288,8 @@ public partial class EngineModuleTests
             "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
             false,
             false,
-            true);
+            true,
+            false);
 
     [TestCase(
         "0xfd090a339659d2ca17dfdcf8550d5667c1e30f5aa49af1f074d4bda8110005ff",
@@ -300,7 +303,23 @@ public partial class EngineModuleTests
             "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
             false,
             true,
+            false,
             false);
+
+    [TestCase(
+        "0x4a599cb247bcf4b2565a4dbeb1f4c55ad849cbac5f810cdd79878898c86088e1",
+        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
+        "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
+    public async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
+        => await NewPayloadV5(
+            blockHash,
+            receiptsRoot,
+            stateRoot,
+            "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
+            false,
+            false,
+            false,
+            true);
 
     [Test]
     public async Task GetPayloadV6_builds_block_with_BAL()
@@ -455,7 +474,8 @@ public partial class EngineModuleTests
         string? expectedError,
         bool withIncorrectChange,
         bool withSurplusChange,
-        bool withMissingChange)
+        bool withMissingChange,
+        bool withSurplusReads)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -538,6 +558,14 @@ public partial class EngineModuleTests
         if (withIncorrectChange)
         {
             newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei())]); // incorrect change
+        }
+
+        if (withSurplusReads)
+        {
+            for (ulong i = 0; i < 100; i++)
+            {
+                newContractAccount = newContractAccount.WithStorageReads(new UInt256(i));
+            }
         }
 
         BlockAccessListBuilder expectedBlockAccessListBuilder = Build.A.BlockAccessList

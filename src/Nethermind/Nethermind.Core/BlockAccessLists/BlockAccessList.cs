@@ -292,7 +292,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public IEnumerable<(Address, BalanceChange?, NonceChange?, CodeChange?, IEnumerable<SlotChanges>)> GetChangesAtIndex(ushort index)
+    public IEnumerable<(Address, BalanceChange?, NonceChange?, CodeChange?, IEnumerable<SlotChanges>, int)> GetChangesAtIndex(ushort index)
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
@@ -302,10 +302,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 accountChanges.BalanceChangeAtIndex(index),
                 accountChanges.NonceChangeAtIndex(index),
                 accountChanges.CodeChangeAtIndex(index),
-                accountChanges.SlotChangesAtIndex(index)
+                accountChanges.SlotChangesAtIndex(index),
+                accountChanges.StorageReads.Count
             );
         }
     }
+
     public override string? ToString()
         => JsonSerializer.Serialize(this);
 

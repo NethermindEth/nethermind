@@ -25,10 +25,12 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public class InvalidBlockLevelAccessListException(string message) : Exception(message);
 
     private BlockAccessList _suggestedBlockAccessList;
+    private long _gasUsed;
 
-    public void LoadSuggestedBlockAccessList(BlockAccessList suggested)
+    public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed)
     {
         _suggestedBlockAccessList = suggested;
+        _gasUsed = gasUsed;
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -236,7 +238,10 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _innerWorldState.ClearStorage(address);
     }
 
-    public void ValidateTransactionStorageChanges(ushort index)
+    public long GasUsed()
+        => _gasUsed;
+
+    public void ValidateBlockAccessList(ushort index, long gasRemaining)
     {
         if (_suggestedBlockAccessList is null)
         {
@@ -246,11 +251,24 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         var generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
         var suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
 
-        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges)? generatedHead;
-        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges)? suggestedHead;
+        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? generatedHead;
+        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? suggestedHead;
 
         generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
         suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+        int generatedReads = 0;
+        int suggestedReads = 0;
+
+        if (generatedHead is not null)
+        {
+            generatedReads += generatedHead.Value.Reads;
+        }
+
+        if (suggestedHead is not null)
+        {
+            suggestedReads += suggestedHead.Value.Reads;
+        }
 
         while (generatedHead is not null || suggestedHead is not null)
         {
@@ -264,6 +282,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                 {
                     // keep scanning rest of suggested
                     suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+                    if (suggestedHead is not null)
+                    {
+                        suggestedReads += suggestedHead.Value.Reads;
+                    }
                     continue;
                 }
                 else
@@ -290,6 +313,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
                 {
                     // skip suggested with no changes
                     suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+                    if (suggestedHead is not null)
+                    {
+                        suggestedReads += suggestedHead.Value.Reads;
+                    }
                     continue;
                 }
                 else
@@ -304,10 +332,27 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
             generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
             suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+            if (generatedHead is not null)
+            {
+                generatedReads += generatedHead.Value.Reads;
+            }
+
+            if (suggestedHead is not null)
+            {
+                suggestedReads += suggestedHead.Value.Reads;
+            }
+        }
+
+        if (gasRemaining < (suggestedReads - (generatedReads + _postExecutionReads)) * GasCostOf.ColdSLoad)
+        {
+            throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
         }
     }
 
-    private bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges) c)
+    private const int _postExecutionReads = 8;
+
+    private static bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int) c)
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&

@@ -92,7 +92,7 @@ public partial class BlockProcessor
         {
             _balBuilder.TracingEnabled = true;
             _balBuilder.GeneratedBlockAccessList.ResetBlockAccessIndex();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
+            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
         }
 
         ApplyDaoTransition(suggestedBlock);

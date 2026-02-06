@@ -33,13 +33,15 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                _balBuilder.ValidateTransactionStorageChanges(0);
+                long gasRemaining = _balBuilder.GasUsed();
+                _balBuilder.ValidateBlockAccessList(0, gasRemaining);
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-                    _balBuilder.ValidateTransactionStorageChanges((ushort)(i + 1));
+                    gasRemaining -= currentTx.SpentGas;
+                    _balBuilder.ValidateBlockAccessList((ushort)(i + 1), gasRemaining);
                 }
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
