@@ -82,19 +82,19 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 
         foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
         {
-            if (Bytes.BytesComparer.CompareWithCorrectLength(keyValuePair.Key, firstKeyInclusive) < 0)
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0)
             {
                 continue;
             }
 
-            if (Bytes.BytesComparer.CompareWithCorrectLength(keyValuePair.Key, lastKeyExclusive) >= 0)
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, lastKeyExclusive) >= 0)
             {
                 continue;
             }
             sortedValue.Add((keyValuePair.Key, keyValuePair.Value));
         }
 
-        sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.CompareWithCorrectLength(it1.Item1, it2.Item1));
+        sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
         return new FakeSortedView(sortedValue);
     }
 
@@ -114,7 +114,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
             idx = 0;
             while (idx < list.Count)
             {
-                if (Bytes.BytesComparer.CompareWithCorrectLength(list[idx].Item1, value) >= 0)
+                if (Bytes.BytesComparer.Compare(list[idx].Item1, value) >= 0)
                 {
                     idx--;
                     return true;
