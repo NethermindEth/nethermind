@@ -126,12 +126,11 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _feeHistoryOracle,
             _protocolsManager,
             _forkInfo,
-            _logIndexConfig,
             _secondsPerSlot,
-
             _sequencerRpcClient,
             _ecdsa,
             _sealer,
+            _logIndexConfig,
             _opSpecHelper
         );
     }
