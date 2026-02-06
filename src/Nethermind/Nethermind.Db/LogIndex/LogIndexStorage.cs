@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -102,14 +103,20 @@ namespace Nethermind.Db.LogIndex
             public static readonly byte[] UpperBound = Enumerable.Repeat(byte.MaxValue, BlockNumberSize).Concat([byte.MinValue]).ToArray();
         }
 
-        private struct DbBatches : IDisposable
+        [InlineArray(MaxTopics)]
+        private struct TopicBatches
+        {
+            private IWriteBatch _element;
+        }
+
+        private ref struct DbBatches : IDisposable
         {
             private bool _completed;
 
             private readonly IColumnsWriteBatch<LogIndexColumns> _batch;
             public IWriteBatch Meta { get; }
             public IWriteBatch Address { get; }
-            public IWriteBatch[] Topics { get; }
+            public readonly TopicBatches Topics;
 
             public DbBatches(IColumnsDb<LogIndexColumns> rootDb)
             {
@@ -117,7 +124,6 @@ namespace Nethermind.Db.LogIndex
 
                 Meta = _batch.GetColumnBatch(LogIndexColumns.Meta);
                 Address = _batch.GetColumnBatch(LogIndexColumns.Addresses);
-                Topics = ArrayPool<IWriteBatch>.Shared.Rent(MaxTopics);
                 Topics[0] = _batch.GetColumnBatch(LogIndexColumns.Topics0);
                 Topics[1] = _batch.GetColumnBatch(LogIndexColumns.Topics1);
                 Topics[2] = _batch.GetColumnBatch(LogIndexColumns.Topics2);
@@ -135,8 +141,6 @@ namespace Nethermind.Db.LogIndex
 
             public void Dispose()
             {
-                ArrayPool<IWriteBatch>.Shared.Return(Topics);
-
                 if (_completed) return;
                 _completed = true;
 
@@ -270,16 +274,23 @@ namespace Nethermind.Db.LogIndex
             if (reset)
                 return ResetAndCreateNew(root, "Log index: resetting data per configuration...");
 
-            var versionBytes = meta.Get(SpecialKey.Version);
-            if (versionBytes is null) // DB is empty
+            Span<byte> versionBytes = meta.GetSpan(SpecialKey.Version);
+            try
             {
-                meta.Set(SpecialKey.Version, VersionBytes);
-                return root;
-            }
+                if (versionBytes.IsEmpty) // DB is empty
+                {
+                    meta.Set(SpecialKey.Version, VersionBytes);
+                    return root;
+                }
 
-            return versionBytes.SequenceEqual(VersionBytes)
-                ? root
-                : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} <> {VersionBytes[0]}, resetting data...");
+                return versionBytes.SequenceEqual(VersionBytes)
+                    ? root
+                    : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} <> {VersionBytes[0]}, resetting data...");
+            }
+            finally
+            {
+                meta.DangerousReleaseMemory(versionBytes);
+            }
 
             IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
             {
@@ -317,18 +328,27 @@ namespace Nethermind.Db.LogIndex
                 );
             }
 
-            var algoBytes = _metaDb.Get(SpecialKey.CompressionAlgo);
-            if (algoBytes is null) // DB is empty
+            Span<byte> algoBytes = _metaDb.GetSpan(SpecialKey.CompressionAlgo);
+            string usedAlgoName;
+            try
             {
-                KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
-                    ? KeyValuePair.Create(configAlgoName, configAlgo)
-                    : CompressionAlgorithm.Best;
+                if (algoBytes.IsEmpty) // DB is empty
+                {
+                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
+                        ? KeyValuePair.Create(configAlgoName, configAlgo)
+                        : CompressionAlgorithm.Best;
 
-                _metaDb.Set(SpecialKey.CompressionAlgo, Encoding.ASCII.GetBytes(selected.Key));
-                return selected.Value;
+                    _metaDb.Set(SpecialKey.CompressionAlgo, Encoding.ASCII.GetBytes(selected.Key));
+                    return selected.Value;
+                }
+
+                usedAlgoName = Encoding.ASCII.GetString(algoBytes);
+            }
+            finally
+            {
+                _metaDb.DangerousReleaseMemory(algoBytes);
             }
 
-            var usedAlgoName = Encoding.ASCII.GetString(algoBytes);
             if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm usedAlgo))
             {
                 throw new NotSupportedException(
@@ -437,8 +457,15 @@ namespace Nethermind.Db.LogIndex
 
         private int? LoadRangeBound(ReadOnlySpan<byte> key)
         {
-            var value = _metaDb.Get(key);
-            return value is { Length: > 0 } ? ReadBlockNumber(value) : null;
+            Span<byte> value = _metaDb.GetSpan(key);
+            try
+            {
+                return !value.IsEmpty ? ReadBlockNumber(value) : null;
+            }
+            finally
+            {
+                _metaDb.DangerousReleaseMemory(value);
+            }
         }
 
         private void UpdateRange(int minBlock, int maxBlock, bool isBackwardSync)
@@ -458,19 +485,10 @@ namespace Nethermind.Db.LogIndex
 
         private static int SaveRangeBound(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
         {
-            var bufferArr = Pool.Rent(BlockNumberSize);
-            Span<byte> buffer = bufferArr.AsSpan(..BlockNumberSize);
-
-            try
-            {
-                WriteBlockNumber(buffer, value);
-                dbBatch.PutSpan(key, buffer);
-                return value;
-            }
-            finally
-            {
-                Pool.Return(bufferArr);
-            }
+            Span<byte> buffer = stackalloc byte[BlockNumberSize];
+            WriteBlockNumber(buffer, value);
+            dbBatch.PutSpan(key, buffer);
+            return value;
         }
 
         private (int min, int max) SaveRange(DbBatches batches, int firstBlock, int lastBlock, bool isBackwardSync, bool isReorg = false)
