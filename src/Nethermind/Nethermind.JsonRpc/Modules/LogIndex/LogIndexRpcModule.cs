@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
@@ -46,6 +48,26 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
             LastUpdate = builder.LastUpdate,
             LastError = builder.LastError?.ToString(),
             DbSize = storage.GetDbSize()
+        });
+    }
+
+    public async Task<ResultWrapper<LogIndexCompactionResult>> logIndex_compact()
+    {
+        if (!storage.Enabled)
+            return ResultWrapper<LogIndexCompactionResult>.Fail("Log index is not enabled.");
+
+        string dbSizeBefore = storage.GetDbSize();
+        LogIndexUpdateStats stats = new(storage);
+        long timestamp = Stopwatch.GetTimestamp();
+
+        await storage.CompactAsync(flush: true, stats: stats);
+
+        return ResultWrapper<LogIndexCompactionResult>.Success(new()
+        {
+            DbSizeBefore = dbSizeBefore,
+            DbSizeAfter = storage.GetDbSize(),
+            Elapsed = Stopwatch.GetElapsedTime(timestamp).ToString(),
+            CompactingTime = stats.Compacting.Total.ToString()
         });
     }
 

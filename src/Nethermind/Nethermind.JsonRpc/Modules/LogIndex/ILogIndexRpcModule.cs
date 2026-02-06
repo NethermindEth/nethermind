@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
@@ -15,5 +16,6 @@ public interface ILogIndexRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves log index status.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<LogIndexStatus> logIndex_status();
 
-    // TODO: add compaction RPC
+    [JsonRpcMethod(Description = "Forces log index compaction.", IsImplemented = true, IsSharable = false)]
+    Task<ResultWrapper<LogIndexCompactionResult>> logIndex_compact();
 }
