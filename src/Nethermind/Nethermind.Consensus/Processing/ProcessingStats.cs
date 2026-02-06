@@ -33,13 +33,13 @@ namespace Nethermind.Consensus.Processing
         public long GasLimit { get; internal set; }
     }
     //TODO Consult on disabling of such metrics from configuration
-    internal class ProcessingStats
+    public class ProcessingStats : IProcessingStats
     {
         private static readonly DefaultObjectPool<BlockData> _dataPool = new(new BlockDataPolicy(), 16);
         private readonly Action<BlockData> _executeFromThreadPool;
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-        private readonly IStateReader _stateReader;
-        private readonly ILogger _logger;
+        protected readonly IStateReader _stateReader;
+        protected readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
 
         private bool _showBlobs;
@@ -69,12 +69,12 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogManager logManager)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private void GenerateReport(BlockData data)
+        protected virtual void GenerateReport(BlockData data)
         {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
@@ -443,7 +443,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private class BlockData
+        protected class BlockData
         {
             public Block Block;
             public BlockHeader? BaseBlock;
