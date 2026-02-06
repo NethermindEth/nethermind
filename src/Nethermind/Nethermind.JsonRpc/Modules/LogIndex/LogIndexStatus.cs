@@ -7,7 +7,7 @@ namespace Nethermind.JsonRpc.Modules.LogIndex;
 
 public class LogIndexStatus
 {
-    public readonly record struct Range(int? FromBlock, int? ToBlock);
+    public readonly record struct Range(uint? FromBlock, uint? ToBlock);
 
     public required Range Current { get; init; }
     public required Range Target { get; init; }

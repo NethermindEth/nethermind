@@ -12,18 +12,18 @@ namespace Nethermind.Db.LogIndex;
 /// Set of in-memory dictionaries mapping each address/topic to a sequence of block numbers
 /// from the <paramref name="firstBlockNum"/> - <paramref name="lastBlockNum"/> range.
 /// </summary>
-public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
+public struct LogIndexAggregate(uint firstBlockNum, uint lastBlockNum)
 {
-    private Dictionary<Address, List<int>>? _address;
-    private Dictionary<Hash256, List<int>>[]? _topic;
+    private Dictionary<Address, List<uint>>? _address;
+    private Dictionary<Hash256, List<uint>>[]? _topic;
 
-    public int FirstBlockNum { get; } = firstBlockNum;
-    public int LastBlockNum { get; } = lastBlockNum;
+    public uint FirstBlockNum { get; } = firstBlockNum;
+    public uint LastBlockNum { get; } = lastBlockNum;
 
-    public Dictionary<Address, List<int>> Address => _address ??= new();
+    public Dictionary<Address, List<uint>> Address => _address ??= new();
 
-    public Dictionary<Hash256, List<int>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
-        .Select(static _ => new Dictionary<Hash256, List<int>>())
+    public Dictionary<Hash256, List<uint>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
+        .Select(static _ => new Dictionary<Hash256, List<uint>>())
         .ToArray();
 
     public bool IsEmpty => (_address is null || _address.Count == 0) && (_topic is null || _topic[0].Count == 0);

@@ -12,8 +12,8 @@ namespace Nethermind.Facade.Find
         Task StartAsync();
         bool IsRunning { get; }
 
-        int MaxTargetBlockNumber { get; }
-        int MinTargetBlockNumber { get; }
+        uint MaxTargetBlockNumber { get; }
+        uint MinTargetBlockNumber { get; }
 
         DateTimeOffset? LastUpdate { get; }
         Exception? LastError { get; }

@@ -39,9 +39,9 @@ public class IndexedLogFinder(
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
             : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
 
-    private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+    private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (uint from, uint to) indexRange, CancellationToken cancellationToken)
     {
-        if (indexRange.from > fromBlock.Number && FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
+        if (indexRange.from > (uint)fromBlock.Number && FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
                 yield return log;
@@ -54,14 +54,14 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (indexRange.to < toBlock.Number && FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
+        if (indexRange.to < (uint)toBlock.Number && FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
                 yield return log;
         }
     }
 
-    private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+    private (uint from, uint to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
         bool tryUseIndex = filter.UseIndex;
         filter.UseIndex = false;
@@ -72,15 +72,15 @@ public class IndexedLogFinder(
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)
             return null;
 
-        (int from, int to) range = (
-            Math.Max((int)fromBlock.Number, indexFrom),
-            Math.Min((int)toBlock.Number, indexTo)
+        (uint from, uint to) range = (
+            Math.Max((uint)fromBlock.Number, indexFrom),
+            Math.Min((uint)toBlock.Number, indexTo)
         );
 
         if (range.from > range.to)
             return null;
 
-        if (range.to - range.from + 1 < minBlocksToUseIndex)
+        if (range.to - range.from + 1 < (uint)minBlocksToUseIndex)
             return null;
 
         filter.UseIndex = true;

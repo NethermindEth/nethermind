@@ -89,7 +89,7 @@ public class MergeOperatorTests
         using ArrayPoolList<byte> merged = op.FullMerge(key, enumerator);
         Assert.That(
             Deserialize(merged?.ToArray()),
-            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+            Is.EqualTo(expected.Split(',').Select(s => uint.Parse(s.Trim())).ToArray())
         );
     }
 
@@ -137,7 +137,7 @@ public class MergeOperatorTests
         ArrayPoolList<byte> merged = op.FullMerge(key, enumerator);
         Assert.That(
             Deserialize(merged?.ToArray()),
-            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+            Is.EqualTo(expected.Split(',').Select(s => uint.Parse(s.Trim())).ToArray())
         );
     }
 
@@ -158,7 +158,7 @@ public class MergeOperatorTests
         using ArrayPoolList<byte> merged = op.PartialMerge(key, enumerator);
         Assert.That(
             Deserialize(merged?.ToArray()),
-            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+            Is.EqualTo(expected.Split(',').Select(s => uint.Parse(s.Trim())).ToArray())
         );
     }
 
@@ -179,7 +179,7 @@ public class MergeOperatorTests
         using ArrayPoolList<byte> merged = op.PartialMerge(key, enumerator);
         Assert.That(
             Deserialize(merged?.ToArray()),
-            Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
+            Is.EqualTo(expected.Split(',').Select(s => uint.Parse(s.Trim())).ToArray())
         );
     }
 
@@ -223,7 +223,7 @@ public class MergeOperatorTests
     private static byte[]? Serialize(string? input) =>
         input is null ? null : Bytes.Concat(input.Split(',').Select(s => s.Trim()).Select(s => s switch
         {
-            _ when int.TryParse(s, out int blockNum) => blockNum.ToLittleEndianByteArray(),
+            _ when uint.TryParse(s, out uint blockNum) => blockNum.ToLittleEndianByteArray(),
             _ when TryParseMergeOp(s, out Span<byte> op) => op.ToArray(),
             _ => throw new FormatException($"Invalid operand: \"{input}\".")
         }).ToArray());
@@ -236,12 +236,12 @@ public class MergeOperatorTests
         if (parts.Length != 2) return false;
 
         if (!Enum.TryParse(parts[0], out LogIndexStorage.MergeOp op)) return false;
-        if (!int.TryParse(parts[1], out int blockNum)) return false;
+        if (!uint.TryParse(parts[1], out uint blockNum)) return false;
 
         var buffer = new byte[LogIndexStorage.MergeOps.Size];
         bytes = LogIndexStorage.MergeOps.Create(op, blockNum, buffer);
         return true;
     }
 
-    private static int[]? Deserialize(byte[]? input) => input is null ? null : MemoryMarshal.Cast<byte, int>(input).ToArray();
+    private static uint[]? Deserialize(byte[]? input) => input is null ? null : MemoryMarshal.Cast<byte, uint>(input).ToArray();
 }

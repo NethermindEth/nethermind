@@ -17,13 +17,13 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
 
     public string GetDbSize() => "0 B";
 
-    public int? MaxBlockNumber => null;
-    public int? MinBlockNumber => null;
+    public uint? MaxBlockNumber => null;
+    public uint? MinBlockNumber => null;
 
-    public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
+    public IEnumerator<uint> GetEnumerator(Address address, uint from, uint to) =>
         throw new NotSupportedException();
 
-    public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
+    public IEnumerator<uint> GetEnumerator(int topicIndex, Hash256 topic, uint from, uint to) =>
         throw new NotSupportedException();
 
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>

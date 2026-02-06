@@ -21,38 +21,38 @@ namespace Nethermind.Blockchain.Test.Filters;
 [Parallelizable(ParallelScope.All)]
 public class LogIndexFilterVisitorTests
 {
-    private record Ranges(Dictionary<Address, List<int>> Address, Dictionary<Hash256, List<int>>[] Topic)
+    private record Ranges(Dictionary<Address, List<uint>> Address, Dictionary<Hash256, List<uint>>[] Topic)
     {
-        public List<int> this[Address address] => Address[address];
-        public List<int> this[int topicIndex, Hash256 hash] => Topic[topicIndex][hash];
+        public List<uint> this[Address address] => Address[address];
+        public List<uint> this[int topicIndex, Hash256 hash] => Topic[topicIndex][hash];
     }
 
-    public class EnumeratorWrapper(int[] array) : IEnumerator<int>
+    public class EnumeratorWrapper(uint[] array) : IEnumerator<uint>
     {
-        private readonly IEnumerator<int> _enumerator = array.Cast<int>().GetEnumerator();
+        private readonly IEnumerator<uint> _enumerator = array.Cast<uint>().GetEnumerator();
         public bool MoveNext() => _enumerator.MoveNext();
         public void Reset() => _enumerator.Reset();
-        public int Current => _enumerator.Current;
+        public uint Current => _enumerator.Current;
         object IEnumerator.Current => Current;
         public virtual void Dispose() => _enumerator.Dispose();
     }
 
     [TestCase(
-        new[] { 1, 3, 5, 7, 9, },
-        new[] { 0, 2, 4, 6, 8 },
+        new uint[] { 1, 3, 5, 7, 9, },
+        new uint[] { 0, 2, 4, 6, 8 },
         TestName = "Non-intersecting, but similar ranges"
     )]
     [TestCase(
-        new[] { 1, 2, 3, 4, 5, },
-        new[] { 5, 6, 7, 8, 9 },
+        new uint[] { 1, 2, 3, 4, 5, },
+        new uint[] { 5, 6, 7, 8, 9 },
         TestName = "Intersects on first/last"
     )]
     [TestCase(
-        new[] { 1, 2, 3, 4, 5, },
-        new[] { 6, 7, 8, 9, 10 },
+        new uint[] { 1, 2, 3, 4, 5, },
+        new uint[] { 6, 7, 8, 9, 10 },
         TestName = "Non-intersecting ranges"
     )]
-    public void IntersectEnumerator(int[] s1, int[] s2)
+    public void IntersectEnumerator(uint[] s1, uint[] s2)
     {
         var expected = s1.Intersect(s2).Order().ToArray();
 
@@ -83,29 +83,29 @@ public class LogIndexFilterVisitorTests
     [TestCase(0, 10)]
     public void IntersectEnumerator_SomeEmpty(int len1, int len2)
     {
-        var s1 = Enumerable.Range(0, len1).ToArray();
-        var s2 = Enumerable.Range(0, len2).ToArray();
+        var s1 = Enumerable.Range(0, len1).Select(i => (uint)i).ToArray();
+        var s2 = Enumerable.Range(0, len2).Select(i => (uint)i).ToArray();
 
         VerifyEnumerator<LogIndexFilterVisitor.IntersectEnumerator>(s1, s2, []);
         VerifyEnumerator<LogIndexFilterVisitor.IntersectEnumerator>(s2, s1, []);
     }
 
     [TestCase(
-        new[] { 1, 2, 3, 4, 5, },
-        new[] { 2, 3, 4 },
+        new uint[] { 1, 2, 3, 4, 5, },
+        new uint[] { 2, 3, 4 },
         TestName = "Contained"
     )]
     [TestCase(
-        new[] { 1, 2, 3, 4, 5, },
-        new[] { 1, 2, 3, 4, 5, },
+        new uint[] { 1, 2, 3, 4, 5, },
+        new uint[] { 1, 2, 3, 4, 5, },
         TestName = "Identical"
     )]
     [TestCase(
-        new[] { 1, 3, 5, 7, 9, },
-        new[] { 2, 4, 6, 8, 10 },
+        new uint[] { 1, 3, 5, 7, 9, },
+        new uint[] { 2, 4, 6, 8, 10 },
         TestName = "Complementary"
     )]
-    public void UnionEnumerator(int[] s1, int[] s2)
+    public void UnionEnumerator(uint[] s1, uint[] s2)
     {
         var expected = s1.Union(s2).Distinct().Order().ToArray();
 
@@ -135,8 +135,8 @@ public class LogIndexFilterVisitorTests
     [TestCase(0, 10)]
     public void UnionEnumerator_SomeEmpty(int len1, int len2)
     {
-        var s1 = Enumerable.Range(0, len1).ToArray();
-        var s2 = Enumerable.Range(0, len2).ToArray();
+        var s1 = Enumerable.Range(0, len1).Select(i => (uint)i).ToArray();
+        var s2 = Enumerable.Range(0, len2).Select(i => (uint)i).ToArray();
 
         var expected = s1.Union(s2).Distinct().Order().ToArray();
 
@@ -145,28 +145,28 @@ public class LogIndexFilterVisitorTests
     }
 
     [TestCaseSource(nameof(FilterTestData))]
-    public void FilterEnumerator(string name, LogFilter filter, List<int> expected)
+    public void FilterEnumerator(string name, LogFilter filter, List<uint> expected)
     {
         Assert.That(expected,
-            Has.Count.InRange(from: 1, to: ToBlock - FromBlock - 1),
+            Has.Count.InRange(from: 1, to: (int)(ToBlock - FromBlock - 1)),
             "Unreliable test: none or all blocks are selected."
         );
         ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
 
-        foreach ((Address address, List<int> range) in LogIndexRanges.Address)
+        foreach ((Address address, List<uint> range) in LogIndexRanges.Address)
         {
             storage
-                .GetEnumerator(address, Arg.Any<int>(), Arg.Any<int>())
-                .Returns(info => range.SkipWhile(x => x < info.ArgAt<int>(1)).TakeWhile(x => x <= info.ArgAt<int>(2)).GetEnumerator());
+                .GetEnumerator(address, Arg.Any<uint>(), Arg.Any<uint>())
+                .Returns(info => range.SkipWhile(x => x < info.ArgAt<uint>(1)).TakeWhile(x => x <= info.ArgAt<uint>(2)).GetEnumerator());
         }
 
         for (var i = 0; i < LogIndexRanges.Topic.Length; i++)
         {
-            foreach ((Hash256 topic, List<int> range) in LogIndexRanges.Topic[i])
+            foreach ((Hash256 topic, List<uint> range) in LogIndexRanges.Topic[i])
             {
                 storage
-                    .GetEnumerator(Arg.Is(i), topic, Arg.Any<int>(), Arg.Any<int>())
-                    .Returns(info => range.SkipWhile(x => x < info.ArgAt<int>(2)).TakeWhile(x => x <= info.ArgAt<int>(3)).GetEnumerator());
+                    .GetEnumerator(Arg.Is(i), topic, Arg.Any<uint>(), Arg.Any<uint>())
+                    .Returns(info => range.SkipWhile(x => x < info.ArgAt<uint>(2)).TakeWhile(x => x <= info.ArgAt<uint>(3)).GetEnumerator());
             }
         }
 
@@ -174,22 +174,22 @@ public class LogIndexFilterVisitorTests
     }
 
     [TestCaseSource(nameof(FilterTestData))]
-    public void FilterEnumerator_Dispose(string name, LogFilter filter, List<int> _)
+    public void FilterEnumerator_Dispose(string name, LogFilter filter, List<uint> _)
     {
-        int[] blockNumbers = [1, 2, 3, 4, 5];
-        List<IEnumerator<int>> enumerators = [];
+        uint[] blockNumbers = [1, 2, 3, 4, 5];
+        List<IEnumerator<uint>> enumerators = [];
 
         ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
-        storage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>()).Returns(_ => MockEnumerator());
-        storage.GetEnumerator(Arg.Any<int>(), Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>()).Returns(_ => MockEnumerator());
+        storage.GetEnumerator(Arg.Any<Address>(), Arg.Any<uint>(), Arg.Any<uint>()).Returns(_ => MockEnumerator());
+        storage.GetEnumerator(Arg.Any<int>(), Arg.Any<Hash256>(), Arg.Any<uint>(), Arg.Any<uint>()).Returns(_ => MockEnumerator());
 
         storage.EnumerateBlockNumbersFor(filter, FromBlock, ToBlock).ForEach(_ => { });
 
         enumerators.ForEach(enumerator => enumerator.Received().Dispose());
 
-        IEnumerator<int> MockEnumerator()
+        IEnumerator<uint> MockEnumerator()
         {
-            IEnumerator<int>? enumerator = Substitute.ForPartsOf<EnumeratorWrapper>(blockNumbers);
+            IEnumerator<uint>? enumerator = Substitute.ForPartsOf<EnumeratorWrapper>(blockNumbers);
             enumerators.Add(enumerator);
             return enumerator;
         }
@@ -344,39 +344,39 @@ public class LogIndexFilterVisitorTests
         }
     }
 
-    private static int[] RandomAscending(Random random, int count, int maxDelta)
+    private static uint[] RandomAscending(Random random, int count, int maxDelta)
     {
-        var result = new int[count];
+        var result = new uint[count];
 
         for (var i = 0; i < result.Length; i++)
         {
-            var min = i > 0 ? result[i - 1] : -1;
-            result[i] = random.Next(min + 1, min + 1 + maxDelta);
+            int min = i > 0 ? (int)result[i - 1] : -1;
+            result[i] = (uint)random.Next(min + 1, min + 1 + maxDelta);
         }
 
         return result;
     }
 
-    private static void VerifyEnumerator<T>(int[] s1, int[] s2, int[] ex)
-        where T : IEnumerator<int>
+    private static void VerifyEnumerator<T>(uint[] s1, uint[] s2, uint[] ex)
+        where T : IEnumerator<uint>
     {
         using var enumerator = (T)Activator.CreateInstance(
             typeof(T),
-            s1.Cast<int>().GetEnumerator(),
-            s2.Cast<int>().GetEnumerator()
+            s1.Cast<uint>().GetEnumerator(),
+            s2.Cast<uint>().GetEnumerator()
         )!;
 
         Assert.That(EnumerateOnce(enumerator), Is.EqualTo(ex));
     }
 
-    private static IEnumerable<int> EnumerateOnce(IEnumerator<int> enumerator)
+    private static IEnumerable<uint> EnumerateOnce(IEnumerator<uint> enumerator)
     {
         while (enumerator.MoveNext())
             yield return enumerator.Current;
     }
 
-    private const long FromBlock = 0;
-    private const long ToBlock = 99;
+    private const uint FromBlock = 0;
+    private const uint ToBlock = 99;
 
     private static readonly Ranges LogIndexRanges = GenerateLogIndexRanges();
 
@@ -384,22 +384,22 @@ public class LogIndexFilterVisitorTests
     {
         var random = new Random(42);
 
-        var addressRanges = new Dictionary<Address, List<int>>();
+        var addressRanges = new Dictionary<Address, List<uint>>();
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
-            var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).ToList();
+            var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).Select(i => (uint)i).ToList();
             addressRanges.Add(address, range);
         }
 
-        Dictionary<Hash256, List<int>>[] topicRanges = Enumerable
+        Dictionary<Hash256, List<uint>>[] topicRanges = Enumerable
             .Range(0, LogIndexStorage.MaxTopics)
-            .Select(_ => new Dictionary<Hash256, List<int>>()).ToArray();
+            .Select(_ => new Dictionary<Hash256, List<uint>>()).ToArray();
 
-        foreach (Dictionary<Hash256, List<int>> ranges in topicRanges)
+        foreach (Dictionary<Hash256, List<uint>> ranges in topicRanges)
         {
             foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE })
             {
-                var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.2).ToList();
+                var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.2).Select(i => (uint)i).ToList();
                 ranges.Add(topic, range);
             }
         }
@@ -408,6 +408,6 @@ public class LogIndexFilterVisitorTests
     }
 
     private static FilterBuilder BuildFilter() => FilterBuilder.New()
-        .FromBlock(FromBlock)
-        .ToBlock(ToBlock);
+        .FromBlock((long)FromBlock)
+        .ToBlock((long)ToBlock);
 }

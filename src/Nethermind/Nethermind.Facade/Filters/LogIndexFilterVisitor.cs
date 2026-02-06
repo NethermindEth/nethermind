@@ -20,9 +20,9 @@ namespace Nethermind.Facade.Filters;
 /// Converts <see cref="LogFilter"/> tree and block range into an enumerator of block numbers from <see cref="LogIndexStorage"/>,
 /// by building corresponding "tree of enumerators".
 /// </summary>
-public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
+public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, uint fromBlock, uint toBlock) : IEnumerable<uint>
 {
-    internal sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    internal sealed class IntersectEnumerator(IEnumerator<uint> e1, IEnumerator<uint> e2) : IEnumerator<uint>
     {
         public bool MoveNext()
         {
@@ -31,8 +31,8 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
             while (has1 && has2)
             {
-                int c1 = e1.Current;
-                int c2 = e2.Current;
+                uint c1 = e1.Current;
+                uint c2 = e2.Current;
                 if (c1 == c2)
                 {
                     Current = c1;
@@ -52,7 +52,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
             e2.Reset();
         }
 
-        public int Current { get; private set; }
+        public uint Current { get; private set; }
 
         object? IEnumerator.Current => Current;
 
@@ -63,7 +63,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         }
     }
 
-    internal sealed class UnionEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    internal sealed class UnionEnumerator(IEnumerator<uint> e1, IEnumerator<uint> e2) : IEnumerator<uint>
     {
         private bool _has1 = e1.MoveNext();
         private bool _has2 = e2.MoveNext();
@@ -82,7 +82,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
                 (false, false) => false
             };
 
-        private bool MoveNext(IEnumerator<int> enumerator, out bool has)
+        private bool MoveNext(IEnumerator<uint> enumerator, out bool has)
         {
             Current = enumerator.Current;
             has = enumerator.MoveNext();
@@ -97,7 +97,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
             _has2 = e2.MoveNext();
         }
 
-        public int Current { get; private set; }
+        public uint Current { get; private set; }
 
         object? IEnumerator.Current => Current;
 
@@ -110,10 +110,10 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public IEnumerator<int> GetEnumerator()
+    public IEnumerator<uint> GetEnumerator()
     {
-        IEnumerator<int>? addressEnumerator = Visit(filter.AddressFilter);
-        IEnumerator<int>? topicEnumerator = Visit(filter.TopicsFilter);
+        IEnumerator<uint>? addressEnumerator = Visit(filter.AddressFilter);
+        IEnumerator<uint>? topicEnumerator = Visit(filter.TopicsFilter);
 
         if (addressEnumerator is not null && topicEnumerator is not null)
             return new IntersectEnumerator(addressEnumerator, topicEnumerator);
@@ -121,22 +121,22 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         return addressEnumerator ?? topicEnumerator ?? throw new InvalidOperationException("Provided filter covers whole block range.");
     }
 
-    private IEnumerator<int>? Visit(AddressFilter addressFilter)
+    private IEnumerator<uint>? Visit(AddressFilter addressFilter)
     {
-        IEnumerator<int>? result = null;
+        IEnumerator<uint>? result = null;
 
         foreach (AddressAsKey address in addressFilter.Addresses)
         {
-            IEnumerator<int> next = Visit(address);
+            IEnumerator<uint> next = Visit(address);
             result = result is null ? next : new UnionEnumerator(result, next);
         }
 
         return result;
     }
 
-    private IEnumerator<int>? Visit(TopicsFilter topicsFilter)
+    private IEnumerator<uint>? Visit(TopicsFilter topicsFilter)
     {
-        IEnumerator<int> result = null;
+        IEnumerator<uint> result = null;
 
         var topicIndex = 0;
         foreach (TopicExpression expression in topicsFilter.Expressions)
@@ -150,7 +150,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         return result;
     }
 
-    private IEnumerator<int>? Visit(int topicIndex, TopicExpression expression) => expression switch
+    private IEnumerator<uint>? Visit(int topicIndex, TopicExpression expression) => expression switch
     {
         AnyTopic => null,
         OrExpression orExpression => Visit(topicIndex, orExpression),
@@ -158,9 +158,9 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         _ => throw new ArgumentOutOfRangeException($"Unknown topic expression type: {expression.GetType().Name}.")
     };
 
-    private IEnumerator<int>? Visit(int topicIndex, OrExpression orExpression)
+    private IEnumerator<uint>? Visit(int topicIndex, OrExpression orExpression)
     {
-        IEnumerator<int>? result = null;
+        IEnumerator<uint>? result = null;
 
         foreach (TopicExpression expression in orExpression.SubExpressions)
         {
@@ -173,15 +173,15 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         return result;
     }
 
-    private IEnumerator<int> Visit(Address address) =>
+    private IEnumerator<uint> Visit(Address address) =>
         storage.GetEnumerator(address, fromBlock, toBlock);
 
-    private IEnumerator<int> Visit(int topicIndex, Hash256 topic) =>
+    private IEnumerator<uint> Visit(int topicIndex, Hash256 topic) =>
         storage.GetEnumerator(topicIndex, topic, fromBlock, toBlock);
 }
 
 public static class LogIndexFilterVisitorExtensions
 {
-    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock) =>
-        new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock).Select(static i => (long)i);
+    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, uint fromBlock, uint toBlock) =>
+        new LogIndexFilterVisitor(storage, filter, fromBlock, toBlock).Select(static i => (long)i);
 }

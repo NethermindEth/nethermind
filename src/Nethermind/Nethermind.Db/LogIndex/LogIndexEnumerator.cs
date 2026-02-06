@@ -16,22 +16,21 @@ public partial class LogIndexStorage
     /// Enumerates block numbers from <see cref="LogIndexStorage"/> for the given <c>key</c>,
     /// within the specified <c>from</c>/<c>to</c> range.
     /// </summary>
-    public sealed class LogIndexEnumerator : IEnumerator<int>
+    public sealed class LogIndexEnumerator : IEnumerator<uint>
     {
         private const int CompletedIndex = int.MinValue;
 
         private readonly LogIndexStorage _storage;
         private readonly byte[] _key;
-        private readonly int _from;
-        private readonly int _to;
+        private readonly uint _from;
+        private readonly uint _to;
         private readonly ISortedView _view;
 
-        private ArrayPoolList<int>? _value;
+        private ArrayPoolList<uint>? _value;
         private int _index;
 
-        public LogIndexEnumerator(LogIndexStorage storage, ISortedKeyValueStore db, byte[] key, int from, int to)
+        public LogIndexEnumerator(LogIndexStorage storage, ISortedKeyValueStore db, byte[] key, uint from, uint to)
         {
-            if (from < 0) from = 0;
             if (to < from) throw new ArgumentException("To must be greater or equal to from.", nameof(to));
 
             _storage = storage;
@@ -45,7 +44,7 @@ public partial class LogIndexStorage
 
         private bool IsWithinRange()
         {
-            int current = Current;
+            uint current = Current;
             return current >= _from && current <= _to;
         }
 
@@ -141,7 +140,7 @@ public partial class LogIndexStorage
 
         public void Reset() => throw new NotSupportedException($"{nameof(LogIndexEnumerator)} can not be reset.");
 
-        public int Current => _value is not null && _index >= 0 && _index < _value.Count ? _value[_index] : -1;
+        public uint Current => _value is not null && _index >= 0 && _index < _value.Count ? _value[_index] : 0u;
         object? IEnumerator.Current => Current;
 
         public void Dispose()

@@ -17,24 +17,24 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     /// <summary>
     /// Max block number added to the index.
     /// </summary>
-    int? MaxBlockNumber { get; }
+    uint? MaxBlockNumber { get; }
 
     /// <summary>
     /// Min block number added to the index.
     /// </summary>
-    int? MinBlockNumber { get; }
+    uint? MinBlockNumber { get; }
 
     /// <summary>
     /// Gets enumerator of block numbers between <paramref name="from"/> and <paramref name="to"/>
     /// where given <paramref name="address"/> has occurred.
     /// </summary>
-    IEnumerator<int> GetEnumerator(Address address, int from, int to);
+    IEnumerator<uint> GetEnumerator(Address address, uint from, uint to);
 
     /// <summary>
     /// Gets enumerator of block numbers between <paramref name="from"/> and <paramref name="to"/>
     /// where given <paramref name="topic"/> has occurred at the given <paramref name="topicIndex"/>.
     /// </summary>
-    IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to);
+    IEnumerator<uint> GetEnumerator(int topicIndex, Hash256 topic, uint from, uint to);
 
     /// <summary>
     /// Aggregates receipts from the <paramref name="batch"/> into in-memory <see cref="LogIndexAggregate"/>.

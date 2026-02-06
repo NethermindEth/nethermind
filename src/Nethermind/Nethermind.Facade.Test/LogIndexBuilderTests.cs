@@ -28,30 +28,30 @@ public class LogIndexBuilderTests
 {
     private class TestLogIndexStorage : ILogIndexStorage
     {
-        private int? _minBlockNumber;
-        private int? _maxBlockNumber;
+        private uint? _minBlockNumber;
+        private uint? _maxBlockNumber;
 
         public bool Enabled => true;
 
-        public event EventHandler<int>? NewMaxBlockNumber;
-        public event EventHandler<int>? NewMinBlockNumber;
+        public event EventHandler<uint>? NewMaxBlockNumber;
+        public event EventHandler<uint>? NewMinBlockNumber;
 
-        public int? MinBlockNumber
+        public uint? MinBlockNumber
         {
             get => _minBlockNumber;
             init => _minBlockNumber = value;
         }
 
-        public int? MaxBlockNumber
+        public uint? MaxBlockNumber
         {
             get => _maxBlockNumber;
             init => _maxBlockNumber = value;
         }
 
-        public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
+        public IEnumerator<uint> GetEnumerator(Address address, uint from, uint to) =>
             throw new NotImplementedException();
 
-        public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
+        public IEnumerator<uint> GetEnumerator(int topicIndex, Hash256 topic, uint from, uint to) =>
             throw new NotImplementedException();
 
         public string GetDbSize() => 0L.SizeToString();
@@ -181,16 +181,16 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
-        var expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
+        var expectedMin = (uint)(minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier));
         var storage = new TestLogIndexStorage
         {
-            MinBlockNumber = synced[0] < 0 ? null : synced[0],
-            MaxBlockNumber = synced[1] < 0 ? null : synced[1]
+            MinBlockNumber = synced[0] < 0 ? null : (uint)synced[0],
+            MaxBlockNumber = synced[1] < 0 ? null : (uint)synced[1]
         };
 
         LogIndexBuilder builder = GetService(storage);
 
-        Task completion = WaitBlocksAsync(storage, expectedMin, MaxSyncBlock, cancellation);
+        Task completion = WaitBlocksAsync(storage, expectedMin, (uint)MaxSyncBlock, cancellation);
         await builder.StartAsync();
         await completion;
 
@@ -199,7 +199,7 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
 
             Assert.That(storage.MinBlockNumber, Is.EqualTo(expectedMin));
-            Assert.That(storage.MaxBlockNumber, Is.EqualTo(MaxSyncBlock));
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo((uint)MaxSyncBlock));
         }
     }
 
@@ -233,8 +233,8 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(0, new("Should not set new receipts."))
         {
-            MinBlockNumber = minBlock,
-            MaxBlockNumber = MaxSyncBlock
+            MinBlockNumber = (uint)minBlock,
+            MaxBlockNumber = (uint)MaxSyncBlock
         });
 
         await builder.StartAsync();
@@ -247,12 +247,12 @@ public class LogIndexBuilderTests
         }
     }
 
-    private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
+    private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, uint blockNumber, CancellationToken cancellation)
     {
         if (storage.MaxBlockNumber >= blockNumber)
             return Task.CompletedTask;
 
-        return Wait.ForEventCondition<int>(
+        return Wait.ForEventCondition<uint>(
             cancellation,
             e => storage.NewMaxBlockNumber += e,
             e => storage.NewMaxBlockNumber -= e,
@@ -260,12 +260,12 @@ public class LogIndexBuilderTests
         );
     }
 
-    private static Task WaitMinBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)
+    private static Task WaitMinBlockAsync(TestLogIndexStorage storage, uint blockNumber, CancellationToken cancellation)
     {
         if (storage.MinBlockNumber <= blockNumber)
             return Task.CompletedTask;
 
-        return Wait.ForEventCondition<int>(
+        return Wait.ForEventCondition<uint>(
             cancellation,
             e => storage.NewMinBlockNumber += e,
             e => storage.NewMinBlockNumber -= e,
@@ -273,7 +273,7 @@ public class LogIndexBuilderTests
         );
     }
 
-    private static Task WaitBlocksAsync(TestLogIndexStorage storage, int minBlock, int maxBlock, CancellationToken cancellation) => Task.WhenAll(
+    private static Task WaitBlocksAsync(TestLogIndexStorage storage, uint minBlock, uint maxBlock, CancellationToken cancellation) => Task.WhenAll(
         WaitMinBlockAsync(storage, minBlock, cancellation),
         WaitMaxBlockAsync(storage, maxBlock, cancellation)
     );

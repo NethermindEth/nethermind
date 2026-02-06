@@ -42,7 +42,7 @@ partial class LogIndexStorage
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand) =>
             operand.Length == Size && operand[0] == (byte)op;
 
-        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out int fromBlock)
+        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out uint fromBlock)
         {
             if (operand.Length == Size && operand[0] == (byte)op)
             {
@@ -58,7 +58,7 @@ partial class LogIndexStorage
             Is(MergeOp.Reorg, operand, out _) ||
             Is(MergeOp.Truncate, operand, out _);
 
-        public static Span<byte> Create(MergeOp op, int fromBlock, Span<byte> buffer)
+        public static Span<byte> Create(MergeOp op, uint fromBlock, Span<byte> buffer)
         {
             Span<byte> dbValue = buffer[..Size];
             dbValue[0] = (byte)op;
@@ -66,7 +66,7 @@ partial class LogIndexStorage
             return dbValue;
         }
 
-        public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, int block, bool isBackward)
+        public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, uint block, bool isBackward)
         {
             // In most cases the searched block will be near or at the end of the operand, if present there
             int i = LastBlockSearch(operand, block, isBackward);

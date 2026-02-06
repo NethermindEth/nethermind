@@ -25,7 +25,7 @@ partial class LogIndexStorage
     /// Supports 2 different use cases depending on the incoming operand:
     /// <list type="number">
     /// <item>
-    /// In case if operand is a sequence of <see cref="Int32"/> block numbers -
+    /// In case if operand is a sequence of <see cref="UInt32"/> block numbers -
     /// directly concatenates with the existing DB value, validating order remains correct (see <see cref="AddEnsureSorted"/>). <br/>
     /// If value size grows to or over <see cref="ILogIndexConfig.CompressionDistance"/> block numbers -
     /// queues it for compression (via <see cref="ICompressor.TryEnqueue"/>).
@@ -51,7 +51,7 @@ partial class LogIndexStorage
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
 
-        private static bool IsBlockNewer(int next, int? last, bool isBackwardSync) =>
+        private static bool IsBlockNewer(uint next, uint? last, bool isBackwardSync) =>
             LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
 
         // Validate we are merging non-intersecting segments - to prevent data corruption
@@ -60,8 +60,8 @@ partial class LogIndexStorage
             if (value.Length == 0)
                 return;
 
-            int nextBlock = ReadBlockNumber(value);
-            int? lastBlock = result.Count > 0 ? ReadLastBlockNumber(result.AsSpan()) : (int?)null;
+            uint nextBlock = ReadBlockNumber(value);
+            uint? lastBlock = result.Count > 0 ? ReadLastBlockNumber(result.AsSpan()) : (uint?)null;
 
             if (!IsBlockNewer(next: nextBlock, last: lastBlock, isBackward))
                 throw new LogIndexStateException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backward: {isBackward}).", key);
@@ -104,7 +104,7 @@ partial class LogIndexStorage
                 result = new(resultLength);
 
                 // For truncate - just use max/min for all operands
-                int? truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);
+                uint? truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);
 
                 int iReorg = 0;
                 for (int i = 0; i < enumerator.TotalCount; i++)
@@ -146,19 +146,19 @@ partial class LogIndexStorage
             }
         }
 
-        private static int? FindNext(MergeOp op, RocksDbMergeEnumerator enumerator, ref int i)
+        private static uint? FindNext(MergeOp op, RocksDbMergeEnumerator enumerator, ref int i)
         {
             while (i < enumerator.TotalCount && !MergeOps.Is(op, enumerator.Get(i)))
                 i++;
 
-            return i < enumerator.TotalCount && MergeOps.Is(op, enumerator.Get(i), out int block)
+            return i < enumerator.TotalCount && MergeOps.Is(op, enumerator.Get(i), out uint block)
                 ? block
                 : null;
         }
 
-        private static int? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
+        private static uint? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
         {
-            int? result = null;
+            uint? result = null;
             for (var i = 0; i < enumerator.OperandsCount; i++)
             {
                 if (!MergeOps.Is(op, enumerator.GetOperand(i), out var next))

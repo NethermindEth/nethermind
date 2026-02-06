@@ -23,7 +23,7 @@ public class LogIndexConfig : ILogIndexConfig
     public int MaxCompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
 
     public int CompressionDistance { get; set; } = 128;
-    public int CompactionDistance { get; set; } = 262_144;
+    public uint CompactionDistance { get; set; } = 262_144;
 
     public string? CompressionAlgorithm { get; set; } = LogIndexStorage.CompressionAlgorithm.Best.Key;
 

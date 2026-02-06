@@ -59,8 +59,8 @@ namespace Nethermind.Db.Test.LogIndex
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
         private ILogIndexStorage CreateLogIndexStorage(
-            int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
-            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null
+            uint compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
+            string? compressionAlgo = null, uint? failOnBlock = null, int? failOnCallN = null
         )
         {
             LogIndexConfig config = new()
@@ -140,7 +140,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task Set_Get_Test(
-            [Values(100, 200, int.MaxValue)] int compactionDistance,
+            [Values(100u, 200u, uint.MaxValue)] uint compactionDistance,
             [Values(1, 8, 16)] byte ioParallelism,
             [Values] bool isBackwardsSync,
             [Values] bool compact
@@ -159,7 +159,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task SetIntersecting_Get_Test(
-            [Values(100, 200, int.MaxValue)] int compactionDistance,
+            [Values(100u, 200u, uint.MaxValue)] uint compactionDistance,
             [Values(1, 8, 16)] byte ioParallelism,
             [Values] bool isBackwardsSync,
             [Values] bool compact
@@ -179,7 +179,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task BackwardsSet_Set_Get_Test(
-            [Values(100, 200, int.MaxValue)] int compactionDistance
+            [Values(100u, 200u, uint.MaxValue)] uint compactionDistance
         )
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
@@ -202,7 +202,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Repeat(RaceConditionTestRepeat)]
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Concurrent_BackwardsSet_Set_Get_Test(
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100u, uint.MaxValue)] uint compactionDistance
         )
         {
             await using (var setStorage = CreateLogIndexStorage(compactionDistance))
@@ -248,7 +248,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_ReorgLast_Get_Test(
             [Values(1, 5, 20)] int reorgDepth,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100u, uint.MaxValue)] uint compactionDistance
         )
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
@@ -265,7 +265,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_ReorgAndSetLast_Get_Test(
             [Values(1, 5, 20)] int reorgDepth,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100u, uint.MaxValue)] uint compactionDistance
         )
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
@@ -285,7 +285,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_ReorgLast_SetLast_Get_Test(
             [Values(1, 5, 20)] int reorgDepth,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100u, uint.MaxValue)] uint compactionDistance
         )
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
@@ -305,7 +305,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_ReorgNonexistent_Get_Test(
             [Values(1, 5)] int reorgDepth,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100u, uint.MaxValue)] uint compactionDistance
         )
         {
             var logIndexStorage = CreateLogIndexStorage(compactionDistance);
@@ -313,12 +313,12 @@ namespace Nethermind.Db.Test.LogIndex
             await AddReceiptsAsync(logIndexStorage, testData.Batches);
 
             var lastBlock = testData.Batches[^1][^1].BlockNumber;
-            BlockReceipts[] reorgBlocks = GenerateBlocks(new Random(4242), lastBlock - reorgDepth + 1, reorgDepth);
+            BlockReceipts[] reorgBlocks = GenerateBlocks(new Random(4242), lastBlock - (uint)reorgDepth + 1, reorgDepth);
             foreach (BlockReceipts block in reorgBlocks)
                 await logIndexStorage.RemoveReorgedAsync(block);
 
             // Need custom check because Reorg updates the last block even if it's "nonexistent"
-            Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(lastBlock - reorgDepth));
+            Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(lastBlock - (uint)reorgDepth));
 
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, validateMinMax: false);
         }
@@ -339,7 +339,7 @@ namespace Nethermind.Db.Test.LogIndex
                 await logIndexStorage.RemoveReorgedAsync(block);
 
             var lastBlock = testData.Batches[^1][^1].BlockNumber;
-            VerifyReceipts(logIndexStorage, testData, maxBlock: lastBlock - reorgDepth);
+            VerifyReceipts(logIndexStorage, testData, maxBlock: lastBlock - (uint)reorgDepth);
         }
 
         [Combinatorial]
@@ -355,7 +355,7 @@ namespace Nethermind.Db.Test.LogIndex
             var allReorgBlocks = new List<BlockReceipts>();
             var allAddedBlocks = new List<BlockReceipts>();
 
-            foreach (BlockReceipts[][] batches in testData.Batches.GroupBy(b => b[0].BlockNumber / reorgFrequency).Select(g => g.ToArray()))
+            foreach (BlockReceipts[][] batches in testData.Batches.GroupBy(b => b[0].BlockNumber / (uint)reorgFrequency).Select(g => g.ToArray()))
             {
                 await AddReceiptsAsync(logIndexStorage, batches);
 
@@ -400,12 +400,12 @@ namespace Nethermind.Db.Test.LogIndex
                     await CompactAsync(logIndexStorage);
             }
 
-            VerifyReceipts(logIndexStorage, testData, maxBlock: testBlocks[^1].BlockNumber - reorgDepths.Max());
+            VerifyReceipts(logIndexStorage, testData, maxBlock: testBlocks[^1].BlockNumber - (uint)reorgDepths.Max());
         }
 
         [Combinatorial]
         public async Task SetMultiInstance_Get_Test(
-            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values(100u, uint.MaxValue)] uint compactionDistance,
             [Values] bool isBackwardsSync
         )
         {
@@ -423,7 +423,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task RepeatedSet_Get_Test(
-            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values(100u, uint.MaxValue)] uint compactionDistance,
             [Values] bool isBackwardsSync
         )
         {
@@ -437,7 +437,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task RepeatedSetMultiInstance_Get_Test(
-            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values(100u, uint.MaxValue)] uint compactionDistance,
             [Values] bool isBackwardsSync
         )
         {
@@ -454,7 +454,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_NewInstance_Get_Test(
             [Values(1, 8)] int ioParallelism,
-            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values(100u, uint.MaxValue)] uint compactionDistance,
             [Values] bool isBackwardsSync
         )
         {
@@ -469,7 +469,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Repeat(RaceConditionTestRepeat)]
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Set_ConcurrentGet_Test(
-            [Values(1, 200, int.MaxValue)] int compactionDistance,
+            [Values(1u, 200u, uint.MaxValue)] uint compactionDistance,
             [Values] bool isBackwardsSync
         )
         {
@@ -555,7 +555,7 @@ namespace Nethermind.Db.Test.LogIndex
             Assert.That(exception, Has.Message.Contain(oldAlgo).And.Message.Contain(newAlgo));
         }
 
-        private static BlockReceipts[] GenerateBlocks(Random random, int from, int count) =>
+        private static BlockReceipts[] GenerateBlocks(Random random, uint from, int count) =>
             new TestData(random, 1, count, startNum: from).Batches[0];
 
         private static async Task AddReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches, bool isBackwardsSync = false)
@@ -585,11 +585,11 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
-            Dictionary<Address, HashSet<int>>? excludedAddresses = null,
-            Dictionary<int, Dictionary<Hash256, HashSet<int>>>? excludedTopics = null,
-            Dictionary<Address, HashSet<int>>? addedAddresses = null,
-            Dictionary<int, Dictionary<Hash256, HashSet<int>>>? addedTopics = null,
-            int? minBlock = null, int? maxBlock = null,
+            Dictionary<Address, HashSet<uint>>? excludedAddresses = null,
+            Dictionary<int, Dictionary<Hash256, HashSet<uint>>>? excludedTopics = null,
+            Dictionary<Address, HashSet<uint>>? addedAddresses = null,
+            Dictionary<int, Dictionary<Hash256, HashSet<uint>>>? addedTopics = null,
+            uint? minBlock = null, uint? maxBlock = null,
             bool validateMinMax = true
         )
         {
@@ -607,12 +607,12 @@ namespace Nethermind.Db.Test.LogIndex
 
             foreach (var (address, blocks) in testData.AddressMap)
             {
-                IEnumerable<int> expectedBlocks = blocks;
+                IEnumerable<uint> expectedBlocks = blocks;
 
-                if (excludedAddresses != null && excludedAddresses.TryGetValue(address, out HashSet<int> addressExcludedBlocks))
+                if (excludedAddresses != null && excludedAddresses.TryGetValue(address, out HashSet<uint> addressExcludedBlocks))
                     expectedBlocks = expectedBlocks.Except(addressExcludedBlocks);
 
-                if (addedAddresses != null && addedAddresses.TryGetValue(address, out HashSet<int> addressAddedBlocks))
+                if (addedAddresses != null && addedAddresses.TryGetValue(address, out HashSet<uint> addressAddedBlocks))
                     expectedBlocks = expectedBlocks.Concat(addressAddedBlocks);
 
                 expectedBlocks = expectedBlocks.Order();
@@ -639,12 +639,12 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 foreach (var (topic, blocks) in byTopic)
                 {
-                    IEnumerable<int> expectedBlocks = blocks;
+                    IEnumerable<uint> expectedBlocks = blocks;
 
-                    if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
+                    if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<uint> topicExcludedBlocks))
                         expectedBlocks = expectedBlocks.Except(topicExcludedBlocks);
 
-                    if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<int> topicAddedBlocks))
+                    if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<uint> topicAddedBlocks))
                         expectedBlocks = expectedBlocks.Concat(topicAddedBlocks);
 
                     expectedBlocks = expectedBlocks.Order();
@@ -671,7 +671,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             IEnumerable<BlockReceipts>? excludedBlocks, IEnumerable<BlockReceipts>? addedBlocks = null,
-            int? minBlock = null, int? maxBlock = null,
+            uint? minBlock = null, uint? maxBlock = null,
             bool validateMinMax = true)
         {
             var excludeMaps = excludedBlocks == null ? default : TestData.GenerateMaps(excludedBlocks);
@@ -782,7 +782,7 @@ namespace Nethermind.Db.Test.LogIndex
         {
             private readonly int _batchCount;
             private readonly int _blocksPerBatch;
-            private readonly int _startNum;
+            private readonly uint _startNum;
 
             // Lazy avoids generating all the data just to display test cases in the runner
             private readonly Lazy<BlockReceipts[][]> _batches;
@@ -791,11 +791,11 @@ namespace Nethermind.Db.Test.LogIndex
             private List<Address>? _addresses;
             private List<(int, Hash256)>? _topics;
 
-            private readonly Lazy<IEnumerable<(int from, int to)>> _ranges;
-            public IEnumerable<(int from, int to)> Ranges => _ranges.Value;
+            private readonly Lazy<IEnumerable<(uint from, uint to)>> _ranges;
+            public IEnumerable<(uint from, uint to)> Ranges => _ranges.Value;
 
-            public Dictionary<Address, HashSet<int>> AddressMap { get; private set; } = new();
-            public Dictionary<int, Dictionary<Hash256, HashSet<int>>> TopicMap { get; private set; } = new();
+            public Dictionary<Address, HashSet<uint>> AddressMap { get; private set; } = new();
+            public Dictionary<int, Dictionary<Hash256, HashSet<uint>>> TopicMap { get; private set; } = new();
 
             public List<Address> Addresses
             {
@@ -818,7 +818,7 @@ namespace Nethermind.Db.Test.LogIndex
             public bool ExtendedGetRanges { get; init; }
             public string? Compression { get; init; }
 
-            public TestData(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
+            public TestData(Random random, int batchCount, int blocksPerBatch, uint startNum = 0)
             {
                 _batchCount = batchCount;
                 _blocksPerBatch = blocksPerBatch;
@@ -828,9 +828,9 @@ namespace Nethermind.Db.Test.LogIndex
                 _ranges = new(() => ExtendedGetRanges ? GenerateExtendedRanges() : GenerateSimpleRanges());
             }
 
-            public TestData(int batchCount, int blocksPerBatch, int startNum = 0) : this(new(42), batchCount, blocksPerBatch, startNum) { }
+            public TestData(int batchCount, int blocksPerBatch, uint startNum = 0) : this(new(42), batchCount, blocksPerBatch, startNum) { }
 
-            private BlockReceipts[][] GenerateBatches(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
+            private BlockReceipts[][] GenerateBatches(Random random, int batchCount, int blocksPerBatch, uint startNum = 0)
             {
                 var batches = new BlockReceipts[batchCount][];
                 var blocksCount = batchCount * blocksPerBatch;
@@ -882,11 +882,11 @@ namespace Nethermind.Db.Test.LogIndex
                 return batches;
             }
 
-            public static (Dictionary<Address, HashSet<int>> address, Dictionary<int, Dictionary<Hash256, HashSet<int>>> topic) GenerateMaps(
+            public static (Dictionary<Address, HashSet<uint>> address, Dictionary<int, Dictionary<Hash256, HashSet<uint>>> topic) GenerateMaps(
                 IEnumerable<BlockReceipts> blocks)
             {
-                var address = new Dictionary<Address, HashSet<int>>();
-                var topic = new Dictionary<int, Dictionary<Hash256, HashSet<int>>>();
+                var address = new Dictionary<Address, HashSet<uint>>();
+                var topic = new Dictionary<int, Dictionary<Hash256, HashSet<uint>>>();
 
                 foreach (var block in blocks)
                 {
@@ -938,35 +938,35 @@ namespace Nethermind.Db.Test.LogIndex
                 return receipts.ToArray();
             }
 
-            private static HashSet<(int from, int to)> GenerateSimpleRanges(int min, int max)
+            private static HashSet<(uint from, uint to)> GenerateSimpleRanges(uint min, uint max)
             {
                 var quarter = (max - min) / 4;
-                return [(0, int.MaxValue), (min, max), (min + quarter, max - quarter)];
+                return [(0, uint.MaxValue), (min, max), (min + quarter, max - quarter)];
             }
 
-            private static HashSet<(int from, int to)> GenerateExtendedRanges(int min, int max)
+            private static HashSet<(uint from, uint to)> GenerateExtendedRanges(uint min, uint max)
             {
-                var ranges = new HashSet<(int, int)>();
+                var ranges = new HashSet<(uint, uint)>();
 
-                var edges = new[] { min - 1, min, min + 1, max - 1, max + 1 };
+                var edges = new[] { min > 0 ? min - 1 : 0, min, min + 1, max > 0 ? max - 1 : 0, max + 1 };
                 ranges.AddRange(edges.SelectMany(_ => edges, static (x, y) => (x, y)));
 
-                const int step = 100;
+                const uint step = 100;
                 for (var i = min; i <= max; i += step)
                 {
-                    var middles = new[] { i - step, i - 1, i, i + 1, i + step };
+                    var middles = new[] { i > step ? i - step : 0, i > 0 ? i - 1 : 0, i, i + 1, i + step };
                     ranges.AddRange(middles.SelectMany(_ => middles, static (x, y) => (x, y)));
                 }
 
                 return ranges;
             }
 
-            private HashSet<(int from, int to)> GenerateSimpleRanges() => GenerateSimpleRanges(
-                _startNum, _startNum + _batchCount * _blocksPerBatch - 1
+            private HashSet<(uint from, uint to)> GenerateSimpleRanges() => GenerateSimpleRanges(
+                _startNum, _startNum + (uint)(_batchCount * _blocksPerBatch) - 1
             );
 
-            private HashSet<(int from, int to)> GenerateExtendedRanges() => GenerateExtendedRanges(
-                _startNum, _startNum + _batchCount * _blocksPerBatch - 1
+            private HashSet<(uint from, uint to)> GenerateExtendedRanges() => GenerateExtendedRanges(
+                _startNum, _startNum + (uint)(_batchCount * _blocksPerBatch) - 1
             );
 
             public override string ToString() =>
@@ -978,12 +978,12 @@ namespace Nethermind.Db.Test.LogIndex
         {
             public const string FailMessage = "Test exception.";
 
-            public int FailOnBlock { get; init; }
+            public uint FailOnBlock { get; init; }
             public int FailOnCallN { get; init; }
 
             private int _count;
 
-            protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<int> numbers, bool isBackwardSync, LogIndexUpdateStats? stats)
+            protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<uint> numbers, bool isBackwardSync, LogIndexUpdateStats? stats)
             {
                 var isFailBlock =
                     FailOnBlock >= Math.Min(numbers[0], numbers[^1]) &&

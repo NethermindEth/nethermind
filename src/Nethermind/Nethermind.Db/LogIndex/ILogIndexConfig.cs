@@ -81,7 +81,7 @@ public interface ILogIndexConfig : IConfig
         DefaultValue = "262,144",
         HiddenFromDocs = true
     )]
-    public int CompactionDistance { get; set; }
+    public uint CompactionDistance { get; set; }
 
     [ConfigItem(
         Description = "Compression algorithm to use for block numbers.",

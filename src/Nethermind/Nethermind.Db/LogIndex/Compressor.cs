@@ -123,11 +123,11 @@ partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return;
 
-                int truncateBlock = ReadLastBlockNumber(dbValue);
+                uint truncateBlock = ReadLastBlockNumber(dbValue);
 
                 ReverseBlocksIfNeeded(dbValue);
 
-                int postfixBlock = ReadBlockNumber(dbValue);
+                uint postfixBlock = ReadBlockNumber(dbValue);
 
                 ReadOnlySpan<byte> key = ExtractKey(dbKey);
                 Span<byte> dbKeyComp = stackalloc byte[key.Length + BlockNumberSize];

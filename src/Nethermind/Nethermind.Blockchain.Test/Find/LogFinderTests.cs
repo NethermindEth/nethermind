@@ -411,10 +411,10 @@ public class LogFinderTests
 
         var logIndexStorage = Substitute.For<ILogIndexStorage>();
         logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(indexFrom);
-        logIndexStorage.MaxBlockNumber.Returns(indexTo);
-        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
-            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+        logIndexStorage.MinBlockNumber.Returns(indexFrom is { } minVal ? (uint?)minVal : null);
+        logIndexStorage.MaxBlockNumber.Returns(indexTo is { } maxVal ? (uint?)maxVal : null);
+        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<uint>(), Arg.Any<uint>())
+            .Returns(_ => Array.Empty<uint>().Cast<uint>().GetEnumerator());
 
         Address address = TestItem.AddressA;
         BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
@@ -431,9 +431,9 @@ public class LogFinderTests
         _ = logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
 
         if (exTo is not null && exFrom is not null)
-            logIndexStorage.Received(1).GetEnumerator(address, exFrom.Value, exTo.Value);
+            logIndexStorage.Received(1).GetEnumerator(address, (uint)exFrom.Value, (uint)exTo.Value);
         else
-            logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+            logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<uint>(), Arg.Any<uint>());
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();

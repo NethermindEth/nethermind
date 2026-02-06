@@ -17,13 +17,13 @@ partial class LogIndexStorage
     /// </summary>
     private class Compactor : ICompactor
     {
-        private int? _lastAtMin;
-        private int? _lastAtMax;
+        private uint? _lastAtMin;
+        private uint? _lastAtMax;
 
         private CompactingStats _stats = new();
         private readonly LogIndexStorage _storage;
         private readonly ILogger _logger;
-        private readonly int _compactionDistance;
+        private readonly uint _compactionDistance;
 
         // TODO: simplify concurrency handling
         private readonly AutoResetEvent _runOnceEvent = new(false);
@@ -32,7 +32,7 @@ partial class LogIndexStorage
         private readonly ManualResetEvent _compactionEndedEvent = new(true);
         private readonly Task _compactionTask;
 
-        public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
+        public Compactor(LogIndexStorage storage, ILogger logger, uint compactionDistance)
         {
             _storage = storage;
             _logger = logger;
@@ -57,7 +57,7 @@ partial class LogIndexStorage
             _lastAtMin ??= _storage.MinBlockNumber;
             _lastAtMax ??= _storage.MaxBlockNumber;
 
-            var uncompacted = 0;
+            uint uncompacted = 0;
             if (_storage.MinBlockNumber is { } storageMin && storageMin < _lastAtMin)
                 uncompacted += _lastAtMin.Value - storageMin;
             if (_storage.MaxBlockNumber is { } storageMax && storageMax > _lastAtMax)

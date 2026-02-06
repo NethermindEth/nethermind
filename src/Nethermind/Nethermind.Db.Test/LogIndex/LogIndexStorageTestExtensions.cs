@@ -13,10 +13,10 @@ public static class LogIndexStorageTestExtensions
 {
     extension(ILogIndexStorage storage)
     {
-        public List<int> GetBlockNumbersFor(Address address, int from, int to)
+        public List<uint> GetBlockNumbersFor(Address address, uint from, uint to)
         {
-            var result = new List<int>();
-            using IEnumerator<int> enumerator = storage.GetEnumerator(address, from, to);
+            var result = new List<uint>();
+            using IEnumerator<uint> enumerator = storage.GetEnumerator(address, from, to);
 
             while (enumerator.MoveNext())
                 result.Add(enumerator.Current);
@@ -24,10 +24,10 @@ public static class LogIndexStorageTestExtensions
             return result;
         }
 
-        public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to)
+        public List<uint> GetBlockNumbersFor(int index, Hash256 topic, uint from, uint to)
         {
-            var result = new List<int>();
-            using IEnumerator<int> enumerator = storage.GetEnumerator(index, topic, from, to);
+            var result = new List<uint>();
+            using IEnumerator<uint> enumerator = storage.GetEnumerator(index, topic, from, to);
 
             while (enumerator.MoveNext())
                 result.Add(enumerator.Current);
