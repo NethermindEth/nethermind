@@ -26,7 +26,6 @@ using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
@@ -111,11 +110,8 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
 
             //Sync
-            .AddSingleton<CreateSnapshotOnStateSyncFinished>()
-                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
-                {
-                    ctx.Resolve<CreateSnapshotOnStateSyncFinished>();
-                })
+            .AddSingleton<XdcStateSyncSnapshotManager>()
+            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             ;
     }
 
