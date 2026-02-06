@@ -27,7 +27,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Trust null annotations, do not add redundant null checks
 - Add tests to existing test files rather than creating new ones
 - Code comments must explain _why_, not _what_
-- Do not suggest using LINQ when a simple loop would suffice
+- **NEVER suggest using LINQ (`.Select()`, `.Where()`, `.Any()`, etc.) when a simple `foreach` or `for` loop would work.** LINQ has overhead and is less readable for simple iterations. Use LINQ only for complex queries where the declarative syntax significantly improves clarity.
 - Do not use the `#region` and `#endregion` pragmas
 - Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
 
