@@ -22,7 +22,7 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
-    IBlockchainProcessor processor,
+    IMainProcessingContext mainProcessingContext,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
@@ -30,6 +30,7 @@ public class TestingRpcModule(
     : ITestingRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
 
     public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData)
     {
@@ -42,7 +43,7 @@ public class TestingRpcModule(
             Block block = new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
 
             FeesTracer feesTracer = new();
-            Block? processedBlock = processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+            Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
 
             if (processedBlock is not null)
             {

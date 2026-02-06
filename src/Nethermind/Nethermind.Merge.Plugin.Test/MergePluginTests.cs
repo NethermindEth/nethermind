@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -115,6 +116,17 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
+    }
+
+    [Test]
+    public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
+    {
+        using IContainer container = BuildContainer();
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await _consensusPlugin!.Init(api);
+        await _plugin.Init(api);
+
+        Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
     }
 
     [TestCase(true, true)]
