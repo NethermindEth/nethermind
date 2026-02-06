@@ -8,6 +8,7 @@ namespace Nethermind.Xdc.Contracts;
 
 public interface IMasternodeVotingContract
 {
+    Address[] GetCandidatesByStake(BlockHeader blockHeader);
     Address[] GetCandidates(BlockHeader blockHeader);
     UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(BlockHeader blockHeader, Address candidate);

@@ -11,6 +11,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Utils;
 
+[Parallelizable(ParallelScope.All)]
 public class LastNStateRootTrackerTests
 {
     [Test]

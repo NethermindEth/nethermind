@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 using G2 = Nethermind.Crypto.Bls.P2;
 using System.Runtime.CompilerServices;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -45,7 +44,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
 
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0) return Errors.InvalidInputLength;
 
-        // use Mul to optimise single point multiplication
+        // use Mul to optimize single point multiplication
         int nItems = inputData.Length / ItemSize;
         return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
     }

@@ -11,9 +11,6 @@
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
-  <Folder Name="/Plugins/OpcodeTracing/">
-    <Project Path="Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
-  </Folder>
   <Folder Name="/Plugins/Hive/">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />

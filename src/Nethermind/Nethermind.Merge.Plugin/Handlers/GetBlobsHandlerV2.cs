@@ -67,11 +67,6 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         }
     }
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> HandleAsync(List<byte[]>? txRlp, string privKey = "", bool reorg = false)
-    {
-        throw new System.NotImplementedException();
-    }
-
     private Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> ReturnEmptyArray()
     {
         Metrics.GetBlobsRequestsFailureTotal++;

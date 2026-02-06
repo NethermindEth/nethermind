@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using DotNetty.Buffers;
-using DotNetty.Common.Internal;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
@@ -41,7 +40,7 @@ namespace Nethermind.Init
             ITxPoolConfig txPoolConfig,
             uint cpuCount)
         {
-            TotalMemory = initConfig.MemoryHint ?? 2.GB();
+            TotalMemory = initConfig.MemoryHint ?? 1.GB();
             ValidateCpuCount(cpuCount);
 
             checked
@@ -50,7 +49,7 @@ namespace Nethermind.Init
 
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
-                _remainingMemory = initConfig.MemoryHint ?? 2.GB();
+                _remainingMemory = initConfig.MemoryHint ?? 1.GB();
                 _remainingMemory -= GeneralMemory;
                 if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
                 AssignPeersMemory(networkConfig);

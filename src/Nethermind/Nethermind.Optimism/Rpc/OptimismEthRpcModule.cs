@@ -32,58 +32,44 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
+public class OptimismEthRpcModule(
+    IJsonRpcConfig rpcConfig,
+    IBlockchainBridge blockchainBridge,
+    IBlockFinder blockFinder,
+    IReceiptFinder receiptFinder,
+    IStateReader stateReader,
+    ITxPool txPool,
+    ITxSender txSender,
+    IWallet wallet,
+    ILogManager logManager,
+    ISpecProvider specProvider,
+    IGasPriceOracle gasPriceOracle,
+    IEthSyncingInfo ethSyncingInfo,
+    IFeeHistoryOracle feeHistoryOracle,
+    IProtocolsManager protocolsManager,
+    IForkInfo forkInfo,
+    ulong? secondsPerSlot,
+    IJsonRpcClient? sequencerRpcClient,
+    IEthereumEcdsa ecdsa,
+    ITxSealer sealer,
+    IOptimismSpecHelper opSpecHelper)
+    : EthRpcModule(rpcConfig,
+        blockchainBridge,
+        blockFinder,
+        receiptFinder,
+        stateReader,
+        txPool,
+        txSender,
+        wallet,
+        logManager,
+        specProvider,
+        gasPriceOracle,
+        ethSyncingInfo,
+        feeHistoryOracle,
+        protocolsManager,
+        forkInfo,
+        secondsPerSlot), IOptimismEthRpcModule
 {
-    private readonly IJsonRpcClient? _sequencerRpcClient;
-    private readonly IEthereumEcdsa _ecdsa;
-    private readonly ITxSealer _sealer;
-    private readonly IOptimismSpecHelper _opSpecHelper;
-
-    public OptimismEthRpcModule(
-        IJsonRpcConfig rpcConfig,
-        IBlockchainBridge blockchainBridge,
-        IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
-        IStateReader stateReader,
-        ITxPool txPool,
-        ITxSender txSender,
-        IWallet wallet,
-        ILogManager logManager,
-        ISpecProvider specProvider,
-        IGasPriceOracle gasPriceOracle,
-        IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle,
-        IProtocolsManager protocolsManager,
-        IForkInfo forkInfo,
-        ulong? secondsPerSlot,
-
-        IJsonRpcClient? sequencerRpcClient,
-        IEthereumEcdsa ecdsa,
-        ITxSealer sealer,
-        IOptimismSpecHelper opSpecHelper) : base(
-       rpcConfig,
-       blockchainBridge,
-       blockFinder,
-       receiptFinder,
-       stateReader,
-       txPool,
-       txSender,
-       wallet,
-       logManager,
-       specProvider,
-       gasPriceOracle,
-       ethSyncingInfo,
-       feeHistoryOracle,
-       protocolsManager,
-       forkInfo,
-       secondsPerSlot)
-    {
-        _sequencerRpcClient = sequencerRpcClient;
-        _ecdsa = ecdsa;
-        _sealer = sealer;
-        _opSpecHelper = opSpecHelper;
-    }
-
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
@@ -96,7 +82,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        L1BlockGasInfo l1BlockGasInfo = new(block, _opSpecHelper);
+        L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
         OptimismReceiptForRpc[]? result = [.. receipts
                 .Zip(block.Transactions, (receipt, tx) =>
@@ -119,34 +105,34 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
-        Transaction tx = rpcTx.ToTransaction();
+        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction? tx, out string? error))
+        {
+            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
         tx.ChainId = _blockchainBridge.GetChainId();
-        tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
 
         if (tx.SenderAddress is null)
         {
             return ResultWrapper<Hash256>.Fail("Failed to recover sender");
         }
 
-        await _sealer.Seal(tx, TxHandlingOptions.None);
+        await sealer.Seal(tx, TxHandlingOptions.None);
 
         return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
-        if (_sequencerRpcClient is null)
+        if (sequencerRpcClient is null)
         {
             return await base.eth_sendRawTransaction(transaction);
         }
 
-        Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
-        if (result is null)
-        {
-            return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
-        }
-
-        return ResultWrapper<Hash256>.Success(result);
+        Hash256? result = await sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
+        return result is null ? ResultWrapper<Hash256>.Fail("Failed to forward transaction") : ResultWrapper<Hash256>.Success(result);
     }
 
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
@@ -164,7 +150,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         }
 
         Block block = foundBlock.Object;
-        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, _opSpecHelper);
+        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, opSpecHelper);
         OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
                 ? new OptimismReceiptForRpc(
@@ -185,17 +171,22 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
+        TransactionLookupResult result = transactionResult!.Value;
+        Transaction transaction = result.Transaction!;
+
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: baseFee, chainId: _specProvider.ChainId);
+        TransactionForRpcContext extraData = result.ExtraData;
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transaction,
+            extraData: extraData);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
-            depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
+            depositTx.DepositReceiptVersion = (extraData.Receipt as OptimismTxReceipt)?.DepositReceiptVersion;
         }
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
@@ -222,7 +213,16 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             .Get(block)
             .FirstOrDefault(r => r.TxHash == transaction.Hash);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: block.BaseFeePerGas, chainId: _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction,
+            new(
+                chainId: _specProvider.ChainId,
+                blockHash: block.Hash!,
+                blockNumber: block.Number,
+                txIndex: (int)positionIndex,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
@@ -264,10 +264,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                 {
                     Transaction tx = transactions[i];
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
-                        transaction: tx,
-                        blockHash: block.Hash,
-                        blockNumber: block.Number,
-                        txIndex: i);
+                        tx,
+                        new(
+                            chainId: _specProvider.ChainId,
+                            blockHash: block.Hash!,
+                            blockNumber: block.Number,
+                            txIndex: i,
+                            blockTimestamp: block.Timestamp,
+                            baseFee: block.BaseFeePerGas,
+                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {

@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,7 +20,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -275,6 +273,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             // We can recalculate the roots in parallel as they are all independent tries
             using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
+                // Only consider contracts that actually have pending changes
+                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+                // Schedule larger changes first to help balance the work
+                .OrderByDescending(kv => kv.Value.EstimatedChanges)
                 .Select((kv) => (
                     kv.Key,
                     kv.Value,
@@ -290,12 +292,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 static (i, state) =>
                 {
                     ref var kvp = ref state.storages.GetRef(i);
-                    if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
-                    {
-                        // Wasn't updated don't recalculate
-                        return state;
-                    }
-
                     (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
                     if (writes == 0)
                     {

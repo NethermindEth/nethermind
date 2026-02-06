@@ -71,10 +71,11 @@ public class OptimismEngineRpcModule(
         return _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
     }
 
-    public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
+    public async Task<ResultWrapper<OptimismGetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
     {
         List<byte[]>? empty = new List<byte[]>();
-        return _engineRpcModule.engine_getPayloadV4(empty, "");
+        ResultWrapper<GetPayloadV4Result?> result = await _engineRpcModule.engine_getPayloadV4(empty, "");
+        return ResultWrapper<OptimismGetPayloadV4Result?>.From(result, result.Data is null ? null : new OptimismGetPayloadV4Result(result.Data));
     }
 
     public ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal)

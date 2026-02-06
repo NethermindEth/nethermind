@@ -60,9 +60,9 @@ public class TaikoHeaderValidator(
     {
         var taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataMinLen })
+        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataLen })
         {
-            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataMinLen} bytes for Shasta, but got {header.ExtraData.Length}";
+            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
             if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
             return false;
         }
@@ -93,12 +93,15 @@ public class TaikoHeaderValidator(
         ulong parentBlockTime = 0;
         if (header.Number > 1)
         {
-            BlockHeader? grandParent = _blockTree?.FindHeader(parent.ParentHash!, BlockTreeLookupOptions.None);
+            BlockHeader? grandParent = _blockTree?.FindHeader(parent.ParentHash!, BlockTreeLookupOptions.None, blockNumber: parent.Number - 1);
             if (grandParent is null)
             {
-                error = $"Ancestor block not found for parent {parent.ParentHash}";
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
-                return false;
+                // Skip EIP-4396 verification due to unknown ancestor
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Skipping EIP-4396 verification due to unknown ancestor, parent: {parent.Hash}, number: {parent.Number}");
+                }
+                return true;
             }
             parentBlockTime = parent.Timestamp - grandParent.Timestamp;
         }

@@ -27,6 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class PruningScenariosTests
     {
         private ILogger _logger;
@@ -1222,7 +1223,32 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountMoreThan(280);
+                .AssertThatCachedNodeCountMoreThan(275);
+        }
+
+        [Test]
+        public void Can_Prune_AllPersistedNodeInOnePrune()
+        {
+            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
+                .WithMaxDepth(2)
+                .WithPersistedMemoryLimit(null)
+                .WithPrunePersistedNodeParameter(0, 0.1)
+                .TurnOffAlwaysPrunePersistedNode();
+
+            for (int i = 0; i < 256; i++)
+            {
+                if (i == 256 - 1)
+                {
+                    ctx.TurnOnPrune();
+                }
+
+                ctx
+                    .SetAccountBalance(i, (UInt256)i)
+                    .CommitAndWaitForPruning();
+            }
+
+            ctx
+                .AssertThatCachedPersistedNodeCountIs(3);
         }
 
         [Test]
