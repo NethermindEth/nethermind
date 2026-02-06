@@ -10,6 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class ExitOnBlocknumberHandlerTests
 {
     [TestCase(10, false)]

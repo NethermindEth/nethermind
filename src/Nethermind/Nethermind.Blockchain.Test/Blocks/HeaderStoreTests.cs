@@ -11,9 +11,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class HeaderStoreTests
 {
-
     [Test]
     public void TestCanStoreAndGetHeader()
     {

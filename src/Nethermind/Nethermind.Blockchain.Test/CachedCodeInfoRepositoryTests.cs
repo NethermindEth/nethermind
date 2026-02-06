@@ -19,6 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class CachedCodeInfoRepositoryTests
 {
     private static IReleaseSpec CreateSpecWithPrecompile(Address precompileAddress)

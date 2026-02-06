@@ -28,6 +28,8 @@ using NUnit.Framework.Internal;
 
 namespace Nethermind.Blockchain.Test.Find;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;
@@ -310,6 +312,7 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
     public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
     {
         var timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
@@ -327,7 +330,10 @@ public class LogFinderTests
 
         if (waitTime > 1)
         {
-            Assert.That(action, Throws.Exception.InstanceOf<OperationCanceledException>().Or.InnerException.InstanceOf<OperationCanceledException>());
+            Assert.That(action, Throws
+                .Exception.InstanceOf<OperationCanceledException>()
+                .Or.InnerException.InstanceOf<OperationCanceledException>() // PLINQ can wrap into AggregateException
+            );
         }
         else
         {
