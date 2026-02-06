@@ -41,8 +41,8 @@ public static class BasePersistence
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
-        public IPersistence.IFlatIterator CreateAccountIterator();
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
     }
 
@@ -63,8 +63,8 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         public byte[]? GetAccountRaw(Hash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
-        public IPersistence.IFlatIterator CreateAccountIterator();
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
     }
 
@@ -175,11 +175,11 @@ public static class BasePersistence
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
-        public IPersistence.IFlatIterator CreateAccountIterator() =>
-            _flatReader.CreateAccountIterator();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+            _flatReader.CreateAccountIterator(startKey, endKey);
 
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
-            _flatReader.CreateStorageIterator(accountKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
     }
@@ -218,11 +218,11 @@ public static class BasePersistence
         public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) =>
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref value);
 
-        public IPersistence.IFlatIterator CreateAccountIterator() =>
-            _flatReader.CreateAccountIterator();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+            _flatReader.CreateAccountIterator(startKey, endKey);
 
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) =>
-            _flatReader.CreateStorageIterator(accountKey);
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
     }

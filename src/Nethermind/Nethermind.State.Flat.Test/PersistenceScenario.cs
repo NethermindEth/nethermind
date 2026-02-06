@@ -732,7 +732,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Use iterator to enumerate accounts
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        using IPersistence.IFlatIterator iterator = reader.CreateAccountIterator();
+        using IPersistence.IFlatIterator iterator = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -748,7 +748,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     public void TestAccountIterator_EmptyState_ReturnsNoAccounts()
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        using IPersistence.IFlatIterator iterator = reader.CreateAccountIterator();
+        using IPersistence.IFlatIterator iterator = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -784,7 +784,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Storage keys are written using addr.ToAccountPath (Keccak hash of address)
         ValueHash256 accountKey = addr.ToAccountPath;
 
-        using IPersistence.IFlatIterator iterator = reader.CreateStorageIterator(accountKey);
+        using IPersistence.IFlatIterator iterator = reader.CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -815,7 +815,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         ValueHash256 accountKey = addr.ToAccountPath;
 
-        using IPersistence.IFlatIterator iterator = reader.CreateStorageIterator(accountKey);
+        using IPersistence.IFlatIterator iterator = reader.CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
 
         int count = 0;
         while (iterator.MoveNext())
@@ -852,13 +852,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Count storage for addr1 using proper address hash
         ValueHash256 accountKey1 = addr1.ToAccountPath;
-        using IPersistence.IFlatIterator iterator1 = reader.CreateStorageIterator(accountKey1);
+        using IPersistence.IFlatIterator iterator1 = reader.CreateStorageIterator(accountKey1, ValueKeccak.Zero, ValueKeccak.MaxValue);
         int count1 = 0;
         while (iterator1.MoveNext()) count1++;
 
         // Count storage for addr2 using proper address hash
         ValueHash256 accountKey2 = addr2.ToAccountPath;
-        using IPersistence.IFlatIterator iterator2 = reader.CreateStorageIterator(accountKey2);
+        using IPersistence.IFlatIterator iterator2 = reader.CreateStorageIterator(accountKey2, ValueKeccak.Zero, ValueKeccak.MaxValue);
         int count2 = 0;
         while (iterator2.MoveNext()) count2++;
 

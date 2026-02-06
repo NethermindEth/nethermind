@@ -32,8 +32,8 @@ public interface IPersistence
         byte[]? GetAccountRaw(Hash256 addrHash);
         bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value);
 
-        IFlatIterator CreateAccountIterator();
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey);
+        IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
+        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         bool IsPreimageMode { get; }
     }
 
