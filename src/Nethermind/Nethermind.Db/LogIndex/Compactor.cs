@@ -94,10 +94,17 @@ partial class LogIndexStorage
             {
                 await _channel.Writer.WriteAsync(tcs, _cts.Token);
             }
-            catch
+            catch (Exception ex)
             {
                 Interlocked.CompareExchange(ref _pendingForcedCompaction, null, tcs);
-                tcs.TrySetCanceled();
+                if (ex is OperationCanceledException)
+                {
+                    tcs.TrySetCanceled();
+                }
+                else
+                {
+                    tcs.TrySetException(ex);
+                }
                 throw;
             }
 
