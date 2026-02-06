@@ -433,6 +433,7 @@ namespace Nethermind.Db.LogIndex
             _compressor?.Dispose();
             DBColumns?.DisposeItems();
             _rootDb?.Dispose();
+            _compactor?.Dispose();
         }
 
         private int? LoadRangeBound(ReadOnlySpan<byte> key)

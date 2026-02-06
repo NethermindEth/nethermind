@@ -157,6 +157,12 @@ partial class LogIndexStorage
                 }
             }
         }
+
+        public void Dispose()
+        {
+            _cts.Dispose();
+            _channel.Writer.TryComplete();
+        }
     }
 
     private class NoOpCompactor : ICompactor
@@ -165,9 +171,10 @@ partial class LogIndexStorage
         public bool TryEnqueue() => false;
         public Task StopAsync() => Task.CompletedTask;
         public Task<CompactingStats> ForceAsync() => Task.FromResult(new CompactingStats());
+        public void Dispose() { }
     }
 
-    private interface ICompactor
+    private interface ICompactor : IDisposable
     {
         CompactingStats GetAndResetStats();
         bool TryEnqueue();
