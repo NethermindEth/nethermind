@@ -37,10 +37,11 @@ partial class LogIndexStorage
     /// </remarks>
     private class Compressor : ICompressor
     {
-        public int MinLengthToCompress { get; }
+        private int MinLengthToCompress { get; }
 
         // Used instead of a channel to prevent duplicates
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
+        private readonly ConcurrentDictionary<byte[], bool>.AlternateLookup<ReadOnlySpan<byte>> _compressQueueAlternativeLookup;
         private readonly LogIndexStorage _storage;
         private readonly ActionBlock<(int?, byte[])> _processing;
         private readonly ManualResetEventSlim _startEvent = new(false);
@@ -57,6 +58,7 @@ partial class LogIndexStorage
 
         public Compressor(LogIndexStorage storage, int compressionDistance, int parallelism)
         {
+            _compressQueueAlternativeLookup = _compressQueue.GetAlternateLookup<ReadOnlySpan<byte>>();
             _storage = storage;
 
             MinLengthToCompress = compressionDistance * BlockNumberSize;
@@ -70,7 +72,10 @@ partial class LogIndexStorage
             if (dbValue.Length < MinLengthToCompress)
                 return false;
 
-            var dbKeyArr = dbKey.ToArray();
+            if (_compressQueueAlternativeLookup.TryGetValue(dbKey, out _))
+                return false;
+
+            byte[] dbKeyArr = dbKey.ToArray();
             if (!_compressQueue.TryAdd(dbKeyArr, true))
                 return false;
 
@@ -104,10 +109,10 @@ partial class LogIndexStorage
                 if (_storage.HasBackgroundError)
                     return;
 
-                var execTimestamp = Stopwatch.GetTimestamp();
+                long execTimestamp = Stopwatch.GetTimestamp();
                 IDb db = _storage.GetDb(topicIndex);
 
-                var timestamp = Stopwatch.GetTimestamp();
+                long timestamp = Stopwatch.GetTimestamp();
                 Span<byte> dbValue = db.Get(dbKey);
                 _stats.DBReading.Include(Stopwatch.GetElapsedTime(timestamp));
 
@@ -118,11 +123,11 @@ partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return;
 
-                var truncateBlock = ReadLastBlockNumber(dbValue);
+                int truncateBlock = ReadLastBlockNumber(dbValue);
 
                 ReverseBlocksIfNeeded(dbValue);
 
-                var postfixBlock = ReadBlockNumber(dbValue);
+                int postfixBlock = ReadBlockNumber(dbValue);
 
                 ReadOnlySpan<byte> key = ExtractKey(dbKey);
                 Span<byte> dbKeyComp = stackalloc byte[key.Length + BlockNumberSize];
@@ -137,21 +142,14 @@ partial class LogIndexStorage
                 timestamp = Stopwatch.GetTimestamp();
                 using (IWriteBatch batch = db.StartWriteBatch())
                 {
-                    Span<byte> truncateOp = MergeOps.Create(
-                        MergeOp.Truncate, truncateBlock, stackalloc byte[MergeOps.Size]
-                    );
-
+                    Span<byte> truncateOp = MergeOps.Create(MergeOp.Truncate, truncateBlock, stackalloc byte[MergeOps.Size]);
                     batch.PutSpan(dbKeyComp, dbValue);
                     batch.Merge(dbKey, truncateOp);
                 }
 
                 _stats.DBSaving.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                if (topicIndex is null)
-                    Interlocked.Increment(ref _stats.CompressedAddressKeys);
-                else
-                    Interlocked.Increment(ref _stats.CompressedTopicKeys);
-
+                Interlocked.Increment(ref topicIndex is null ? ref _stats.CompressedAddressKeys : ref _stats.CompressedTopicKeys);
                 _stats.Total.Include(Stopwatch.GetElapsedTime(execTimestamp));
             }
             catch (Exception ex)
@@ -162,7 +160,7 @@ partial class LogIndexStorage
             {
                 _compressQueue.TryRemove(dbKey, out _);
 
-                var processingCount = Interlocked.Decrement(ref _processingCount);
+                int processingCount = Interlocked.Decrement(ref _processingCount);
 
                 if (_processing.InputCount == 0 && processingCount == 0)
                     _queueEmptyEvent.Set();
@@ -186,8 +184,8 @@ partial class LogIndexStorage
 
     public sealed class NoOpCompressor : ICompressor
     {
+        private PostMergeProcessingStats Stats { get; } = new();
         public int MinLengthToCompress => 256;
-        public PostMergeProcessingStats Stats { get; } = new();
         public PostMergeProcessingStats GetAndResetStats() => Stats;
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
         public Task EnqueueAsync(int? topicIndex, byte[] dbKey) => Task.CompletedTask;
@@ -199,7 +197,6 @@ partial class LogIndexStorage
 
     public interface ICompressor : IDisposable
     {
-        int MinLengthToCompress { get; }
         PostMergeProcessingStats GetAndResetStats();
 
         bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
