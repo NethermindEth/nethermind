@@ -11,6 +11,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -85,7 +86,16 @@ public class TestingRpcModule(
         UInt256 difficulty = UInt256.Zero;
         header.Difficulty = difficulty;
         header.TotalDifficulty = parent.TotalDifficulty + difficulty;
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(header));
+
+        header.IsPostMerge = true;
+        IReleaseSpec spec = specProvider.GetSpec(header);
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+
+        if (spec.IsEip4844Enabled)
+        {
+            header.BlobGasUsed = 0;
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+        }
 
         return header;
     }

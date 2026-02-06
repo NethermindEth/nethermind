@@ -2,25 +2,35 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.HealthChecks;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
@@ -127,6 +137,83 @@ public class MergePluginTests
         await _plugin.Init(api);
 
         Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
+    }
+
+    [Test]
+    public async Task Testing_buildBlockV1_sets_excess_blob_gas_for_eip4844()
+    {
+        Hash256 parentHash = Keccak.Compute("parent");
+        BlockHeader parentHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = parentHash,
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+        };
+
+        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(parentHash).Returns(parentBlock);
+
+        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        blockchainProcessor
+            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(static callInfo =>
+            {
+                Block block = callInfo.Arg<Block>();
+                block.Header.Hash ??= Keccak.Compute("produced");
+                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                block.Header.Bloom ??= Bloom.Empty;
+                block.Header.GasUsed = 0;
+                block.ExecutionRequests = [];
+                return block;
+            });
+
+        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+
+        TestingRpcModule module = new(
+            mainProcessingContext,
+            gasLimitCalculator,
+            specProvider,
+            blockFinder,
+            LimboLogs.Instance);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
+        };
+
+        ResultWrapper<GetPayloadV5Result?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().NotBeNull();
+        result.Data!.ExecutionPayload.BlobGasUsed.Should().Be(0);
+        result.Data!.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
     }
 
     [TestCase(true, true)]
