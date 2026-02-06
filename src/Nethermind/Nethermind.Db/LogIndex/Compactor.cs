@@ -27,6 +27,7 @@ partial class LogIndexStorage
 
         private readonly CancellationTokenSource _cts = new();
         private readonly Channel<TaskCompletionSource?> _channel = Channel.CreateBounded<TaskCompletionSource?>(1);
+        private volatile TaskCompletionSource? _pendingForce;
         private readonly Task _compactionTask;
 
         public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
@@ -80,8 +81,26 @@ partial class LogIndexStorage
 
         public async Task<CompactingStats> ForceAsync()
         {
+            // Coalesce concurrent calls — all callers share a single compaction
             TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            await _channel.Writer.WriteAsync(tcs, _cts.Token);
+            TaskCompletionSource? existing = Interlocked.CompareExchange(ref _pendingForce, tcs, null);
+            if (existing is not null)
+            {
+                await existing.Task;
+                return _stats;
+            }
+
+            try
+            {
+                await _channel.Writer.WriteAsync(tcs, _cts.Token);
+            }
+            catch
+            {
+                Interlocked.CompareExchange(ref _pendingForce, null, tcs);
+                tcs.TrySetCanceled();
+                throw;
+            }
+
             await tcs.Task;
             return _stats;
         }
@@ -118,14 +137,22 @@ partial class LogIndexStorage
                         await _cts.CancelAsync();
                         _channel.Writer.TryComplete();
                     }
+                    finally
+                    {
+                        if (tcs is not null) Interlocked.CompareExchange(ref _pendingForce, null, tcs);
+                    }
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Log index: compaction loop canceled.");
+            }
             finally
             {
                 while (_channel.Reader.TryRead(out TaskCompletionSource? remaining))
                 {
                     remaining?.TrySetCanceled();
+                    if (remaining is not null) Interlocked.CompareExchange(ref _pendingForce, null, remaining);
                 }
             }
         }
