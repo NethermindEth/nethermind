@@ -384,7 +384,8 @@ public class RewardTests
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
-            masternodeVotingContract
+            masternodeVotingContract,
+            Substitute.For<ITransactionProcessor>()
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");

@@ -35,7 +35,7 @@ public class XdcSubnetBlockHeader : XdcBlockHeader
         {
             if (_nextValidatorsAddress is not null)
                 return _nextValidatorsAddress;
-            _nextValidatorsAddress = XdcExtensions.ExtractAddresses(NextValidators);
+            _nextValidatorsAddress = XdcExtensions.ExtractAddresses(NextValidators).ToImmutableArray();
             return _nextValidatorsAddress;
         }
         set { _nextValidatorsAddress = value; }

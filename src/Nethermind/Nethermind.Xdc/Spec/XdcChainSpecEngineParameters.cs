@@ -30,13 +30,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address XDCXAddressBinary { get; set; }
     public Address TradingStateAddressBinary { get; set; }
 
-    public Address BlockSignerContract { get; set; }
-    public Address RandomizeSMCBinary { get; set; }
-    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
-    public Address XDCXLendingAddressBinary { get; set; }
-    public Address XDCXAddressBinary { get; set; }
-    public Address TradingStateAddressBinary { get; set; }
-
     public Address MasternodeVotingContract { get; set; }
 
 
