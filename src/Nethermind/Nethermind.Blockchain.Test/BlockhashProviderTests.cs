@@ -438,6 +438,7 @@ public class BlockhashProviderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
     public async Task Prefetches_come_in_wrong_order()
     {
         const int chainLength = 261;
