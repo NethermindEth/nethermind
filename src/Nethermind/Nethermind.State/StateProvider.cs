@@ -608,7 +608,7 @@ namespace Nethermind.State
             _changes.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
-            _intraTxCache.ResetAndClear();
+            Nethermind.Core.Collections.DictionaryExtensions.ResetAndClear(_intraTxCache);
 
             codeFlushTask.GetAwaiter().GetResult();
 
@@ -839,7 +839,7 @@ namespace Nethermind.State
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
             }
-            _intraTxCache.ResetAndClear();
+            Nethermind.Core.Collections.DictionaryExtensions.ResetAndClear(_intraTxCache);
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _changes.Clear();

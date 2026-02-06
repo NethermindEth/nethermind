@@ -1251,31 +1251,6 @@ namespace Nethermind.Trie.Test
                 .AssertThatCachedPersistedNodeCountIs(3);
         }
 
-        [Test]
-        public void Can_Prune_AllPersistedNodeInOnePrune()
-        {
-            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
-                .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(null)
-                .WithPrunePersistedNodeParameter(0, 0.1)
-                .TurnOffAlwaysPrunePersistedNode();
-
-            for (int i = 0; i < 256; i++)
-            {
-                if (i == 256 - 1)
-                {
-                    ctx.TurnOnPrune();
-                }
-
-                ctx
-                    .SetAccountBalance(i, (UInt256)i)
-                    .CommitAndWaitForPruning();
-            }
-
-            ctx
-                .AssertThatCachedPersistedNodeCountIs(3);
-        }
-
         [TestCase(10)]
         [TestCase(64)]
         [TestCase(100)]

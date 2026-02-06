@@ -174,7 +174,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.ResetAndClear();
+            Nethermind.Core.Collections.DictionaryExtensions.ResetAndClear(_intraBlockCache);
             _transactionChangesSnapshots.Clear();
         }
 

@@ -76,7 +76,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
                     ParentBeaconBlockRoot = previousBlock.Hash,
                     PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                     SuggestedFeeRecipient = Address.Zero,
-                    Withdrawals = Array.Empty<Withdrawal>(),
+                    Withdrawals = System.Array.Empty<Withdrawal>(),
                 };
             }
             else

@@ -64,7 +64,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _committedThisRound.Clear();
         if (resetBlockChanges)
         {
-            _storages.ResetAndClear();
+            Nethermind.Core.Collections.DictionaryExtensions.ResetAndClear(_storages);
             _toUpdateRoots.Clear();
         }
     }
