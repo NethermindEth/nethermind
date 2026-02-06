@@ -31,6 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning;
 
+[Parallelizable(ParallelScope.All)]
 public class FullPruningDiskTest
 {
     public class PruningTestBlockchain : TestBlockchain
@@ -110,26 +111,23 @@ public class FullPruningDiskTest
             return chain;
         }
 
-        public class FullTestPruner : FullPruner
+        public class FullTestPruner(
+            IFullPruningDb pruningDb,
+            INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
+            IPruningTrigger pruningTrigger,
+            IPruningConfig pruningConfig,
+            IBlockTree blockTree,
+            IStateReader stateReader,
+            IProcessExitSource processExitSource,
+            IDriveInfo driveInfo,
+            IPruningTrieStore trieStore,
+            IChainEstimations chainEstimations,
+            ILogManager logManager)
+            : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
+                stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
-
-            public FullTestPruner(
-                IFullPruningDb pruningDb,
-                INodeStorageFactory nodeStorageFactory,
-                INodeStorage mainNodeStorage,
-                IPruningTrigger pruningTrigger,
-                IPruningConfig pruningConfig,
-                IBlockTree blockTree,
-                IStateReader stateReader,
-                IProcessExitSource processExitSource,
-                IDriveInfo driveInfo,
-                IPruningTrieStore trieStore,
-                IChainEstimations chainEstimations,
-                ILogManager logManager)
-                : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
-            {
-            }
 
             protected override async Task RunFullPruning(CancellationToken cancellationToken)
             {

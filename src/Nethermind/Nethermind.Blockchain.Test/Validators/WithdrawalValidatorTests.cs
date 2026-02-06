@@ -14,6 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
 public class WithdrawalValidatorTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

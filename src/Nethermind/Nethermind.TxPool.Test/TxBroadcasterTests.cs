@@ -39,6 +39,8 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class TxBroadcasterTests
 {
     private ILogManager _logManager;
@@ -48,7 +50,7 @@ public class TxBroadcasterTests
     private TxBroadcaster _broadcaster;
     private EthereumEcdsa _ethereumEcdsa;
     private TxPoolConfig _txPoolConfig;
-    private IChainHeadInfoProvider _headInfo;
+    private TestChainHeadInfoProvider _headInfo;
 
     [SetUp]
     public void Setup()
@@ -59,18 +61,19 @@ public class TxBroadcasterTests
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
         _txPoolConfig = new TxPoolConfig();
-        _headInfo = Substitute.For<IChainHeadInfoProvider>();
+        _headInfo = new TestChainHeadInfoProvider();
     }
 
     [TearDown]
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
-    public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
+    public void should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
+        ManualTimestamper timestamper = new(DateTime.UtcNow);
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 100 };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, timestamper: timestamper);
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -102,7 +105,8 @@ public class TxBroadcasterTests
 
         peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(1001));
+        // Advance time by 2 seconds (throttle is 1 second)
+        timestamper.Add(TimeSpan.FromSeconds(2));
 
         peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
 
@@ -120,7 +124,7 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -203,7 +207,7 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         // add 256 transactions, 10% of them is large
         int addedTxsCount = TestItem.PrivateKeys.Length;
@@ -249,7 +253,7 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         // add 256 transactions, 10% of them is blob type
         int addedTxsCount = TestItem.PrivateKeys.Length;
@@ -297,7 +301,7 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentBaseFeeInGwei = 250;
-        _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei();
         Block headBlock = Build.A.Block
             .WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
@@ -341,7 +345,7 @@ public class TxBroadcasterTests
     [TestCase(150, true)]
     public void should_not_broadcast_tx_with_MaxFeePerGas_lower_than_70_percent_of_CurrentBaseFee(int maxFeePerGas, bool shouldBroadcast)
     {
-        _headInfo.CurrentBaseFee.Returns((UInt256)100);
+        _headInfo.CurrentBaseFee = (UInt256)100;
 
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
@@ -371,7 +375,7 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentBaseFeeInGwei = 250;
-        _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei();
         Block headBlock = Build.A.Block
             .WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
@@ -416,7 +420,7 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentFeePerBlobGas = 250;
-        _headInfo.CurrentFeePerBlobGas.Returns(currentFeePerBlobGas.GWei());
+        _headInfo.CurrentFeePerBlobGas = currentFeePerBlobGas.GWei();
 
         // add 256 transactions with MaxFeePerBlobGas 0-255
         int addedTxsCount = TestItem.PrivateKeys.Length;
@@ -463,7 +467,7 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 5 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         const int addedTxsCount = 5;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -508,7 +512,7 @@ public class TxBroadcasterTests
     public void should_broadcast_full_local_tx_immediately_after_receiving_it()
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
@@ -646,7 +650,7 @@ public class TxBroadcasterTests
     {
         ITxGossipPolicy txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, txGossipPolicy);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
+        _headInfo.CurrentBaseFee = 0.GWei();
 
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
@@ -708,7 +712,7 @@ public class TxBroadcasterTests
     [TestCase(10000, 7000)]
     public void should_calculate_baseFeeThreshold_correctly(int baseFee, int expectedThreshold)
     {
-        _headInfo.CurrentBaseFee.Returns((UInt256)baseFee);
+        _headInfo.CurrentBaseFee = (UInt256)baseFee;
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _broadcaster.CalculateBaseFeeThreshold().Should().Be((UInt256)expectedThreshold);
     }
@@ -717,7 +721,7 @@ public class TxBroadcasterTests
     public void calculation_of_baseFeeThreshold_should_handle_overflow_correctly([Values(0, 70, 100, 101, 500)] int threshold, [Values(2, 3, 4, 5, 6, 7, 8, 9, 10, 11)] int divisor)
     {
         UInt256.Divide(UInt256.MaxValue, (UInt256)divisor, out UInt256 baseFee);
-        _headInfo.CurrentBaseFee.Returns(baseFee);
+        _headInfo.CurrentBaseFee = baseFee;
 
         _txPoolConfig = new TxPoolConfig() { MinBaseFeeThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);

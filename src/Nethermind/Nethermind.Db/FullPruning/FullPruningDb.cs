@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -69,6 +70,17 @@ namespace Nethermind.Db.FullPruning
             }
 
             return value;
+        }
+
+        public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            MemoryManager<byte>? memoryManager = _currentDb.GetOwnedMemory(key, flags);
+            if (memoryManager is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            {
+                Duplicate(_pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
+            }
+
+            return memoryManager;
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -142,6 +154,8 @@ namespace Nethermind.Db.FullPruning
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _currentDb.KeyExists(key);
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _currentDb.DangerousReleaseMemory(span);
 
         // inner DB's can be deleted in the future and
         // we cannot expose a DB that will potentially be later deleted
