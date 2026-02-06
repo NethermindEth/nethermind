@@ -209,15 +209,11 @@ namespace Nethermind.Db.LogIndex
         private readonly SemaphoreSlim _initSemaphore = new(1, 1);
 
         /// <summary>
-        /// Maps a syncing direction to semaphore.
         /// Used for blocking concurrent executions and
         /// ensuring the current iteration is completed before stopping/disposing.
         /// </summary>
-        private readonly Dictionary<bool, SemaphoreSlim> _writeSemaphores = new()
-        {
-            { false, new(1, 1) },
-            { true, new(1, 1) }
-        };
+        private readonly SemaphoreSlim _forwardWriteSemaphore = new(1, 1);
+        private readonly SemaphoreSlim _backwardWriteSemaphore = new(1, 1);
 
         private bool _stopped;
         private bool _disposed;
@@ -386,8 +382,8 @@ namespace Nethermind.Db.LogIndex
 
             if (acquireLock)
             {
-                await _writeSemaphores[false].WaitAsync();
-                await _writeSemaphores[true].WaitAsync();
+                await _forwardWriteSemaphore.WaitAsync();
+                await _backwardWriteSemaphore.WaitAsync();
             }
 
             try
@@ -404,8 +400,8 @@ namespace Nethermind.Db.LogIndex
             {
                 if (acquireLock)
                 {
-                    _writeSemaphores[false].Release();
-                    _writeSemaphores[true].Release();
+                    _forwardWriteSemaphore.Release();
+                    _backwardWriteSemaphore.Release();
                 }
             }
         }
@@ -437,8 +433,8 @@ namespace Nethermind.Db.LogIndex
                 return;
             }
 
-            await _writeSemaphores[false].WaitAsync();
-            await _writeSemaphores[true].WaitAsync();
+            await _forwardWriteSemaphore.WaitAsync();
+            await _backwardWriteSemaphore.WaitAsync();
 
             await StopAsync(acquireLock: false);
 
@@ -448,8 +444,8 @@ namespace Nethermind.Db.LogIndex
 
         private void DisposeCore()
         {
-            _writeSemaphores[false].Dispose();
-            _writeSemaphores[true].Dispose();
+            _forwardWriteSemaphore.Dispose();
+            _backwardWriteSemaphore.Dispose();
             _compressor?.Dispose();
             DBColumns?.DisposeItems();
             _rootDb?.Dispose();
@@ -617,7 +613,7 @@ namespace Nethermind.Db.LogIndex
 
             const bool isBackwardSync = false;
 
-            SemaphoreSlim semaphore = _writeSemaphores[isBackwardSync];
+            SemaphoreSlim semaphore = _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 
             byte[]? keyArray = null, valueArray = null;
@@ -711,7 +707,7 @@ namespace Nethermind.Db.LogIndex
             long totalTimestamp = Stopwatch.GetTimestamp();
 
             var isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
-            SemaphoreSlim semaphore = _writeSemaphores[isBackwardSync];
+            SemaphoreSlim semaphore = isBackwardSync ? _backwardWriteSemaphore : _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 
             var wasInitialized = FirstBlockAdded;
