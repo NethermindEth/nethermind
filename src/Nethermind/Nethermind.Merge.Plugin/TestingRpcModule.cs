@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -41,8 +42,9 @@ public class TestingRpcModule(
         if (parentBlock is not null)
         {
             BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
-            IEnumerable<Transaction> transactions = GetTransactions(txRlps);
-            Block block = new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+            Transaction[] transactions = GetTransactions(txRlps).ToArray();
+            header.TxRoot = TxTrie.CalculateRoot(transactions);
+            Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
 
             FeesTracer feesTracer = new();
             Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
