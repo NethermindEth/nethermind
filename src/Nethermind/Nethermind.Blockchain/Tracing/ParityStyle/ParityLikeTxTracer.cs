@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -236,7 +237,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
-        operationTrace.Pc = pc + env.CodeInfo.PcOffset();
+        operationTrace.Pc = pc + (env.CodeInfo is EofCodeInfo eof ? eof.PcOffset() : 0);
         operationTrace.Cost = gas;
         // skip codeSection
         // skip functionDepth
