@@ -40,15 +40,22 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
             Reset();
             _worldScopeCloser = _worldState.BeginScope(header);
-            IDisposable scope = new Scope(this);
 
-            if (stateOverride is not null)
+            try
             {
-                _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
-                header.StateRoot = _worldState.StateRoot;
-            }
+                if (stateOverride is not null)
+                {
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                    header.StateRoot = _worldState.StateRoot;
+                }
 
-            return scope;
+                return new Scope(this);
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
         }
 
         private class Scope(OverridableEnv env) : IDisposable

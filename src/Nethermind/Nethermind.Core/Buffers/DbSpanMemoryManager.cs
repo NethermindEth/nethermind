@@ -10,24 +10,16 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Buffers;
 
-public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
+public sealed unsafe class DbSpanMemoryManager(IReadOnlyKeyValueStore db, Span<byte> unmanagedSpan) : MemoryManager<byte>
 {
-    private readonly IReadOnlyKeyValueStore _db;
-    private void* _ptr;
-    private readonly int _length;
-
-    public DbSpanMemoryManager(IReadOnlyKeyValueStore db, Span<byte> unmanagedSpan)
-    {
-        _db = db;
-        _ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(unmanagedSpan));
-        _length = unmanagedSpan.Length;
-    }
+    private void* _ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(unmanagedSpan));
+    private readonly int _length = unmanagedSpan.Length;
 
     protected override void Dispose(bool disposing)
     {
         if (_ptr is not null)
         {
-            _db.DangerousReleaseMemory(GetSpan());
+            db.DangerousReleaseMemory(GetSpan());
         }
 
         _ptr = null;
@@ -53,13 +45,8 @@ public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
         return new MemoryHandle(_ptr);
     }
 
-    public override void Unpin()
-    {
-    }
+    public override void Unpin() { }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowDisposed()
-    {
-        throw new ObjectDisposedException(nameof(DbSpanMemoryManager));
-    }
+    private static void ThrowDisposed() => throw new ObjectDisposedException(nameof(DbSpanMemoryManager));
 }

@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+// ReSharper disable VirtualMemberCallInConstructor
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -59,8 +60,8 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     [JsonConstructor]
     public LegacyTransactionForRpc() { }
 
-    public LegacyTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
-        : base(transaction, txIndex, blockHash, blockNumber)
+    public LegacyTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+        : base(transaction, extraData)
     {
         Nonce = transaction.Nonce;
         To = transaction.To;
@@ -87,33 +88,29 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         }
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
-        var tx = base.ToTransaction();
+        if (validateUserInput && To is null && Input is null or { Length: 0 })
+            return RpcTransactionErrors.ContractCreationWithoutData;
 
-        tx.Nonce = Nonce ?? 0; // TODO: Should we pick the last nonce?
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        if (baseResult.IsError) return baseResult;
+
+        Transaction tx = baseResult.Data;
+        tx.Nonce = Nonce ?? UInt256.Zero; // TODO: Should we pick the last nonce?
         tx.To = To;
         tx.GasLimit = Gas ?? 90_000;
-        tx.Value = Value ?? 0;
+        tx.Value = Value ?? UInt256.Zero;
         tx.Data = Input;
-        tx.GasPrice = GasPrice ?? 0;
+        tx.GasPrice = GasPrice ?? UInt256.Zero;
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.Zero;
-        if ((R != 0 || S != 0) && (R is not null || S is not null))
+        if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            ulong v;
-            if (V is null)
-            {
-                v = 0;
-            }
-            else if (V.Value > 1)
-            {
-                v = V.Value.ToUInt64(null); // non protected
-            }
-            else
-            {
-                v = EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
-            }
+            ulong v = V is null ? 0
+                : V.Value > 1
+                    ? V.Value.ToUInt64(null) // non protected
+                    : EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }
@@ -123,10 +120,10 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
 
     public override void EnsureDefaults(long? gasCap)
     {
-        if (gasCap is null || gasCap == 0)
+        if (gasCap is null or 0)
             gasCap = long.MaxValue;
 
-        Gas = Gas is null || Gas == 0
+        Gas = Gas is null or 0
             ? gasCap
             : Math.Min(gasCap.Value, Gas.Value);
 
@@ -135,6 +132,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
 
-    public static LegacyTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData) =>
-        new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
+    public static LegacyTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) =>
+        new(tx, extraData);
 }

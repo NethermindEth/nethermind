@@ -28,7 +28,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
     private class ProcessingTestContext
