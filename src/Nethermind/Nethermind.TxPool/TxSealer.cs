@@ -15,8 +15,10 @@ namespace Nethermind.TxPool
 
         public TxSealer(ITxSigner txSigner, ITimestamper timestamper)
         {
-            _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            ArgumentNullException.ThrowIfNull(txSigner);
+            ArgumentNullException.ThrowIfNull(timestamper);
+            _txSigner = txSigner;
+            _timestamper = timestamper;
         }
 
         public virtual ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
