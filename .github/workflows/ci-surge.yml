@@ -24,14 +24,12 @@ jobs:
       PACAYA_FORK_TAIKO_MONO_DIR: pacaya-fork-taiko-mono
       SHASTA_FORK_TAIKO_MONO_DIR: shasta-fork-taiko-mono
 
-    strategy:
-      matrix:
-        execution_node: [l2_nmc]
-
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout Nethermind
+        uses: actions/checkout@v6
 
-      - uses: actions/checkout@v6
+      - name: Checkout surge-taiko-mono
+        uses: actions/checkout@v6
         with:
           repository: NethermindEth/surge-taiko-mono
           path: ${{ env.SURGE_TAIKO_MONO_DIR }}
@@ -45,11 +43,6 @@ jobs:
         with:
           go-version-file: ${{ env.SURGE_TAIKO_MONO_DIR }}/go.mod
           cache: true
-
-      - name: Set up Git to use HTTPS
-        shell: bash
-        run: |
-          git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -69,7 +62,8 @@ jobs:
         shell: bash
         run: pnpm install
 
-      - uses: actions/checkout@v6
+      - name: Checkout Pacaya fork
+        uses: actions/checkout@v6
         with:
           repository: NethermindEth/surge-taiko-mono
           path: >-
@@ -77,7 +71,8 @@ jobs:
             env.PACAYA_FORK_TAIKO_MONO_DIR) }}
           ref: jmadibekov/pacaya-dummy-verifiers-fix
 
-      - uses: actions/checkout@v6
+      - name: Checkout Shasta fork
+        uses: actions/checkout@v6
         with:
           repository: NethermindEth/surge-taiko-mono
           path: >-
@@ -153,11 +148,11 @@ jobs:
             exit 1
           fi
 
-      - name: Run Tests on ${{ matrix.execution_node }} execution engine
+      - name: Run integration tests
         working-directory: >-
           ${{ env.SURGE_TAIKO_MONO_DIR }}/packages/taiko-client
         env:
-          L2_NODE: ${{ matrix.execution_node }}
+          L2_NODE: l2_nmc
         run: >-
           SHASTA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR, env.SHASTA_FORK_TAIKO_MONO_DIR) }}
           PACAYA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.SURGE_TAIKO_MONO_DIR, env.PACAYA_FORK_TAIKO_MONO_DIR) }}
