@@ -849,8 +849,7 @@ public partial class EthRpcModule(
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
 
-    private void VerifyLogsResponse(IList<FilterLog> response, LogFilter filter,
-        BlockHeader from, BlockHeader to, CancellationToken cancellation)
+    private void VerifyLogsResponse(IList<FilterLog> response, LogFilter filter, BlockHeader from, BlockHeader to, CancellationToken cancellation)
     {
         filter.UseIndex = false;
         IEnumerable<FilterLog>? expectedResponse = _blockchainBridge.GetLogs(filter, from, to, cancellation);
