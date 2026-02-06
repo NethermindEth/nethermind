@@ -662,9 +662,10 @@ namespace Nethermind.Db.Test.LogIndex
                 // to trigger MergeOperator.Merge on the corrupt key
                 await storage.CompactAsync();
             }
-            catch (LogIndexStateException)
+            catch (LogIndexStateException ex)
             {
                 // Expected — error propagated during batch processing
+                TestContext.WriteLine($"Expected LogIndexStateException during background job: {ex}");
             }
 
             Assert.That(storage.HasBackgroundError, Is.True);
