@@ -6,8 +6,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Xdc.Contracts;
 
-internal interface IMasternodeVotingContract
+public interface IMasternodeVotingContract
 {
+    Address[] GetCandidatesByStake(BlockHeader blockHeader);
     Address[] GetCandidates(BlockHeader blockHeader);
     UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate);
+    Address GetCandidateOwner(BlockHeader blockHeader, Address candidate);
 }

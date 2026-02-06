@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -18,7 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.State;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -33,6 +32,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
     {
         private readonly INethermindApi _api = api;
+        private ILogManager _logManager = api.LogManager;
 
         public async Task Execute(CancellationToken _)
         {

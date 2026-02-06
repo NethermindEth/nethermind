@@ -89,4 +89,30 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature);
+
+    /// <summary>
+    /// Clears txpool state (hash cache, account cache, pending transactions) after a chain reorg.
+    /// This is specifically designed for Taiko integration tests where the chain is reset to a base block.
+    /// After a reorg, stale txpool caches would reject transaction resubmissions with "already known" or "nonce too low".
+    /// Pending transactions must also be cleared because tests resubmit transactions with the same hash/nonce,
+    /// which would be rejected as "ReplacementNotAllowed" if they remain in the pool.
+    /// </summary>
+    [JsonRpcMethod(
+        Description = "Clears txpool state after chain reorg for testing/debugging purposes. " +
+                      "Returns true on success.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<bool> taikoDebug_clearTxPoolForReorg();
+
+    [JsonRpcMethod(
+        Description = "Returns the L1 origin of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<L1Origin?>> taikoAuth_lastL1OriginByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the ID of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId);
 }

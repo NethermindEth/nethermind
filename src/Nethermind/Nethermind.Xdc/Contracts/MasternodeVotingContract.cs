@@ -5,30 +5,27 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 using System;
 
 namespace Nethermind.Xdc.Contracts;
 
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
-    private readonly IWorldState _worldState;
-    private IConstantContract _constant;
+    private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory;
 
     public MasternodeVotingContract(
-        IWorldState worldState,
         IAbiEncoder abiEncoder,
         Address contractAddress,
-        IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
         : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
     {
-        _constant = GetConstant(readOnlyTxProcessorSource);
-        _worldState = worldState;
+        this.readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
     }
 
     private static AbiDefinition CreateAbiDefinition()
@@ -40,17 +37,30 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
         CallInfo callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
-        object[] result = _constant.Call(callInfo);
+        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        object[] result = constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
 
         return (UInt256)result[0]!;
     }
 
+    public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
+    {
+        CallInfo callInfo = new CallInfo(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
+        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        object[] result = constant.Call(callInfo);
+        if (result.Length != 1)
+            throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
+
+        return (Address)result[0]!;
+    }
+
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
         CallInfo callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
-        object[] result = _constant.Call(callInfo);
+        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        object[] result = constant.Call(callInfo);
         return (Address[])result[0]!;
     }
 
@@ -63,22 +73,55 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     {
         CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];
-        var slot = new UInt256(Keccak.Compute(input).Bytes);
-        using IDisposable state = _worldState.BeginScope(header);
-        ReadOnlySpan<byte> storageCell = _worldState.Get(new StorageCell(ContractAddress, slot));
-        UInt256 length = new UInt256(storageCell);
+        UInt256 slot = new UInt256(Keccak.Compute(input).Bytes);
+        IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
+        IWorldState worldState = source.WorldState;
+        ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
+        var length = new UInt256(storageCell);
         Address[] candidates = new Address[(ulong)length];
         for (int i = 0; i < length; i++)
         {
             UInt256 key = CalculateArrayKey(slot, (ulong)i, 1);
-            candidates[i] = new Address(_worldState.Get(new StorageCell(ContractAddress, key)));
+            candidates[i] = new Address(worldState.Get(new StorageCell(ContractAddress, key)));
         }
         return candidates;
     }
 
-    private static UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
+    private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
     {
         return slot + new UInt256(index * size);
+    }
+
+    /// <summary>
+    /// Returns an array of masternode candidates sorted by stake
+    /// </summary>
+    /// <param name="blockHeader"></param>
+    /// <returns></returns>
+    public Address[] GetCandidatesByStake(BlockHeader blockHeader)
+    {
+        Address[] candidates = GetCandidates(blockHeader);
+
+        using var candidatesAndStake = new ArrayPoolList<CandidateStake>(candidates.Length);
+        foreach (Address candidate in candidates)
+        {
+            if (candidate == Address.Zero)
+                continue;
+
+            candidatesAndStake.Add(new CandidateStake()
+            {
+                Address = candidate,
+                Stake = GetCandidateStake(blockHeader, candidate)
+            });
+        }
+        candidatesAndStake.Sort((x, y) => y.Stake.CompareTo(x.Stake));
+
+        Address[] sortedCandidates = new Address[candidatesAndStake.Count];
+        for (int i = 0; i < candidatesAndStake.Count; i++)
+        {
+            sortedCandidates[i] = candidatesAndStake[i].Address;
+        }
+        return sortedCandidates;
     }
 
     private enum CandidateContractSlots : byte

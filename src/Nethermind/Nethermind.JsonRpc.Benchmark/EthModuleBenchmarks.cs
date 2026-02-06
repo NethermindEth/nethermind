@@ -3,7 +3,6 @@
 
 using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -43,7 +42,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .Build();
 
-            IWorldState stateProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
+            IWorldState stateProvider = _container.Resolve<IMainProcessingContext>().WorldState;
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             stateProvider.Commit(spec);

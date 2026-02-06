@@ -20,7 +20,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -731,7 +730,7 @@ public partial class EngineModuleTests
     [Test]
     [CancelAfter(5000)]
     [Retry(3)]
-    public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
+    public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -818,8 +817,8 @@ public partial class EngineModuleTests
         };
         await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
 
-        await bestBlockProcessed.WaitAsync();
-        await chain.BlockProcessingQueue.WaitForBlockProcessing();
+        await bestBlockProcessed.WaitAsync(cancellationToken);
+        await chain.BlockProcessingQueue.WaitForBlockProcessing(cancellationToken);
 
         // beacon sync should be finished, eventually
         bestBeaconBlockRequest = CreateBlockRequest(chain, bestBeaconBlockRequest, Address.Zero);
@@ -845,7 +844,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -873,7 +872,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -903,7 +902,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };

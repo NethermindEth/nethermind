@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.Linq;
 using Autofac;
 using Autofac.Core;
@@ -11,38 +10,22 @@ using Autofac.Core.Activators.Delegate;
 using Autofac.Core.Lifetime;
 using Autofac.Core.Registration;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Db.Blooms;
-using Nethermind.Grpc;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Sockets;
 using Nethermind.Specs;
-using Nethermind.Trie;
 using NSubstitute;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
-using Nethermind.Facade.Find;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -86,7 +69,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     return [];
                 }
 
-                // Dynamically resolve any interface with nsubstitue
+                // Dynamically resolve any interface with nsubstitute
                 ComponentRegistration registration = new ComponentRegistration(
                     Guid.NewGuid(),
                     new DelegateActivator(swt.ServiceType, (c, p) =>

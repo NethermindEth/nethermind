@@ -435,6 +435,13 @@ FodyWeavers.xsd
 ## macOS
 .DS_Store
 
+# AI
+.claude/
+.gemini/
+
+# Worktrees
+.worktrees/
+
 ## Nethermind
 keystore/
 /.githooks

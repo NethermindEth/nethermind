@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789";
 
         private const string enode8String =
-            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?somethingwrong=6789";
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?somethingWrong=6789";
 
         private const string enode9String =
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789?discport=67899";
@@ -119,31 +119,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_return_exception_in_port()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode3String);
-            });
-        }
+        public void Will_return_exception_in_port() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode3String));
 
         [Test]
-        public void Will_return_exception_in_dns()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode4String);
-            });
-        }
+        public void Will_return_exception_in_dns() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode4String));
 
         [Test]
-        public void Will_return_exception_when_there_is_no_port()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode5String);
-            });
-        }
+        public void Will_return_exception_when_there_is_no_port() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode5String));
 
         [Test]
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
@@ -162,32 +147,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_return_exception_on_wrong_ports_part()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode8String);
-            });
-        }
+        public void Will_return_exception_on_wrong_ports_part() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode8String));
 
         [Test]
-        public void Will_return_exception_on_duplicated_discovery_port_part()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode9String);
-            });
-        }
+        public void Will_return_exception_on_duplicated_discovery_port_part() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode9String));
 
         [Test]
-        public void Will_return_exception_on_wrong_form_of_discovery_port_part()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode10String);
-            });
-        }
-
+        public void Will_return_exception_on_wrong_form_of_discovery_port_part() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode10String));
         [Test]
         public async Task Will_accept_static_connection()
         {

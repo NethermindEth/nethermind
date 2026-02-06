@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
@@ -48,7 +47,7 @@ public class EnrDiscoveryTests
 
         NodeRecordSigner singer = new(new Ecdsa(), TestItem.PrivateKeyA);
         EnrRecordParser parser = new(singer);
-        EnrTreeCrawler crawler = new(new(Substitute.For<InterfaceLogger>()));
+        EnrTreeCrawler crawler = new(LimboTraceLogger.Instance);
         int verified = 0;
         await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net", default))
         {

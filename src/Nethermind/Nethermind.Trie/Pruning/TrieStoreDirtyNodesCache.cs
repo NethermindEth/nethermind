@@ -119,10 +119,12 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.ContainsKey(key);
     }
 
-    public readonly struct NodeRecord(TrieNode node, long lastCommit)
+    public readonly struct NodeRecord(TrieNode node, long lastCommit) : IEquatable<NodeRecord>
     {
         public readonly TrieNode Node = node;
         public readonly long LastCommit = lastCommit;
+
+        public bool Equals(NodeRecord other) => other.Node == Node && other.LastCommit == LastCommit;
     }
 
     public IEnumerable<KeyValuePair<Key, NodeRecord>> AllNodes
@@ -502,13 +504,17 @@ internal class TrieStoreDirtyNodesCache
 
         public bool IsRoot()
         {
-            return Path.Length == 0;
+            return Address is null && Path.Length == 0;
         }
     }
 
     public void CopyTo(TrieStoreDirtyNodesCache otherCache)
     {
-        foreach (var kv in AllNodes) otherCache.GetOrAdd(kv.Key, kv.Value);
+        foreach (var kv in AllNodes)
+        {
+            kv.Value.Node.PrunePersistedRecursively(1);
+            otherCache.GetOrAdd(kv.Key, kv.Value);
+        }
         Clear();
     }
 }

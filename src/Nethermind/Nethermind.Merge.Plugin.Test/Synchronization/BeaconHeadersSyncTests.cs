@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -150,7 +149,7 @@ public class BeaconHeadersSyncTests
             SyncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = "1000",
+                PivotNumber = 1000,
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
@@ -180,7 +179,7 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "1000",
+            PivotNumber = 1000,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
@@ -214,7 +213,7 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "500",
+            PivotNumber = 500,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000000" // default difficulty in block tree builder
         };
@@ -302,7 +301,7 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "0",
+            PivotNumber = 0,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "0"
         };

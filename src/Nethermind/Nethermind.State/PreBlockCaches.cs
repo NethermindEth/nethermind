@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
-using Nethermind.Evm.State;
 using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
@@ -31,7 +30,6 @@ public class PreBlockCaches
         [
             () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
             () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
-            () => _rlpCache.NoResizeClear() ? CacheType.Rlp : CacheType.None,
             () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
         ];
     }

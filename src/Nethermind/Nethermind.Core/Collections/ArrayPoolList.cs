@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
 namespace Nethermind.Core.Collections;
 
@@ -243,7 +242,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         ArrayPoolListCore<T>.Dispose(_arrayPool, ref _array, ref _count, ref _capacity, ref _disposed);
 
 #if DEBUG
-    GC.SuppressFinalize(this);
+        GC.SuppressFinalize(this);
 #endif
     }
 

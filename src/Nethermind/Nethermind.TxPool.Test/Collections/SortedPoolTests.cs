@@ -20,6 +20,8 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test.Collections
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class SortedPoolTests
     {
         private const int Capacity = 16;

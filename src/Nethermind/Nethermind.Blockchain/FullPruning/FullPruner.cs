@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -180,7 +179,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
-            await CopyTrie(pruningContext, header.StateRoot!, cancellationToken);
+            await CopyTrie(pruningContext, header, cancellationToken);
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
@@ -220,7 +219,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
+        private Task CopyTrie(IPruningContext pruning, BlockHeader? baseBlock, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
@@ -265,8 +264,8 @@ namespace Nethermind.Blockchain.FullPruning
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 
                 visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
-                    ? CopyTree<NoopTreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
-                    : CopyTree<TreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
+                    ? CopyTree<NoopTreePathContextWithStorage>(baseBlock, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
+                    : CopyTree<TreePathContextWithStorage>(baseBlock, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
@@ -296,7 +295,7 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         private ICopyTreeVisitor CopyTree<TContext>(
-            Hash256 stateRoot,
+            BlockHeader? baseBlock,
             INodeStorage targetNodeStorage,
             WriteFlags writeFlags,
             VisitingOptions visitingOptions,
@@ -304,7 +303,7 @@ namespace Nethermind.Blockchain.FullPruning
         ) where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
         {
             CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
-            _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+            _stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             return copyTreeVisitor;
         }
 

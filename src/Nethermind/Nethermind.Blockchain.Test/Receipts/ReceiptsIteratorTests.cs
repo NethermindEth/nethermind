@@ -14,9 +14,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
 public class ReceiptsIteratorTests
 {
-    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    private readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -25,12 +26,12 @@ public class ReceiptsIteratorTests
             .Block
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
-        TxReceipt[] receipts = new[]
-        {
+        TxReceipt[] receipts =
+        [
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
-            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject,
-        };
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
 
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
@@ -84,11 +85,11 @@ public class ReceiptsIteratorTests
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
         TxReceipt[] receipts =
-        {
+        [
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
-            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject,
-        };
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
 
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 

@@ -5,10 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq.Expressions;
 using System.Numerics;
-using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -25,10 +22,8 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
-        private static readonly BlockBodyDecoder _blockBodyDecoder = new();
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
-        private static readonly ReceiptMessageDecoder _receiptDecoder = new();
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
@@ -73,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
 
             StartSequence(contentLength);
 
-            foreach (var item in items)
+            foreach (T? item in items)
             {
                 decoder.Encode(this, item, rlpBehaviors);
             }
@@ -953,6 +948,11 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
+            if (checkPositions)
+            {
+                Check(positionCheck);
+            }
+
             return result;
         }
 
@@ -973,6 +973,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     result[i] = decodeItem(this);
                 }
+            }
+
+            if (checkPositions)
+            {
+                Check(positionCheck);
             }
 
             return result;
@@ -1227,7 +1232,8 @@ namespace Nethermind.Serialization.Rlp
                 return [];
             }
 
-            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            int checkPosition = Position + length;
+            int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
             GuardLimit(itemsCount, limit);
             byte[][] result = new byte[itemsCount][];
 
@@ -1235,6 +1241,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 result[i] = DecodeByteArray();
             }
+
+            Check(checkPosition);
 
             return result;
         }

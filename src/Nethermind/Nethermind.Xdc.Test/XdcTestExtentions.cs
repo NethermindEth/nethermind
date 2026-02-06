@@ -5,11 +5,16 @@ using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Core.Test.Builders;
 
-public static class BuildExtentions
+public static class BuildExtensions
 {
     public static XdcBlockHeaderBuilder XdcBlockHeader(this Build build)
     {
         return new XdcBlockHeaderBuilder();
+    }
+
+    public static XdcSubnetBlockHeaderBuilder XdcSubnetBlockHeader(this Build build)
+    {
+        return new XdcSubnetBlockHeaderBuilder();
     }
 
     public static QuorumCertificateBuilder QuorumCertificate(this Build build)

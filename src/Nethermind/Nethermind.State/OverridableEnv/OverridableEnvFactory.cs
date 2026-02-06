@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -18,7 +17,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddSingleton<IWorldState>(overridableScope.WorldState)
+            .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
             .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
             .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
 
@@ -33,22 +32,30 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     {
         private IDisposable? _worldScopeCloser;
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
+        private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
         public IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
             Reset();
-            _worldScopeCloser = overridableScope.BeginScope(header);
-            IDisposable scope = new Scope(this);
+            _worldScopeCloser = _worldState.BeginScope(header);
 
-            if (stateOverride is not null)
+            try
             {
-                overridableScope.WorldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
-                header.StateRoot = overridableScope.WorldState.StateRoot;
-            }
+                if (stateOverride is not null)
+                {
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                    header.StateRoot = _worldState.StateRoot;
+                }
 
-            return scope;
+                return new Scope(this);
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
         }
 
         private class Scope(OverridableEnv env) : IDisposable
@@ -65,11 +72,12 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
             _worldScopeCloser?.Dispose();
             _worldScopeCloser = null;
+            overridableScope.ResetOverrides();
         }
 
         protected override void Load(ContainerBuilder builder) =>
             builder
-                .AddScoped<IWorldState>(overridableScope.WorldState)
+                .AddScoped<IWorldState>(_worldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)

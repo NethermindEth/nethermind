@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Init.Steps;

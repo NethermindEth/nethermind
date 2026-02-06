@@ -110,10 +110,6 @@ internal static class SetupCli
             MixHash = suggestedBlockForRpc.MixHash,
             BaseFeePerGas = suggestedBlockForRpc.BaseFeePerGas!.Value,
             WithdrawalsRoot = suggestedBlockForRpc.WithdrawalsRoot,
-            ParentBeaconBlockRoot = suggestedBlockForRpc.ParentBeaconBlockRoot,
-            RequestsHash = suggestedBlockForRpc.RequestsHash,
-            BlobGasUsed = suggestedBlockForRpc.BlobGasUsed,
-            ExcessBlobGas = suggestedBlockForRpc.ExcessBlobGas,
             Hash = suggestedBlockForRpc.Hash,
         };
 
@@ -127,7 +123,7 @@ internal static class SetupCli
         for (int j = 0; j < transactions.Length; j++)
         {
             var tx = (JsonElement)suggestedBlockForRpc.Transactions[j];
-            transactions[j] = serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction();
+            transactions[j] = (Transaction)serializer.Deserialize<TransactionForRpc>(tx.GetRawText()).ToTransaction();
         }
 
         Block suggestedBlock = new Block(suggestedBlockHeader, transactions, [], suggestedBlockForRpc.Withdrawals);

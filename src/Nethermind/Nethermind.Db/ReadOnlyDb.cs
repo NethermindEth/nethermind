@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Db
 {
@@ -12,17 +14,12 @@ namespace Nethermind.Db
     {
         private readonly MemDb _memDb = new();
 
-        public void Dispose()
-        {
-            _memDb.Dispose();
-        }
+        public void Dispose() => _memDb.Dispose();
 
         public string Name { get => wrappedDb.Name; }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return _memDb.Get(key, flags) ?? wrappedDb.Get(key, flags);
-        }
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+            _memDb.Get(key, flags) ?? wrappedDb.Get(key, flags);
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -38,11 +35,11 @@ namespace Nethermind.Db
         {
             get
             {
-                var result = wrappedDb[keys];
-                var memResult = _memDb[keys];
+                KeyValuePair<byte[], byte[]>[]? result = wrappedDb[keys];
+                KeyValuePair<byte[], byte[]>[]? memResult = _memDb[keys];
                 for (int i = 0; i < memResult.Length; i++)
                 {
-                    var memValue = memResult[i];
+                    KeyValuePair<byte[], byte[]> memValue = memResult[i];
                     if (memValue.Value is not null)
                     {
                         result[i] = memValue;
@@ -61,7 +58,7 @@ namespace Nethermind.Db
 
         public IWriteBatch StartWriteBatch() => this.LikeABatch();
 
-        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => wrappedDb.GatherMetric(includeSharedCache);
+        public IDbMeta.DbMetric GatherMetric() => wrappedDb.GatherMetric();
 
         public void Remove(ReadOnlySpan<byte> key) { }
 
@@ -73,7 +70,6 @@ namespace Nethermind.Db
 
         public virtual void ClearTempChanges() => _memDb.Clear();
 
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => Get(key).AsSpan();
         public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!createInMemWriteStore)
