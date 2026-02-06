@@ -33,6 +33,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.State.Proofs;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -168,19 +169,26 @@ public class MergePluginTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(parentHash).Returns(parentBlock);
 
+        Hash256? suggestedWithdrawalsRoot = null;
         IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
         blockchainProcessor
             .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
             .Returns(static callInfo =>
             {
                 Block block = callInfo.Arg<Block>();
-                block.Header.Hash ??= Keccak.Compute("produced");
                 block.Header.StateRoot ??= Keccak.EmptyTreeHash;
                 block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
                 block.Header.Bloom ??= Bloom.Empty;
                 block.Header.GasUsed = 0;
-                block.ExecutionRequests = [];
+                block.Header.Hash ??= Keccak.Compute("produced");
                 return block;
+            });
+        blockchainProcessor
+            .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo =>
+            {
+                Block block = callInfo.Arg<Block>();
+                suggestedWithdrawalsRoot = block.Header.WithdrawalsRoot;
             });
 
         IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
@@ -204,7 +212,16 @@ public class MergePluginTests
             Timestamp = parentHeader.Timestamp + 12,
             PrevRandao = Keccak.Compute("randao"),
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = [],
+            Withdrawals =
+            [
+                new Withdrawal
+                {
+                    Index = 0,
+                    ValidatorIndex = 0,
+                    Address = Address.Zero,
+                    AmountInGwei = 1
+                }
+            ],
             ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
         };
 
@@ -214,6 +231,7 @@ public class MergePluginTests
         result.Data.Should().NotBeNull();
         result.Data!.ExecutionPayload.BlobGasUsed.Should().Be(0);
         result.Data!.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
+        suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
     }
 
     [TestCase(true, true)]

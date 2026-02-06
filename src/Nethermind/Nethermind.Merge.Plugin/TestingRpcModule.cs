@@ -18,6 +18,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Merge.Plugin;
@@ -95,6 +96,13 @@ public class TestingRpcModule(
         {
             header.BlobGasUsed = 0;
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+        }
+
+        if (spec.WithdrawalsEnabled)
+        {
+            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null || payloadAttributes.Withdrawals.Length == 0
+                ? Keccak.EmptyTreeHash
+                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
         }
 
         return header;
