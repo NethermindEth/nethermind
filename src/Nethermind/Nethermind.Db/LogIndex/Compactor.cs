@@ -107,9 +107,13 @@ partial class LogIndexStorage
 
                         tcs?.TrySetResult();
                     }
-                    catch (Exception ex)
+                    catch (OperationCanceledException)
                     {
                         tcs?.TrySetCanceled();
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs?.TrySetException(ex);
                         _storage.OnBackgroundError<Compactor>(ex);
                         await _cts.CancelAsync();
                         _channel.Writer.TryComplete();
