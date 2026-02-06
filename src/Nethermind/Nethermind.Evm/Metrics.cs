@@ -18,7 +18,7 @@ public class Metrics
     public static long CodeDbCache => _codeDbCache.GetTotalValue();
     private static readonly ZeroContentionCounter _codeDbCache = new();
     [Description("Number of Code DB cache reads on thread.")]
-    internal static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
+    public static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
     internal static void IncrementCodeDbCache() => _codeDbCache.Increment();
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
@@ -113,7 +113,7 @@ public class Metrics
     internal static long BlockTransactions { get; set; }
 
     private static float _blockAveGasPrice;
-    internal static float BlockAveGasPrice
+    public static float BlockAveGasPrice
     {
         get => _blockAveGasPrice;
         set
@@ -127,7 +127,7 @@ public class Metrics
     }
 
     private static float _blockMinGasPrice = float.MaxValue;
-    internal static float BlockMinGasPrice
+    public static float BlockMinGasPrice
     {
         get => _blockMinGasPrice;
         set
@@ -141,7 +141,7 @@ public class Metrics
     }
 
     private static float _blockMaxGasPrice;
-    internal static float BlockMaxGasPrice
+    public static float BlockMaxGasPrice
     {
         get => _blockMaxGasPrice;
         set
@@ -155,7 +155,7 @@ public class Metrics
     }
 
     private static float _blockEstMedianGasPrice;
-    internal static float BlockEstMedianGasPrice
+    public static float BlockEstMedianGasPrice
     {
         get => _blockEstMedianGasPrice;
         set
