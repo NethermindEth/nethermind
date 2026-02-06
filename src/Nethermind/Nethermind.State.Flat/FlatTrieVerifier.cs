@@ -213,7 +213,7 @@ public class FlatTrieVerifier
         (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
 
         using IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(startKey, endKey);
-        TrieLeafIterator trieIter = new(trieStore, stateRoot, startKey, endKey, LogTrieNodeException);
+        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException, startKey, endKey);
 
         bool hasFlat = flatIter.MoveNext();
         bool hasTrie = trieIter.MoveNext();
@@ -349,7 +349,7 @@ public class FlatTrieVerifier
         (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
         TreePath progressPath = TreePath.Empty;
 
-        TrieLeafIterator trieIter = new(trieStore, stateRoot, startKey, endKey, LogTrieNodeException);
+        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException, startKey, endKey);
         while (trieIter.MoveNext())
         {
             cancellationToken.ThrowIfCancellationRequested();

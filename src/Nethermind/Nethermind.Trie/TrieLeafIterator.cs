@@ -35,34 +35,19 @@ public ref struct TrieLeafIterator
     private TreePath _currentPath;
     private TrieNode? _currentLeaf;
 
-    public TrieLeafIterator(ITrieNodeResolver resolver, Hash256? rootHash, Action<TrieNodeException>? onException = null)
-    {
-        _resolver = resolver;
-        _onException = onException;
-        _stack = new StackFrame[MaxStackDepth];
-        _startPath = default;
-        _endPath = default;
-        _hasRange = false;
-        _stackDepth = 0;
-        _currentPath = default;
-        _currentLeaf = null;
-
-        if (rootHash is not null && rootHash != Keccak.EmptyTreeHash)
-        {
-            TreePath emptyPath = TreePath.Empty;
-            TrieNode root = resolver.FindCachedOrUnknown(emptyPath, rootHash);
-            Push(root, emptyPath);
-        }
-    }
-
-    public TrieLeafIterator(ITrieNodeResolver resolver, Hash256? rootHash, in ValueHash256 startPath, in ValueHash256 endPath, Action<TrieNodeException>? onException = null)
+    public TrieLeafIterator(
+        ITrieNodeResolver resolver,
+        Hash256? rootHash,
+        Action<TrieNodeException>? onException = null,
+        in ValueHash256 startPath = default,
+        in ValueHash256 endPath = default)
     {
         _resolver = resolver;
         _onException = onException;
         _stack = new StackFrame[MaxStackDepth];
         _startPath = startPath;
         _endPath = endPath;
-        _hasRange = true;
+        _hasRange = startPath != default || endPath != default;
         _stackDepth = 0;
         _currentPath = default;
         _currentLeaf = null;

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -390,5 +389,4 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1)); // Account C mismatched
         Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1)); // Account B missing in flat
     }
-
 }
