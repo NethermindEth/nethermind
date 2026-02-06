@@ -85,7 +85,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
-            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
+            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, IBlockTree, ISpecProvider, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -105,9 +105,9 @@ public class XdcModule : Module
     {
         return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
     }
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
     {
-        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
+        return new SignTransactionManager(signer, txPool, blockTree, specProvider, logManager.GetClassLogger<SignTransactionManager>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

@@ -152,10 +152,10 @@ internal class SpecialTransactionsTests
         }
         while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number + 1));
 
-        var receipts = blockChain.TxPool.GetPendingTransactions();
+        var poolTx = blockChain.TxPool.GetPendingTransactions();
 
         var spec = (XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec();
-        receipts.Any(r => r.To == spec.BlockSignerContract
+        poolTx.Any(r => r.To == spec.BlockSignerContract
                        || r.To == spec.RandomizeSMCBinary).Should().BeFalse();
     }
 

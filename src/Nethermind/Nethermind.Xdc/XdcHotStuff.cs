@@ -46,6 +46,8 @@ namespace Nethermind.Xdc
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
+        private bool _writeRoundInfo = true;
+        private long _highestSignTxNumber = 0;
 
 
         public XdcHotStuff(
@@ -153,6 +155,7 @@ namespace Nethermind.Xdc
 
             TimeSpan roundDuration = DateTime.UtcNow - _xdcContext.RoundStarted;
             _logger.Info($"Round {args.NewRound} completed in {roundDuration.TotalSeconds:F2}s");
+            _writeRoundInfo = true;
         }
 
         /// <summary>
@@ -239,7 +242,9 @@ namespace Nethermind.Xdc
             }
 
             bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
-            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+
+            if (_writeRoundInfo)
+                _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
             if (isMyTurn)
             {
@@ -248,9 +253,11 @@ namespace Nethermind.Xdc
 
             }
 
-            if (IsMasternode(epochInfo, _signer.Address)
+            if (_highestSignTxNumber < roundParent.Number
+                && IsMasternode(epochInfo, _signer.Address)
                 && ((roundParent.Number % spec.MergeSignRange == 0)))
             {
+                _highestSignTxNumber = roundParent.Number;
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
@@ -258,7 +265,7 @@ namespace Nethermind.Xdc
             {
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
-
+            _writeRoundInfo = false;
         }
 
         private XdcBlockHeader GetParentForRound()

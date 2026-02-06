@@ -7,28 +7,70 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
-using Nethermind.Logging;
+using Nethermind.Xdc.Types;
+using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger) : ISignTransactionManager
+internal class SignTransactionManager : ISignTransactionManager
 {
+    private readonly ISigner _signer;
+    private readonly ITxPool _txPool;
+    private readonly IEpochSwitchManager _epochSwitchManager;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
+
+    public SignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, ILogger logger)
+    {
+        _signer = signer;
+        _txPool = txPool;
+        _epochSwitchManager = epochSwitchManager;
+        _specProvider = specProvider;
+        _logger = logger;
+        blockTree.NewHeadBlock += OnNewHead;
+    }
+
+    private void OnNewHead(object sender, BlockEventArgs args)
+    {
+        if (args.Block.Header is XdcBlockHeader header)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    if (!IsMasternode(_epochSwitchManager.GetEpochSwitchInfo(header), _signer.Address))
+                        return;
+                    IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header.Number, header.ExtraConsensusData.BlockRound);
+                    if (header.Number % spec.MergeSignRange == 0)
+                        return;
+                    await SubmitTransactionSign(header, spec);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Error while submitting sign transaction on new head block.", ex);
+                }
+            });
+        }
+    }
+
     public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
+        UInt256 nonce = _txPool.GetLatestPendingNonce(_signer.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, _signer.Address);
 
-        await signer.Sign(transaction);
+        await _signer.Sign(transaction);
 
-        bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        bool added = _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            logger.Info("Failed to add signed transaction to the pool.");
+            _logger.Warn("Failed to add signed transaction to the pool.");
         }
     }
 
@@ -51,4 +93,6 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
 
         return transaction;
     }
+    private static bool IsMasternode(EpochSwitchInfo epochInfo, Address address) =>
+        epochInfo.Masternodes.AsSpan().IndexOf(address) != -1;
 }
