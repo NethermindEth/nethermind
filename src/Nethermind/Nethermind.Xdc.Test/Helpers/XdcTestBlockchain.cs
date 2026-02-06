@@ -222,7 +222,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
                     compoundPolicy,
-                    new SignTransactionFilter(Signer, BlockTree, SpecProvider),
+                    new SignTransactionFilter(Signer, SpecProvider),
                     ctx.Resolve<ITxValidator>()
                 );
 

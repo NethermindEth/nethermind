@@ -505,37 +505,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooLowError);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation(bool enableEip1559)
-    {
-        var epochLength = 10;
-        var blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
-        blockChain.ChangeReleaseSpec((spec) =>
-        {
-            spec.IsEip1559Enabled = enableEip1559;
-            spec.EpochLength = epochLength;
-        });
-
-        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
-        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
-
-        blockChain.MainWorldState.BeginScope(head);
-
-        UInt256 tooHighBlockNumber = (UInt256)head.Number + 1;
-        Transaction txTooHigh = SignTransactionManager.CreateTxSign(
-            tooHighBlockNumber,
-            head.Hash!,
-            blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address),
-            spec.BlockSignerContract,
-            blockChain.Signer.Address);
-
-        await blockChain.Signer.Sign(txTooHigh);
-
-        var result = blockChain.TxPool.SubmitTx(txTooHigh, TxHandlingOptions.PersistentBroadcast);
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
-    }
+   
 
     [TestCase(true)]
     [TestCase(false)]

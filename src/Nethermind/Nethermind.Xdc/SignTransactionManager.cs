@@ -27,19 +27,19 @@ internal class SignTransactionManager : ISignTransactionManager
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
-    public SignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, ILogger logger)
+    public SignTransactionManager(ISigner signer, ITxPool txPool, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, ILogger logger)
     {
         _signer = signer;
         _txPool = txPool;
         _epochSwitchManager = epochSwitchManager;
         _specProvider = specProvider;
         _logger = logger;
-        blockTree.NewHeadBlock += OnNewHead;
+        _txPool.TxPoolHeadChanged += OnNewHead;
     }
 
-    private void OnNewHead(object sender, BlockEventArgs args)
+    private void OnNewHead(object sender, Block block)
     {
-        if (args.Block.Header is XdcBlockHeader header)
+        if (block.Header is XdcBlockHeader header)
         {
             Task.Run(async () =>
             {

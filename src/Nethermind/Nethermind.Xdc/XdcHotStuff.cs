@@ -47,8 +47,6 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
-        private long _highestSignTxNumber = 0;
-
 
         public XdcHotStuff(
             IBlockTree blockTree,
@@ -251,14 +249,6 @@ namespace Nethermind.Xdc
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
 
-            }
-
-            if (_highestSignTxNumber < roundParent.Number
-                && IsMasternode(epochInfo, _signer.Address)
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
-            {
-                _highestSignTxNumber = roundParent.Number;
-                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
             if (spec.SwitchBlock < roundParent.Number)
