@@ -611,58 +611,58 @@ namespace Nethermind.Db.LogIndex
             if (!FirstBlockAdded)
                 return;
 
-            const bool isBackwardSync = false;
-
             SemaphoreSlim semaphore = _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 
-            byte[]? keyArray = null, valueArray = null;
-
             try
             {
-                keyArray = Pool.Rent(MaxDbKeyLength);
-                valueArray = Pool.Rent(BlockNumberSize + 1);
-
-                using IColumnsWriteBatch<LogIndexColumns>? batch = _rootDb.StartWriteBatch();
-
-                using var batches = new DbBatches(_rootDb);
-
-                Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, valueArray);
-
-                foreach (TxReceipt receipt in block.Receipts)
-                {
-                    foreach (LogEntry log in receipt.Logs ?? [])
-                    {
-                        ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyArray, isBackwardSync: false);
-                        batches.Address.Merge(addressKey, dbValue);
-
-                        var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                        for (var topicIndex = 0; topicIndex < topicsLength; topicIndex++)
-                        {
-                            Hash256 topic = log.Topics[topicIndex];
-                            ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyArray, isBackwardSync: false);
-                            batches.Topics[topicIndex].Merge(topicKey, dbValue);
-                        }
-                    }
-                }
-
-                // Need to update the last block number so that new-receipts comparison won't fail when rewriting it
-                var blockNum = block.BlockNumber - 1;
-
-                var (minBlock, maxBlock) = SaveRange(batches, blockNum, blockNum, isBackwardSync, isReorg: true);
-
-                batches.Commit();
-
-                // Postpone values update until batch is committed
-                UpdateRange(minBlock, maxBlock, isBackwardSync);
+                RemoveReorgedCore(block);
             }
             finally
             {
                 semaphore.Release();
-
-                if (keyArray is not null) Pool.Return(keyArray);
-                if (valueArray is not null) Pool.Return(valueArray);
             }
+        }
+
+        private void RemoveReorgedCore(BlockReceipts block)
+        {
+            const bool isBackwardSync = false;
+
+            Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
+            Span<byte> valueBuffer = stackalloc byte[BlockNumberSize + 1];
+
+            using IColumnsWriteBatch<LogIndexColumns>? batch = _rootDb.StartWriteBatch();
+
+            using DbBatches batches = new(_rootDb);
+
+            Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, valueBuffer);
+
+            foreach (TxReceipt receipt in block.Receipts)
+            {
+                foreach (LogEntry log in receipt.Logs ?? [])
+                {
+                    ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyBuffer, isBackwardSync: false);
+                    batches.Address.Merge(addressKey, dbValue);
+
+                    var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
+                    for (var topicIndex = 0; topicIndex < topicsLength; topicIndex++)
+                    {
+                        Hash256 topic = log.Topics[topicIndex];
+                        ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyBuffer, isBackwardSync: false);
+                        batches.Topics[topicIndex].Merge(topicKey, dbValue);
+                    }
+                }
+            }
+
+            // Need to update the last block number so that new-receipts comparison won't fail when rewriting it
+            int blockNum = block.BlockNumber - 1;
+
+            (int minBlock, int maxBlock) = SaveRange(batches, blockNum, blockNum, isBackwardSync, isReorg: true);
+
+            batches.Commit();
+
+            // Postpone values update until batch is committed
+            UpdateRange(minBlock, maxBlock, isBackwardSync);
         }
 
         // TODO: refactor compaction to explicitly compress full range for each involved key
@@ -706,17 +706,17 @@ namespace Nethermind.Db.LogIndex
 
             long totalTimestamp = Stopwatch.GetTimestamp();
 
-            var isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
+            bool isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
             SemaphoreSlim semaphore = isBackwardSync ? _backwardWriteSemaphore : _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 
-            var wasInitialized = FirstBlockAdded;
+            bool wasInitialized = FirstBlockAdded;
             if (!wasInitialized)
                 await _initSemaphore.WaitAsync();
 
             try
             {
-                using var batches = new DbBatches(_rootDb);
+                using DbBatches batches = new(_rootDb);
 
                 // Add values to batches
                 long timestamp;
@@ -745,7 +745,7 @@ namespace Nethermind.Db.LogIndex
                 }
 
                 timestamp = Stopwatch.GetTimestamp();
-                var (addressRange, topicRanges) = SaveRange(batches, aggregate.FirstBlockNum, aggregate.LastBlockNum, isBackwardSync);
+                (int addressRange, int topicRanges) = SaveRange(batches, aggregate.FirstBlockNum, aggregate.LastBlockNum, isBackwardSync);
                 stats?.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Submit batches
@@ -778,29 +778,21 @@ namespace Nethermind.Db.LogIndex
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
         {
-            var dbKeyArray = Pool.Rent(MaxDbKeyLength);
+            Span<byte> dbKeyBuffer = stackalloc byte[MaxDbKeyLength];
+            ReadOnlySpan<byte> dbKey = CreateMergeDbKey(key, dbKeyBuffer, isBackwardSync);
 
-            try
-            {
-                ReadOnlySpan<byte> dbKey = CreateMergeDbKey(key, dbKeyArray, isBackwardSync);
+            byte[] newValue = CreateDbValue(numbers);
 
-                var newValue = CreateDbValue(numbers);
+            long timestamp = Stopwatch.GetTimestamp();
 
-                var timestamp = Stopwatch.GetTimestamp();
+            if (newValue is null or [])
+                throw new LogIndexStateException("No block numbers to save.", key);
 
-                if (newValue is null or [])
-                    throw new LogIndexStateException("No block numbers to save.", key);
-
-                // TODO: consider disabling WAL, but check:
-                // - FlushOnTooManyWrites
-                // - atomic flushing
-                dbBatch.Merge(dbKey, newValue);
-                stats?.DBMerging.Include(Stopwatch.GetElapsedTime(timestamp));
-            }
-            finally
-            {
-                Pool.Return(dbKeyArray);
-            }
+            // TODO: consider disabling WAL, but check:
+            // - FlushOnTooManyWrites
+            // - atomic flushing
+            dbBatch.Merge(dbKey, newValue);
+            stats?.DBMerging.Include(Stopwatch.GetElapsedTime(timestamp));
         }
 
         private static ReadOnlySpan<byte> WriteKey(ReadOnlySpan<byte> key, Span<byte> buffer)
@@ -819,7 +811,7 @@ namespace Nethermind.Db.LogIndex
             key = WriteKey(key, buffer);
             WriteKeyBlockNumber(buffer[key.Length..], blockNumber);
 
-            var length = key.Length + BlockNumberSize;
+            int length = key.Length + BlockNumberSize;
             return buffer[..length];
         }
 
@@ -831,7 +823,7 @@ namespace Nethermind.Db.LogIndex
             key = WriteKey(key, buffer);
             blockNumber.CopyTo(buffer[key.Length..]);
 
-            var length = key.Length + blockNumber.Length;
+            int length = key.Length + blockNumber.Length;
             return buffer[..length];
         }
 
@@ -853,7 +845,7 @@ namespace Nethermind.Db.LogIndex
         private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
             ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-            var length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
+            int length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
             return buffer[..length];
         }
 
@@ -898,7 +890,7 @@ namespace Nethermind.Db.LogIndex
 
         private static byte[] CreateDbValue(List<int> numbers)
         {
-            var value = new byte[numbers.Count * BlockNumberSize];
+            byte[] value = new byte[numbers.Count * BlockNumberSize];
             numbers.CopyTo(MemoryMarshal.Cast<byte, int>(value.AsSpan()));
             return value;
         }
@@ -914,12 +906,12 @@ namespace Nethermind.Db.LogIndex
             if (data.Length % BlockNumberSize != 0)
                 throw new LogIndexStateException($"Invalid length of data to compress: {data.Length}.", key);
 
-            var buffer = Pool.Rent(data.Length + BlockNumberSize);
+            byte[] buffer = Pool.Rent(data.Length + BlockNumberSize);
 
             try
             {
                 WriteCompressionMarker(buffer, data.Length / BlockNumberSize);
-                var compressedLen = Compress(data, buffer.AsSpan(BlockNumberSize..)).Length;
+                int compressedLen = Compress(data, buffer.AsSpan(BlockNumberSize..)).Length;
                 return buffer[..(BlockNumberSize + compressedLen)];
             }
             finally
@@ -944,7 +936,7 @@ namespace Nethermind.Db.LogIndex
             if (GetLastReorgableBlockNumber() is not { } lastCompressBlock)
                 return Span<byte>.Empty;
 
-            var lastCompressIndex = LastBlockSearch(data, lastCompressBlock, false);
+            int lastCompressIndex = LastBlockSearch(data, lastCompressBlock, false);
 
             if (lastCompressIndex < 0) lastCompressIndex = 0;
             if (lastCompressIndex > data.Length) lastCompressIndex = data.Length;
@@ -969,10 +961,10 @@ namespace Nethermind.Db.LogIndex
             if (operand.IsEmpty)
                 return 0;
 
-            var i = operand.Length - BlockNumberSize;
+            int i = operand.Length - BlockNumberSize;
             for (; i >= 0; i -= BlockNumberSize)
             {
-                var currentBlock = ReadBlockNumber(operand[i..]);
+                int currentBlock = ReadBlockNumber(operand[i..]);
                 if (currentBlock == block)
                     return i;
 
