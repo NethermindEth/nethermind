@@ -253,7 +253,7 @@ namespace Nethermind.Xdc
 
             }
 
-            if (_highestSignTxNumber < roundParent.Number 
+            if (_highestSignTxNumber < roundParent.Number
                 && IsMasternode(epochInfo, _signer.Address)
                 && ((roundParent.Number % spec.MergeSignRange == 0)))
             {
