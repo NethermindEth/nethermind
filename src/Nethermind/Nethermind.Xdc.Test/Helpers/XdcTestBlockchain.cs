@@ -299,7 +299,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 0,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -307,7 +307,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 5,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -315,7 +315,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 10,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -323,7 +323,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 15,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -331,7 +331,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 20,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -601,7 +601,7 @@ public class XdcTestBlockchain : TestBlockchain
         return switchInfo
                     .Masternodes
                     .OrderBy(x => _random.Next())
-                    .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertThreshold)))
+                    .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertificateThreshold)))
                     .Select(a => MasterNodeCandidates.First(c => a == c.Address))
                     .ToArray();
     }

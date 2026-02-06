@@ -19,7 +19,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
     private readonly INethermindApi _api = api;
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
-        _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider));
+        _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider, chainHeadInfoProvider));
 
         Nethermind.TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,

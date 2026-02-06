@@ -74,7 +74,7 @@ public sealed class V2ConfigParams
 {
     public ulong SwitchRound { get; init; }
     public int MaxMasternodes { get; init; }
-    public double CertThreshold { get; init; }
+    public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public int MinePeriod { get; init; }

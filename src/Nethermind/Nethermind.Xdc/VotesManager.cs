@@ -103,8 +103,8 @@ internal class VotesManager(
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
-        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertThreshold;
-        double requiredVotes = masternodeCount * certThreshold;
+        double CertificateThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
+        double requiredVotes = masternodeCount * CertificateThreshold;
         bool thresholdReached = roundVotes.Count >= requiredVotes;
         if (thresholdReached)
         {

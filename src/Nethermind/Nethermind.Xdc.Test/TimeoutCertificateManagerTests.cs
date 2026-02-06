@@ -137,7 +137,7 @@ public class TimeoutCertificateManagerTests
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         xdcReleaseSpec.EpochLength.Returns(900);
         xdcReleaseSpec.SwitchEpoch.Returns(89300);
-        xdcReleaseSpec.CertThreshold.Returns(0.667);
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
