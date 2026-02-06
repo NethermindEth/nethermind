@@ -487,8 +487,8 @@ The code is organized into **basic blocks** labeled `G_M000_IG01`, `G_M000_IG02`
 - Replace backslashes with forward slashes in paths
 - Put the entire command on a single line
 
-## Running Tests
+## Building
 
 ```bash
-dotnet test --project tools/JitAsm.Test -c Release
+dotnet build tools/JitAsm -c Release
 ```

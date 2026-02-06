@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
@@ -90,6 +90,7 @@ internal static class Program
             VerboseOption
         };
 
+        int exitCode = 0;
         rootCommand.SetAction(parseResult =>
         {
             var assembly = parseResult.GetValue(AssemblyOption)!;
@@ -103,18 +104,19 @@ internal static class Program
             var arch = parseResult.GetValue(ArchOption)!;
             var verbose = parseResult.GetValue(VerboseOption);
 
-            Execute(assembly, typeName, methodName, typeParams, classTypeParams, skipCctor, fullOpts, annotate, arch, verbose);
+            exitCode = Execute(assembly, typeName, methodName, typeParams, classTypeParams, skipCctor, fullOpts, annotate, arch, verbose);
         });
 
-        return rootCommand.Parse(args).Invoke();
+        int parseExitCode = rootCommand.Parse(args).Invoke();
+        return parseExitCode != 0 ? parseExitCode : exitCode;
     }
 
-    private static void Execute(FileInfo assembly, string? typeName, string methodName, string? typeParams, string? classTypeParams, bool skipCctor, bool fullOpts, bool annotate, string arch, bool verbose)
+    private static int Execute(FileInfo assembly, string? typeName, string methodName, string? typeParams, string? classTypeParams, bool skipCctor, bool fullOpts, bool annotate, string arch, bool verbose)
     {
         if (!assembly.Exists)
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] Assembly not found: {assembly.FullName}");
-            return;
+            return 1;
         }
 
         bool tier1 = !fullOpts;
@@ -147,10 +149,10 @@ internal static class Program
             runner.RunTwoPassAsync())
             .GetAwaiter().GetResult();
 
-        OutputResult(result, verbose, instructionDb);
+        return OutputResult(result, verbose, instructionDb);
     }
 
-    private static void OutputResult(JitResult result, bool verbose, InstructionDb? instructionDb = null)
+    private static int OutputResult(JitResult result, bool verbose, InstructionDb? instructionDb = null)
     {
         if (!result.Success)
         {
@@ -161,7 +163,7 @@ internal static class Program
                 AnsiConsole.MarkupLine("[yellow]Output:[/]");
                 AnsiConsole.WriteLine(result.Output);
             }
-            return;
+            return 1;
         }
 
         if (verbose && result.DetectedCctors.Count > 0)
@@ -189,6 +191,7 @@ internal static class Program
         }
 
         Console.WriteLine(output);
+        return 0;
     }
 
     private static InstructionDb? LoadOrBuildInstructionDb(string arch, bool verbose)

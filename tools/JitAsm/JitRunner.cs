@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
@@ -49,7 +49,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
     private async Task<JitResult> RunJitProcessAsync(IReadOnlyList<string>? cctorsToInit)
     {
         // Get the path to the JitAsm executable
-        var executablePath = GetExecutablePath();
+        var (executablePath, argumentPrefix) = GetExecutablePath();
 
         // Build the method pattern for JitDisasm
         var methodPattern = BuildMethodPattern();
@@ -85,6 +85,11 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
 
         // Build arguments for internal runner
         var args = new StringBuilder();
+        if (argumentPrefix is not null)
+        {
+            args.Append(EscapeArg(argumentPrefix));
+            args.Append(' ');
+        }
         args.Append("--internal-runner ");
         args.Append(EscapeArg(assemblyPath));
         args.Append(' ');
@@ -191,39 +196,54 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         return methodName;
     }
 
-    private static string GetExecutablePath()
+    /// <summary>
+    /// Returns the executable path and any prefix arguments needed (e.g., DLL path for dotnet host).
+    /// </summary>
+    private static (string FileName, string? ArgumentPrefix) GetExecutablePath()
     {
         // Get the path to the current executable
         var currentExe = Environment.ProcessPath;
         if (currentExe is not null && File.Exists(currentExe))
         {
-            return currentExe;
+            // When running via "dotnet run", ProcessPath is the dotnet host, not our tool.
+            // Detect this by checking if it ends with "dotnet" (or "dotnet.exe").
+            var exeName = Path.GetFileNameWithoutExtension(currentExe);
+            if (exeName.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            {
+                var assemblyLocation = typeof(JitRunner).Assembly.Location;
+                if (!string.IsNullOrEmpty(assemblyLocation))
+                {
+                    return ("dotnet", assemblyLocation);
+                }
+            }
+
+            return (currentExe, null);
         }
 
         // Fallback to assembly location
-        var assemblyLocation = typeof(JitRunner).Assembly.Location;
-        if (!string.IsNullOrEmpty(assemblyLocation))
+        var location = typeof(JitRunner).Assembly.Location;
+        if (!string.IsNullOrEmpty(location))
         {
             // For .dll, try to find the corresponding .exe
-            var directory = Path.GetDirectoryName(assemblyLocation)!;
-            var exeName = Path.GetFileNameWithoutExtension(assemblyLocation);
+            var directory = Path.GetDirectoryName(location)!;
+            var baseName = Path.GetFileNameWithoutExtension(location);
 
             // Try .exe first (Windows)
-            var exePath = Path.Combine(directory, exeName + ".exe");
+            var exePath = Path.Combine(directory, baseName + ".exe");
             if (File.Exists(exePath))
             {
-                return exePath;
+                return (exePath, null);
             }
 
             // Try without extension (Linux/macOS)
-            exePath = Path.Combine(directory, exeName);
+            exePath = Path.Combine(directory, baseName);
             if (File.Exists(exePath))
             {
-                return exePath;
+                return (exePath, null);
             }
 
             // Use dotnet to run the dll
-            return "dotnet";
+            return ("dotnet", location);
         }
 
         throw new InvalidOperationException("Could not determine executable path");

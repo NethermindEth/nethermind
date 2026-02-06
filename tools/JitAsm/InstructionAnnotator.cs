@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
@@ -190,7 +190,9 @@ internal static partial class InstructionAnnotator
                 string next = rawLines[i + 1].TrimEnd('\r');
                 if (IsContinuationLine(next))
                 {
-                    line = line.TrimEnd() + next.TrimStart();
+                    // Preserve a single space between joined parts so "call \n[Type:Method]"
+                    // becomes "call [Type:Method]" rather than "call[Type:Method]"
+                    line = line.TrimEnd() + " " + next.TrimStart();
                     i++;
                 }
                 else
@@ -238,10 +240,17 @@ internal static partial class InstructionAnnotator
 
     private static bool IsNonInstructionLine(string line)
     {
+        if (line.Length == 0) return true;
+
+        // Instructions always start with whitespace (indented).
+        // Labels, data tables, directives, and other non-instruction lines start at column 0.
+        if (line[0] == ';') return true;              // Comment at column 0
+        if (!char.IsWhiteSpace(line[0])) return true; // Labels (G_M000_IG01:), data (RWD00), directives, etc.
+
+        // Indented comments: "  ; comment"
         ReadOnlySpan<char> trimmed = line.AsSpan().TrimStart();
-        if (trimmed.Length == 0) return true;
-        if (trimmed[0] == ';') return true;                    // Comment
-        if (trimmed.Contains(":", StringComparison.Ordinal)) return true;  // Label (G_M000_IG01:)
+        if (trimmed.Length > 0 && trimmed[0] == ';') return true;
+
         return false;
     }
 
