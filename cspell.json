@@ -362,6 +362,7 @@
     "jmps",
     "jnbe",
     "jnge",
+    "jnle",
     "jsonrpcconfig",
     "jumpdest",
     "jumpdestpush",
