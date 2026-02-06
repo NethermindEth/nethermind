@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs;
 
+[Parallelizable(ParallelScope.All)]
 public class ReceiptTrieTests
 {
     private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>()!;

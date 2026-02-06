@@ -7,11 +7,9 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -48,20 +46,22 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
-                    blockTree,
-                    branchProcessor,
-                    compositeBlockPreprocessorStep,
-                    worldStateManager.GlobalStateReader,
-                    logManager,
-                    new BlockchainProcessor.Options
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                    new BlockchainProcessor(
+                        blockTree,
+                        branchProcessor,
+                        compositeBlockPreprocessorStep,
+                        worldStateManager.GlobalStateReader,
+                        logManager,
+                        new BlockchainProcessor.Options
+                        {
+                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                            DumpOptions = initConfig.AutoDump
+                        },
+                        processingStats)
                     {
-                        StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                        DumpOptions = initConfig.AutoDump
+                        IsMainProcessor = true // Manual construction because of this flag
                     })
-                {
-                    IsMainProcessor = true // Manual construction because of this flag
-                })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.

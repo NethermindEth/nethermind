@@ -607,7 +607,8 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(firstIsBlob ? 0 : 1);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(firstIsBlob ? 1 : 0);
             _stateProvider.IncrementNonce(TestItem.AddressA);
-            await RaiseBlockAddedToMainAndWaitForTransactions(1);
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
@@ -951,7 +952,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             // update head and set correct current proof version
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.TestObject));
 
             Transaction blobTxAdded = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
@@ -985,7 +986,7 @@ namespace Nethermind.TxPool.Test
         public async Task<int> should_evict_based_on_proof_version_and_fork(BlobsSupportMode poolMode, TestAction[] testActions)
         {
             Block head = _blockTree.Head;
-            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+            _blockTree.BestSuggestedHeader = head.Header;
 
             (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
             {
@@ -1053,12 +1054,12 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private Task AddEmptyBlock()
+        private async Task AddEmptyBlock()
         {
             BlockHeader bh = new(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
-            _blockTree.FindBestSuggestedHeader().Returns(bh);
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(bh, new BlockBody([], [])), _blockTree.Head));
-            return Task.Delay(300);
+            _blockTree.BestSuggestedHeader = bh;
+            Block block = new Block(bh, new BlockBody([], []));
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
         }
 
         private Transaction CreateBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default)
@@ -1092,7 +1093,7 @@ namespace Nethermind.TxPool.Test
             };
 
             Block head = _blockTree.Head;
-            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+            _blockTree.BestSuggestedHeader = head.Header;
 
             _txPool = CreatePool(specProvider: provider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -1126,7 +1127,7 @@ namespace Nethermind.TxPool.Test
             };
 
             Block head = _blockTree.Head;
-            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+            _blockTree.BestSuggestedHeader = head.Header;
 
             _txPool = CreatePool(specProvider: provider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);

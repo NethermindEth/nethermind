@@ -17,14 +17,11 @@ namespace Nethermind.Blockchain.Test.Proofs;
 
 [TestFixture(true)]
 [TestFixture(false)]
-public class TxTrieTests
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class TxTrieTests(bool useEip2718)
 {
-    private readonly IReleaseSpec _releaseSpec;
-
-    public TxTrieTests(bool useEip2718)
-    {
-        _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
-    }
+    private readonly IReleaseSpec _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root()
