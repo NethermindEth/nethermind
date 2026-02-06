@@ -173,11 +173,23 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     public byte[]? LastKey => Keys.Max();
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
     {
-        ArrayPoolList<(byte[], byte[]?)> sortedValue = Keys
-            .Order(Bytes.Comparer)
-            .Select((key) => (key, this.Get(key)))
-            .ToPooledList(1);
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
 
+        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
+        {
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0)
+            {
+                continue;
+            }
+
+            if (Bytes.BytesComparer.Compare(keyValuePair.Key, lastKeyExclusive) >= 0)
+            {
+                continue;
+            }
+            sortedValue.Add((keyValuePair.Key, keyValuePair.Value));
+        }
+
+        sortedValue.AsSpan().Sort((it1, it2) => Bytes.BytesComparer.Compare(it1.Item1, it2.Item1));
         return new FakeSortedView(sortedValue);
     }
 
@@ -192,8 +204,9 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 
         public bool StartBefore(ReadOnlySpan<byte> value)
         {
-            idx = 0;
+            if (list.Count == 0) return false;
 
+            idx = 0;
             while (idx < list.Count)
             {
                 if (Bytes.BytesComparer.Compare(list[idx].Item1, value) >= 0)
@@ -201,9 +214,12 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
                     idx--;
                     return true;
                 }
+                idx++;
             }
 
-            return false;
+            // All keys are less than value - position at last element (largest key <= value)
+            idx = list.Count - 1;
+            return true;
         }
 
         public bool MoveNext()
