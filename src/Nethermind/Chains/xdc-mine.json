@@ -5,7 +5,7 @@
       "params": {
         "period": 2,
         "epoch": 900,
-        "reward": 171,
+        "reward": 285,
         "rewardCheckpoint": 900,
         "gap": 450,
         "foundationWalletAddr": "0xFFFCc92b2CAb82A19C2805Bd379c2ce3a7a57a14",
