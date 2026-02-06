@@ -11,27 +11,35 @@ namespace Nethermind.Evm.CodeAnalysis;
 public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; } = new();
-    private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Empty, skipAnalysis: true);
+    // Empty code sentinel
+    private static readonly JumpDestinationAnalyzer? _emptyAnalyzer = new(Empty, skipAnalysis: true);
 
-    private CodeInfo() { }
+    // Empty
+    private CodeInfo()
+    {
+        _analyzer = null;
+    }
 
+    // Eof
     protected CodeInfo(int version, ReadOnlyMemory<byte> code)
     {
         Version = version;
         Code = code;
-        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(this, skipAnalysis: true);
+        _analyzer = null;
     }
 
+    // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
         Code = code;
         _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(this);
     }
 
+    // Precompile
     public CodeInfo(IPrecompile? precompile)
     {
-        _analyzer = _emptyAnalyzer;
         Precompile = precompile;
+        _analyzer = null;
     }
 
     public ReadOnlyMemory<byte> Code { get; }
@@ -41,11 +49,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     private readonly JumpDestinationAnalyzer _analyzer;
 
-    public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer) && Precompile is null;
+    public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
     public bool IsPrecompile => Precompile is not null;
 
     public bool ValidateJump(int destination)
-        => _analyzer.ValidateJump(destination);
+        => _analyzer?.ValidateJump(destination) ?? false;
 
     /// <summary>
     /// Gets the version of the code format. 
@@ -54,11 +62,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public int Version { get; } = 0;
 
     void IThreadPoolWorkItem.Execute()
-        => _analyzer.Execute();
+        => _analyzer?.Execute();
 
     public void AnalyzeInBackgroundIfRequired()
     {
-        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
+        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
         {
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
         }
