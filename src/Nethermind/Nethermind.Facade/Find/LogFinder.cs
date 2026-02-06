@@ -18,37 +18,26 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Find
 {
-    public class LogFinder : ILogFinder
+    public class LogFinder(
+        IBlockFinder? blockFinder,
+        IReceiptFinder? receiptFinder,
+        IReceiptStorage? receiptStorage,
+        IBloomStorage? bloomStorage,
+        ILogManager? logManager,
+        IReceiptsRecovery? receiptsRecovery,
+        int maxBlockDepth = 1000)
+        : ILogFinder
     {
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
 
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IBloomStorage _bloomStorage;
-        private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly int _maxBlockDepth;
-        private readonly int _rpcConfigGetLogsThreads;
-        private readonly IBlockFinder _blockFinder;
-        private readonly ILogger _logger;
-
-        public LogFinder(IBlockFinder? blockFinder,
-            IReceiptFinder? receiptFinder,
-            IReceiptStorage? receiptStorage,
-            IBloomStorage? bloomStorage,
-            ILogManager? logManager,
-            IReceiptsRecovery? receiptsRecovery,
-            int maxBlockDepth = 1000)
-        {
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
-            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
-            _maxBlockDepth = maxBlockDepth;
-            _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
-        }
+        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+        private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        private readonly IBloomStorage _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+        private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+        private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
@@ -97,7 +86,7 @@ namespace Nethermind.Facade.Find
 
         private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {
-            var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            long blocksToSearch = toBlock.Number - fromBlock.Number + 1;
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
@@ -124,7 +113,7 @@ namespace Nethermind.Facade.Find
             {
                 try
                 {
-                    foreach (var blockNumber in blocks)
+                    foreach (long blockNumber in blocks)
                     {
                         yield return blockNumber;
                         ct.ThrowIfCancellationRequested();
@@ -192,7 +181,7 @@ namespace Nethermind.Facade.Find
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
-            while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
+            while (count < maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
             {
                 foreach (var filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
                 {

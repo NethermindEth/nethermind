@@ -85,9 +85,10 @@ public class MergeOperatorTests
         LogIndexStorage.MergeOperator op = CreateOperator();
         CreateEnumerator(Serialize(existing), operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
 
-        var key = GenerateKey(Address.Size, isBackward: false);
+        byte[] key = GenerateKey(Address.Size, isBackward: false);
+        using ArrayPoolList<byte> merged = op.FullMerge(key, enumerator);
         Assert.That(
-            Deserialize(op.FullMerge(key, enumerator)?.ToArray()),
+            Deserialize(merged?.ToArray()),
             Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
         );
     }
@@ -132,9 +133,10 @@ public class MergeOperatorTests
         LogIndexStorage.MergeOperator op = CreateOperator();
         CreateEnumerator(Serialize(existing), operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
 
-        var key = GenerateKey(Address.Size, isBackward: true);
+        byte[] key = GenerateKey(Address.Size, isBackward: true);
+        ArrayPoolList<byte> merged = op.FullMerge(key, enumerator);
         Assert.That(
-            Deserialize(op.FullMerge(key, enumerator)?.ToArray()),
+            Deserialize(merged?.ToArray()),
             Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
         );
     }
@@ -152,9 +154,10 @@ public class MergeOperatorTests
         LogIndexStorage.MergeOperator op = CreateOperator();
         CreateEnumerator(null, operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
 
-        var key = GenerateKey(Address.Size, isBackward: false);
+        byte[] key = GenerateKey(Address.Size, isBackward: false);
+        using ArrayPoolList<byte> merged = op.PartialMerge(key, enumerator);
         Assert.That(
-            Deserialize(op.PartialMerge(key, enumerator)?.ToArray()),
+            Deserialize(merged?.ToArray()),
             Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
         );
     }
@@ -172,9 +175,10 @@ public class MergeOperatorTests
         LogIndexStorage.MergeOperator op = CreateOperator();
         CreateEnumerator(null, operands.Select(Serialize).ToArray(), out RocksDbMergeEnumerator enumerator);
 
-        var key = GenerateKey(Address.Size, isBackward: true);
+        byte[] key = GenerateKey(Address.Size, isBackward: true);
+        using ArrayPoolList<byte> merged = op.PartialMerge(key, enumerator);
         Assert.That(
-            Deserialize(op.PartialMerge(key, enumerator)?.ToArray()),
+            Deserialize(merged?.ToArray()),
             Is.EqualTo(expected.Split(',').Select(int.Parse).ToArray())
         );
     }

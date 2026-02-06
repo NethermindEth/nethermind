@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -35,39 +34,31 @@ public class IndexedLogFinder(
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 
-    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
+        GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
+            ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
+            : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
+
+    private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
-        if (GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange)
-            return base.FindLogs(filter, fromBlock, toBlock, cancellationToken);
-
-        // Combine results from indexed and non-indexed scans
-        IEnumerable<FilterLog> result = [];
-
-        if (indexRange.from > fromBlock.Number &&
-            FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
+        if (indexRange.from > fromBlock.Number && FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
         {
-            result = result.Concat(
-                base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken)
-            );
+            foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
+                yield return log;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        result = result.Concat(
-            FilterLogsInBlocksParallel(filter, _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to), cancellationToken)
-        );
+        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to), cancellationToken))
+            yield return log;
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (indexRange.to < toBlock.Number &&
-            FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
+        if (indexRange.to < toBlock.Number && FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
         {
-            result = result.Concat(
-                base.FindLogs(filter, afterIndex, toBlock, cancellationToken)
-            );
+            foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
+                yield return log;
         }
-
-        return result;
     }
 
     private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)

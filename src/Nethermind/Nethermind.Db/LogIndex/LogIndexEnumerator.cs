@@ -45,17 +45,11 @@ public partial class LogIndexStorage
 
         private bool IsWithinRange()
         {
-            var current = Current;
+            int current = Current;
             return current >= _from && current <= _to;
         }
 
-        public bool MoveNext()
-        {
-            if (_index == CompletedIndex)
-                return false;
-
-            return _value is null ? TryStart() : TryMove();
-        }
+        public bool MoveNext() => _index != CompletedIndex && (_value is null ? TryStart() : TryMove());
 
         private bool TryStart()
         {
@@ -141,7 +135,7 @@ public partial class LogIndexStorage
 
         private int FindFromIndex()
         {
-            var index = BinarySearch(_value!.AsSpan(), _from);
+            int index = BinarySearch(_value!.AsSpan(), _from);
             return index >= 0 ? index : ~index;
         }
 
