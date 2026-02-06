@@ -4,8 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.LogIndex;
@@ -25,11 +25,8 @@ partial class LogIndexStorage
         private readonly ILogger _logger;
         private readonly int _compactionDistance;
 
-        // TODO: simplify concurrency handling
-        private readonly AutoResetEvent _runOnceEvent = new(false);
         private readonly CancellationTokenSource _cts = new();
-        private readonly ManualResetEvent _compactionStartedEvent = new(false);
-        private readonly ManualResetEvent _compactionEndedEvent = new(true);
+        private readonly Channel<TaskCompletionSource?> _channel = Channel.CreateBounded<TaskCompletionSource?>(1);
         private readonly Task _compactionTask;
 
         public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
@@ -66,7 +63,7 @@ partial class LogIndexStorage
             if (uncompacted < _compactionDistance)
                 return false;
 
-            if (!_runOnceEvent.Set())
+            if (!_channel.Writer.TryWrite(null))
                 return false;
 
             _lastAtMin = _storage.MinBlockNumber;
@@ -77,60 +74,54 @@ partial class LogIndexStorage
         public async Task StopAsync()
         {
             await _cts.CancelAsync();
-            await _compactionEndedEvent.WaitOneAsync(CancellationToken.None);
+            _channel.Writer.TryComplete();
+            await _compactionTask;
         }
 
         public async Task<CompactingStats> ForceAsync()
         {
-            // Wait for the previous one to finish
-            await _compactionEndedEvent.WaitOneAsync(_cts.Token);
-
-            _runOnceEvent.Set();
-            await _compactionStartedEvent.WaitOneAsync(100, _cts.Token);
-            await _compactionEndedEvent.WaitOneAsync(_cts.Token);
+            TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await _channel.Writer.WriteAsync(tcs, _cts.Token);
+            await tcs.Task;
             return _stats;
         }
 
         private async Task DoCompactAsync()
         {
             CancellationToken cancellation = _cts.Token;
-            while (!cancellation.IsCancellationRequested)
+            try
             {
-                try
+                await foreach (TaskCompletionSource? tcs in _channel.Reader.ReadAllAsync(cancellation))
                 {
-                    await _runOnceEvent.WaitOneAsync(cancellation);
+                    try
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
 
-                    _compactionEndedEvent.Reset();
-                    _compactionStartedEvent.Set();
+                        var timestamp = Stopwatch.GetTimestamp();
+                        _storage._rootDb.Compact();
 
-                    if (cancellation.IsCancellationRequested)
-                        return;
+                        TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);
+                        _stats.Total.Include(elapsed);
 
-                    if (_logger.IsInfo)
-                        _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
+                        if (_logger.IsInfo) _logger.Info($"Log index: compaction ended in {elapsed}, DB size: {_storage.GetDbSize()}");
 
-                    var timestamp = Stopwatch.GetTimestamp();
-                    _storage._rootDb.Compact();
-
-                    TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);
-                    _stats.Total.Include(elapsed);
-
-                    if (_logger.IsInfo)
-                        _logger.Info($"Log index: compaction ended in {elapsed}, DB size: {_storage.GetDbSize()}");
+                        tcs?.TrySetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs?.TrySetCanceled();
+                        _storage.OnBackgroundError<Compactor>(ex);
+                        await _cts.CancelAsync();
+                        _channel.Writer.TryComplete();
+                    }
                 }
-                catch (OperationCanceledException ex) when (ex.CancellationToken == cancellation)
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                while (_channel.Reader.TryRead(out TaskCompletionSource? remaining))
                 {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _storage.OnBackgroundError<Compactor>(ex);
-                    await _cts.CancelAsync();
-                }
-                finally
-                {
-                    _compactionStartedEvent.Reset();
-                    _compactionEndedEvent.Set();
+                    remaining?.TrySetCanceled();
                 }
             }
         }
