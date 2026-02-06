@@ -32,9 +32,8 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
-    public long BlackListHFNumber { get; set; }
     public long MergeSignRange { get; set; }
-    public Address[] BlackListedAddresses { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; }
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
     public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
@@ -112,8 +111,8 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
-    Address[] GenesisMasterNodes { get; set; }
-    long MergeSignRange { get; set; }
+    public Address[] GenesisMasterNodes { get; set; }
+    public long MergeSignRange { get; set; }
 
     public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
@@ -121,13 +120,11 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public Address XDCXLendingAddressBinary { get; set; }
     public Address XDCXAddressBinary { get; set; }
     public Address TradingStateAddressBinary { get; set; }
-
-    Address[] BlackListedAddresses { get; set; }
-    Address FoundationWallet { get; set; }
-    Address MasternodeVotingContract { get; set; }
-
-    bool IsBlackListingEnabled { get; set; }
-    bool IsTIP2019 { get; set; }
-    bool IsTIPXDCXMiner { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; }
+    public Address FoundationWallet { get; set; }
+    public Address MasternodeVotingContract { get; set; }
+    public bool IsBlackListingEnabled { get; set; }
+    public bool IsTIP2019 { get; set; }
+    public bool IsTIPXDCXMiner { get; set; }
     public void ApplyV2Config(ulong round);
 }

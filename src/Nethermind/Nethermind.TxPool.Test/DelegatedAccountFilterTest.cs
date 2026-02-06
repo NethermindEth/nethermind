@@ -19,6 +19,7 @@ using Nethermind.Core.Test;
 
 namespace Nethermind.TxPool.Test;
 
+[Parallelizable(ParallelScope.All)]
 internal class DelegatedAccountFilterTest
 {
     [Test]
@@ -26,7 +27,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
@@ -46,7 +47,7 @@ internal class DelegatedAccountFilterTest
         stateProvider.InsertCode(code, TestItem.AddressA);
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, stateProvider, new DelegationCache());
         Transaction transaction = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
@@ -62,7 +63,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         Transaction inPool = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         standardPool.TryInsert(inPool.Hash, inPool);
@@ -84,7 +85,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         Transaction inPool = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         standardPool.TryInsert(inPool.Hash, inPool);
@@ -111,7 +112,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(isActive ? Prague.Instance : Cancun.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         Transaction inPool = Build.A.Transaction.WithNonce(0).SignedAndResolved(new EthereumEcdsa(0), TestItem.PrivateKeyA).TestObject;
         standardPool.TryInsert(inPool.Hash, inPool);
@@ -140,7 +141,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegationCache pendingDelegations = new();
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
@@ -161,7 +162,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegatedAccountFilter filter = new(headInfoProvider, standardPool, blobPool, Substitute.For<IReadOnlyStateProvider>(), new());
         Transaction transaction;
@@ -200,7 +201,7 @@ internal class DelegatedAccountFilterTest
     {
         IChainHeadSpecProvider headInfoProvider = Substitute.For<IChainHeadSpecProvider>();
         headInfoProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
-        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
+        TxDistinctSortedPool standardPool = new TxDistinctSortedPool(new TxPoolConfig().Size, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         TxDistinctSortedPool blobPool = new BlobTxDistinctSortedPool(10, Substitute.For<IComparer<Transaction>>(), NullLogManager.Instance);
         DelegationCache pendingDelegations = new();
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);

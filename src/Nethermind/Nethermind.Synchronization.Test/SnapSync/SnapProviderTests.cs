@@ -7,7 +7,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
@@ -23,7 +22,6 @@ using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
-using Nethermind.Trie.Pruning;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;

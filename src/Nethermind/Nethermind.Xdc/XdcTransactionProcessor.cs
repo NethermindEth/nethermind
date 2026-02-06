@@ -26,6 +26,14 @@ internal class XdcTransactionProcessor(
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager) : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
+
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+    {
+        if (tx.IsSpecialTransaction((IXdcReleaseSpec)spec)) return;
+
+        base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+    }
+
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
@@ -46,7 +54,7 @@ internal class XdcTransactionProcessor(
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
-        if (xdcSpec.BlackListHFNumber <= header.Number)
+        if (xdcSpec.IsBlackListingEnabled)
         {
             if (IsBlackListed(xdcSpec, sender) || IsBlackListed(xdcSpec, target))
             {
@@ -73,6 +81,7 @@ internal class XdcTransactionProcessor(
             return ExecuteSpecialTransaction(tx, tracer, opts);
 
         }
+
         return base.Execute(tx, tracer, opts);
     }
 
@@ -113,21 +122,56 @@ internal class XdcTransactionProcessor(
         return base.ValidateGas(tx, header, minGasRequired);
     }
 
+    protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
+    {
+        // IMPORTANT: if we override the effective gas price to 0, we must also set opcodeGasPrice to 0.
+        // TxExecutionContext is created with opcodeGasPrice and is later used for refunding, tracing, etc.
+        //
+        // Also: IsSpecialTransaction requires the IXdcReleaseSpec to decide Randomize vs BlockSigner, so
+        // we need the current block spec here.
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec;
+
+        if (tx.IsSpecialTransaction(xdcSpec))
+        {
+            opcodeGasPrice = UInt256.Zero;
+            return UInt256.Zero;
+        }
+
+        return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
+    }
+
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    {
+        if (tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
+        {
+            return new IntrinsicGas<EthereumGasPolicy>();
+        }
+
+        return base.CalculateIntrinsicGas(tx, spec);
+    }
+
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
+        bool restore = opts.HasFlag(ExecutionOptions.Restore);
+
         // maybe a better approach would be adding an XdcGasPolicy 
         TransactionResult result;
+        _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
         bool _ = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
-            || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
+            || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
         {
+            if (restore)
+            {
+                WorldState.Reset(resetBlockChanges: false);
+            }
             return result;
         }
 

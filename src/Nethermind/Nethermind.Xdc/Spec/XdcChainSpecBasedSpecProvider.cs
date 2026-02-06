@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -37,7 +37,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
-        releaseSpec.BlackListedAddresses = chainSpecEngineParameters.BlackListedAddresses;
+        releaseSpec.BlackListedAddresses = new(chainSpecEngineParameters.BlackListedAddresses ?? []);
 
         releaseSpec.RandomizeSMCBinary = chainSpecEngineParameters.RandomizeSMCBinary;
 

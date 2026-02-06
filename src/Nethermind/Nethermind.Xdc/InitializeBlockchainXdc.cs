@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
+using Nethermind.Xdc.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -18,9 +19,9 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
     private readonly INethermindApi _api = api;
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
-        _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider));
+        _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider, chainHeadInfoProvider));
 
-        TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
+        Nethermind.TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),

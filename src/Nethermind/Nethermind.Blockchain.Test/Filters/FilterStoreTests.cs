@@ -14,11 +14,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class FilterStoreTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -153,6 +154,7 @@ public class FilterStoreTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [Parallelizable(ParallelScope.None)]
     public async Task CleanUps_filters()
     {
         List<int> removedFilterIds = new();

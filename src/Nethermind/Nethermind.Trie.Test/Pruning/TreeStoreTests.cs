@@ -20,7 +20,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.State.Healing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,18 +28,13 @@ namespace Nethermind.Trie.Test.Pruning
 {
     [TestFixture(INodeStorage.KeyScheme.HalfPath)]
     [TestFixture(INodeStorage.KeyScheme.Hash)]
-    public class TreeStoreTests
+    [Parallelizable(ParallelScope.All)]
+    public class TreeStoreTests(INodeStorage.KeyScheme scheme)
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
         // new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
 
         private readonly AccountDecoder _accountDecoder = new();
-        private readonly INodeStorage.KeyScheme _scheme;
-
-        public TreeStoreTests(INodeStorage.KeyScheme scheme)
-        {
-            _scheme = scheme;
-        }
 
         private TrieStore CreateTrieStore(
             IPruningStrategy? pruningStrategy = null,
@@ -60,7 +54,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             finalizedStateProvider ??= new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new(
-                new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
+                new NodeStorage(kvStore, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
                 persistenceStrategy,
                 finalizedStateProvider,
@@ -149,7 +143,7 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, trieNode3);
             }
             fullTrieStore.WaitForPruning();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.HalfPath ? 832 : 676);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 832 : 676);
         }
 
         [Test]
@@ -178,7 +172,7 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
             trieStore.WaitForPruning();
-            trieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.HalfPath ? 552 : 396);
+            trieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 552 : 396);
         }
 
         [Test]
@@ -243,7 +237,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 545956 : 616104L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 545956 : 616104L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -872,7 +866,7 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => (_scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
+        private long ExpectedPerNodeKeyMemorySize => (scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
 
         [Test]
         public void After_commit_should_have_has_root()
@@ -903,6 +897,7 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [Retry(3)]
+        [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()
         {
             MemDb memDb = new();
@@ -931,7 +926,7 @@ namespace Nethermind.Trie.Test.Pruning
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
 
-            if (_scheme == INodeStorage.KeyScheme.Hash)
+            if (scheme == INodeStorage.KeyScheme.Hash)
             {
                 memDb.Count.Should().NotBe(1);
             }
@@ -942,6 +937,8 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        [Retry(3)]
+        [NonParallelizable]
         public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
             // TODO: Check why slow
@@ -1022,7 +1019,7 @@ namespace Nethermind.Trie.Test.Pruning
             Address address = TestItem.AddressA;
             UInt256 slot = 1;
 
-            INodeStorage nodeStorage = new NodeStorage(memDbProvider.StateDb, _scheme);
+            INodeStorage nodeStorage = new NodeStorage(memDbProvider.StateDb, scheme);
             (Hash256 stateRoot, ValueHash256 storageRoot) = SetupStartingState();
             nodeStorage.Get(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot).Should().NotBeNull();
 
@@ -1105,7 +1102,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
@@ -1146,7 +1143,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Will_NotPruneTopLevelNode()
         {
-            if (_scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
+            if (scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
 
             MemDb memDb = new();
             TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
@@ -1225,7 +1222,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Can_Prune_StorageTreeRoot()
         {
-            if (_scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
+            if (scheme == INodeStorage.KeyScheme.Hash) Assert.Ignore("Not applicable for hash");
 
             MemDb memDb = new();
             TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
@@ -1594,7 +1591,7 @@ namespace Nethermind.Trie.Test.Pruning
 
                     long cachedPersistedNode = fullTrieStore.CachedNodesCount - fullTrieStore.DirtyCachedNodesCount;
                     long perStatePersistedNode = 20;
-                    if (_scheme == INodeStorage.KeyScheme.Hash)
+                    if (scheme == INodeStorage.KeyScheme.Hash)
                     {
                         cachedPersistedNode.Should().Be(perStatePersistedNode + 3);
                     }

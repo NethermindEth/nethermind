@@ -18,21 +18,19 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
-using Nethermind.State;
-using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Logging;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Xdc.TxPool;
+using Nethermind.Api.Steps;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Xdc;
 
@@ -101,6 +99,14 @@ public class XdcModule : Module
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
+
+            // beacon sync strategy
+            .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
+
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()

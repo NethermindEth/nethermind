@@ -49,6 +49,7 @@ namespace Nethermind.Xdc
         private bool _writeRoundInfo = true;
         private long _highestSignTxNumber = 0;
 
+
         public XdcHotStuff(
             IBlockTree blockTree,
             IXdcConsensusContext xdcContext,
@@ -249,6 +250,7 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
+
             }
 
             if (_highestSignTxNumber < roundParent.Number 
