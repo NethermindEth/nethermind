@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -16,9 +18,9 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class BlockDecoderTests
 {
-    private readonly Block[] _scenarios;
+    private static readonly Block[] _scenarios = BuildScenarios();
 
-    public BlockDecoderTests()
+    private static Block[] BuildScenarios()
     {
         var transactions = new Transaction[100];
         for (int i = 0; i < transactions.Length; i++)
@@ -40,8 +42,8 @@ public class BlockDecoderTests
                 .TestObject;
         }
 
-        _scenarios = new[]
-        {
+        return
+        [
             Build.A.Block.WithNumber(1).TestObject,
             Build.A.Block
                 .WithNumber(1)
@@ -95,8 +97,13 @@ public class BlockDecoderTests
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
-        };
+        ];
     }
+
+    private static IEnumerable<Block> BlockScenarios() => _scenarios;
+
+    private static IEnumerable<Block> BlockScenariosWithTxs() =>
+        _scenarios.Where(static b => b.Transactions.Length > 0);
 
     [Test]
     public void Can_do_roundtrip_null([Values(true, false)] bool valueDecoder)
@@ -122,17 +129,16 @@ public class BlockDecoderTests
     }
 
     [Test]
-    public void Can_do_roundtrip_scenarios([Values(true, false)] bool valueDecoder)
+    public void Can_do_roundtrip_scenarios(
+        [ValueSource(nameof(BlockScenarios))] Block block,
+        [Values(true, false)] bool valueDecoder)
     {
         BlockDecoder decoder = new();
-        foreach (Block block in _scenarios)
-        {
-            Rlp encoded = decoder.Encode(block);
-            Rlp.ValueDecoderContext valueDecoderContext = new(encoded.Bytes);
-            Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
-            Rlp encoded2 = decoder.Encode(decoded);
-            Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
-        }
+        Rlp encoded = decoder.Encode(block);
+        Rlp.ValueDecoderContext valueDecoderContext = new(encoded.Bytes);
+        Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
+        Rlp encoded2 = decoder.Encode(decoded);
+        Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
     }
 
     [TestCase("0xf902cef9025ba055870e2f3ef77a9e6163ee5c005dc51d648a2eead382b9044b1a5ad2ee69b0c6a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942adc25665018aa1fe0e6bc666dac8fc2697ff9baa0b77e3b74c6c8af85408677375183385a2e55446bd071bf193a4958f7417dc8fba056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800188016345785d8a0000800c80a0000000000000000000000000000000000000000000000000000000000000000088000000000000000007a0cc3b10b54dc4e97c01f1df20e8b95874cd5fe83bf6eae64935a16cb08db85fa98080a00000000000000000000000000000000000000000000000000000000000000000a0e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855c0c0f86ce08080946389e7f33ce3b1e94e4325ef02829cd12297ef7188ffffffffffffffffd80180948a0a19589531694250d570040a0c4b74576919b801d8028094000000000000000000000000000000000000100080d8038094a94f5374fce5edbc8e2a8697c15331677e6ebf0b80")]
@@ -144,29 +150,22 @@ public class BlockDecoderTests
     }
 
     [Test]
-    public void Encode_with_pre_encoded_transactions_produces_same_rlp()
+    public void Encode_with_pre_encoded_transactions_produces_same_rlp(
+        [ValueSource(nameof(BlockScenariosWithTxs))] Block block)
     {
-        BlockDecoder decoder = new();
-        foreach (Block block in _scenarios)
+        byte[][] encodedTxs = new byte[block.Transactions.Length][];
+        for (int i = 0; i < block.Transactions.Length; i++)
         {
-            if (block.Transactions.Length == 0) continue;
-
-            // Encode transactions in SkipTypedWrapping format (as CL provides)
-            byte[][] encodedTxs = new byte[block.Transactions.Length][];
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                encodedTxs[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
-            }
-
-            // Encode without pre-encoded bytes (standard path)
-            Rlp standard = decoder.Encode(block);
-
-            // Encode with pre-encoded bytes (fast path)
-            block.EncodedTransactions = encodedTxs;
-            Rlp fast = decoder.Encode(block);
-
-            Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+            encodedTxs[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
         }
+
+        BlockDecoder decoder = new();
+        Rlp standard = decoder.Encode(block);
+
+        Block blockWithEncoded = new(block.Header, block.Body) { EncodedTransactions = encodedTxs };
+        Rlp fast = decoder.Encode(blockWithEncoded);
+
+        Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
     }
 
     [Test]
@@ -196,11 +195,10 @@ public class BlockDecoderTests
         }
 
         BlockDecoder decoder = new();
-
         Rlp standard = decoder.Encode(block);
 
-        block.EncodedTransactions = encodedTxs;
-        Rlp fast = decoder.Encode(block);
+        Block blockWithEncoded = new(block.Header, block.Body) { EncodedTransactions = encodedTxs };
+        Rlp fast = decoder.Encode(blockWithEncoded);
 
         Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
     }
