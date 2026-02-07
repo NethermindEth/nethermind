@@ -1495,7 +1495,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
                 // This ensure that the root that we use here is the same.
                 // This is only needed for state tree as the root need to be put in the block commit set.
-                if (address == null) blockCommitter.StateRoot = ((IScopableTrieStore)trieStore).FindCachedOrUnknown(address, TreePath.Empty, root?.Keccak);
+                if (address is null) blockCommitter.StateRoot = ((IScopableTrieStore)trieStore).FindCachedOrUnknown(address, TreePath.Empty, root?.Keccak);
             }
         }
 

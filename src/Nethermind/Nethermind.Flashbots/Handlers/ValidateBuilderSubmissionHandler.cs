@@ -284,7 +284,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (block.Header.TotalDifficulty != null && !_blockTree.IsBetterThanHead(block.Header))
+        if (block.Header.TotalDifficulty is not null && !_blockTree.IsBetterThanHead(block.Header))
         {
             error = $"Block {block.Header.Hash} is not better than head {_blockTree.Head?.Hash}";
             return false;

@@ -48,7 +48,7 @@ public class EraStore : IEraStore
     {
         get
         {
-            if (_firstBlock == null)
+            if (_firstBlock is null)
             {
                 using EraRenter _ = RentReader(FirstEpoch, out EraReader smallestEraReader);
                 _firstBlock = smallestEraReader.FirstBlock;
@@ -64,7 +64,7 @@ public class EraStore : IEraStore
     {
         get
         {
-            if (_lastBlock == null)
+            if (_lastBlock is null)
             {
                 using EraRenter _ = RentReader(LastEpoch, out EraReader biggestEraReader);
                 _lastBlock = biggestEraReader.LastBlock;
@@ -152,7 +152,7 @@ public class EraStore : IEraStore
             Task accumulatorTask = Task.Run(async () =>
             {
                 ValueHash256 eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
-                if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
+                if (_trustedAccumulators is not null && !_trustedAccumulators.Contains(eraAccumulator))
                 {
                     throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
                 }

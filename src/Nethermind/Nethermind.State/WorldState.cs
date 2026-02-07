@@ -274,7 +274,7 @@ namespace Nethermind.State
         public ValueHash256 GetStorageRoot(Address address)
         {
             DebugGuardInScope();
-            if (address == null) throw new ArgumentNullException(nameof(address));
+            ArgumentNullException.ThrowIfNull(address);
             return _persistentStorageProvider.GetStorageRoot(address);
         }
 

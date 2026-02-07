@@ -510,7 +510,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         long queuedStorage = StoragesToRetrieve.Count;
                         long storagesToRetrieve = queuedStorage + _activeStorageRequests;
-                        if (_estimatedStorageRemaining == null || storagesToRetrieve > _estimatedStorageRemaining)
+                        if (_estimatedStorageRemaining is null || storagesToRetrieve > _estimatedStorageRemaining)
                         {
                             _estimatedStorageRemaining = storagesToRetrieve;
                         }

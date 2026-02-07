@@ -66,7 +66,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
-                if (networkConfig.DiscoveryDns == null)
+                if (networkConfig.DiscoveryDns is null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";

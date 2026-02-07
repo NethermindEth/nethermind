@@ -45,7 +45,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 
             var obj = _obj;
 
-            if (obj == null)
+            if (obj is null)
                 return objSize;
 
             if (obj is byte[] array)
@@ -93,7 +93,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
     }
 
     public bool IsNotNull => !IsNull;
-    public bool IsNull => _obj == null;
+    public bool IsNull => _obj is null;
     public bool IsNullOrEmpty
     {
         get

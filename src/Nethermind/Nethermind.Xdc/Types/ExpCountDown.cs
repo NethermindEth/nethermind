@@ -67,7 +67,7 @@ public class ExpCountDown : IDisposable, IExpCountDown
     public void Reset()
     {
         _currentExponent = 0;
-        if (_callback != null)
+        if (_callback is not null)
         {
             ScheduleNext();
         }

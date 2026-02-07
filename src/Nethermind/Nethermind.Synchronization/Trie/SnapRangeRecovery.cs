@@ -50,7 +50,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 {
                     return peerPool.AllocateAndRun(async (peer) =>
                         {
-                            if (peer == null) return null;
+                            if (peer is null) return null;
                             try
                             {
                                 var result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
@@ -103,7 +103,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             queryPath = startingPath.Append(0, 64 - startingPath.Length).Path;
         }
 
-        if (address == null)
+        if (address is null)
         {
             AccountRange accountRange = new AccountRange(
                 rootHash,
@@ -205,7 +205,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             }
 
             // Eh.. what can you do?
-            if (rlp == null) continue;
+            if (rlp is null) continue;
 
             result.Add((currentPath, rlp));
 
@@ -219,7 +219,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 for (int i = 0; i < 16; i++)
                 {
                     Hash256? childHash = node.GetChildHash(i);
-                    if (childHash == null) continue;
+                    if (childHash is null) continue;
                     checkStack.Push((currentPath.Append(i), childHash));
                 }
             }

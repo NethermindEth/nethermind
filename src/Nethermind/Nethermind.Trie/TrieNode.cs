@@ -363,7 +363,7 @@ namespace Nethermind.Trie
 
                 byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
 
-                if (fullRlp == null)
+                if (fullRlp is null)
                 {
                     ThrowNullRlp();
                 }

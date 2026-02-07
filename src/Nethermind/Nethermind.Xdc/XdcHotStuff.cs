@@ -87,7 +87,7 @@ namespace Nethermind.Xdc
         {
             lock (_lockObject)
             {
-                if (_cancellationTokenSource != null)
+                if (_cancellationTokenSource is not null)
                 {
                     _logger.Info("XdcHotStuff already started, ignoring duplicate Start() call");
                     return;
@@ -161,7 +161,7 @@ namespace Nethermind.Xdc
         private async Task WaitForBlockTreeHead(CancellationToken cancellationToken)
         {
             _logger.Debug("Waiting for blockTree.Head to initialize...");
-            while (_blockTree.Head == null)
+            while (_blockTree.Head is null)
             {
                 await Task.Delay(100, cancellationToken);
             }
@@ -217,14 +217,14 @@ namespace Nethermind.Xdc
             ulong currentRound = _xdcContext.CurrentRound;
 
             XdcBlockHeader? roundParent = GetParentForRound();
-            if (roundParent == null)
+            if (roundParent is null)
             {
                 throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
             }
 
             // Get XDC spec for this round
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(roundParent, currentRound);
-            if (spec == null)
+            if (spec is null)
             {
                 _logger.Error($"Round {currentRound}: Failed to get XDC spec, skipping");
                 return;
@@ -232,7 +232,7 @@ namespace Nethermind.Xdc
 
             // Get epoch info and check for epoch switch
             EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(roundParent);
-            if (epochInfo?.Masternodes == null || epochInfo.Masternodes.Length == 0)
+            if (epochInfo?.Masternodes is null || epochInfo.Masternodes.Length == 0)
             {
                 _logger.Warn($"Round {currentRound}: No masternodes in epoch, skipping");
                 return;
@@ -296,7 +296,7 @@ namespace Nethermind.Xdc
 
                 Block? proposedBlock = await proposedBlockTask;
 
-                if (proposedBlock != null)
+                if (proposedBlock is not null)
                 {
                     _lastActivityTime = DateTime.UtcNow;
                     _logger.Info($"Round {currentRound}: Block #{proposedBlock.Number} built successfully, hash={proposedBlock.Hash}");
@@ -440,7 +440,7 @@ namespace Nethermind.Xdc
         {
             if (!maxProducingInterval.HasValue)
             {
-                return _cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested;
+                return _cancellationTokenSource is not null && !_cancellationTokenSource.IsCancellationRequested;
             }
 
             TimeSpan elapsed = DateTime.UtcNow - _lastActivityTime;
@@ -458,7 +458,7 @@ namespace Nethermind.Xdc
 
             lock (_lockObject)
             {
-                if (_cancellationTokenSource == null)
+                if (_cancellationTokenSource is null)
                 {
                     return;
                 }
@@ -473,7 +473,7 @@ namespace Nethermind.Xdc
             // Signal cancellation
             _cancellationTokenSource?.Cancel();
             // Wait for task completion
-            if (task != null)
+            if (task is not null)
             {
                 try
                 {
