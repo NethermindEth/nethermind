@@ -49,6 +49,7 @@ namespace Nethermind.Db.Test.LogIndex
         [
             new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key }),
             new(new TestData(5, 200) { Compression = nameof(TurboPFor.p4nd1enc128v32) }),
+            new(new TestData(5, 100, startNum: (uint)int.MaxValue - 200) { Compression = CompressionAlgorithm.Best.Key }),
             new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key, ExtendedGetRanges = true }) { RunState = RunState.Explicit },
             new(new TestData(100, 100) { Compression = nameof(TurboPFor.p4nd1enc128v32) }) { RunState = RunState.Explicit },
             new(new TestData(100, 200) { Compression = CompressionAlgorithm.Best.Key }) { RunState = RunState.Explicit }
@@ -970,7 +971,7 @@ namespace Nethermind.Db.Test.LogIndex
             );
 
             public override string ToString() =>
-                $"{_batchCount} * {_blocksPerBatch} blocks (ex-ranges: {ExtendedGetRanges}, compression: {Compression})";
+                $"{_batchCount} * {_blocksPerBatch} blocks (start: {_startNum}, ex-ranges: {ExtendedGetRanges}, compression: {Compression})";
         }
 
         private class SaveFailingLogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)

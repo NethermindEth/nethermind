@@ -874,6 +874,7 @@ namespace Nethermind.Db.LogIndex
 
         private static int ReadCompressionMarker(ReadOnlySpan<byte> source) =>
             (int)BinaryPrimitives.ReadUInt32LittleEndian(source);
+
         private static void WriteCompressionMarker(Span<byte> source, int len) =>
             BinaryPrimitives.WriteUInt32LittleEndian(source, (uint)len);
 
@@ -888,14 +889,7 @@ namespace Nethermind.Db.LogIndex
         /// </remarks>
         private static bool IsCompressed(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out int len)
         {
-            if (value.Length == 0)
-            {
-                len = 0;
-                return false;
-            }
-
-            bool isTransient = key.EndsWith(Postfix.ForwardMerge) || key.EndsWith(Postfix.BackwardMerge);
-            if (isTransient)
+            if (value.Length == 0 || key.EndsWith(Postfix.ForwardMerge) || key.EndsWith(Postfix.BackwardMerge))
             {
                 len = 0;
                 return false;
