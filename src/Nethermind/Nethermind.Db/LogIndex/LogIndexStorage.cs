@@ -112,7 +112,7 @@ namespace Nethermind.Db.LogIndex
         [InlineArray(MaxTopics + 1)]
         private struct AllMergeOperators
         {
-            private MergeOperator _element;
+            private IMergeOperator _element;
         }
 
         private ref struct DbBatches : IDisposable
@@ -242,19 +242,14 @@ namespace Nethermind.Db.LogIndex
                     ? new Compactor(this, _logger, config.CompactionDistance)
                     : new NoOpCompactor();
 
-                for (int i = 0; i <= MaxTopics; i++)
-                    _mergeOperators[i] = new(this, _compressor, topicIndex: i == 0 ? null : i - 1);
+                for (int i = -1; i < MaxTopics; i++)
+                    _mergeOperators[i] = new MergeOperator(this, _compressor, topicIndex: i < 0 ? null : i);
 
                 _rootDb = CreateRootDb(dbFactory, config.Reset);
                 _metaDb = GetMetaDb(_rootDb);
                 _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
-                _topicDbs =
-                [
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics0),
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics1),
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics2),
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics3),
-                ];
+                _topicDbs = Enumerable.Range(0, MaxTopics).Select(i => _rootDb.GetColumnDb(GetColumn(topicIndex: i))).ToArray();
+
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
@@ -313,14 +308,10 @@ namespace Nethermind.Db.LogIndex
             {
                 IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
                 {
-                    ColumnsMergeOperators = new Dictionary<string, IMergeOperator>
-                    {
-                        [$"{LogIndexColumns.Addresses}"] = _mergeOperators[0],
-                        [$"{LogIndexColumns.Topics0}"] = _mergeOperators[1],
-                        [$"{LogIndexColumns.Topics1}"] = _mergeOperators[2],
-                        [$"{LogIndexColumns.Topics2}"] = _mergeOperators[3],
-                        [$"{LogIndexColumns.Topics3}"] = _mergeOperators[4],
-                    }
+                    ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
+                        i => $"{GetColumn(topicIndex: i < 0 ? null : i)}",
+                        i => _mergeOperators[i + 1]
+                    )
                 });
 
                 return (db, GetMetaDb(db));
@@ -705,7 +696,7 @@ namespace Nethermind.Db.LogIndex
             CompactingStats compactStats = await _compactor.ForceAsync();
             stats?.Compacting.Combine(compactStats);
 
-            foreach (MergeOperator mergeOperator in _mergeOperators)
+            foreach (IMergeOperator mergeOperator in _mergeOperators)
                 stats?.Combine(mergeOperator.Stats);
 
             if (_logger.IsInfo)
@@ -779,7 +770,7 @@ namespace Nethermind.Db.LogIndex
                 semaphore.Release();
             }
 
-            foreach (MergeOperator mergeOperator in _mergeOperators)
+            foreach (IMergeOperator mergeOperator in _mergeOperators)
                 stats?.Combine(mergeOperator.GetAndResetStats());
             stats?.Compressing.Combine(_compressor.GetAndResetStats());
             stats?.Compacting.Combine(_compactor.GetAndResetStats());
@@ -907,6 +898,10 @@ namespace Nethermind.Db.LogIndex
             numbers.CopyTo(MemoryMarshal.Cast<byte, int>(value.AsSpan()));
             return value;
         }
+
+        private static LogIndexColumns GetColumn(int? topicIndex) => topicIndex.HasValue
+            ? (LogIndexColumns)(topicIndex + LogIndexColumns.Topics0)
+            : LogIndexColumns.Addresses;
 
         private IDb GetDb(int? topicIndex) => topicIndex.HasValue ? _topicDbs[topicIndex.Value] : _addressDb;
 
