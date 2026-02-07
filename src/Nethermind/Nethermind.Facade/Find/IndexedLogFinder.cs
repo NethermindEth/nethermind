@@ -49,8 +49,11 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to), cancellationToken))
+        IEnumerable<long> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to);
+        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexNumbers, cancellationToken))
+        {
             yield return log;
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
 

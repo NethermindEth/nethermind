@@ -242,11 +242,8 @@ namespace Nethermind.Db.LogIndex
                     ? new Compactor(this, _logger, config.CompactionDistance)
                     : new NoOpCompactor();
 
-                _mergeOperators[0] = new(this, _compressor, topicIndex: null);
-                _mergeOperators[1] = new(this, _compressor, topicIndex: 0);
-                _mergeOperators[2] = new(this, _compressor, topicIndex: 1);
-                _mergeOperators[3] = new(this, _compressor, topicIndex: 2);
-                _mergeOperators[4] = new(this, _compressor, topicIndex: 3);
+                for (int i = 0; i <= MaxTopics; i++)
+                    _mergeOperators[i] = new(this, _compressor, topicIndex: i == 0 ? null : i - 1);
 
                 _rootDb = CreateRootDb(dbFactory, config.Reset);
                 _metaDb = GetMetaDb(_rootDb);
