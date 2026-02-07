@@ -14,22 +14,23 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Test;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test;
+namespace Nethermind.Evm.Test;
 
 [TestFixture]
 public class Eip7928Tests() : VirtualMachineTestsBase
 {
-    private static readonly IReleaseSpec _spec = Amsterdam.Instance;
-    private static readonly TestSpecProvider _specProvider = new(_spec);
+    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+
+    // private static readonly IReleaseSpec _spec = Amsterdam.Instance;
+    // private static readonly TestSpecProvider _specProvider = new(_spec);
     private static readonly EthereumEcdsa _ecdsa = new(0);
     private static readonly UInt256 _accountBalance = 10.Ether();
     private static readonly long _gasLimit = 100000;
@@ -45,7 +46,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         Transaction createTx = Build.A.Transaction.WithCode(code).WithGasLimit(_gasLimit).WithValue(0).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext( new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
         BlockAccessList bal = worldState.GeneratedBlockAccessList;
@@ -71,26 +72,26 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         }
     }
 
-    private static Action<ContainerBuilder> BuildContainer()
-        => containerBuilder => containerBuilder.AddSingleton(_specProvider);
+    private Action<ContainerBuilder> BuildContainer()
+        => containerBuilder => containerBuilder.AddSingleton(SpecProvider);
 
-    private static void InitWorldState(IWorldState worldState)
+    private void InitWorldState(IWorldState worldState)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
 
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, _specProvider.GenesisSpec);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, SpecProvider.GenesisSpec);
 
         worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
-        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, _specProvider.GenesisSpec);
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, SpecProvider.GenesisSpec);
 
         worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
+        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
 
         worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, _specProvider.GenesisSpec);
+        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
 
-        worldState.Commit(_specProvider.GenesisSpec);
+        worldState.Commit(SpecProvider.GenesisSpec);
         worldState.CommitTree(0);
         worldState.RecalculateStateRoot();
     }
@@ -106,7 +107,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            AccountChanges readAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject;
+            AccountChanges readAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).WithNonceChanges([new(0, 1)]).TestObject;
             changes = [readAccount];
             yield return new TestCaseData(code, changes) { TestName = "storage_read" };
 
@@ -115,7 +116,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
                 .Done;
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageChanges(slot, [new(0, slot)]).TestObject];
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageChanges(slot, [new(0, slot)]).WithNonceChanges([new(0, 1)]).TestObject];
             yield return new TestCaseData(code, changes) { TestName = "storage_write" };
 
             code = Prepare.EvmCode
@@ -128,18 +129,39 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Done;
             changes = [readAccount];
             yield return new TestCaseData(code, changes) { TestName = "storage_write_return_to_original" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodecopy" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodehash" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "extcodesize" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.BALANCE)
                 .Done;
-            AccountChanges emptyTestAccount = new(_testAddress);
+            AccountChanges emptyTestAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithNonceChanges([new(0, 1)]).TestObject;
             AccountChanges emptyBAccount = new(TestItem.AddressB);
             changes = [emptyTestAccount, emptyBAccount];
             yield return new TestCaseData(code, changes) { TestName = "balance" };
+
+            code = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.EXTCODECOPY)
+                .Done;
+            changes = [emptyTestAccount, emptyBAccount];
+            yield return new TestCaseData(code, changes) { TestName = "extcodecopy" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.EXTCODEHASH)
+                .Done;
+            changes = [emptyTestAccount, emptyBAccount];
+            yield return new TestCaseData(code, changes) { TestName = "extcodehash" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.EXTCODESIZE)
+                .Done;
+            changes = [emptyTestAccount, emptyBAccount];
+            yield return new TestCaseData(code, changes) { TestName = "extcodesize" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct_oog" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "revert" };
