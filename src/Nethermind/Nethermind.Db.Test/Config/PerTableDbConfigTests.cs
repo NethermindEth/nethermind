@@ -30,7 +30,7 @@ public class PerTableDbConfigTests
 
         foreach (string table in tables)
         {
-            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table);
+            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table, validate: false);
 
             object _ = config.RocksDbOptions;
             _ = config.AdditionalRocksDbOptions;

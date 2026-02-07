@@ -33,12 +33,11 @@ namespace Nethermind.Db.Test
         private DbConfig _dbConfig = new DbConfig();
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
 
-
         [SetUp]
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
-            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance, validateConfig: false);
         }
 
         [TearDown]
@@ -136,9 +135,9 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase("compaction_pri=kByCompensatedSize", true)]
-        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true)]
-        [TestCase("compaction_pri=kSomethingElse", false)]
+        [TestCase("compaction_pri=kByCompensatedSize", true, TestName = "CanOpenWithAdditionalConfig_SingleOption")]
+        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true, TestName = "CanOpenWithAdditionalConfig_MultipleOptions")]
+        [TestCase("compaction_pri=kSomethingElse", false, TestName = "CanOpenWithAdditionalConfig_InvalidOption")]
         public void CanOpenWithAdditionalConfig(string opts, bool success)
         {
             IDbConfig config = new DbConfig();
@@ -146,7 +145,7 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance, validateConfig: false);
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
@@ -321,7 +320,7 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
-            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance, validateConfig: false);
 
             if (Directory.Exists(DbPath))
             {
