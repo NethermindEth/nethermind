@@ -7,10 +7,10 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Xdc;
+using Nethermind.Xdc.Types;
 
 namespace Xdc;
 
@@ -21,51 +21,85 @@ public static class Migrator
         using SourceContext source = OpenSourceDatabase(args.SourceDir);
         using TargetContext target = OpenTargetDatabase(args.TargetDir, source.StateRoot);
 
+        Console.WriteLine("Migrating state and code...");
         var copier = new XdcTrieCopier(source, target);
         source.StateTree.Accept(copier, source.StateRoot, new VisitingOptions { FullScanMemoryBudget = 0 });
+
+        Console.WriteLine("Migrating snapshot...");
+        StoreSnapshot(source, target);
 
         if (args.Verify)
         {
             // TODO: add more verifications
+            Console.WriteLine("Verifying resulting db...");
             VerifyNoMissingNodes(source.StateTree, target.StateTree);
-
-            Console.WriteLine("Verification successful.");
+            Console.WriteLine("Verification successful");
         }
 
         return new MigrationResult(copier.StateNodesCopied, copier.CodeNodesCopied);
     }
 
+    private static void StoreSnapshot(SourceContext source, TargetContext target)
+    {
+        var manager = new SnapshotManager(target.SnapshotDb, null!, null!, null!, null!);
+
+        XdcReader reader = source.Reader;
+        Snapshot? snapshot = null;
+        RetractUntil(source.Pivot, reader, "snapshot block", header => (snapshot = reader.GetSnapshotAt(header)) is not null);
+
+        Console.WriteLine($"Storing snapshot({snapshot!.BlockNumber}, {snapshot.HeaderHash}, [{snapshot.NextEpochCandidates.Length}])");
+        manager.StoreSnapshot(snapshot!);
+    }
+
+    private static XdcBlockHeader RetractUntil(XdcBlockHeader from, XdcReader reader, string what, Func<XdcBlockHeader, bool> shouldStop)
+    {
+        XdcBlockHeader? header = from;
+        Console.WriteLine($"Retracting from {Format(header)} to find {what} block...");
+
+        while (header is not null)
+        {
+            if (shouldStop(header) || header.ParentHash is null || header.ParentHash == Keccak.Zero)
+                break;
+
+            header = reader.GetHeader(header.ParentHash);
+        }
+
+        if (header is null)
+            throw new Exception($"Failed to find {what}.");
+
+        Console.WriteLine($"Found {what} block at {Format(header)}");
+        return header;
+    }
+
+    private static XdcBlockHeader? RetractUntil(XdcReader reader, string what, Func<XdcBlockHeader, bool> shouldStop) =>
+        RetractUntil(
+            reader.GetHeadHeader() ?? throw new Exception("Failed to get head header."),
+            reader, what, shouldStop
+        );
+
     private static SourceContext OpenSourceDatabase(string dbPath)
     {
         var db = new ReadOnlyLevelDb(dbPath);
+        var reader = new XdcReader(db);
 
-        byte[] lastHeaderHash = db.Get(XdcSchema.HeadHeaderKey)
-            ?? throw new Exception("Failed to find latest header hash.");;
+        XdcBlockHeader? head = reader.GetHeadHeader()
+            ?? throw new Exception("Failed to get head header.");
 
-        byte[] headerNumberKey = [.. XdcSchema.HeaderNumberPrefix, .. lastHeaderHash];
-        byte[] blockNumberBytes = db.Get(headerNumberKey)
-            ?? throw new Exception("Failed to find block number from the last header hash.");
+        Console.WriteLine($"Found head block at {Format(head)}");
 
-        byte[] headerKey = [.. XdcSchema.HeaderPrefix, .. blockNumberBytes, .. lastHeaderHash];
-        byte[] headerRlp = db.Get(headerKey)
-            ?? throw new Exception("Failed to find header RLP.");
+        XdcBlockHeader pivot = RetractUntil(reader, "epoch switch", header => header.Validators is {Length: > 0})
+            ?? throw new Exception("Failed to find epoch switch block.");
 
-        BlockHeader header = new XdcHeaderDecoder().Decode(headerRlp);
-        Hash256 stateRoot = header.StateRoot
-            ?? throw new Exception("Failed to find state root from the header.");
+        Console.WriteLine($"Using pivot: {Format(pivot)}");
 
-        return new SourceContext(db, stateRoot);
+        return new SourceContext(db, reader, pivot);
     }
 
     private static TargetContext OpenTargetDatabase(string dbPath, Hash256 stateRoot)
     {
         var configFactory = new RocksDbConfigFactory(DbConfig.Default, new PruningConfig {Enabled = false}, new HardwareInfo(), NullLogManager.Instance);
         var dbFactory = new RocksDbFactory(configFactory, DbConfig.Default, new HyperClockCacheWrapper(), NullLogManager.Instance, dbPath);
-
-        IDb stateDb = dbFactory.CreateDb(new DbSettings(DbNames.State, "state"));
-        IDb codeDb = dbFactory.CreateDb(new DbSettings(DbNames.State, "code"));
-
-        return new TargetContext(stateDb, codeDb, stateRoot);
+        return new TargetContext(dbFactory, stateRoot);
     }
 
     private static void VerifyNoMissingNodes(StateTree sourceTree, StateTree targetTree)
@@ -77,4 +111,6 @@ public static class Migrator
         if (counter.MissingCount > 0)
             throw new Exception($"{counter.MissingCount} missing nodes found during verification.");
     }
+
+    private static string Format(XdcBlockHeader header) => header.ToString(BlockHeader.Format.FullHashAndNumber);
 }

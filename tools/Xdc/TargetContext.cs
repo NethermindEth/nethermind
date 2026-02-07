@@ -14,14 +14,17 @@ public sealed class TargetContext: IDisposable
 {
     public IDb StateDb { get; }
     public IDb CodeDb { get; }
+    public IDb SnapshotDb { get; }
+
     public IScopedTrieStore TrieStore { get; }
     public StateTree StateTree { get; }
 
-    public TargetContext(IDb stateDb, IDb codeDb, Hash256 stateRoot)
+    public TargetContext(IDbFactory dbFactory, Hash256 stateRoot)
     {
-        StateDb = stateDb;
-        CodeDb = codeDb;
-        TrieStore = new RawScopedTrieStore(new NodeStorage(stateDb, INodeStorage.KeyScheme.Hash, requirePath: false));
+        StateDb = dbFactory.CreateDb(new(DbNames.State, "state"));
+        CodeDb = dbFactory.CreateDb(new(DbNames.Code, "code"));
+        SnapshotDb = dbFactory.CreateDb(new("Snapshots", "snapshots"));
+        TrieStore = new RawScopedTrieStore(new NodeStorage(dbFactory.CreateDb(new(DbNames.State, "state")), INodeStorage.KeyScheme.Hash, requirePath: false));
         StateTree = new StateTree(TrieStore, NullLogManager.Instance) {RootHash = stateRoot};
     }
 
