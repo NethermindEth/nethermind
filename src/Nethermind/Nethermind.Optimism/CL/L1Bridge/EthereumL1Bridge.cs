@@ -17,9 +17,6 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumL1Bridge : IL1Bridge
 {
-    private const int L1EpochSlotSize = 32;
-    private const int L1SlotTimeMilliseconds = 12000;
-    private const int L1EpochTimeMilliseconds = L1EpochSlotSize * L1SlotTimeMilliseconds;
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
     private readonly ILogger _logger;

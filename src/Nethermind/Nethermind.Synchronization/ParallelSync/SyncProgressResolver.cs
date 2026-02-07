@@ -21,9 +21,6 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncConfig _syncConfig;
         private readonly IFullStateFinder _fullStateFinder;
 
-        // ReSharper disable once NotAccessedField.Local
-        private readonly ILogger _logger;
-
         private readonly ISyncFeed<HeadersSyncBatch?> _headersSyncFeed;
         private readonly ISyncFeed<BodiesSyncBatch?> _bodiesSyncFeed;
         private readonly ISyncFeed<ReceiptsSyncBatch?> _receiptsSyncFeed;
@@ -39,7 +36,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncFeed<SnapSyncBatch?> snapSyncFeed,
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            ArgumentNullException.ThrowIfNull(logManager);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
