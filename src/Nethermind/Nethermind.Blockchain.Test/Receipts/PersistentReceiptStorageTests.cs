@@ -456,6 +456,89 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
 
+    [Test]
+    public void Main_chain_update_events_should_commit_canonical_tx_index_only_on_last_block()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 42, isLast: false);
+        TxIndexFor(txHash1).Should().BeNull();
+        TxIndexFor(txHash2).Should().BeNull();
+
+        RaiseBatchEvent(block2, batchId: 42, isLast: true);
+        TxIndexFor(txHash1).Should().NotBeNull();
+        TxIndexFor(txHash2).Should().NotBeNull();
+    }
+
+    [Test]
+    public void Main_chain_update_events_should_discard_pending_batch_when_update_id_changes()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 50, isLast: false);
+        RaiseBatchEvent(block2, batchId: 51, isLast: true);
+
+        TxIndexFor(txHash1).Should().BeNull();
+        TxIndexFor(txHash2).Should().NotBeNull();
+    }
+
+    [Test]
+    public void Non_batched_block_added_event_should_abort_pending_main_chain_update_batch()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 60, isLast: false);
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block2));
+
+        TxIndexFor(txHash1).Should().BeNull();
+        TxIndexFor(txHash2).Should().NotBeNull();
+    }
+
+    [Test]
+    public void Out_of_order_batch_events_should_ignore_stale_batch_completion()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 100, isLast: false);
+        RaiseBatchEvent(block2, batchId: 101, isLast: false);
+
+        // Out-of-order completion for an older batch should not commit or replace the newer batch.
+        RaiseBatchEvent(block1, batchId: 100, isLast: true);
+        TxIndexFor(txHash1).Should().BeNull();
+        TxIndexFor(txHash2).Should().BeNull();
+
+        RaiseBatchEvent(block2, batchId: 101, isLast: true);
+        TxIndexFor(txHash1).Should().BeNull();
+        TxIndexFor(txHash2).Should().NotBeNull();
+    }
+
+    private (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) SetupBatchTest()
+    {
+        _receiptConfig.TxLookupLimit = 0;
+        CreateStorage();
+
+        Block block1 = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        (block1, TxReceipt[] receipts1) = PrepareBlock(block1);
+        _storage.Insert(block1, receipts1, ensureCanonical: false);
+
+        Block block2 = Build.A.Block.WithNumber(2)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        (block2, TxReceipt[] receipts2) = PrepareBlock(block2);
+        _storage.Insert(block2, receipts2, ensureCanonical: false);
+
+        return (block1, block2, receipts1[0].TxHash!, receipts2[0].TxHash!);
+    }
+
+    private void RaiseBatchEvent(Block block, long batchId, bool isLast) =>
+        _blockTree.BlockAddedToMain += Raise.EventWith(
+            new BlockReplacementEventArgs(block, null, isPartOfMainChainUpdate: true, isLast, batchId));
+
+    private byte[]? TxIndexFor(Hash256 txHash) =>
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHash.Bytes];
+
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
     {
         block ??= Build.A.Block

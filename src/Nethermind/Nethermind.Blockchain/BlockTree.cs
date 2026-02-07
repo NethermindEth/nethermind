@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+        private long _mainChainUpdateCounter;
 
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
@@ -964,8 +965,11 @@ namespace Nethermind.Blockchain
                 return;
             }
 
+            bool isBatchUpdate = blocks.Count > 1;
+            long mainChainUpdateId = isBatchUpdate ? Interlocked.Increment(ref _mainChainUpdateCounter) : 0;
+
             bool ascendingOrder = true;
-            if (blocks.Count > 1)
+            if (isBatchUpdate)
             {
                 if (blocks[^1].Number < blocks[0].Number)
                 {
@@ -1022,7 +1026,14 @@ namespace Nethermind.Blockchain
                 bool lastProcessedBlock = i == blocks.Count - 1;
 
                 // Where head is set if wereProcessed is true
-                MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
+                MoveToMain(
+                    blocks[i],
+                    batch,
+                    wereProcessed,
+                    forceUpdateHeadBlock && lastProcessedBlock,
+                    isPartOfMainChainUpdate: isBatchUpdate,
+                    isLastInMainChainUpdate: isBatchUpdate && lastProcessedBlock,
+                    mainChainUpdateId);
             }
 
             TryUpdateSyncPivot();
@@ -1146,9 +1157,19 @@ namespace Nethermind.Blockchain
         /// <param name="batch">Db batch</param>
         /// <param name="wasProcessed">Was block processed (full sync), or not (fast sync)</param>
         /// <param name="forceUpdateHeadBlock">Force updating <see cref="Head"/> to this block, even when <see cref="Block.TotalDifficulty"/> is not higher than previous head.</param>
+        /// <param name="isPartOfMainChainUpdate">Whether this block is processed as part of a multi-block main chain update batch.</param>
+        /// <param name="isLastInMainChainUpdate">Whether this block is the last block in the current main chain update batch.</param>
+        /// <param name="mainChainUpdateId">Identifier of the current main chain update batch.</param>
         /// <exception cref="InvalidOperationException">Invalid block</exception>
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
-        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
+        private void MoveToMain(
+            Block block,
+            BatchWrite batch,
+            bool wasProcessed,
+            bool forceUpdateHeadBlock,
+            bool isPartOfMainChainUpdate,
+            bool isLastInMainChainUpdate,
+            long mainChainUpdateId)
         {
             if (Logger.IsTrace) Logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             if (block.Hash is null)
@@ -1200,7 +1221,14 @@ namespace Nethermind.Blockchain
 
             if (Logger.IsTrace) Logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
 
-            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
+            BlockAddedToMain?.Invoke(
+                this,
+                new BlockReplacementEventArgs(
+                    block,
+                    previous,
+                    isPartOfMainChainUpdate,
+                    isLastInMainChainUpdate,
+                    mainChainUpdateId));
 
             if (Logger.IsTrace) Logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }

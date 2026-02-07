@@ -160,6 +160,56 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockAddedToMain_should_mark_update_batch_metadata_for_blocks_added_at_once()
+    {
+        List<BlockReplacementEventArgs> events = new();
+
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(0).WithParent(block1).TestObject;
+        Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(0).WithParent(block2).TestObject;
+
+        blockTree.SuggestBlock(block0);
+        blockTree.BlockAddedToMain += (_, e) => events.Add(e);
+
+        blockTree.SuggestBlock(block1);
+        blockTree.SuggestBlock(block2);
+        blockTree.SuggestBlock(block3);
+        blockTree.UpdateMainChain(new[] { block1, block2, block3 }, true);
+
+        events.Count.Should().Be(3);
+        events.TrueForAll(static e => e.IsPartOfMainChainUpdate).Should().BeTrue();
+        events[0].IsLastInMainChainUpdate.Should().BeFalse();
+        events[1].IsLastInMainChainUpdate.Should().BeFalse();
+        events[2].IsLastInMainChainUpdate.Should().BeTrue();
+        events[0].MainChainUpdateId.Should().Be(events[1].MainChainUpdateId);
+        events[1].MainChainUpdateId.Should().Be(events[2].MainChainUpdateId);
+        events[0].MainChainUpdateId.Should().BeGreaterThan(0);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockAddedToMain_should_not_mark_batch_metadata_for_single_block_update()
+    {
+        List<BlockReplacementEventArgs> events = new();
+
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+
+        blockTree.SuggestBlock(block0);
+        blockTree.BlockAddedToMain += (_, e) => events.Add(e);
+
+        blockTree.SuggestBlock(block1);
+        blockTree.UpdateMainChain([block1], true);
+
+        events.Count.Should().Be(1);
+        events[0].IsPartOfMainChainUpdate.Should().BeFalse();
+        events[0].IsLastInMainChainUpdate.Should().BeFalse();
+        events[0].MainChainUpdateId.Should().Be(0);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_notify_on_new_suggested_block_after_genesis()
     {
         bool hasNotified = false;
