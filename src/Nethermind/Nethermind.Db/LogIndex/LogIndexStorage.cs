@@ -130,10 +130,8 @@ namespace Nethermind.Db.LogIndex
 
                 Meta = _batch.GetColumnBatch(LogIndexColumns.Meta);
                 Address = _batch.GetColumnBatch(LogIndexColumns.Addresses);
-                Topics[0] = _batch.GetColumnBatch(LogIndexColumns.Topics0);
-                Topics[1] = _batch.GetColumnBatch(LogIndexColumns.Topics1);
-                Topics[2] = _batch.GetColumnBatch(LogIndexColumns.Topics2);
-                Topics[3] = _batch.GetColumnBatch(LogIndexColumns.Topics3);
+                for (var topicIndex = 0; topicIndex < MaxTopics; topicIndex++)
+                    Topics[topicIndex] = _batch.GetColumnBatch(GetColumn(topicIndex));
             }
 
             // Require explicit Commit call instead of committing on Dispose
@@ -243,12 +241,12 @@ namespace Nethermind.Db.LogIndex
                     : new NoOpCompactor();
 
                 for (int i = -1; i < MaxTopics; i++)
-                    _mergeOperators[i] = new MergeOperator(this, _compressor, topicIndex: i < 0 ? null : i);
+                    _mergeOperators[i + 1] = new MergeOperator(this, _compressor, topicIndex: i < 0 ? null : i);
 
                 _rootDb = CreateRootDb(dbFactory, config.Reset);
                 _metaDb = GetMetaDb(_rootDb);
                 _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
-                _topicDbs = Enumerable.Range(0, MaxTopics).Select(i => _rootDb.GetColumnDb(GetColumn(topicIndex: i))).ToArray();
+                _topicDbs = Enumerable.Range(0, MaxTopics).Select(topicIndex => _rootDb.GetColumnDb(GetColumn(topicIndex))).ToArray();
 
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
@@ -309,8 +307,8 @@ namespace Nethermind.Db.LogIndex
                 IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
                 {
                     ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
-                        i => $"{GetColumn(topicIndex: i < 0 ? null : i)}",
-                        i => _mergeOperators[i + 1]
+                        topicIndex => $"{GetColumn(topicIndex < 0 ? null : topicIndex)}",
+                        topicIndex => _mergeOperators[topicIndex + 1]
                     )
                 });
 
@@ -615,8 +613,7 @@ namespace Nethermind.Db.LogIndex
             if (!FirstBlockAdded)
                 return;
 
-            SemaphoreSlim semaphore = _forwardWriteSemaphore;
-            await LockRunAsync(semaphore);
+            await LockRunAsync(_forwardWriteSemaphore);
 
             try
             {
@@ -624,7 +621,7 @@ namespace Nethermind.Db.LogIndex
             }
             finally
             {
-                semaphore.Release();
+                _forwardWriteSemaphore.Release();
             }
         }
 
@@ -632,14 +629,10 @@ namespace Nethermind.Db.LogIndex
         {
             const bool isBackwardSync = false;
 
-            Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
-            Span<byte> valueBuffer = stackalloc byte[BlockNumberSize + 1];
-
-            using IColumnsWriteBatch<LogIndexColumns>? batch = _rootDb.StartWriteBatch();
-
             using DbBatches batches = new(_rootDb);
 
-            Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, valueBuffer);
+            Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
+            Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, stackalloc byte[MergeOps.Size]);
 
             foreach (TxReceipt receipt in block.Receipts)
             {
@@ -665,7 +658,7 @@ namespace Nethermind.Db.LogIndex
 
             batches.Commit();
 
-            // Postpone values update until batch is committed
+            // Postpone in-memory values update until batch is committed
             UpdateRange(minBlock, maxBlock, isBackwardSync);
         }
 
