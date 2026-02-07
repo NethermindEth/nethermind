@@ -224,11 +224,6 @@ public class EthereumL1Bridge : IL1Bridge
         return _unfinalizedL1BlocksQueue.Count == 0 ? null : _unfinalizedL1BlocksQueue.Dequeue();
     }
 
-    private void LogReorg()
-    {
-        if (_logger.IsInfo) _logger.Info("L1 reorg detected. Resetting pipeline");
-    }
-
     public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token) =>
         await RetryGetBlock(async () => await _ethL1Api.GetBlockByNumber(blockNumber, true), token);
 
