@@ -17,7 +17,7 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal class SnapshotManager : ISnapshotManager
+public class SnapshotManager : ISnapshotManager
 {
 
     private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");

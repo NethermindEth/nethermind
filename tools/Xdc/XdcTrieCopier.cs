@@ -46,15 +46,10 @@ public sealed class XdcTrieCopier(SourceContext source, TargetContext target): I
 
     private void CopyCodeNode(Hash256 key)
     {
-        if (key is not {Bytes: var keyBytes})
-            return;
+        if (source.Reader.GetCode(key) is not { } code)
+            throw new Exception($"Unexpected null value for code key {key}.");
 
-        keyBytes = (byte[]) [..XdcSchema.CodePrefix, ..keyBytes];
-
-        if (source.Db.Get(keyBytes) is not { } code)
-            throw new Exception($"Unexpected empty value for code key {key}.");
-
-        target.CodeDb.Set(keyBytes, code);
+        target.CodeDb.Set(key, code);
         CodeNodesCopied++;
     }
 }
