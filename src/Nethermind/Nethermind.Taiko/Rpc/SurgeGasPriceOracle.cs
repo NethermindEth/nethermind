@@ -85,7 +85,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         // Get the fee history from the L1 client with RPC
         L1FeeHistoryResults? feeHistory = await GetL1FeeHistory();
-        if (feeHistory is null || feeHistory.BaseFeePerGas.Length == 0)
+        if (feeHistory == null || feeHistory.BaseFeePerGas.Length == 0)
         {
             if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get fee history, using fallback gas price");
             return FallbackGasPrice();
@@ -178,7 +178,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         ulong? currentBatchLastBlockId = numBatches > 1 ? await GetLastBlockId(numBatches.Value - 1) : 0;
         ulong? previousBatchLastBlockId = numBatches > 2 ? await GetLastBlockId(numBatches.Value - 2) : 0;
 
-        if (currentBatchLastBlockId is null || previousBatchLastBlockId is null)
+        if (currentBatchLastBlockId == null || previousBatchLastBlockId == null)
         {
             if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get batch lastBlockId");
             return 0;
@@ -192,7 +192,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         for (ulong blockId = startBlockId; blockId <= endBlockId; blockId++)
         {
             Block? block = _blockFinder.FindBlock((long)blockId, BlockTreeLookupOptions.RequireCanonical);
-            if (block is not null)
+            if (block != null)
             {
                 totalGasUsed += (ulong)block.GasUsed;
             }

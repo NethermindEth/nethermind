@@ -96,7 +96,7 @@ namespace Nethermind.Xdc
             {
                 Hash256 parentHash = h.ParentHash;
                 h = blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
-                if (h is null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
+                if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
                 if (epochSwitchManager.IsEpochSwitchAtBlock(h) && i != spec.SwitchBlock + 1)
                 {
                     epochCount++;
@@ -117,7 +117,7 @@ namespace Nethermind.Xdc
                 if (!_signingTxsCache.TryGet(h.Hash, out Transaction[] signingTxs))
                 {
                     Block? block = blockTree.FindBlock(i);
-                    if (block is null) throw new InvalidOperationException($"Block with number {i} not found");
+                    if (block == null) throw new InvalidOperationException($"Block with number {i} not found");
                     Transaction[] txs = block.Transactions;
                     signingTxs = CacheSigningTxs(h.Hash!, txs, spec);
                 }

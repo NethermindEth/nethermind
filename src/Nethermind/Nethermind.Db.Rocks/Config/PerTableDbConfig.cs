@@ -75,7 +75,7 @@ public class PerTableDbConfig : IRocksDbConfig
             return ["StateDb"];
         }
 
-        if (_columnName is not null)
+        if (_columnName != null)
         {
             return [
                 string.Concat(_tableName, "Db"),

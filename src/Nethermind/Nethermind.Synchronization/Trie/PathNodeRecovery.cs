@@ -28,12 +28,12 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
         try
         {
             IOwnedReadOnlyList<(TreePath, byte[])>? res = await Wait.AnyWhere(
-                (res) => res is not null,
+                (res) => res != null,
                 nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
                 snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
             );
 
-            if (res is null)
+            if (res == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Failed to recover path {address ?? Hash256.Zero}:{fullPath}");
             }

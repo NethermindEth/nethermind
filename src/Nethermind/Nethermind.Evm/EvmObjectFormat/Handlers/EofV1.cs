@@ -101,7 +101,7 @@ internal class Eof1 : IEofVersionHandler
             switch (separator)
             {
                 case Separator.KIND_TYPE:
-                    if (sectionSizes.TypeSectionSize is not null)
+                    if (sectionSizes.TypeSectionSize != null)
                     {
                         if (Logger.IsTrace)
                             Logger.Trace($"EOF: Eof{VERSION}, Multiple type sections");

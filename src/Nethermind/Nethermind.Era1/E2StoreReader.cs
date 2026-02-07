@@ -115,7 +115,7 @@ public class E2StoreReader : IDisposable
 
     private void EnsureIndexAvailable()
     {
-        if (_startBlock is not null) return;
+        if (_startBlock != null) return;
 
         if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 

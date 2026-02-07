@@ -184,7 +184,7 @@ namespace Nethermind.HealthChecks
             ICollection<string> errors, long netPeerCount)
         {
             bool hasPeers = netPeerCount > 0;
-            if (!hasPeers)
+            if (hasPeers == false)
             {
                 errors.Add(ErrorStrings.NoPeers);
                 messages.Add(("Node is not connected to any peers", "Node is not connected to any peers"));
@@ -201,7 +201,7 @@ namespace Nethermind.HealthChecks
         {
             ulong? maxIntervalHint = GetBlockProducerIntervalHint();
             bool producingBlocks = blockProducerRunner.IsProducingBlocks(maxIntervalHint);
-            if (!producingBlocks)
+            if (producingBlocks == false)
             {
                 errors.Add(ErrorStrings.NotProducingBlocks);
                 messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));

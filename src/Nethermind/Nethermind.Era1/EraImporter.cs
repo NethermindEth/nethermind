@@ -38,11 +38,11 @@ public class EraImporter(
     {
         if (!fileSystem.Directory.Exists(src))
             throw new ArgumentException($"Import directory {src} does not exist");
-        if (accumulatorFile is not null && !fileSystem.File.Exists(accumulatorFile))
+        if (accumulatorFile != null && !fileSystem.File.Exists(accumulatorFile))
             throw new ArgumentException($"Accumulator file {accumulatorFile} not exist");
 
         HashSet<ValueHash256>? trustedAccumulators = null;
-        if (accumulatorFile is not null)
+        if (accumulatorFile != null)
         {
             trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
