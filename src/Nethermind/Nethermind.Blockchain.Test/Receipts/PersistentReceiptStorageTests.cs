@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -510,6 +511,43 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         RaiseBatchEvent(block2, batchId: 101, isLast: true);
         TxIndexFor(txHash1).Should().BeNull();
         TxIndexFor(txHash2).Should().NotBeNull();
+    }
+
+    [Test]
+    public void Main_chain_update_events_should_flush_pending_batch_every_max_uncommitted_blocks()
+    {
+        _receiptConfig.TxLookupLimit = 0;
+        CreateStorage();
+
+        const long batchId = 200;
+        int totalBlocks = BlockProcessingConstants.MaxUncommittedBlocks + 1;
+
+        Block[] blocks = new Block[totalBlocks];
+        Hash256[] txHashes = new Hash256[totalBlocks];
+
+        for (int i = 0; i < totalBlocks; i++)
+        {
+            Block block = Build.A.Block.WithNumber(i + 1)
+                .WithTransactions(Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject)
+                .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+            (block, TxReceipt[] receipts) = PrepareBlock(block);
+            _storage.Insert(block, receipts, ensureCanonical: false);
+
+            blocks[i] = block;
+            txHashes[i] = receipts[0].TxHash!;
+        }
+
+        for (int i = 0; i < BlockProcessingConstants.MaxUncommittedBlocks; i++)
+        {
+            RaiseBatchEvent(blocks[i], batchId, isLast: false);
+        }
+
+        TxIndexFor(txHashes[0]).Should().NotBeNull();
+        TxIndexFor(txHashes[BlockProcessingConstants.MaxUncommittedBlocks - 1]).Should().NotBeNull();
+        TxIndexFor(txHashes[BlockProcessingConstants.MaxUncommittedBlocks]).Should().BeNull();
+
+        RaiseBatchEvent(blocks[BlockProcessingConstants.MaxUncommittedBlocks], batchId, isLast: true);
+        TxIndexFor(txHashes[BlockProcessingConstants.MaxUncommittedBlocks]).Should().NotBeNull();
     }
 
     private (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) SetupBatchTest()

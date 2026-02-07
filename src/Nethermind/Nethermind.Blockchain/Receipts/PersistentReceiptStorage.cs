@@ -38,8 +38,10 @@ namespace Nethermind.Blockchain.Receipts
         private long _pendingBatchLastBlockNumber;
         private long _pendingBatchId = -1;
         private long _latestSeenBatchId = -1;
+        private int _pendingBatchBlockCount;
 
         private const int CacheSize = 64;
+        private const int MaxIndexedBlocksPerBatch = BlockProcessingConstants.MaxUncommittedBlocks;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
@@ -414,12 +416,17 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     _pendingBatchId = batchId;
                     _pendingBatchLastBlockNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+                    _pendingBatchBlockCount = 0;
                 }
 
                 if (ShouldIndexBlock(block, _pendingBatchLastBlockNumber, out Transaction[] transactions))
                 {
                     _pendingBatch ??= _transactionDb.StartWriteBatch();
                     WriteCanonicalTxIndex(block, transactions, _pendingBatch);
+                    if (++_pendingBatchBlockCount >= MaxIndexedBlocksPerBatch && !isLast)
+                    {
+                        FlushPendingBatchWrites();
+                    }
                 }
 
                 shouldCommit = isLast && _pendingBatchId == batchId;
@@ -468,15 +475,21 @@ namespace Nethermind.Blockchain.Receipts
 
         private void CommitPendingBatch()
         {
-            try { _pendingBatch?.Dispose(); }
-            finally { _pendingBatch = null; _pendingBatchId = -1; }
+            try { FlushPendingBatchWrites(); }
+            finally { _pendingBatchId = -1; }
         }
 
         private void DiscardPendingBatch()
         {
             if (_pendingBatchId < 0) return;
             try { _pendingBatch?.Clear(); _pendingBatch?.Dispose(); }
-            finally { _pendingBatch = null; _pendingBatchId = -1; }
+            finally { _pendingBatch = null; _pendingBatchId = -1; _pendingBatchBlockCount = 0; }
+        }
+
+        private void FlushPendingBatchWrites()
+        {
+            try { _pendingBatch?.Dispose(); }
+            finally { _pendingBatch = null; _pendingBatchBlockCount = 0; }
         }
     }
 }
