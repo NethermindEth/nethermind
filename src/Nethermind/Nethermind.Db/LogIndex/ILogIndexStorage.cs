@@ -52,10 +52,5 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     /// </summary>
     Task RemoveReorgedAsync(BlockReceipts block);
 
-    /// <summary>
-    /// Forces compression of all the uncompressed values and subsequent DB compaction.
-    /// </summary>
-    Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null);
-
     string GetDbSize();
 }
