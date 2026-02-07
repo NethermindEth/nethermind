@@ -33,7 +33,7 @@ namespace Nethermind.Db.Test.LogIndex
     // TODO: test for concurrent reorg and backward sync
     // TODO: test for background job failure
     [TestFixtureSource(nameof(TestCases))]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Children)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageIntegrationTests(LogIndexStorageIntegrationTests.TestData testData)
     {
