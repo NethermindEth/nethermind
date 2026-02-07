@@ -114,5 +114,5 @@ public static class Migrator
             throw new Exception($"{counter.MissingCount} missing nodes found during verification.");
     }
 
-    private static string Format(XdcBlockHeader header) => header.ToString(BlockHeader.Format.FullHashAndNumber);
+    private static string Format(XdcBlockHeader header) => $"{header.ToString(BlockHeader.Format.FullHashAndNumber)} [TD: {header.TotalDifficulty}]";
 }

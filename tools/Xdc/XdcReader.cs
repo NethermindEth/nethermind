@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc;
 using Nethermind.Xdc.Types;
 
@@ -19,6 +20,7 @@ public class XdcReader(IDb db)
     private static readonly byte[] HeadHeaderKey = "LastHeader"u8.ToArray();
     private static readonly byte[] HeaderPrefix = "h"u8.ToArray();
     private static readonly byte[] HeaderNumberPrefix = "H"u8.ToArray();
+    private static readonly byte[] HeaderTDPostfix = "t"u8.ToArray();
     private static readonly byte[] CodePrefix = "c"u8.ToArray();
 
     // from engine_v2/snapshot.go
@@ -31,7 +33,7 @@ public class XdcReader(IDb db)
 
     private static readonly XdcHeaderDecoder HeaderDecoder = new();
 
-    public XdcBlockHeader? GetHeadHeader() => db.Get(HeadHeaderKey) is not { } hash ? null : GetHeader(hash);
+    public XdcBlockHeader? GetHeadHeader(bool includeTD = true) => db.Get(HeadHeaderKey) is not { } hash ? null : GetHeader(hash, includeTD);
 
     public Snapshot? GetSnapshotAt(XdcBlockHeader header)
     {
@@ -49,9 +51,9 @@ public class XdcReader(IDb db)
         );
     }
 
-    public XdcBlockHeader? GetHeader(Hash256 hash) => GetHeader(hash.Bytes);
+    public XdcBlockHeader? GetHeader(Hash256 hash, bool includeTD = true) => GetHeader(hash.Bytes, includeTD);
 
-    public XdcBlockHeader? GetHeader(ReadOnlySpan<byte> hash)
+    public XdcBlockHeader? GetHeader(ReadOnlySpan<byte> hash, bool includeTD = true)
     {
         // "H" + hash
         byte[] headerNumberKey = [.. HeaderNumberPrefix, .. hash];
@@ -67,7 +69,28 @@ public class XdcReader(IDb db)
         if (headerRlp is null)
             return null;
 
-        return HeaderDecoder.Decode(new(headerRlp)) as XdcBlockHeader;
+        var header = HeaderDecoder.Decode(new(headerRlp)) as XdcBlockHeader;
+
+        if (includeTD && !TrySetTD(header))
+            return null;
+
+        return header;
+    }
+
+    private bool TrySetTD(XdcBlockHeader? header)
+    {
+        if (header?.Hash is null)
+            return false;
+
+        // "h" + number(8 bytes BE) + hash + "t"
+        byte[] tdKey = [.. HeaderPrefix, .. header.Number.ToBigEndianByteArray(), .. header.Hash.Bytes, .. HeaderTDPostfix];
+        byte[]? tdRlp = db.Get(tdKey);
+        if (tdRlp is null)
+            return false;
+
+        Rlp.ValueDecoderContext ctx = new(tdRlp);
+        header.TotalDifficulty = ctx.DecodeUInt256();
+        return true;
     }
 
     public byte[]? GetCode(Hash256 hash)

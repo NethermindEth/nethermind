@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using NUnit.Framework;
 using Xdc;
 using static Nethermind.Core.BlockHeader.Format;
@@ -32,7 +33,14 @@ public class XdcBlockIterationTest
             if (header.ParentHash is null || header.ParentHash == Keccak.Zero)
                 break;
 
-            header = reader.GetHeader(header.ParentHash);
+            (UInt256? prevTD, UInt256 diff) = (header.TotalDifficulty, header.Difficulty);
+
+            header = reader.GetHeader(header.ParentHash, includeTD: true);
+
+            UInt256? nextTD = header?.TotalDifficulty;
+
+            if (prevTD is not null && nextTD is not null)
+                Assert.That(nextTD, Is.EqualTo(prevTD - diff));
 
             if (header is not null)
                 lastHeader = header;
