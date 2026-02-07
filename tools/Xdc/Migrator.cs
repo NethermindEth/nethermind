@@ -55,7 +55,6 @@ public static class Migrator
         Snapshot? snapshot = null;
         RetractUntil(source.Pivot, reader, "snapshot", header => (snapshot = reader.GetSnapshotAt(header)) is not null);
 
-        Console.WriteLine($"Storing snapshot({snapshot!.BlockNumber}, {snapshot.HeaderHash}, [{snapshot.NextEpochCandidates.Length}])");
         manager.StoreSnapshot(snapshot!);
     }
 
