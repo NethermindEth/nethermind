@@ -282,7 +282,8 @@ namespace Nethermind.Xdc
 
             try
             {
-                ulong parentTimestamp = parent.Timestamp;
+                XdcBlockHeader parentHeader = FindHeaderToBuildOn(_xdcContext.HighestQC) ?? parent;
+                ulong parentTimestamp = parentHeader.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
 
@@ -299,7 +300,7 @@ namespace Nethermind.Xdc
                 }
 
                 Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
+                    _blockBuilder.BuildBlock(parentHeader, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 Block? proposedBlock = await proposedBlockTask;
 
@@ -320,6 +321,11 @@ namespace Nethermind.Xdc
             {
                 _logger.Error($"Failed to build block in round {currentRound}", ex);
             }
+
+            XdcBlockHeader FindHeaderToBuildOn(QuorumCertificate highestQC) =>
+                (XdcBlockHeader)_blockTree.FindHeader(
+                    highestQC.ProposedBlockInfo.Hash,
+                    highestQC.ProposedBlockInfo.BlockNumber);
         }
 
         /// <summary>
