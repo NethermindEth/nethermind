@@ -665,7 +665,7 @@ namespace Nethermind.Db.Test.LogIndex
             catch (LogIndexStateException ex)
             {
                 // Expected — error propagated during batch processing
-                TestContext.WriteLine($"Expected LogIndexStateException during background job: {ex}");
+                await TestContext.Out.WriteLineAsync($"Expected LogIndexStateException during background job: {ex}");
             }
 
             Assert.That(storage.HasBackgroundError, Is.True);
