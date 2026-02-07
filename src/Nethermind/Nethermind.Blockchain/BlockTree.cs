@@ -968,14 +968,7 @@ namespace Nethermind.Blockchain
             bool isBatchUpdate = blocks.Count > 1;
             long mainChainUpdateId = isBatchUpdate ? Interlocked.Increment(ref _mainChainUpdateCounter) : 0;
 
-            bool ascendingOrder = true;
-            if (isBatchUpdate)
-            {
-                if (blocks[^1].Number < blocks[0].Number)
-                {
-                    ascendingOrder = false;
-                }
-            }
+            bool ascendingOrder = !isBatchUpdate || blocks[^1].Number >= blocks[0].Number;
 
 #if DEBUG
             for (int i = 0; i < blocks.Count; i++)
