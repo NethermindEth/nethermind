@@ -144,6 +144,68 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Encode_with_pre_encoded_transactions_produces_same_rlp()
+    {
+        BlockDecoder decoder = new();
+        foreach (Block block in _scenarios)
+        {
+            if (block.Transactions.Length == 0) continue;
+
+            // Encode transactions in SkipTypedWrapping format (as CL provides)
+            byte[][] encodedTxs = new byte[block.Transactions.Length][];
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                encodedTxs[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            }
+
+            // Encode without pre-encoded bytes (standard path)
+            Rlp standard = decoder.Encode(block);
+
+            // Encode with pre-encoded bytes (fast path)
+            block.EncodedTransactions = encodedTxs;
+            Rlp fast = decoder.Encode(block);
+
+            Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+        }
+    }
+
+    [Test]
+    public void Encode_with_pre_encoded_typed_transactions_produces_same_rlp()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.AccessList).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(1)
+            .WithTransactions(transactions)
+            .WithWithdrawals(2)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithMixHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        byte[][] encodedTxs = new byte[transactions.Length][];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            encodedTxs[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+        }
+
+        BlockDecoder decoder = new();
+
+        Rlp standard = decoder.Encode(block);
+
+        block.EncodedTransactions = encodedTxs;
+        Rlp fast = decoder.Encode(block);
+
+        Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+    }
+
+    [Test]
     public void Get_length_null()
     {
         BlockDecoder decoder = new();

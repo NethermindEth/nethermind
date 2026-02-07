@@ -169,7 +169,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals)
+        {
+            EncodedTransactions = encodedTransactions
+        };
+        return new BlockDecodingResult(block);
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot()

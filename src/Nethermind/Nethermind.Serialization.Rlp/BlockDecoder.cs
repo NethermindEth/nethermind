@@ -40,12 +40,30 @@ namespace Nethermind.Serialization.Rlp
 
             (int txs, int uncles, int? withdrawals) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
 
+            byte[][]? encodedTxs = item.EncodedTransactions;
+            if (encodedTxs is not null)
+            {
+                txs = GetPreEncodedTxLength(item.Transactions, encodedTxs);
+            }
+
             int contentLength =
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
                 (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
             return (contentLength, txs, uncles, withdrawals);
+        }
+
+        private static int GetPreEncodedTxLength(Transaction[] txs, byte[][] encodedTxs)
+        {
+            int sum = 0;
+            for (int i = 0; i < encodedTxs.Length; i++)
+            {
+                int len = encodedTxs[i].Length;
+                // Legacy txs: CL format = block format. Typed txs: block format wraps in RLP byte string.
+                sum += txs[i].Type == TxType.Legacy ? len : Rlp.LengthOfSequence(len);
+            }
+            return sum;
         }
 
         public override int GetLength(Block? item, RlpBehaviors rlpBehaviors)
@@ -104,9 +122,27 @@ namespace Nethermind.Serialization.Rlp
             stream.StartSequence(contentLength);
             _headerDecoder.Encode(stream, item.Header);
             stream.StartSequence(txsLength);
-            for (int i = 0; i < item.Transactions.Length; i++)
+
+            byte[][]? encodedTxs = item.EncodedTransactions;
+            if (encodedTxs is not null)
             {
-                stream.Encode(item.Transactions[i]);
+                for (int i = 0; i < encodedTxs.Length; i++)
+                {
+                    byte[] encoded = encodedTxs[i];
+                    if (item.Transactions[i].Type != TxType.Legacy)
+                    {
+                        // Typed txs: CL format is type||rlp(fields), block format wraps in RLP byte string
+                        stream.StartByteArray(encoded.Length, false);
+                    }
+                    stream.Write(encoded);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < item.Transactions.Length; i++)
+                {
+                    stream.Encode(item.Transactions[i]);
+                }
             }
 
             stream.StartSequence(unclesLength);
