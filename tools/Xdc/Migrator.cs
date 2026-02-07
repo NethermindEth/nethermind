@@ -1,8 +1,10 @@
 ﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -10,7 +12,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Xdc;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Types;
+using NSubstitute;
 
 namespace Xdc;
 
@@ -41,11 +45,15 @@ public static class Migrator
 
     private static void StoreSnapshot(SourceContext source, TargetContext target)
     {
-        var manager = new SnapshotManager(target.SnapshotDb, null!, null!, null!, null!);
+        var manager = new SnapshotManager(
+            target.SnapshotDb,
+            Substitute.For<IBlockTree>(), Substitute.For<IPenaltyHandler>(),
+            Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>()
+        );
 
         XdcReader reader = source.Reader;
         Snapshot? snapshot = null;
-        RetractUntil(source.Pivot, reader, "snapshot block", header => (snapshot = reader.GetSnapshotAt(header)) is not null);
+        RetractUntil(source.Pivot, reader, "snapshot", header => (snapshot = reader.GetSnapshotAt(header)) is not null);
 
         Console.WriteLine($"Storing snapshot({snapshot!.BlockNumber}, {snapshot.HeaderHash}, [{snapshot.NextEpochCandidates.Length}])");
         manager.StoreSnapshot(snapshot!);
@@ -71,12 +79,6 @@ public static class Migrator
         return header;
     }
 
-    private static XdcBlockHeader? RetractUntil(XdcReader reader, string what, Func<XdcBlockHeader, bool> shouldStop) =>
-        RetractUntil(
-            reader.GetHeadHeader() ?? throw new Exception("Failed to get head header."),
-            reader, what, shouldStop
-        );
-
     private static SourceContext OpenSourceDatabase(string dbPath)
     {
         var db = new ReadOnlyLevelDb(dbPath);
@@ -87,7 +89,7 @@ public static class Migrator
 
         Console.WriteLine($"Found head block at {Format(head)}");
 
-        XdcBlockHeader pivot = RetractUntil(reader, "epoch switch", header => header.Validators is {Length: > 0})
+        XdcBlockHeader pivot = RetractUntil(head, reader, "epoch switch", header => header.Validators is {Length: > 0})
             ?? throw new Exception("Failed to find epoch switch block.");
 
         Console.WriteLine($"Using pivot: {Format(pivot)}");

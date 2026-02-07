@@ -32,5 +32,6 @@ public sealed class TargetContext: IDisposable
     {
         StateDb.Dispose();
         CodeDb.Dispose();
+        SnapshotDb.Dispose();
     }
 }
