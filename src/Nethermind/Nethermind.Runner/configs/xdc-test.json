@@ -16,9 +16,9 @@
   "Sync": {
     "FastSync": true,
     "NeedToWaitForHeader": true,
-    "PivotNumber": 387871,
-    "PivotHash": "0x7e5eb4c31772bb5f9851b470c2e95d099309faf6e6fc54c658f595c5cf939ad5",
-    "PivotTotalDifficulty": 387872,
+    "PivotNumber": 8999,
+    "PivotHash": "0x947759678f8ea3a4203728587c6dc185a5f5f4ffd6e10a47c3648270a35a1355",
+    "PivotTotalDifficulty": "9000",
     "VerifyTrieOnStateSyncFinished": true
   },
   "JsonRpc": {
