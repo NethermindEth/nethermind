@@ -884,7 +884,7 @@ namespace Nethermind.Db.LogIndex
         /// </summary>
         /// <remarks>
         /// Finalized key postfix collides with BackwardMerge at block 0xFFFFFFFF and
-        /// ForwardMerge at block 0xFFFFFFFE — both ~1600 years away at 12s/block.
+        /// ForwardMerge at block 0xFFFFFFFE — ~13.6 years away at 100ms/block.
         /// </remarks>
         private static bool IsCompressed(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out int len)
         {
