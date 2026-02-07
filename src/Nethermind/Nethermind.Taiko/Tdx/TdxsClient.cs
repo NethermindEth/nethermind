@@ -16,6 +16,8 @@ namespace Nethermind.Taiko.Tdx;
 /// </summary>
 public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsClient
 {
+    private readonly ILogger _logger = logManager.GetClassLogger();
+
     public byte[] Issue(byte[] userData, byte[] nonce)
     {
         var request = new
