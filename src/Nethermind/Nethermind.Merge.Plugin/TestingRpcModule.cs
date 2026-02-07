@@ -59,7 +59,7 @@ public class TestingRpcModule(
                     return ResultWrapper<GetPayloadV5Result?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
                 }
 
-                if (_logger.IsInfo) _logger.Info($"GetPayloadV5 result: {block.Header.ToString(BlockHeader.Format.Short)}.");
+                if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
                 return ResultWrapper<GetPayloadV5Result?>.Success(getPayloadV5Result);
             }
 
