@@ -21,8 +21,6 @@ namespace Nethermind.Core.Crypto
         private const int STATE_SIZE = 200;
         private const int HASH_DATA_AREA = 136;
         private const int ROUNDS = 24;
-        private const int LANE_BITS = 8 * 8;
-        private const int TEMP_BUFF_SIZE = 144;
         private static readonly ulong[] RoundConstants =
         {
             0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
