@@ -5,8 +5,8 @@
     "noEmitOnError": true,
     "removeComments": false,
     "sourceMap": true,
-    "module": "System",
-    "moduleResolution": "node",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "target": "ES2024",
     "lib": [
       "ES2024",

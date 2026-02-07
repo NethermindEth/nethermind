@@ -1,248 +1,309 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-import * as d3 from 'd3';
+import * as THREE from 'three/webgpu';
+import { TxPool, INode } from './types';
+import { LayoutNode, LayoutEdge, MAX_PARTICLES, MAX_EDGES } from './flowTypes';
+import { computeLayout } from './flowLayout';
+import { ParticlePool } from './particleSystem';
 import {
-  sankey as d3Sankey,
-  sankeyLinkHorizontal,
-  sankeyCenter,
-  SankeyLayout
-} from 'd3-sankey';
-import { TxPool, ILink, INode } from './types';
-import { SankeyNode, SankeyLink } from './sankeyTypes';
+  createParticleBuffers, createEdgeBuffer,
+  createUpdateShader, writeSpawnData, uploadEdgeData,
+  flushSpawnedToGPU, flushEdgeBuffersToGPU
+} from './particleCompute';
+import { createParticleMesh, createNodeMeshes, createEdgeCurves, createTrailLines } from './particleRender';
 
 export class TxPoolFlow {
-  private svg: d3.Selection<SVGSVGElement, unknown, HTMLElement, any>;
-  private rectG: d3.Selection<SVGGElement, unknown, HTMLElement, any>;
-  private linkG: d3.Selection<SVGGElement, unknown, HTMLElement, any>;
-  private nodeG: d3.Selection<SVGGElement, unknown, HTMLElement, any>;
-
-  private sankeyGenerator: SankeyLayout<SankeyNode, SankeyLink>;
-  private width = window.innerWidth;
+  private container: HTMLElement;
+  private canvas: HTMLCanvasElement | null = null;
+  private renderer: THREE.WebGPURenderer | null = null;
+  private scene: THREE.Scene | null = null;
+  private camera: THREE.OrthographicCamera | null = null;
+  private width: number;
   private height = 250;
-  private defs: d3.Selection<SVGGElement, unknown, HTMLElement, any>;
 
-  private blueColors = [
-    '#E1F5FE', '#B3E5FC', '#81D4FA', '#4FC3F7',
-    '#29B6F6', '#03A9F4', '#039BE5', '#0288D1',
-    '#0277BD', '#01579B'
-  ];
+  private particlePool: ParticlePool | null = null;
+  private particleBuffers: ReturnType<typeof createParticleBuffers> | null = null;
+  private edgeBuffers: ReturnType<typeof createEdgeBuffer> | null = null;
+  private computeUpdate: any = null;
+  private dtUniform: any = null;
+  private particleMesh: THREE.InstancedMesh | null = null;
+  private trailLines: THREE.LineSegments | null = null;
+  private nodeMeshes = new Map<string, THREE.Mesh>();
+  private edgeCurves: THREE.Line[] = [];
+  private labelContainer: HTMLElement | null = null;
 
-  private orangeColors = [
-    '#FFF5e1', '#FFE0B2', '#FFCC80', '#FFB74D',
-    '#FFA726', '#FF9800', '#FB8C00', '#F57C00',
-    '#EF6C00', '#E65100'
-  ];
+  private currentNodes: LayoutNode[] = [];
+  private currentEdges: LayoutEdge[] = [];
+
+  private animFrameId = 0;
+  private lastFrameTime = 0;
+  private isActive = false;
+  private isInitialized = false;
+  private isInitializing = false;
+  private fallbackMode = false;
+  private pendingUpdate: { txPoolNodes: INode[]; data: TxPool } | null = null;
+
+  private visibilityHandler: (() => void) | null = null;
 
   constructor(container: string) {
-    this.svg = d3.select(container)
-      .append('svg')
-      .attr('width', window.innerWidth)
-      .attr('height', this.height)
-      .attr('viewBox', [0, 0, window.innerWidth, this.height])
-      .style('max-width', '100%')
-      .style('height', 'auto');
-    this.defs = this.svg.append('defs');
-    // Prepare gradients
-    let colors = this.blueColors.slice(5, -1);
-    colors = [...colors, ...colors, ...colors, ...colors];
-
-    this.initGradient('blue-flow', colors);
-
-    // High-level groups
-    this.rectG = this.svg.append('g').attr('stroke', '#000');
-    this.linkG = this.svg.append('g').attr('fill', 'none').style('mix-blend-mode', 'normal');
-    this.nodeG = this.svg.append('g');
-
-    // Sankey layout
-    this.sankeyGenerator = d3Sankey<SankeyNode, SankeyLink>()
-      .nodeId((n) => n.name)
-      .nodeAlign(sankeyCenter)
-      .nodeWidth(10)
-      .nodePadding(30)
-      .nodeSort((a, b) => {
-        if (a.inclusion && b.inclusion) {
-          return a.name < b.name ? -1 : 1;
-        }
-        if (a.inclusion) return -1;
-        if (b.inclusion) return 1;
-        return a.name < b.name ? 1 : -1;
-      })
-      .linkSort((a, b) => {
-        if (a.target.inclusion && b.target.inclusion) {
-          return a.source.name < b.source.name ? -1 : 1;
-        }
-        if (a.target.inclusion) return -1;
-        if (b.target.inclusion) return 1;
-        return a.target.name < b.target.name ? 1 : -1;
-      })
-      .extent([[100, 20], [window.innerWidth - 100, this.height - 25]]);
-  }
-
-  private initGradient(name: string, colors: string[]): void {
-    const flow = this.defs.append('linearGradient')
-      .attr('id', name)
-      .attr('x1', '0%')
-      .attr('y1', '0%')
-      .attr('x2', '100%')
-      .attr('y2', '0')
-      .attr('spreadMethod', 'reflect')
-      .attr('gradientUnits', 'userSpaceOnUse');
-
-    flow.selectAll('stop')
-      .data(colors)
-      .enter()
-      .append('stop')
-      .attr('offset', (_, i) => i / (colors.length - 1))
-      .attr('stop-color', (d) => d);
-
-    flow.append('animate')
-      .attr('attributeName', 'x1')
-      .attr('values', '0%;200%')
-      .attr('dur', '12s')
-      .attr('repeatCount', 'indefinite');
-
-    flow.append('animate')
-      .attr('attributeName', 'x2')
-      .attr('values', '100%;300%')
-      .attr('dur', '12s')
-      .attr('repeatCount', 'indefinite');
-  }
-
-  private isRightAligned(d: SankeyNode): boolean {
-    return !d.inclusion;
-  }
-
-  /**
-   * Update the Sankey diagram.
-   */
-  public update(txPoolNodes: INode[], data: TxPool): void {
-    this.sankeyGenerator.extent([[100, 20], [window.innerWidth - 100, this.height - 25]]);
-    // Filter out zero-value links
-    const filteredLinks: ILink[] = [];
-    const usedNodes: Record<string, boolean> = {};
-
+    this.container = document.querySelector(container) as HTMLElement;
     this.width = window.innerWidth - (40 + 16);
-    this.svg
-      .attr('width', this.width)
-      .attr('height', this.height)
-      .attr('viewBox', [0, 0, this.width, this.height]);
+  }
 
-    for (const link of data.links) {
-      if (link.value > 0) {
-        filteredLinks.push(link);
-        usedNodes[link.source] = true;
-        usedNodes[link.target] = true;
-      }
-    }
+  private async initialize(): Promise<void> {
+    this.isInitializing = true;
 
-    const filteredNodes = txPoolNodes.filter((n) => usedNodes[n.name]);
+    try {
+      // Create canvas (in normal flow so it gives the container height, like the old SVG)
+      this.canvas = document.createElement('canvas');
+      this.canvas.style.display = 'block';
+      this.canvas.style.pointerEvents = 'none';
+      this.container.insertBefore(this.canvas, this.container.firstChild);
 
-    // Build sankey input
-    const sankeyData = {
-      nodes: filteredNodes.map((n) => ({ ...n })),
-      links: filteredLinks.map((l) => ({ ...l }))
-    };
-
-    // D3 sankey modifies sankeyData in-place, but also returns typed arrays
-    const { nodes, links } = this.sankeyGenerator(sankeyData) as { nodes: SankeyNode[], links: SankeyLink[]};
-
-    // ====== Rectangles for nodes ======
-    this.rectG
-      .selectAll<SVGRectElement, SankeyNode>('rect')
-      .data(nodes, (d) => d.name)
-      .join('rect')
-      .attr('x', (d) => d.x0)
-      .attr('y', (d) => d.y0)
-      .attr('height', (d) => d.y1 - d.y0)
-      .attr('width', (d) => d.x1 - d.x0)
-      .attr('fill', (d) => {
-        if (d.name === 'P2P Network') {
-          d.value = data.hashesReceived;
-        }
-        if (d.inclusion) {
-          if (d.name === 'Tx Pool' || d.name === 'Added To Block') {
-            return '#FFA726';
-          }
-          return '#00BFF2';
-        }
-        return '#555';
+      // Create renderer
+      this.renderer = new THREE.WebGPURenderer({
+        canvas: this.canvas,
+        antialias: true,
+        alpha: true,
       });
+      this.renderer.setSize(this.width, this.height);
+      this.renderer.setPixelRatio(window.devicePixelRatio);
+      this.renderer.setClearColor(0x000000, 0);
 
-    // ====== Paths for links ======
-    this.linkG
-      .selectAll<SVGPathElement, SankeyLink>('path')
-      .data(links, (d) => d.index!) // d.index assigned by sankey
-      .join('path')
-      .attr('d', sankeyLinkHorizontal())
-      .attr('stroke', (d) => (d.target.inclusion ? 'url(#blue-flow)' : '#333'))
-      .attr('stroke-width', (d) => Math.max(1, d.width ?? 1));
+      await this.renderer.init();
 
-    // ====== Labels on nodes ======
-    // Using the .join(...) pattern
-    const textSel = this.nodeG
-      .selectAll<SVGTextElement, SankeyNode>('text')
-      .data(nodes, (d) => d.name)
-      .join(
-        // ENTER
-        (enter) => enter
-          .append('text')
-          .attr('data-last', '0'), // initialize
-        // UPDATE
-        (update) => update,
-        // EXIT
-        (exit) => exit.remove()
+      // Scene
+      this.scene = new THREE.Scene();
+
+      // Orthographic camera: Y-down coordinate system
+      this.camera = new THREE.OrthographicCamera(
+        0, this.width, 0, -this.height, -1, 10
       );
 
-    textSel
-      .attr('data-last', function (d) {
-        // If there's an old data-current, preserve it; else '0'
-        const oldCurrent = d3.select(this).attr('data-current');
-        return oldCurrent || '0';
-      })
-      .attr('data-current', (d) => {
-        // Summation of target links if you prefer, or just d.value
-        const targetSum = (d.targetLinks || []).reduce((acc, l) => acc + (l.value || 0), 0);
-        // Example: whichever is nonzero
-        return targetSum || d.value || 0;
-      })
-      .attr('x', (d) => (this.isRightAligned(d) ? d.x1 + 6 : d.x0 - 6))
-      .attr('y', (d) => (d.y0 + d.y1) / 2)
-      .attr('dy', '-0.5em')
-      .attr('text-anchor', (d) => (this.isRightAligned(d) ? 'start' : 'end'))
-      .text((d) => d.name)
-      // Now add a <tspan> for the numeric value
-      .each(function () {
-        // 'this' is the <text> element
-        d3.select(this)
-          .selectAll<SVGTSpanElement, unknown>('tspan.number')
-          .data([0]) // ensure exactly one <tspan>
-          .join('tspan')
-          .attr('class', 'number')
-          .attr('x', () => {
-            const nodeData = d3.select(this).datum() as SankeyNode;
-            return nodeData && nodeData.inclusion
-              ? nodeData.x1 + 6
-              : nodeData.x0 - 6;
-          })
-          .attr('dy', '1em');
-      });
+      // Particle system
+      this.particleBuffers = createParticleBuffers(MAX_PARTICLES);
+      this.edgeBuffers = createEdgeBuffer(MAX_EDGES);
 
-    // Transition & tween for the numeric part
-    textSel.selectAll<SVGTSpanElement, unknown>('tspan.number')
-      .transition()
-      .duration(500)
-      .tween('text', function () {
-        // The parent <text> has the data-last / data-current
-        const tspan = d3.select(this);
-        const parentText = d3.select(this.parentNode as SVGTextElement);
-        const currentValue = parentText.empty() ? 0 : parseFloat(parentText.attr('data-last') || '0');
-        const targetValue = parentText.empty() ? 0 : parseFloat(parentText.attr('data-current') || '0');
+      const { computeUpdate, dt } = createUpdateShader(
+        this.particleBuffers, this.edgeBuffers, MAX_PARTICLES
+      );
+      this.computeUpdate = computeUpdate;
+      this.dtUniform = dt;
 
-        const interp = d3.interpolateNumber(currentValue, targetValue);
-        return function (t) {
-          tspan.text(d3.format(',.0f')(interp(t)));
-        };
-      });
+      // Trail lines (added first so they render behind particles)
+      this.trailLines = createTrailLines(MAX_PARTICLES, this.particleBuffers, this.edgeBuffers);
+      this.scene.add(this.trailLines);
+
+      // Particle mesh
+      this.particleMesh = createParticleMesh(MAX_PARTICLES, this.particleBuffers);
+      this.scene.add(this.particleMesh);
+
+      // Label overlay
+      this.labelContainer = document.createElement('div');
+      this.labelContainer.className = 'node-labels';
+      this.container.appendChild(this.labelContainer);
+
+      // Particle pool
+      this.particlePool = new ParticlePool(MAX_PARTICLES);
+
+      // Visibility change handler
+      this.visibilityHandler = () => {
+        if (document.hidden) {
+          this.stop();
+        } else {
+          this.lastFrameTime = performance.now();
+          if (this.currentEdges.length > 0) this.start();
+        }
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
+
+      this.isInitialized = true;
+      this.isInitializing = false;
+
+      // Process buffered update
+      if (this.pendingUpdate) {
+        const { txPoolNodes, data } = this.pendingUpdate;
+        this.pendingUpdate = null;
+        this.updateInternal(txPoolNodes, data);
+      }
+    } catch (e) {
+      console.warn('WebGPU initialization failed, falling back:', e);
+      this.fallbackMode = true;
+      this.isInitializing = false;
+    }
+  }
+
+  public update(txPoolNodes: INode[], data: TxPool): void {
+    if (this.fallbackMode) return;
+
+    if (!this.isInitialized && !this.isInitializing) {
+      this.pendingUpdate = { txPoolNodes, data };
+      this.initialize();
+      return;
+    }
+
+    if (this.isInitializing) {
+      this.pendingUpdate = { txPoolNodes, data };
+      return;
+    }
+
+    this.updateInternal(txPoolNodes, data);
+  }
+
+  private updateInternal(txPoolNodes: INode[], data: TxPool): void {
+    const { nodes, edges } = computeLayout(
+      txPoolNodes, data.links, this.width, this.height, data.hashesReceived
+    );
+
+    this.currentNodes = nodes;
+    this.currentEdges = edges;
+
+    this.particlePool!.updateEmitters(edges);
+    uploadEdgeData(this.edgeBuffers!, edges);
+    flushEdgeBuffersToGPU(this.renderer!, this.edgeBuffers!);
+
+    this.nodeMeshes = createNodeMeshes(nodes, this.scene!, this.nodeMeshes);
+    this.edgeCurves = createEdgeCurves(edges, this.scene!, this.edgeCurves);
+    this.updateLabels(nodes);
+
+    if (!this.isActive) this.start();
+  }
+
+  private updateLabels(nodes: LayoutNode[]): void {
+    if (!this.labelContainer) return;
+    this.labelContainer.innerHTML = '';
+
+    for (const node of nodes) {
+      const label = document.createElement('div');
+      label.className = 'node-label';
+
+      const isRight = !node.inclusion;
+      label.style.position = 'absolute';
+      label.style.top = `${node.y - 10}px`;
+
+      if (isRight) {
+        label.style.left = `${node.x + node.width / 2 + 6}px`;
+        label.style.textAlign = 'left';
+      } else {
+        label.style.right = `${this.width - node.x + node.width / 2 + 6}px`;
+        label.style.textAlign = 'right';
+      }
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = node.name;
+
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'node-value';
+      valueSpan.textContent = node.value.toLocaleString();
+
+      label.appendChild(nameSpan);
+      label.appendChild(valueSpan);
+      this.labelContainer.appendChild(label);
+    }
+  }
+
+  private start(): void {
+    if (this.isActive) return;
+    this.isActive = true;
+    this.lastFrameTime = performance.now();
+    this.animFrameId = requestAnimationFrame(this.tick);
+  }
+
+  private stop(): void {
+    this.isActive = false;
+    if (this.animFrameId) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = 0;
+    }
+  }
+
+  private tick = (): void => {
+    if (!this.isActive) return;
+    this.animFrameId = requestAnimationFrame(this.tick);
+
+    if (document.hidden) return;
+
+    const now = performance.now();
+    const dt = Math.min((now - this.lastFrameTime) / 1000, 0.05);
+    this.lastFrameTime = now;
+
+    // Recycle dead particles
+    this.particlePool!.recycleDead(now);
+
+    // Spawn new particles
+    const spawned = this.particlePool!.spawn(dt, this.currentEdges);
+    if (spawned.length > 0) {
+      writeSpawnData(this.particleBuffers!, this.particlePool!, spawned);
+      // Bypass Three.js needsUpdate (broken for storage buffers after init)
+      // and write directly to GPU buffers via WebGPU device.queue.writeBuffer
+      // Only flush spawned indices to avoid overwriting compute shader output
+      flushSpawnedToGPU(this.renderer!, this.particleBuffers!, spawned);
+    }
+
+    // GPU particle simulation
+    this.dtUniform.value = dt;
+    this.renderer!.compute(this.computeUpdate);
+
+    // Render
+    this.renderer!.renderAsync(this.scene!, this.camera!);
+  };
+
+  public resize(): void {
+    this.width = window.innerWidth - (40 + 16);
+    if (!this.isInitialized || !this.renderer || !this.camera) return;
+
+    this.renderer.setSize(this.width, this.height);
+    this.camera.right = this.width;
+    this.camera.bottom = -this.height;
+    this.camera.updateProjectionMatrix();
+  }
+
+  public setActive(active: boolean): void {
+    if (active) {
+      if (this.isInitialized && this.currentEdges.length > 0) this.start();
+    } else {
+      this.stop();
+    }
+  }
+
+  public dispose(): void {
+    this.stop();
+
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    if (this.particleMesh) {
+      this.particleMesh.geometry.dispose();
+      (this.particleMesh.material as THREE.Material).dispose();
+    }
+
+    if (this.trailLines) {
+      this.trailLines.geometry.dispose();
+      (this.trailLines.material as THREE.Material).dispose();
+    }
+
+    for (const [, mesh] of this.nodeMeshes) {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+
+    for (const line of this.edgeCurves) {
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
+    }
+
+    if (this.renderer) {
+      this.renderer.dispose();
+    }
+
+    if (this.canvas && this.canvas.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+    }
+
+    if (this.labelContainer && this.labelContainer.parentNode) {
+      this.labelContainer.parentNode.removeChild(this.labelContainer);
+    }
   }
 }

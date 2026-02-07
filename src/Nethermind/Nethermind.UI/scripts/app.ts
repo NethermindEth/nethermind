@@ -119,10 +119,12 @@ function updateTxPool(txPool: TxPool) {
   if (!setActive) {
     if (txPool.pooledTx == 0) {
       document.getElementById("txPoolFlow").classList.add("not-active");
+      txPoolFlow.setActive(false);
       return;
     }
     setTimeout(resize, 10);
     document.getElementById("txPoolFlow").classList.remove("not-active");
+    txPoolFlow.setActive(true);
     setActive = true;
   }
 
@@ -508,6 +510,7 @@ window.addEventListener('resize', () => {
 function resize() {
   boxPlotEGP.resize();
   logWindow.resize();
+  txPoolFlow.resize();
 
   const txLog = document.getElementById("txLog");
   const bodyRect = document.body.getBoundingClientRect(), elemRect = txLog.getBoundingClientRect();

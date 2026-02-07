@@ -7,17 +7,19 @@
   "license": "LGPL-3.0-only",
   "private": true,
   "scripts": {
-    "build:dev": "esbuild scripts/app.ts --sourcemap=inline --bundle --outfile=../Nethermind.Runner/wwwroot/js/bundle.js",
-    "build:release": "esbuild scripts/app.ts --minify --bundle --outfile=../Nethermind.Runner/wwwroot/js/bundle.js"
+    "build:dev": "esbuild scripts/app.ts --sourcemap=inline --bundle --format=esm --target=esnext --outfile=../Nethermind.Runner/wwwroot/js/bundle.js",
+    "build:release": "esbuild scripts/app.ts --minify --bundle --format=esm --target=esnext --outfile=../Nethermind.Runner/wwwroot/js/bundle.js"
   },
   "devDependencies": {
     "@types/d3": "7.4.3",
+    "@types/three": "^0.172.0",
     "esbuild": "^0.25.0",
     "typescript": "5.7.3"
   },
   "dependencies": {
     "ansi-to-html": "0.7.2",
     "d3": "7.9.0",
-    "d3-sankey": "0.12.3"
+    "d3-sankey": "0.12.3",
+    "three": "^0.172.0"
   }
 }
