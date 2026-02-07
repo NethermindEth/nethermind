@@ -1228,11 +1228,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                && lastCommit < LatestCommittedBlockNumber - _maxDepth;
     }
 
-    private bool IsStillNeeded(long lastCommit)
-    {
-        return !IsNoLongerNeeded(lastCommit);
-    }
-
     private void AnnounceReorgBoundaries()
     {
         if (LatestCommittedBlockNumber < 1)
