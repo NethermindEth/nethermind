@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.Proofs;
@@ -64,7 +65,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
-            Transaction transaction = tx.ToTransaction();
+            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
+            if (!txResult.Success(out Transaction? transaction, out string? error))
+            {
+                return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
+            }
+
             transaction.SenderAddress ??= Address.Zero;
 
             if (transaction.GasLimit == 0)
@@ -110,7 +116,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = txs[receipt.Index];
 
             TransactionForRpcWithProof txWithProof = new();
-            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas, specProvider.ChainId);
+            TransactionForRpcContext extraData = new(
+                chainId: specProvider.ChainId,
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: receipt.Index,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: receipt);
+            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {

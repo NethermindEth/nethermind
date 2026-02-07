@@ -39,7 +39,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_validatorsAddress is not null)
                 return _validatorsAddress;
-            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators);
+            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators)?.ToImmutableArray();
             return _validatorsAddress;
         }
         set { _validatorsAddress = value; }
@@ -54,7 +54,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_penaltiesAddress is not null)
                 return _penaltiesAddress;
-            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties);
+            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties)?.ToImmutableArray();
             return _penaltiesAddress;
         }
         set { _penaltiesAddress = value; }
@@ -86,7 +86,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         set { _extraFieldsV2 = value; }
     }
 
-    public ValueHash256 CalculateHash()
+    public virtual ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new KeccakRlpStream();
         _headerDecoder.Encode(rlpStream, this);

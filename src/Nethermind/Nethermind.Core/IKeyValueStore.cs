@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
@@ -22,10 +24,12 @@ namespace Nethermind.Core
         byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
-        /// Return span. Must call `DangerousReleaseMemory` or there can be some leak.
+        /// Return span. Must call <see cref="DangerousReleaseMemory"/> after use to avoid memory leaks.
+        /// Prefer using <see cref="GetOwnedMemory"/> which handles release automatically via disposal.
         /// </summary>
-        /// <param name="key"></param>
-        /// <returns>Can return null or empty Span on missing key</returns>
+        /// <param name="key">Key whose associated value should be read.</param>
+        /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
+        /// <returns>Can return null or empty Span on a missing key</returns>
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         /// <summary>
@@ -63,6 +67,19 @@ namespace Nethermind.Core
         }
 
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+
+        /// <summary>
+        /// Returns a MemoryManager wrapping the value for the given key.
+        /// The MemoryManager must be disposed of when done to release any underlying resources.
+        /// </summary>
+        /// <param name="key">Key whose associated value should be read.</param>
+        /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
+        /// <returns>A MemoryManager wrapping the value or null if the key doesn't exist.</returns>
+        MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? data = Get(key, flags);
+            return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+        }
     }
 
     public interface IReadOnlyNativeKeyValueStore

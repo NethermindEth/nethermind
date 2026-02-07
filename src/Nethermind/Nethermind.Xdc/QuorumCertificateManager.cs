@@ -139,7 +139,18 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         return true;
     }
 
-    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, out string error)
+    public bool VerifyCertificate(QuorumCertificate qc, [NotNullWhen(false)] out string error)
+    {
+        XdcBlockHeader certicateTarget = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
+        if (certicateTarget is null)
+        {
+            error = $"Certificate target block not found hash={qc.ProposedBlockInfo.Hash}";
+            return false;
+        }
+        return VerifyCertificate(qc, certicateTarget, out error);
+    }
+
+    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, [NotNullWhen(false)] out string error)
     {
         if (qc is null)
             throw new ArgumentNullException(nameof(qc));
@@ -160,11 +171,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
-        double certThreshold = spec.CertThreshold;
-        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certThreshold);
+        double CertificateThreshold = spec.CertificateThreshold;
+        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * CertificateThreshold);
         if ((qcRound > 0) && (uniqueSignatures.Length < required))
         {
-            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certThreshold}";
+            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {CertificateThreshold}";
             return false;
         }
 

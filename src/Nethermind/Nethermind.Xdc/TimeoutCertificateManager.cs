@@ -14,6 +14,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -28,18 +29,16 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly IEpochSwitchManager _epochSwitchManager;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockTree _blockTree;
-    private readonly ISyncInfoManager _syncInfoManager;
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISyncInfoManager syncInfoManager, ISigner signer)
+    public TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
     {
         _consensusContext = context;
         this._snapshotManager = snapshotManager;
         this._epochSwitchManager = epochSwitchManager;
         this._specProvider = specProvider;
         this._blockTree = blockTree;
-        this._syncInfoManager = syncInfoManager;
         this._signer = signer;
     }
 
@@ -63,8 +62,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        var certThreshold = spec.CertThreshold;
-        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * certThreshold)
+        var CertificateThreshold = spec.CertificateThreshold;
+        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
         {
             OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
@@ -81,7 +80,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         ProcessTimeoutCertificate(timeoutCertificate);
 
-        SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
+        SyncInfo syncInfo = GetSyncInfo();
         //TODO: Broadcast syncInfo
     }
 
@@ -99,7 +98,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
     }
 
-    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage)
+    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string errorMessage)
     {
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
@@ -127,9 +126,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
-        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertThreshold)
+        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
-            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertThreshold}";
+            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 
@@ -168,7 +167,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
         {
-            SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
+            SyncInfo syncInfo = GetSyncInfo();
             //TODO: Broadcast syncInfo
         }
     }
@@ -206,6 +205,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         return snapshot.NextEpochCandidates.Contains(signer);
     }
+
+    internal SyncInfo GetSyncInfo() => new SyncInfo(_consensusContext.HighestQC, _consensusContext.HighestTC);
 
     private void SendTimeout()
     {

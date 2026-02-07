@@ -34,6 +34,7 @@ namespace Nethermind.Xdc
         private readonly ITimeoutTimer _timeoutTimer;
         private readonly IProcessExitSource _processExit;
         private readonly ILogger _logger;
+        private readonly ISignTransactionManager _signTransactionManager;
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
@@ -45,6 +46,9 @@ namespace Nethermind.Xdc
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
+        private bool _writeRoundInfo = true;
+        private long _highestSignTxNumber = 0;
+
 
         public XdcHotStuff(
             IBlockTree blockTree,
@@ -58,6 +62,7 @@ namespace Nethermind.Xdc
             ISigner signer,
             ITimeoutTimer timeoutTimer,
             IProcessExitSource processExit,
+            ISignTransactionManager signTransactionManager,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -69,6 +74,7 @@ namespace Nethermind.Xdc
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
             _timeoutTimer = timeoutTimer;
             _processExit = processExit;
             _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -149,6 +155,7 @@ namespace Nethermind.Xdc
 
             TimeSpan roundDuration = DateTime.UtcNow - _xdcContext.RoundStarted;
             _logger.Info($"Round {args.NewRound} completed in {roundDuration.TotalSeconds:F2}s");
+            _writeRoundInfo = true;
         }
 
         /// <summary>
@@ -235,18 +242,30 @@ namespace Nethermind.Xdc
             }
 
             bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
-            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+
+            if (_writeRoundInfo)
+                _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
             if (isMyTurn)
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
+
+            }
+
+            if (_highestSignTxNumber < roundParent.Number
+                && IsMasternode(epochInfo, _signer.Address)
+                && ((roundParent.Number % spec.MergeSignRange == 0)))
+            {
+                _highestSignTxNumber = roundParent.Number;
+                await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
             if (spec.SwitchBlock < roundParent.Number)
             {
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
+            _writeRoundInfo = false;
         }
 
         private XdcBlockHeader GetParentForRound()
@@ -263,7 +282,8 @@ namespace Nethermind.Xdc
 
             try
             {
-                ulong parentTimestamp = parent.Timestamp;
+                XdcBlockHeader parentHeader = FindHeaderToBuildOn(_xdcContext.HighestQC) ?? parent;
+                ulong parentTimestamp = parentHeader.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
 
@@ -280,7 +300,7 @@ namespace Nethermind.Xdc
                 }
 
                 Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
+                    _blockBuilder.BuildBlock(parentHeader, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 Block? proposedBlock = await proposedBlockTask;
 
@@ -301,6 +321,11 @@ namespace Nethermind.Xdc
             {
                 _logger.Error($"Failed to build block in round {currentRound}", ex);
             }
+
+            XdcBlockHeader FindHeaderToBuildOn(QuorumCertificate highestQC) =>
+                (XdcBlockHeader)_blockTree.FindHeader(
+                    highestQC.ProposedBlockInfo.Hash,
+                    highestQC.ProposedBlockInfo.BlockNumber);
         }
 
         /// <summary>
@@ -320,7 +345,7 @@ namespace Nethermind.Xdc
             _highestVotedRound = votingRound;
 
             // Check if we are in the masternode set
-            if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
+            if (!IsMasternode(epochInfo, _signer.Address))
             {
                 _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
@@ -476,5 +501,8 @@ namespace Nethermind.Xdc
             _cancellationTokenSource?.Dispose();
             _logger.Info("XdcHotStuff consensus runner stopped");
         }
+
+        private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
+            epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
     }
 }

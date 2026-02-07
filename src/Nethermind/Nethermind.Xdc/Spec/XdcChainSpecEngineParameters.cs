@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
 using System.Collections.Generic;
@@ -20,9 +21,16 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
+    public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
+
+    public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
-    public Address BlockSignerContract { get; set; }
 
 
     private List<V2ConfigParams> _v2Configs = new();
@@ -37,6 +45,13 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
+    public long TIP2019Block { get; set; }
+    public long MergeSignRange { get; set; }
+    public Address[] BlackListedAddresses { get; set; }
+    public long BlackListHFNumber { get; set; }
+    public long TipXDCX { get; set; }
+    public long TIPXDCXMinerDisable { get; set; }
+
     private static void CheckConfig(List<V2ConfigParams> list)
     {
         if (list.Count == 0 || list[0].SwitchRound != 0)
@@ -47,13 +62,19 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");
         }
     }
+
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    {
+        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    }
+
 }
 
 public sealed class V2ConfigParams
 {
     public ulong SwitchRound { get; init; }
     public int MaxMasternodes { get; init; }
-    public double CertThreshold { get; init; }
+    public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public int MinePeriod { get; init; }
