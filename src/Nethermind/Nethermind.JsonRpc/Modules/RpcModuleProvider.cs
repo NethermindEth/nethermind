@@ -215,7 +215,6 @@ namespace Nethermind.JsonRpc.Modules
             {
                 public readonly ParameterInfo Info;
                 public readonly ConstructorInvoker? ConstructorInvoker;
-                public readonly JsonTypeInfo? TypeInfo;
                 private readonly ParameterDetails _introspection;
 
                 public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
@@ -239,14 +238,13 @@ namespace Nethermind.JsonRpc.Modules
                     }
                 }
 
-                internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection, JsonTypeInfo? typeInfo = null)
+                internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection)
                 {
                     ArgumentNullException.ThrowIfNull(info);
 
                     Info = info;
                     ConstructorInvoker = constructor;
                     _introspection = introspection;
-                    TypeInfo = typeInfo;
                 }
             }
 
@@ -293,14 +291,7 @@ namespace Nethermind.JsonRpc.Modules
                         details |= ParameterDetails.IsOptional;
                     }
 
-                    JsonTypeInfo? typeInfo = null;
-                    try
-                    {
-                        typeInfo = EthereumJsonSerializer.JsonOptions.GetTypeInfo(parameter.ParameterType);
-                    }
-                    catch { }
-
-                    expectedParameters[i] = new(parameter, constructor, details, typeInfo);
+                    expectedParameters[i] = new(parameter, constructor, details);
                 }
 
                 ExpectedParameters = expectedParameters;

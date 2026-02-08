@@ -8,13 +8,8 @@ namespace Nethermind.Serialization.Json
 {
     using Nethermind.Core.Extensions;
     using System.Buffers;
-    using System.Buffers.Binary;
     using System.Buffers.Text;
-    using System.Numerics;
     using System.Runtime.CompilerServices;
-    using System.Runtime.InteropServices;
-    using System.Runtime.Intrinsics;
-    using System.Runtime.Intrinsics.X86;
     using System.Text.Json;
     using System.Text.Json.Serialization;
 
@@ -144,62 +139,7 @@ namespace Nethermind.Serialization.Json
         [SkipLocalsInit]
         internal static void WriteHexDirect(Utf8JsonWriter writer, ulong value)
         {
-            // Raw JSON output: '"' + "0x" + 16 hex chars + '"' = 20 bytes max
-            Span<byte> buf = stackalloc byte[20];
-            ref byte b = ref MemoryMarshal.GetReference(buf);
-
-            if (Ssse3.IsSupported)
-            {
-                // Vectorized: convert all 8 bytes → 16 hex chars in one shot via PSHUFB
-                Vector128<byte> hexLookup = Vector128.Create(
-                    (byte)'0', (byte)'1', (byte)'2', (byte)'3',
-                    (byte)'4', (byte)'5', (byte)'6', (byte)'7',
-                    (byte)'8', (byte)'9', (byte)'a', (byte)'b',
-                    (byte)'c', (byte)'d', (byte)'e', (byte)'f');
-
-                ulong be = BinaryPrimitives.ReverseEndianness(value);
-                Vector128<byte> input = Vector128.CreateScalarUnsafe(be).AsByte();
-
-                // Split each byte into high/low nibbles, interleave, then lookup
-                Vector128<byte> hi = Sse2.ShiftRightLogical(input.AsUInt16(), 4).AsByte() & Vector128.Create((byte)0x0F);
-                Vector128<byte> lo = input & Vector128.Create((byte)0x0F);
-                Vector128<byte> nibbles = Sse2.UnpackLow(hi, lo);
-                Vector128<byte> hex = Ssse3.Shuffle(hexLookup, nibbles);
-
-                hex.StoreUnsafe(ref Unsafe.Add(ref b, 3));
-            }
-            else
-            {
-                WriteHexScalar(ref Unsafe.Add(ref b, 3), value);
-            }
-
-            // nibbleCount: ceil(significantBits / 4), guaranteed >= 1 since value != 0
-            int nibbleCount = (67 - BitOperations.LeadingZeroCount(value)) >> 2;
-            int start = 19 - nibbleCount;
-
-            // Write '"0x' prefix just before first significant hex char
-            Unsafe.Add(ref b, start - 3) = (byte)'"';
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, start - 2), (ushort)0x7830); // "0x" LE
-            // Closing quote after last hex char
-            Unsafe.Add(ref b, 19) = (byte)'"';
-
-            // Hex chars never need JSON escaping — bypass encoder entirely
-            writer.WriteRawValue(
-                MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref b, start - 3), nibbleCount + 4),
-                skipInputValidation: true);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void WriteHexScalar(ref byte dest, ulong value)
-        {
-            for (int i = 0; i < 8; i++)
-            {
-                int byteVal = (int)(value >> ((7 - i) << 3)) & 0xFF;
-                int hi = byteVal >> 4;
-                int lo = byteVal & 0xF;
-                Unsafe.Add(ref dest, i * 2) = (byte)(hi + 48 + (((9 - hi) >> 31) & 39));
-                Unsafe.Add(ref dest, i * 2 + 1) = (byte)(lo + 48 + (((9 - lo) >> 31) & 39));
-            }
+            HexWriter.WriteUlongHexRawValue(writer, value);
         }
     }
 }

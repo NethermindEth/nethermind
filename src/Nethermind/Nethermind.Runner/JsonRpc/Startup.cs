@@ -219,13 +219,11 @@ public class Startup : IStartup
                         }
                         catch (Exception e) when (e.InnerException is OperationCanceledException)
                         {
-                            JsonRpcErrorResponse error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                            await concreteSerializer.SerializeAsync(resultWriter, error);
+                            await SerializeTimeoutException(resultWriter);
                         }
                         catch (OperationCanceledException)
                         {
-                            JsonRpcErrorResponse error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                            await concreteSerializer.SerializeAsync(resultWriter, error);
+                            await SerializeTimeoutException(resultWriter);
                         }
                         finally
                         {
@@ -239,6 +237,12 @@ public class Startup : IStartup
                         Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
                         break;
                     }
+                }
+
+                Task SerializeTimeoutException(CountingPipeWriter resultStream)
+                {
+                    JsonRpcErrorResponse error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                    return concreteSerializer.SerializeAsync(resultStream, error);
                 }
             }
             catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)

@@ -404,7 +404,7 @@ public sealed class JsonRpcService : IJsonRpcService
         }
         else
         {
-            JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
+            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out JsonTypeInfo? typeInfo);
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))

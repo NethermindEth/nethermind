@@ -189,6 +189,11 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // Extract raw JWT (after "Bearer ")
         ReadOnlySpan<char> jwt = token.AsSpan(JwtMessagePrefix.Length);
 
+        // Stack buffers are 256 bytes. Max signed part (header.payload) = 256 chars,
+        // HS256 signature = 43 chars + dot = 44 chars. Bail early for oversized JWTs.
+        if (jwt.Length > 300)
+            return null;
+
         // Known HS256 header lengths: 36 (AlgTyp, TypAlg) or 20 (AlgOnly).
         // Check dot at known position and verify header in one shot — avoids IndexOf scan.
         int firstDot;
@@ -217,11 +222,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
 
         // Compute HMAC-SHA256 over "header.payload" (ASCII bytes).
         // secondDot == char count == byte count (JWT is pure ASCII).
-        // Cap at 256 to keep everything on the stack; fall to library for absurd JWTs.
+        // Early length check guarantees secondDot <= 256.
         ReadOnlySpan<char> signedPart = jwt[..secondDot];
-        if (secondDot > 256)
-            return null;
-
         Span<byte> signedBytes = stackalloc byte[256];
         signedBytes = signedBytes[..secondDot];
 
@@ -245,7 +247,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
 
         if (!TryExtractClaims(payload, out long iat, out long exp))
-            return false;
+            return null; // sig valid but can't parse claims — let library handle it
 
         if (exp > 0 && nowUnixSeconds >= exp)
         {

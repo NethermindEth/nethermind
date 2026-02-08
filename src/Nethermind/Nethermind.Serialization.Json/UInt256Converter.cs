@@ -137,27 +137,40 @@ public class UInt256Converter : JsonConverter<UInt256>
     }
 
     /// <summary>
-    /// SIMD-accelerated hex encoding for UInt256 with leading-zero stripping.
-    /// Converts limbs directly to hex via PSHUFB — no ToBigEndian materialisation.
-    /// Uses WriteRawValue to bypass the JSON encoder entirely.
+    /// Encode all 4 UInt256 limbs to 64 hex chars, dispatching to SSSE3 or scalar.
     /// </summary>
-    [SkipLocalsInit]
-    private static void WriteUInt256HexDirect(Utf8JsonWriter writer, UInt256 value)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void EncodeUInt256Hex(ref byte dest, UInt256 value)
     {
-        // Raw JSON: '"' + "0x" + up to 64 hex chars + '"' = 68 bytes max
-        Span<byte> buf = stackalloc byte[68];
-        ref byte b = ref MemoryMarshal.GetReference(buf);
-
         if (Ssse3.IsSupported)
         {
-            EncodeUInt256HexSsse3(ref Unsafe.Add(ref b, 3), value);
+            // Pack limbs big-endian: [u3_BE, u2_BE] → bytes 0-15 (most significant first)
+            HexWriter.Ssse3Encode16Bytes(ref dest,
+                Vector128.Create(
+                    BinaryPrimitives.ReverseEndianness(value.u3),
+                    BinaryPrimitives.ReverseEndianness(value.u2)).AsByte());
+
+            // Pack limbs: [u1_BE, u0_BE] → bytes 16-31
+            HexWriter.Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, 32),
+                Vector128.Create(
+                    BinaryPrimitives.ReverseEndianness(value.u1),
+                    BinaryPrimitives.ReverseEndianness(value.u0)).AsByte());
         }
         else
         {
-            EncodeUInt256HexScalar(ref Unsafe.Add(ref b, 3), value);
+            HexWriter.EncodeUlongScalar(ref dest, value.u3);
+            HexWriter.EncodeUlongScalar(ref Unsafe.Add(ref dest, 16), value.u2);
+            HexWriter.EncodeUlongScalar(ref Unsafe.Add(ref dest, 32), value.u1);
+            HexWriter.EncodeUlongScalar(ref Unsafe.Add(ref dest, 48), value.u0);
         }
+    }
 
-        // Determine significant nibbles using LZCNT on limbs (u3 is most significant)
+    /// <summary>
+    /// Count significant hex nibbles via LZCNT on limbs (u3 is most significant).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetSignificantNibbleCount(UInt256 value)
+    {
         int leadingZeroBits;
         if (value.u3 != 0)
             leadingZeroBits = BitOperations.LeadingZeroCount(value.u3);
@@ -169,8 +182,22 @@ public class UInt256Converter : JsonConverter<UInt256>
             leadingZeroBits = 192 + BitOperations.LeadingZeroCount(value.u0);
 
         int nibbleCount = (259 - leadingZeroBits) >> 2; // ceil(significantBits / 4)
-        if (nibbleCount == 0) nibbleCount = 1;
+        return nibbleCount == 0 ? 1 : nibbleCount;
+    }
 
+    /// <summary>
+    /// Hex encoding with leading-zero stripping via WriteRawValue.
+    /// </summary>
+    [SkipLocalsInit]
+    private static void WriteUInt256HexDirect(Utf8JsonWriter writer, UInt256 value)
+    {
+        // Raw JSON: '"' + "0x" + up to 64 hex chars + '"' = 68 bytes max
+        Span<byte> buf = stackalloc byte[68];
+        ref byte b = ref MemoryMarshal.GetReference(buf);
+
+        EncodeUInt256Hex(ref Unsafe.Add(ref b, 3), value);
+
+        int nibbleCount = GetSignificantNibbleCount(value);
         int start = 67 - nibbleCount;
 
         Unsafe.Add(ref b, start - 3) = (byte)'"';
@@ -183,7 +210,7 @@ public class UInt256Converter : JsonConverter<UInt256>
     }
 
     /// <summary>
-    /// SIMD-accelerated hex encoding for UInt256 with full zero-padding (always 64 hex chars).
+    /// Hex encoding with full zero-padding (always 64 hex chars).
     /// </summary>
     [SkipLocalsInit]
     private static void WriteUInt256ZeroPaddedHex(Utf8JsonWriter writer, UInt256 value)
@@ -194,77 +221,10 @@ public class UInt256Converter : JsonConverter<UInt256>
 
         Unsafe.Add(ref b, 0) = (byte)'"';
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
-
-        if (Ssse3.IsSupported)
-        {
-            EncodeUInt256HexSsse3(ref Unsafe.Add(ref b, 3), value);
-        }
-        else
-        {
-            EncodeUInt256HexScalar(ref Unsafe.Add(ref b, 3), value);
-        }
-
+        EncodeUInt256Hex(ref Unsafe.Add(ref b, 3), value);
         Unsafe.Add(ref b, 67) = (byte)'"';
 
         writer.WriteRawValue(buf, skipInputValidation: true);
-    }
-
-    /// <summary>
-    /// Encodes all 4 UInt256 limbs to 64 hex chars using SSSE3 PSHUFB nibble lookup.
-    /// Converts limbs directly — no intermediate ToBigEndian byte array.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void EncodeUInt256HexSsse3(ref byte dest, UInt256 value)
-    {
-        Vector128<byte> hexLookup = Vector128.Create(
-            (byte)'0', (byte)'1', (byte)'2', (byte)'3',
-            (byte)'4', (byte)'5', (byte)'6', (byte)'7',
-            (byte)'8', (byte)'9', (byte)'a', (byte)'b',
-            (byte)'c', (byte)'d', (byte)'e', (byte)'f');
-        Vector128<byte> mask = Vector128.Create((byte)0x0F);
-
-        // Pack limbs big-endian: [u3_BE, u2_BE] = bytes 0-15 (most significant first)
-        Vector128<byte> chunk0 = Vector128.Create(
-            BinaryPrimitives.ReverseEndianness(value.u3),
-            BinaryPrimitives.ReverseEndianness(value.u2)).AsByte();
-
-        Vector128<byte> hi0 = Sse2.ShiftRightLogical(chunk0.AsUInt16(), 4).AsByte() & mask;
-        Vector128<byte> lo0 = chunk0 & mask;
-        Ssse3.Shuffle(hexLookup, Sse2.UnpackLow(hi0, lo0)).StoreUnsafe(ref dest);
-        Ssse3.Shuffle(hexLookup, Sse2.UnpackHigh(hi0, lo0)).StoreUnsafe(ref Unsafe.Add(ref dest, 16));
-
-        // Pack limbs big-endian: [u1_BE, u0_BE] = bytes 16-31
-        Vector128<byte> chunk1 = Vector128.Create(
-            BinaryPrimitives.ReverseEndianness(value.u1),
-            BinaryPrimitives.ReverseEndianness(value.u0)).AsByte();
-
-        Vector128<byte> hi1 = Sse2.ShiftRightLogical(chunk1.AsUInt16(), 4).AsByte() & mask;
-        Vector128<byte> lo1 = chunk1 & mask;
-        Ssse3.Shuffle(hexLookup, Sse2.UnpackLow(hi1, lo1)).StoreUnsafe(ref Unsafe.Add(ref dest, 32));
-        Ssse3.Shuffle(hexLookup, Sse2.UnpackHigh(hi1, lo1)).StoreUnsafe(ref Unsafe.Add(ref dest, 48));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void EncodeUInt256HexScalar(ref byte dest, UInt256 value)
-    {
-        WriteLimbHex(ref dest, value.u3);
-        WriteLimbHex(ref Unsafe.Add(ref dest, 16), value.u2);
-        WriteLimbHex(ref Unsafe.Add(ref dest, 32), value.u1);
-        WriteLimbHex(ref Unsafe.Add(ref dest, 48), value.u0);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteLimbHex(ref byte dest, ulong limb)
-    {
-        ulong be = BinaryPrimitives.ReverseEndianness(limb);
-        for (int i = 0; i < 8; i++)
-        {
-            int byteVal = (int)(be >> (i << 3)) & 0xFF;
-            int hi = byteVal >> 4;
-            int lo = byteVal & 0xF;
-            Unsafe.Add(ref dest, i * 2) = (byte)(hi + 48 + (((9 - hi) >> 31) & 39));
-            Unsafe.Add(ref dest, i * 2 + 1) = (byte)(lo + 48 + (((9 - lo) >> 31) & 39));
-        }
     }
 
     public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
@@ -307,14 +267,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         Span<byte> buf = stackalloc byte[66];
         ref byte b = ref MemoryMarshal.GetReference(buf);
 
-        if (Ssse3.IsSupported)
-        {
-            EncodeUInt256HexSsse3(ref Unsafe.Add(ref b, 2), value);
-        }
-        else
-        {
-            EncodeUInt256HexScalar(ref Unsafe.Add(ref b, 2), value);
-        }
+        EncodeUInt256Hex(ref Unsafe.Add(ref b, 2), value);
 
         if (isZeroPadded)
         {
@@ -323,19 +276,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         }
         else
         {
-            int leadingZeroBits;
-            if (value.u3 != 0)
-                leadingZeroBits = BitOperations.LeadingZeroCount(value.u3);
-            else if (value.u2 != 0)
-                leadingZeroBits = 64 + BitOperations.LeadingZeroCount(value.u2);
-            else if (value.u1 != 0)
-                leadingZeroBits = 128 + BitOperations.LeadingZeroCount(value.u1);
-            else
-                leadingZeroBits = 192 + BitOperations.LeadingZeroCount(value.u0);
-
-            int nibbleCount = (259 - leadingZeroBits) >> 2;
-            if (nibbleCount == 0) nibbleCount = 1;
-
+            int nibbleCount = GetSignificantNibbleCount(value);
             int start = 66 - nibbleCount;
             Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, start - 2), (ushort)0x7830); // "0x" LE
             writer.WritePropertyName(buf[(start - 2)..]);

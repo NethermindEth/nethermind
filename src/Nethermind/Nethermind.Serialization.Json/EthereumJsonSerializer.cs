@@ -264,7 +264,7 @@ namespace Nethermind.Serialization.Json
         {
             JsonOptions = CreateOptions(indented: false);
             JsonOptionsIndented = CreateOptions(indented: true);
-            _optionsVersion++;
+            Interlocked.Increment(ref _optionsVersion);
         }
 
         private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out IJsonTypeInfoResolver[] additionalResolvers)

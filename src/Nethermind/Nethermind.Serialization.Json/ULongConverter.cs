@@ -59,7 +59,7 @@ namespace Nethermind.Serialization.Json
                     }
                     else
                     {
-                        LongConverter.WriteHexDirect(writer, value);
+                        HexWriter.WriteUlongHexRawValue(writer, value);
                     }
                     break;
                 case NumberConversion.Decimal:
