@@ -601,28 +601,28 @@ public class Startup : IStartup
         switch (id)
         {
             case int intId:
-            {
-                Span<byte> buf = writer.GetSpan(11);
-                intId.TryFormat(buf, out int written);
-                writer.Advance(written);
-                break;
-            }
+                {
+                    Span<byte> buf = writer.GetSpan(11);
+                    intId.TryFormat(buf, out int written);
+                    writer.Advance(written);
+                    break;
+                }
             case long longId:
-            {
-                Span<byte> buf = writer.GetSpan(20);
-                longId.TryFormat(buf, out int written);
-                writer.Advance(written);
-                break;
-            }
+                {
+                    Span<byte> buf = writer.GetSpan(20);
+                    longId.TryFormat(buf, out int written);
+                    writer.Advance(written);
+                    break;
+                }
             case string strId:
-            {
-                Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
-                buf[0] = (byte)'"';
-                int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
-                buf[len + 1] = (byte)'"';
-                writer.Advance(len + 2);
-                break;
-            }
+                {
+                    Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
+                    buf[0] = (byte)'"';
+                    int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
+                    buf[len + 1] = (byte)'"';
+                    writer.Advance(len + 2);
+                    break;
+                }
             default:
                 writer.Write("null"u8);
                 break;
