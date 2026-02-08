@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.IO.Pipelines;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -15,7 +16,7 @@ namespace Nethermind.Serialization.Json;
 /// <summary>
 /// Shared low-level hex encoding primitives used by JSON converters.
 /// </summary>
-internal static class HexWriter
+public static class HexWriter
 {
     /// <summary>
     /// Encode the low 8 bytes of a Vector128 to 16 hex chars using SSSE3 PSHUFB.
@@ -248,5 +249,66 @@ internal static class HexWriter
     internal struct HexBuffer72
     {
         private ulong _element0;
+    }
+
+    private const int MaxHexRequest = 4096;
+
+    /// <summary>
+    /// Writes a large byte array as hex directly into a <see cref="PipeWriter"/>
+    /// in chunks, bounded by the actual span size returned by GetSpan.
+    /// </summary>
+    public static void WriteHexChunked(PipeWriter writer, byte[] data)
+    {
+        ReadOnlySpan<byte> remaining = data;
+        while (remaining.Length > 0)
+        {
+            Span<byte> hex = writer.GetSpan(Math.Min(remaining.Length * 2, MaxHexRequest));
+            int inputLen = Math.Min(remaining.Length, hex.Length / 2);
+            EncodeToHex(remaining[..inputLen], ref MemoryMarshal.GetReference(hex));
+            writer.Advance(inputLen * 2);
+
+            remaining = remaining[inputLen..];
+        }
+    }
+
+    /// <summary>
+    /// Writes a small byte array as hex in a single span into a <see cref="PipeWriter"/>.
+    /// </summary>
+    public static void WriteHexSmall(PipeWriter writer, byte[] data)
+    {
+        int hexLen = data.Length * 2;
+        Span<byte> hex = writer.GetSpan(hexLen);
+        int inputLen = Math.Min(data.Length, hex.Length / 2);
+        EncodeToHex(((ReadOnlySpan<byte>)data)[..inputLen], ref MemoryMarshal.GetReference(hex));
+        writer.Advance(inputLen * 2);
+    }
+
+    /// <summary>
+    /// Encode arbitrary-length bytes to hex using SIMD (AVX-512 VBMI / SSSE3) with scalar tail.
+    /// </summary>
+    private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)
+    {
+        int offset = 0;
+
+        // 32-byte blocks: AVX-512 VBMI or 2x SSSE3 or scalar
+        while (offset + 32 <= src.Length)
+        {
+            Encode32Bytes(ref Unsafe.Add(ref dest, offset * 2), src.Slice(offset, 32));
+            offset += 32;
+        }
+
+        // 16-byte block via SSSE3
+        if (Ssse3.IsSupported && offset + 16 <= src.Length)
+        {
+            Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, offset * 2),
+                Vector128.LoadUnsafe(ref Unsafe.Add(ref MemoryMarshal.GetReference(src), offset)));
+            offset += 16;
+        }
+
+        // Scalar tail
+        if (offset < src.Length)
+        {
+            EncodeBytesScalar(ref Unsafe.Add(ref dest, offset * 2), src[offset..]);
+        }
     }
 }

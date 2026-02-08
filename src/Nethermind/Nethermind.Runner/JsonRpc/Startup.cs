@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -210,6 +211,10 @@ public class Startup : IStartup
                                     await enumerator.DisposeAsync();
                                 }
                                 resultWriter.Write(_jsonClosingBracket);
+                            }
+                            else if (result.Response is JsonRpcSuccessResponse { Result: IStreamableResult streamable })
+                            {
+                                await WriteStreamableResponseAsync(resultWriter, result.Response, streamable, ctx.RequestAborted);
                             }
                             else
                             {
@@ -576,6 +581,50 @@ public class Startup : IStartup
                 break;
             default:
                 JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+                break;
+        }
+    }
+
+    private static async ValueTask WriteStreamableResponseAsync(
+        CountingWriter writer, JsonRpcResponse response,
+        IStreamableResult streamable, CancellationToken ct)
+    {
+        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
+        await streamable.WriteToAsync(writer, ct);
+        writer.Write(",\"id\":"u8);
+        WriteIdRaw(writer, response.Id);
+        writer.Write("}"u8);
+    }
+
+    private static void WriteIdRaw(PipeWriter writer, object? id)
+    {
+        switch (id)
+        {
+            case int intId:
+            {
+                Span<byte> buf = writer.GetSpan(11);
+                intId.TryFormat(buf, out int written);
+                writer.Advance(written);
+                break;
+            }
+            case long longId:
+            {
+                Span<byte> buf = writer.GetSpan(20);
+                longId.TryFormat(buf, out int written);
+                writer.Advance(written);
+                break;
+            }
+            case string strId:
+            {
+                Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
+                buf[0] = (byte)'"';
+                int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
+                buf[len + 1] = (byte)'"';
+                writer.Advance(len + 2);
+                break;
+            }
+            default:
+                writer.Write("null"u8);
                 break;
         }
     }

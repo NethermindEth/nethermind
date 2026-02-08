@@ -58,7 +58,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
             }
 
             Metrics.GetBlobsRequestsSuccessTotal++;
-            return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(response);
+            return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse(response));
         }
         catch
         {
