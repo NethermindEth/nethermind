@@ -15,7 +15,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Json
 {
-    public class EthereumJsonSerializer : IJsonSerializer
+    public sealed class EthereumJsonSerializer : IJsonSerializer
     {
         public const int DefaultMaxDepth = 128;
         private readonly int? _maxDepth;

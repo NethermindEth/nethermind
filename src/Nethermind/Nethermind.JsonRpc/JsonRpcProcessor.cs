@@ -27,7 +27,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcProcessor : IJsonRpcProcessor
+public sealed class JsonRpcProcessor : IJsonRpcProcessor
 {
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ILogger _logger;

@@ -93,6 +93,11 @@ public class Startup : IStartup
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
+        // Capture concrete types for devirtualization in hot-path closures
+        JsonRpcProcessor concreteProcessor = (JsonRpcProcessor)jsonRpcProcessor;
+        JsonRpcService concreteService = (JsonRpcService)jsonRpcService;
+        EthereumJsonSerializer concreteSerializer = (EthereumJsonSerializer)jsonSerializer;
+
         if (env.IsDevelopment())
         {
             app.UseDeveloperExceptionPage();
@@ -130,7 +135,7 @@ public class Startup : IStartup
                 return;
             }
 
-            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
+            if (concreteProcessor.ProcessExit.IsCancellationRequested)
             {
                 ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 return;
@@ -140,8 +145,8 @@ public class Startup : IStartup
             {
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                JsonRpcErrorResponse authError = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
-                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, authError);
+                JsonRpcErrorResponse authError = concreteService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
+                await concreteSerializer.SerializeAsync(ctx.Response.BodyWriter, authError);
                 await ctx.Response.CompleteAsync();
                 return;
             }
@@ -155,7 +160,7 @@ public class Startup : IStartup
             try
             {
                 using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
+                await foreach (JsonRpcResult result in concreteProcessor.ProcessAsync(request, jsonRpcContext))
                 {
                     using (result)
                     {
@@ -181,7 +186,7 @@ public class Startup : IStartup
                                         {
                                             if (!first) resultWriter.Write(_jsonComma);
                                             first = false;
-                                            await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
+                                            await concreteSerializer.SerializeAsync(resultWriter, entry.Response);
                                             _ = jsonRpcLocalStats.ReportCall(entry.Report);
                                         }
                                     }
@@ -194,19 +199,19 @@ public class Startup : IStartup
                             }
                             else
                             {
-                                await jsonSerializer.SerializeAsync(resultWriter, result.Response);
+                                await concreteSerializer.SerializeAsync(resultWriter, result.Response);
                             }
                             await resultWriter.CompleteAsync();
                         }
                         catch (Exception e) when (e.InnerException is OperationCanceledException)
                         {
-                            JsonRpcErrorResponse error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                            await jsonSerializer.SerializeAsync(resultWriter, error);
+                            JsonRpcErrorResponse error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                            await concreteSerializer.SerializeAsync(resultWriter, error);
                         }
                         catch (OperationCanceledException)
                         {
-                            JsonRpcErrorResponse error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                            await jsonSerializer.SerializeAsync(resultWriter, error);
+                            JsonRpcErrorResponse error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                            await concreteSerializer.SerializeAsync(resultWriter, error);
                         }
                         finally
                         {
@@ -227,10 +232,10 @@ public class Startup : IStartup
                 if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = e.StatusCode;
-                JsonRpcErrorResponse errResp = jsonRpcService.GetErrorResponse(
+                JsonRpcErrorResponse errResp = concreteService.GetErrorResponse(
                     e.StatusCode == StatusCodes.Status413PayloadTooLarge ? ErrorCodes.LimitExceeded : ErrorCodes.InvalidRequest,
                     e.Message);
-                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
+                await concreteSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
                 await ctx.Response.CompleteAsync();
             }
             finally
@@ -291,7 +296,7 @@ public class Startup : IStartup
                 return;
             }
 
-            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
+            if (concreteProcessor.ProcessExit.IsCancellationRequested)
             {
                 ctx.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
                 return;
@@ -334,7 +339,7 @@ public class Startup : IStartup
                 try
                 {
                     using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                    await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
+                    await foreach (JsonRpcResult result in concreteProcessor.ProcessAsync(request, jsonRpcContext))
                     {
                         using (result)
                         {
@@ -371,7 +376,7 @@ public class Startup : IStartup
                                                 }
 
                                                 first = false;
-                                                await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
+                                                await concreteSerializer.SerializeAsync(resultWriter, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to respond to more request in the batch
@@ -392,7 +397,7 @@ public class Startup : IStartup
                                 }
                                 else
                                 {
-                                    await jsonSerializer.SerializeAsync(resultWriter, result.Response);
+                                    await concreteSerializer.SerializeAsync(resultWriter, result.Response);
                                 }
                                 await resultWriter.CompleteAsync();
                                 if (stream is not null)
@@ -442,15 +447,15 @@ public class Startup : IStartup
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
             {
-                JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                return jsonSerializer.SerializeAsync(resultStream, error);
+                JsonRpcErrorResponse? error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                return concreteSerializer.SerializeAsync(resultStream, error);
             }
             async Task PushErrorResponse(int statusCode, int errorCode, string message)
             {
-                JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(errorCode, message);
+                JsonRpcErrorResponse? response = concreteService.GetErrorResponse(errorCode, message);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = statusCode;
-                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
+                await concreteSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
         }));

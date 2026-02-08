@@ -24,7 +24,7 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcService : IJsonRpcService
+public sealed class JsonRpcService : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
