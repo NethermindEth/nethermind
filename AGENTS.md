@@ -28,6 +28,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Trust null annotations, do not add redundant null checks
 - When fixing a bug, always add a regression test that fails without the fix and passes with it
 - Add tests to existing test files rather than creating new ones
+- When adding multiple, similar tests write one test with test cases
 - When adding a test, check if previous tests can be reused with new test case
 - Code comments must explain _why_, not _what_
 - **NEVER suggest using LINQ (`.Select()`, `.Where()`, `.Any()`, etc.) when a simple `foreach` or `for` loop would work.** LINQ has overhead and is less readable for simple iterations. Use LINQ only for complex queries where the declarative syntax significantly improves clarity.
