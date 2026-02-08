@@ -22,14 +22,22 @@ internal static class FlatEntryWriter
     /// </summary>
     public static void WriteAccountFlatEntries(
         IPersistence.IWriteBatch writeBatch,
-        ref TreePath path,
+        TreePath path,
         TrieNode node)
     {
         if (node.IsLeaf)
         {
-            ValueHash256 fullPath = path.Append(node.Key).Path;
-            Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
-            writeBatch.SetAccountRaw(fullPath.ToCommitment(), account);
+            int originalPathLength = path.Length;
+            try
+            {
+                path.AppendMut(node.Key);
+                Account account = AccountDecoder.Instance.Decode(node.Value.Span)!;
+                writeBatch.SetAccountRaw(path.Path.ToCommitment(), account);
+            }
+            finally
+            {
+                path.TruncateMut(originalPathLength);
+            }
             return;
         }
 
@@ -62,8 +70,19 @@ internal static class FlatEntryWriter
     {
         if (node.IsLeaf)
         {
-            ValueHash256 fullPath = path.Append(node.Key).Path;
-            WriteStorageLeaf(writeBatch, address, fullPath, node.Value.Span);
+            int originalPathLength = path.Length;
+            try
+            {
+                path.AppendMut(node.Key);
+                byte[] toWrite = ((ReadOnlySpan<byte>)node.Value.Span).IsEmpty
+                    ? State.StorageTree.ZeroBytes
+                    : ((ReadOnlySpan<byte>)node.Value.Span).AsRlpValueContext().DecodeByteArray();
+                writeBatch.SetStorageRaw(address, path.Path.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
+            }
+            finally
+            {
+                path.TruncateMut(originalPathLength);
+            }
             return;
         }
 
@@ -72,7 +91,10 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                WriteStorageLeaf(writeBatch, address, enumerator.CurrentPath, enumerator.CurrentValue);
+                byte[] toWrite = enumerator.CurrentValue.IsEmpty
+                    ? State.StorageTree.ZeroBytes
+                    : enumerator.CurrentValue.AsRlpValueContext().DecodeByteArray();
+                writeBatch.SetStorageRaw(address, enumerator.CurrentPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
             }
         }
         else if (node.IsExtension)
@@ -82,18 +104,6 @@ internal static class FlatEntryWriter
             // contract with 2^20 storage slots gives collision probability of ~(2^20)² / 2^224
             // = 2^(-184). Effectively zero - safe to assume hash references.
         }
-    }
-
-    private static void WriteStorageLeaf(
-        IPersistence.IWriteBatch writeBatch,
-        Hash256 address,
-        ValueHash256 fullPath,
-        ReadOnlySpan<byte> value)
-    {
-        byte[] toWrite = value.IsEmpty
-            ? State.StorageTree.ZeroBytes
-            : value.AsRlpValueContext().DecodeByteArray();
-        writeBatch.SetStorageRaw(address, fullPath.ToCommitment(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
     }
 
     /// <summary>
