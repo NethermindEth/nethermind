@@ -139,7 +139,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             reader = await RecordRequest(reader);
         }
 
-        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
         JsonReaderState readerState = CreateJsonReaderState(context);
         bool freshState = true;
         bool shouldExit = false;
@@ -231,6 +231,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         finally
         {
             await reader.CompleteAsync();
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
         }
     }
 
