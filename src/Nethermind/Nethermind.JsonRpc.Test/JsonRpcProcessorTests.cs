@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -399,6 +400,33 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[0].BatchedResponses.Should().BeNull();
         result[0].Response.Should().BeSameAs(_errorResponse);
         result.DisposeItems();
+    }
+
+    [Test]
+    public async Task Should_stop_processing_when_shutdown_requested()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(new CancellationToken(canceled: true));
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig(),
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance,
+            processExitSource);
+
+        string request = "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}";
+        List<JsonRpcResult> results = await processor.ProcessAsync(request, new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
+
+        results.Should().HaveCount(1);
+        results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+        ((JsonRpcErrorResponse)results[0].Response!).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        results.DisposeItems();
     }
 
     [Test]
