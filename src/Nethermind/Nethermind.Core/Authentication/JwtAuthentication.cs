@@ -8,7 +8,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,8 +42,11 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
 
-    // Single entry cache: last successfully validated token
-    private TokenCacheEntry? _lastToken;
+    // Single entry cache: last successfully validated token (allocation-free)
+    // Write order: iat first, then token with Volatile.Write (release fence)
+    // Read order: token with Volatile.Read (acquire fence), then iat
+    private string? _cachedToken;
+    private long _cachedTokenIat;
 
     private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
@@ -160,14 +162,15 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
 
         // fast manual HS256 validation: avoids Microsoft.IdentityModel overhead
         // returns true=accepted, false=rejected, null=not handled (fall through)
-        bool? manualResult = TryValidateManual(token, nowUnixSeconds);
-        if (manualResult.HasValue)
+        // Pattern match uses GetValueOrDefault() (always inlined) instead of
+        // .Value (NOT inlined due to throw in getter)
+        if (TryValidateManual(token, nowUnixSeconds) is bool accepted)
         {
-            return manualResult.Value ? True : False;
+            return accepted ? True : False;
         }
 
         // fallback to full library validation for unrecognized header formats
-        return AuthenticateCore(token);
+        return AuthenticateCore(token, nowUnixSeconds);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnTokenNotFound() => _logger.Warn("Message authentication error: The token cannot be found.");
@@ -186,239 +189,209 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // Extract raw JWT (after "Bearer ")
         ReadOnlySpan<char> jwt = token.AsSpan(JwtMessagePrefix.Length);
 
-        // Find the two dots separating header.payload.signature
-        int firstDot = jwt.IndexOf('.');
-        if (firstDot < 0) return null;
-
-        int secondDot = jwt.Slice(firstDot + 1).IndexOf('.');
-        if (secondDot < 0) return null;
-        secondDot += firstDot + 1;
-
-        ReadOnlySpan<char> header = jwt[..firstDot];
-
-        // Only handle known HS256 headers; anything else falls to AuthenticateCore
-        if (!header.SequenceEqual(HeaderAlgTyp) &&
-            !header.SequenceEqual(HeaderTypAlg) &&
-            !header.SequenceEqual(HeaderAlgOnly))
+        // Known HS256 header lengths: 36 (AlgTyp, TypAlg) or 20 (AlgOnly).
+        // Check dot at known position and verify header in one shot — avoids IndexOf scan.
+        int firstDot;
+        if (jwt.Length > 36 && jwt[36] == '.' &&
+            (jwt[..36].SequenceEqual(HeaderAlgTyp) || jwt[..36].SequenceEqual(HeaderTypAlg)))
+        {
+            firstDot = 36;
+        }
+        else if (jwt.Length > 20 && jwt[20] == '.' && jwt[..20].SequenceEqual(HeaderAlgOnly))
+        {
+            firstDot = 20;
+        }
+        else
         {
             return null;
         }
 
+        // HS256 sig = 43 Base64Url chars, so second dot is at jwt.Length - 44.
+        // Computed directly — eliminates IndexOf scan over payload+signature.
+        int secondDot = jwt.Length - 44;
+        if (secondDot <= firstDot || jwt[secondDot] != '.')
+            return null;
+
         ReadOnlySpan<char> payload = jwt[(firstDot + 1)..secondDot];
         ReadOnlySpan<char> signature = jwt[(secondDot + 1)..];
 
-        // Compute HMAC-SHA256 over "header.payload" (ASCII bytes)
+        // Compute HMAC-SHA256 over "header.payload" (ASCII bytes).
+        // secondDot == char count == byte count (JWT is pure ASCII).
+        // Cap at 256 to keep everything on the stack; fall to library for absurd JWTs.
         ReadOnlySpan<char> signedPart = jwt[..secondDot];
-        int signedByteCount = Encoding.ASCII.GetByteCount(signedPart);
+        if (secondDot > 256)
+            return null;
 
-        byte[]? rentedSignedBytes = null;
-        Span<byte> signedBytes = signedByteCount <= 512
-            ? stackalloc byte[512]
-            : (rentedSignedBytes = ArrayPool<byte>.Shared.Rent(signedByteCount));
-        signedBytes = signedBytes[..signedByteCount];
+        Span<byte> signedBytes = stackalloc byte[256];
+        signedBytes = signedBytes[..secondDot];
 
-        try
+        if (Ascii.FromUtf16(signedPart, signedBytes, out _) != OperationStatus.Done)
+            return null;
+
+        Span<byte> computedHash = stackalloc byte[32];
+        HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
+
+        Span<byte> sigBytes = stackalloc byte[32];
+        if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done
+            || sigBytesWritten != 32)
         {
-            Encoding.ASCII.GetBytes(signedPart, signedBytes);
-
-            Span<byte> computedHash = stackalloc byte[32]; // SHA256 output = 32 bytes
-            HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
-
-            // Decode the provided signature from Base64Url
-            int sigCharLen = signature.Length;
-            // Base64Url decode: max decoded size = ceil(sigCharLen * 3 / 4)
-            int maxSigBytes = (sigCharLen * 3 + 3) / 4;
-            Span<byte> sigBytes = stackalloc byte[maxSigBytes];
-
-            if (!TryBase64UrlDecode(signature, sigBytes, out int sigBytesWritten))
-            {
-                // Malformed signature encoding - reject
-                return false;
-            }
-
-            // Compare with constant-time comparison
-            if (!CryptographicOperations.FixedTimeEquals(computedHash, sigBytes[..sigBytesWritten]))
-            {
-                if (_logger.IsWarn) _logger.Warn("Message authentication error: Invalid token signature.");
-                return false;
-            }
-
-            // Decode payload and extract "iat" (and optionally "exp") claims
-            if (!TryExtractClaims(payload, out long iat, out long exp))
-            {
-                // No iat claim - reject (Engine API requires iat)
-                return false;
-            }
-
-            // Check exp if present: token must not be expired
-            if (exp > 0 && nowUnixSeconds >= exp)
-            {
-                if (_logger.IsWarn) WarnTokenExpiredExp(exp, nowUnixSeconds);
-                return false;
-            }
-
-            if (Math.Abs(iat - nowUnixSeconds) > JwtTokenTtl)
-            {
-                if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
-                return false;
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void WarnTokenExpiredExp(long e, long now) => _logger.Warn($"Token expired. exp: {e}, now: {now}");
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void WarnTokenExpiredIat(long i, long now) => _logger.Warn($"Token expired. iat: {i}, now: {now}");
-
-            // Signature valid, iat within TTL
-            CacheLastToken(token, iat);
-            return true;
+            return false;
         }
-        finally
+
+        if (!CryptographicOperations.FixedTimeEquals(computedHash, sigBytes))
         {
-            if (rentedSignedBytes is not null)
-                ArrayPool<byte>.Shared.Return(rentedSignedBytes);
+            if (_logger.IsWarn) WarnInvalidSig();
+            return false;
         }
+
+        if (!TryExtractClaims(payload, out long iat, out long exp))
+            return false;
+
+        if (exp > 0 && nowUnixSeconds >= exp)
+        {
+            if (_logger.IsWarn) WarnTokenExpiredExp(exp, nowUnixSeconds);
+            return false;
+        }
+
+        // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
+        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        {
+            if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
+            return false;
+        }
+
+        CacheLastToken(token, iat);
+        return true;
+
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnTokenExpiredExp(long e, long now) => _logger.Warn($"Token expired. exp: {e}, now: {now}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnTokenExpiredIat(long i, long now) => _logger.Warn($"Token expired. iat: {i}, now: {now}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnInvalidSig() => _logger.Warn("Message authentication error: Invalid token signature.");
     }
 
-    [SkipLocalsInit]
-    private static bool TryBase64UrlDecode(ReadOnlySpan<char> base64Url, Span<byte> output, out int bytesWritten)
-    {
-        // Base64Url -> Base64: replace '-' with '+', '_' with '/', add padding
-        int len = base64Url.Length;
-        int paddedLen = len + (4 - len % 4) % 4;
-
-        byte[]? rented = null;
-        Span<byte> utf8 = paddedLen <= 256
-            ? stackalloc byte[256]
-            : (rented = ArrayPool<byte>.Shared.Rent(paddedLen));
-        utf8 = utf8[..paddedLen];
-
-        try
-        {
-            for (int i = 0; i < len; i++)
-            {
-                char c = base64Url[i];
-                utf8[i] = c switch
-                {
-                    '-' => (byte)'+',
-                    '_' => (byte)'/',
-                    _ => (byte)c
-                };
-            }
-
-            // Add padding '='
-            for (int i = len; i < paddedLen; i++)
-            {
-                utf8[i] = (byte)'=';
-            }
-
-            return Base64.DecodeFromUtf8(utf8, output, out _, out bytesWritten) == OperationStatus.Done;
-        }
-        finally
-        {
-            if (rented is not null)
-                ArrayPool<byte>.Shared.Return(rented);
-        }
-    }
-
+    /// <summary>
+    /// Extract "iat" (required) and "exp" (optional) integer claims from a JWT payload.
+    /// Uses a lightweight byte scanner instead of Utf8JsonReader to avoid:
+    /// - 552-byte stack frame (Utf8JsonReader struct ~200 bytes + locals)
+    /// - 432-byte prolog zeroing loop
+    /// - ArrayPool rent/return + try/finally
+    /// - 90 inlined reader methods bloating to 2979 bytes of native code
+    /// </summary>
     [SkipLocalsInit]
     private static bool TryExtractClaims(ReadOnlySpan<char> payloadBase64Url, out long iat, out long exp)
     {
         iat = 0;
         exp = 0;
 
-        // Decode payload from Base64Url
-        int payloadLen = payloadBase64Url.Length;
-        int maxDecodedLen = (payloadLen * 3 + 3) / 4;
+        // Decode payload from Base64Url into a fixed stack buffer.
+        // Engine API payloads are tiny (~30 bytes). If decoded output exceeds
+        // 256 bytes, DecodeFromChars returns DestinationTooSmall → we reject.
+        Span<byte> decoded = stackalloc byte[256];
+        if (Base64Url.DecodeFromChars(payloadBase64Url, decoded, out _, out int bytesWritten) != OperationStatus.Done)
+            return false;
 
-        byte[]? rented = null;
-        Span<byte> decoded = maxDecodedLen <= 256
-            ? stackalloc byte[256]
-            : (rented = ArrayPool<byte>.Shared.Rent(maxDecodedLen));
+        // Scan decoded UTF-8 bytes for "iat" and "exp" keys with integer values.
+        // JWT payloads are compact JSON objects: {"iat":NNNNN,"exp":NNNNN}
+        // The scanner finds quoted 3-letter keys and parses the integer after the colon.
+        ReadOnlySpan<byte> json = decoded[..bytesWritten];
+        bool foundIat = false;
 
-        try
+        for (int i = 0; i < json.Length - 4; i++)
         {
-            if (!TryBase64UrlDecode(payloadBase64Url, decoded, out int bytesWritten))
-                return false;
+            if (json[i] != '"') continue;
 
-            // Parse JSON to find "iat" and optionally "exp"
-            Utf8JsonReader reader = new(decoded[..bytesWritten]);
-            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
-                return false;
+            byte k1 = json[i + 1], k2 = json[i + 2], k3 = json[i + 3];
+            if (json[i + 4] != '"') continue;
 
-            bool foundIat = false;
-            while (reader.Read())
+            if (k1 == 'i' && k2 == 'a' && k3 == 't')
             {
-                if (reader.TokenType == JsonTokenType.EndObject) break;
-                if (reader.TokenType != JsonTokenType.PropertyName) continue;
-
-                if (reader.ValueTextEquals("iat"u8))
-                {
-                    if (!reader.Read()) return false;
-                    if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt64(out iat))
-                    {
-                        foundIat = true;
-                        continue;
-                    }
-                    return false;
-                }
-
-                if (reader.ValueTextEquals("exp"u8))
-                {
-                    if (!reader.Read()) return false;
-                    if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt64(out exp))
-                    {
-                        continue;
-                    }
-                    return false;
-                }
-
-                // Skip unknown value
-                reader.Read();
+                foundIat = TryParseClaimValue(json, i + 5, out iat);
             }
+            else if (k1 == 'e' && k2 == 'x' && k3 == 'p')
+            {
+                TryParseClaimValue(json, i + 5, out exp);
+            }
+        }
 
-            return foundIat;
-        }
-        finally
-        {
-            if (rented is not null)
-                ArrayPool<byte>.Shared.Return(rented);
-        }
+        return foundIat;
     }
 
-    private async Task<bool> AuthenticateCore(string token)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryParseClaimValue(ReadOnlySpan<byte> json, int pos, out long value)
+    {
+        value = 0;
+        // Skip optional whitespace before colon
+        while ((uint)pos < (uint)json.Length && json[pos] == ' ') pos++;
+        if ((uint)pos >= (uint)json.Length || json[pos] != ':') return false;
+        pos++;
+        // Skip optional whitespace after colon
+        while ((uint)pos < (uint)json.Length && json[pos] == ' ') pos++;
+        // Parse unsigned integer digits
+        bool hasDigit = false;
+        while ((uint)pos < (uint)json.Length)
+        {
+            uint digit = (uint)(json[pos] - '0');
+            if (digit > 9) break;
+            value = value * 10 + digit;
+            hasDigit = true;
+            pos++;
+        }
+        return hasDigit;
+    }
+
+    /// <summary>
+    /// Library-based JWT validation for unrecognized header formats.
+    /// Checks for synchronous Task completion to avoid async state machine on the hot path.
+    /// </summary>
+    private Task<bool> AuthenticateCore(string token, long nowUnixSeconds)
     {
         try
         {
             ReadOnlyMemory<char> tokenSlice = token.AsMemory(JwtMessagePrefix.Length);
             JsonWebToken jwtToken = _handler.ReadJsonWebToken(tokenSlice);
-            TokenValidationResult result = await _handler.ValidateTokenAsync(jwtToken, _tokenValidationParameters);
+            Task<TokenValidationResult> task = _handler.ValidateTokenAsync(jwtToken, _tokenValidationParameters);
 
-            if (!result.IsValid)
-            {
-                if (_logger.IsWarn) WarnInvalidResult(result.Exception);
-                return false;
-            }
-
-            DateTime now = _timestamper.UtcNow;
-            long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
-            if (Math.Abs(issuedAtUnix - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
-            {
-                // full validation succeeded and TTL check passed - cache as last valid token
-                CacheLastToken(token, issuedAtUnix);
-
-                if (_logger.IsTrace) Trace(jwtToken, now, tokenSlice);
-                return true;
-            }
-
-            if (_logger.IsWarn) WarnTokenExpired(jwtToken, now);
-            return false;
+            // HS256 validation is CPU-bound → task is almost always already completed.
+            // Avoid async state machine overhead for the common synchronous path.
+            return task.IsCompletedSuccessfully
+                ? ValidateLibraryResult(task.GetAwaiter().GetResult(), token, jwtToken, nowUnixSeconds) ? True : False
+                : AwaitValidation(task, token, jwtToken, nowUnixSeconds);
         }
         catch (Exception ex)
         {
-            if (_logger.IsWarn) WarnAuthenticationError(ex);
+            if (_logger.IsWarn) WarnAuthError(ex);
+            return False;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+    }
+
+    private bool ValidateLibraryResult(TokenValidationResult result, string token, JsonWebToken jwtToken, long nowUnixSeconds)
+    {
+        if (!result.IsValid)
+        {
+            if (_logger.IsWarn) WarnInvalidResult(result.Exception);
             return false;
         }
+
+        long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
+
+        // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
+        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        {
+            if (_logger.IsWarn) WarnTokenExpired(issuedAtUnix, nowUnixSeconds);
+            return false;
+        }
+
+        CacheLastToken(token, issuedAtUnix);
+        if (_logger.IsTrace) TraceAuth(jwtToken, nowUnixSeconds, token);
+        return true;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnInvalidResult(Exception? ex)
@@ -437,20 +410,34 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             }
             else
             {
-                WarnAuthenticationError(ex);
+                _logger.Warn($"Message authentication error: {ex?.Message}");
             }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnAuthenticationError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+        void WarnTokenExpired(long iat, long now)
+            => _logger.Warn($"Token expired. iat: {iat}, now: {now}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnTokenExpired(JsonWebToken jwtToken, DateTime now)
-            => _logger.Warn($"Token expired. Now is {now}, token issued at {jwtToken.IssuedAt}");
+        void TraceAuth(JsonWebToken jwt, long now, string tok)
+            => _logger.Trace($"Message authenticated. Token: {tok.AsMemory(JwtMessagePrefix.Length)}, iat: {jwt.IssuedAt}, time: {now}");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private async Task<bool> AwaitValidation(Task<TokenValidationResult> task, string token, JsonWebToken jwtToken, long nowUnixSeconds)
+    {
+        try
+        {
+            return ValidateLibraryResult(await task, token, jwtToken, nowUnixSeconds);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) WarnAuthError(ex);
+            return false;
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(JsonWebToken jwtToken, DateTime now, ReadOnlyMemory<char> token)
-            => _logger.Trace($"Message authenticated. Token: {token}, iat: {jwtToken.IssuedAt}, time: {now}");
+        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
     }
 
     private bool LifetimeValidator(
@@ -463,44 +450,37 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         return _timestamper.UnixTime.SecondsLong < expires.Value.ToUnixTimeSeconds();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void CacheLastToken(string token, long issuedAtUnixSeconds)
     {
-        TokenCacheEntry entry = new(token, issuedAtUnixSeconds);
-        // last writer wins, atomic swap
-        Interlocked.Exchange(ref _lastToken, entry);
+        // Write iat first (plain store), then token with release fence.
+        // Reader uses acquire fence on token, then reads iat — guarantees
+        // the iat visible is at least as fresh as the token that was read.
+        _cachedTokenIat = issuedAtUnixSeconds;
+        Volatile.Write(ref _cachedToken, token);
     }
 
     private bool TryLastValidationFromCache(string token, long nowUnixSeconds)
     {
-        // Read the last validated token entry atomically
-        // this is a single entry cache because tokens tend to be reused
-        // for a handful of sequential requests before a fresh token is issued
-        TokenCacheEntry? entry = Volatile.Read(ref _lastToken);
-        if (entry is null)
+        // Acquire fence on token read; guarantees _cachedTokenIat is at least as fresh
+        string? cached = Volatile.Read(ref _cachedToken);
+        if (cached is null)
             return false;
 
-        // Only allow cache hit if the exact same token string is being reused
-        // different tokens bypass the cache and undergo full validation
-        if (!string.Equals(entry.Token, token, StringComparison.Ordinal))
+        if (!string.Equals(cached, token, StringComparison.Ordinal))
             return false;
 
-        // Token reuse is only allowed within the original JWT lifetime
-        // We never extend token validity beyond what the issuer intended
-        // - IssuedAtUnixSeconds ensures we don't accept a token older than TTL
-        if (Math.Abs(entry.IssuedAtUnixSeconds - nowUnixSeconds) > JwtTokenTtl)
+        // Unsigned range check: |iat - now| <= TTL
+        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
         {
-            // Token lifetime exceeded - drop the cached entry and force a fresh validation
-            Interlocked.CompareExchange(ref _lastToken, null, entry);
+            Volatile.Write(ref _cachedToken, null);
             return false;
         }
 
-        // Same token, within TTL, recently validated:
-        // Accept as valid without rerunning JWT parsing and crypto checks
         return true;
     }
 
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
     private static partial Regex SecretRegex();
 
-    private record TokenCacheEntry(string Token, long IssuedAtUnixSeconds);
 }
