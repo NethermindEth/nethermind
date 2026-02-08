@@ -6,14 +6,16 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
     public static class JsonRpcConfigExtension
     {
-        private static readonly ConcurrentBag<CancellationTokenSource> _ctsPool = new();
+        private static readonly ConcurrentQueue<CancellationTokenSource> _ctsPool = new();
         private const int MaxPoolSize = 64;
+        private static int _ctsPoolSize;
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {
@@ -37,8 +39,9 @@ namespace Nethermind.JsonRpc
                 return new CancellationTokenSource();
             }
 
-            if (_ctsPool.TryTake(out CancellationTokenSource? cts))
+            if (_ctsPool.TryDequeue(out CancellationTokenSource? cts))
             {
+                Interlocked.Decrement(ref _ctsPoolSize);
                 cts.CancelAfter(config.Timeout);
                 return cts;
             }
@@ -49,16 +52,21 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// Returns a CTS to the pool if it can be reset, otherwise disposes it.
         /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void ReturnTimeoutCancellationToken(CancellationTokenSource cts)
         {
-            if (cts.TryReset() && _ctsPool.Count < MaxPoolSize)
+            if (cts.TryReset())
             {
-                _ctsPool.Add(cts);
+                if (Interlocked.Increment(ref _ctsPoolSize) <= MaxPoolSize)
+                {
+                    _ctsPool.Enqueue(cts);
+                    return;
+                }
+
+                Interlocked.Decrement(ref _ctsPoolSize);
             }
-            else
-            {
-                cts.Dispose();
-            }
+
+            cts.Dispose();
         }
     }
 }
