@@ -169,7 +169,11 @@ namespace Nethermind.Serialization.Json
         }
 
         public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
-            => JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+        {
+            using var jsonWriter = new Utf8JsonWriter((IBufferWriter<byte>)writer, CreateWriterOptions(indented));
+            JsonSerializer.Serialize(jsonWriter, value, indented ? JsonOptionsIndented : _jsonOptions);
+            return Task.CompletedTask;
+        }
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
