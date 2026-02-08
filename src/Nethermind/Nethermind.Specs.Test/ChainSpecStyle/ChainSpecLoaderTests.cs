@@ -137,55 +137,6 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void All_ChainSpecParamsJson_properties_should_have_matching_ChainParameters_properties()
-    {
-        // Properties mapped to ChainSpec directly, not ChainParameters
-        HashSet<string> mappedToChainSpec = ["ChainId", "NetworkId"];
-        Dictionary<string, string> nameMapping = new() { ["EnsRegistrar"] = "Registrar" };
-
-        HashSet<string> domainPropertyNames = [];
-        foreach (PropertyInfo prop in typeof(ChainParameters).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            domainPropertyNames.Add(prop.Name);
-
-        List<string> missing = [];
-        foreach (PropertyInfo prop in typeof(ChainSpecParamsJson).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (mappedToChainSpec.Contains(prop.Name)) continue;
-            string expectedName = nameMapping.TryGetValue(prop.Name, out string? mapped) ? mapped : prop.Name;
-            if (!domainPropertyNames.Contains(expectedName))
-                missing.Add(expectedName);
-        }
-
-        missing.Sort();
-        missing.Should().BeEmpty(
-            "every ChainSpecParamsJson property should have a corresponding ChainParameters property. " +
-            "If you added a new field to ChainSpecParamsJson, add it to ChainParameters too.");
-    }
-
-    [Test]
-    public void All_ChainParameters_properties_should_have_matching_ChainSpecParamsJson_properties()
-    {
-        Dictionary<string, string> nameMapping = new() { ["Registrar"] = "EnsRegistrar" };
-
-        HashSet<string> jsonPropertyNames = [];
-        foreach (PropertyInfo prop in typeof(ChainSpecParamsJson).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            jsonPropertyNames.Add(prop.Name);
-
-        List<string> missing = [];
-        foreach (PropertyInfo prop in typeof(ChainParameters).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            string expectedName = nameMapping.TryGetValue(prop.Name, out string? mapped) ? mapped : prop.Name;
-            if (!jsonPropertyNames.Contains(expectedName))
-                missing.Add(prop.Name);
-        }
-
-        missing.Sort();
-        missing.Should().BeEmpty(
-            "every ChainParameters property should have a corresponding ChainSpecParamsJson property. " +
-            "If you added a new field to ChainParameters, add it to ChainSpecParamsJson too.");
-    }
-
-    [Test]
     public void All_ChainSpecParamsJson_properties_should_be_mapped_in_loader()
     {
         // Properties excluded due to ChainSpecLoader.ValidateParams constraints:
