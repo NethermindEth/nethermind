@@ -971,19 +971,16 @@ namespace Nethermind.Blockchain
             bool ascendingOrder = !isBatchUpdate || blocks[^1].Number >= blocks[0].Number;
 
 #if DEBUG
-            for (int i = 0; i < blocks.Count; i++)
+            for (int i = 1; i < blocks.Count; i++)
             {
-                if (i != 0)
+                if (ascendingOrder && blocks[i].Number != blocks[i - 1].Number + 1)
                 {
-                    if (ascendingOrder && blocks[i].Number != blocks[i - 1].Number + 1)
-                    {
-                        throw new InvalidOperationException("Update main chain invoked with gaps");
-                    }
+                    throw new InvalidOperationException("Update main chain invoked with gaps");
+                }
 
-                    if (!ascendingOrder && blocks[i - 1].Number != blocks[i].Number + 1)
-                    {
-                        throw new InvalidOperationException("Update main chain invoked with gaps");
-                    }
+                if (!ascendingOrder && blocks[i - 1].Number != blocks[i].Number + 1)
+                {
+                    throw new InvalidOperationException("Update main chain invoked with gaps");
                 }
             }
 #endif
