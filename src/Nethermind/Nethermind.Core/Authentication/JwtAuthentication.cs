@@ -161,10 +161,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
 
         // fast manual HS256 validation: avoids Microsoft.IdentityModel overhead
-        // returns true=accepted, false=rejected, null=not handled (fall through)
-        // Pattern match uses GetValueOrDefault() (always inlined) instead of
-        // .Value (NOT inlined due to throw in getter)
-        if (TryValidateManual(token, nowUnixSeconds) is bool accepted)
+        if (TryValidateManual(token, nowUnixSeconds, out bool accepted))
         {
             return accepted ? True : False;
         }
@@ -181,18 +178,19 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
 
     /// <summary>
     /// Manual HS256 JWT validation for known header formats.
-    /// Returns true=accepted, false=rejected, null=not handled (fall through to library).
+    /// Returns true if handled (result in <paramref name="accepted"/>), false to fall through to library.
     /// </summary>
     [SkipLocalsInit]
-    private bool? TryValidateManual(string token, long nowUnixSeconds)
+    private bool TryValidateManual(string token, long nowUnixSeconds, out bool accepted)
     {
+        accepted = false;
         // Extract raw JWT (after "Bearer ")
         ReadOnlySpan<char> jwt = token.AsSpan(JwtMessagePrefix.Length);
 
         // Stack buffers are 256 bytes. Max signed part (header.payload) = 256 chars,
         // HS256 signature = 43 chars + dot = 44 chars. Bail early for oversized JWTs.
         if (jwt.Length > 300)
-            return null;
+            return false;
 
         // Known HS256 header lengths: 36 (AlgTyp, TypAlg) or 20 (AlgOnly).
         // Check dot at known position and verify header in one shot — avoids IndexOf scan.
@@ -208,14 +206,14 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
         else
         {
-            return null;
+            return false;
         }
 
         // HS256 sig = 43 Base64Url chars, so second dot is at jwt.Length - 44.
         // Computed directly — eliminates IndexOf scan over payload+signature.
         int secondDot = jwt.Length - 44;
         if (secondDot <= firstDot || jwt[secondDot] != '.')
-            return null;
+            return false;
 
         ReadOnlySpan<char> payload = jwt[(firstDot + 1)..secondDot];
         ReadOnlySpan<char> signature = jwt[(secondDot + 1)..];
@@ -228,7 +226,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         signedBytes = signedBytes[..secondDot];
 
         if (Ascii.FromUtf16(signedPart, signedBytes, out _) != OperationStatus.Done)
-            return null;
+            return false;
 
         Span<byte> computedHash = stackalloc byte[32];
         HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
@@ -237,32 +235,33 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done
             || sigBytesWritten != 32)
         {
-            return false;
+            return true;
         }
 
         if (!CryptographicOperations.FixedTimeEquals(computedHash, sigBytes))
         {
             if (_logger.IsWarn) WarnInvalidSig();
-            return false;
+            return true;
         }
 
         if (!TryExtractClaims(payload, out long iat, out long exp))
-            return null; // sig valid but can't parse claims — let library handle it
+            return false; // sig valid but can't parse claims — let library handle it
 
         if (exp > 0 && nowUnixSeconds >= exp)
         {
             if (_logger.IsWarn) WarnTokenExpiredExp(exp, nowUnixSeconds);
-            return false;
+            return true;
         }
 
         // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
         if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
         {
             if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
-            return false;
+            return true;
         }
 
         CacheLastToken(token, iat);
+        accepted = true;
         return true;
 
 
