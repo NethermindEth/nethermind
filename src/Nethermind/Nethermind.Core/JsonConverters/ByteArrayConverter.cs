@@ -185,16 +185,52 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         Convert(writer, bytes, skipLeadingZeros: false);
     }
 
+    /// <summary>
+    /// Writes bytes as a hex string value (e.g. "0xabcd") using WriteStringValue.
+    /// </summary>
     [SkipLocalsInit]
     public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true, bool addHexPrefix = true)
     {
-        Convert(writer,
-            bytes,
-            static (w, h) => w.WriteRawValue(h, skipInputValidation: true), skipLeadingZeros, addHexPrefix: addHexPrefix);
+        const int maxStackLength = 256;
+
+        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+        int nibblesCount = bytes.Length * 2;
+
+        if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
+        {
+            writer.WriteStringValue("0x0"u8);
+            return;
+        }
+
+        int prefixLength = addHexPrefix ? 2 : 0;
+        int length = nibblesCount - leadingNibbleZeros + prefixLength;
+
+        byte[]? array = null;
+        Span<byte> hex = length <= maxStackLength
+            ? stackalloc byte[maxStackLength]
+            : (array = ArrayPool<byte>.Shared.Rent(length));
+        hex = hex[..length];
+
+        int start = 0;
+        if (addHexPrefix)
+        {
+            hex[start++] = (byte)'0';
+            hex[start++] = (byte)'x';
+        }
+
+        ReadOnlySpan<byte> input = bytes[(leadingNibbleZeros / 2)..];
+        input.OutputBytesToByteHex(hex[start..], extraNibble: (leadingNibbleZeros & 1) != 0);
+        writer.WriteStringValue(hex);
+
+        if (array is not null)
+            ArrayPool<byte>.Shared.Return(array);
     }
 
     public delegate void WriteHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hex);
 
+    /// <summary>
+    /// Writes bytes as hex using a custom write action (e.g. for property names).
+    /// </summary>
     [SkipLocalsInit]
     public static void Convert(
         Utf8JsonWriter writer,
@@ -204,27 +240,27 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         bool addQuotations = true,
         bool addHexPrefix = true)
     {
-        const int maxStackLength = 128;
-        const int stackLength = 256;
+        const int maxStackLength = 256;
 
-        var leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
-        var nibblesCount = bytes.Length * 2;
+        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+        int nibblesCount = bytes.Length * 2;
 
         if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
         {
-            writer.WriteStringValue(Bytes.ZeroHexValue);
+            writeAction(writer, addQuotations ? "\"0x0\""u8 : "0x0"u8);
             return;
         }
 
-        var prefixLength = addHexPrefix ? 2 : 0;
-        var length = nibblesCount - leadingNibbleZeros + prefixLength + (addQuotations ? 2 : 0);
+        int prefixLength = addHexPrefix ? 2 : 0;
+        int length = nibblesCount - leadingNibbleZeros + prefixLength + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
-        if (length > maxStackLength)
-            array = ArrayPool<byte>.Shared.Rent(length);
+        Span<byte> hex = length <= maxStackLength
+            ? stackalloc byte[maxStackLength]
+            : (array = ArrayPool<byte>.Shared.Rent(length));
+        hex = hex[..length];
 
-        Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
-        var start = 0;
+        int start = 0;
         Index end = ^0;
         if (addQuotations)
         {
