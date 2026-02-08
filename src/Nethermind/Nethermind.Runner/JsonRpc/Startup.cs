@@ -212,12 +212,20 @@ public class Startup : IStartup
                     {
                         using (result)
                         {
-                            await using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
+                            // Authenticated (Engine API) single responses bypass buffering to avoid double-copy
+                            bool bufferResponse = jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !result.IsCollection);
+                            await using Stream stream = bufferResponse ? RecyclableStream.GetStream("http") : null;
                             CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
                             try
                             {
                                 ctx.Response.ContentType = "application/json";
                                 ctx.Response.StatusCode = GetStatusCode(result);
+
+                                // Flush headers before body for unbuffered responses
+                                if (stream is null)
+                                {
+                                    await ctx.Response.StartAsync();
+                                }
 
                                 if (result.IsCollection)
                                 {
