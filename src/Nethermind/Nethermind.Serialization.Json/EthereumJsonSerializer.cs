@@ -175,6 +175,17 @@ namespace Nethermind.Serialization.Json
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Pre-serializes instances to warm System.Text.Json metadata caches at startup.
+        /// </summary>
+        public static void WarmupSerializer(params object[] instances)
+        {
+            foreach (object instance in instances)
+            {
+                _ = JsonSerializer.SerializeToUtf8Bytes(instance, instance.GetType(), JsonOptions);
+            }
+        }
+
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
             JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);

@@ -98,6 +98,11 @@ public class Startup : IStartup
         JsonRpcService concreteService = (JsonRpcService)jsonRpcService;
         EthereumJsonSerializer concreteSerializer = (EthereumJsonSerializer)jsonSerializer;
 
+        // Warm up System.Text.Json metadata for hot response types
+        EthereumJsonSerializer.WarmupSerializer(
+            new JsonRpcSuccessResponse { Id = 0 },
+            new JsonRpcErrorResponse { Id = 0, Error = new Error { Code = 0, Message = string.Empty } });
+
         if (env.IsDevelopment())
         {
             app.UseDeveloperExceptionPage();
