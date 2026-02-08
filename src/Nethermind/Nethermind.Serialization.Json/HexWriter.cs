@@ -132,22 +132,52 @@ internal static class HexWriter
     [SkipLocalsInit]
     internal static void WriteUlongHexRawValue(Utf8JsonWriter writer, ulong value)
     {
-        // Raw JSON output: '"' + "0x" + 16 hex chars + '"' = 20 bytes max
-        Span<byte> buf = stackalloc byte[20];
-        ref byte b = ref MemoryMarshal.GetReference(buf);
+        // Use InlineArray to avoid GS cookie overhead from stackalloc
+        Unsafe.SkipInit(out HexBuffer24 rawBuf);
+        ref byte b = ref Unsafe.As<HexBuffer24, byte>(ref rawBuf);
 
         EncodeUlong(ref Unsafe.Add(ref b, 3), value);
 
         // nibbleCount: ceil(significantBits / 4), guaranteed >= 1 since value != 0
-        int nibbleCount = (67 - BitOperations.LeadingZeroCount(value)) >> 2;
-        int start = 19 - nibbleCount;
+        // nint keeps Unsafe.Add in 64-bit register arithmetic, avoiding movsxd
+        nint nibbleCount = (nint)((67 - (uint)BitOperations.LeadingZeroCount(value)) >> 2);
+        nint spanStart = 16 - nibbleCount;
 
-        Unsafe.Add(ref b, start - 3) = (byte)'"';
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, start - 2), (ushort)0x7830); // "0x" LE
+        ref byte spanRef = ref Unsafe.Add(ref b, spanStart);
+        spanRef = (byte)'"';
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, 1), (ushort)0x7830); // "0x" LE
         Unsafe.Add(ref b, 19) = (byte)'"';
 
         writer.WriteRawValue(
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref b, start - 3), nibbleCount + 4),
+            MemoryMarshal.CreateReadOnlySpan(ref spanRef, (int)nibbleCount + 4),
             skipInputValidation: true);
+    }
+
+    /// <summary>
+    /// 24-byte inline buffer for ulong hex encoding (20 bytes needed, rounded up to
+    /// 3 x 8-byte ulong elements for alignment). Used instead of stackalloc to avoid
+    /// GS cookie (stack canary) overhead. The JIT inserts a cookie write in the prologue
+    /// and a verify + CORINFO_HELP_FAIL_FAST call in the epilogue for every stackalloc
+    /// buffer, adding ~35 bytes per method. Inline array structs are treated as regular
+    /// locals and avoid this.
+    /// </summary>
+    [InlineArray(3)]
+    private struct HexBuffer24
+    {
+        private ulong _element0;
+    }
+
+    /// <summary>
+    /// 72-byte inline buffer for hash/UInt256 hex encoding (68 bytes needed, rounded up
+    /// to 9 x 8-byte ulong elements for alignment). Used instead of stackalloc to avoid
+    /// GS cookie (stack canary) overhead. The JIT inserts a cookie write in the prologue
+    /// and a verify + CORINFO_HELP_FAIL_FAST call in the epilogue for every stackalloc
+    /// buffer, adding ~35 bytes per method. Inline array structs are treated as regular
+    /// locals and avoid this.
+    /// </summary>
+    [InlineArray(9)]
+    internal struct HexBuffer72
+    {
+        private ulong _element0;
     }
 }

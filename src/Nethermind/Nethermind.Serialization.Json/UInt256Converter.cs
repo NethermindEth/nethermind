@@ -192,20 +192,21 @@ public class UInt256Converter : JsonConverter<UInt256>
     private static void WriteUInt256HexDirect(Utf8JsonWriter writer, UInt256 value)
     {
         // Raw JSON: '"' + "0x" + up to 64 hex chars + '"' = 68 bytes max
-        Span<byte> buf = stackalloc byte[68];
-        ref byte b = ref MemoryMarshal.GetReference(buf);
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexWriter.HexBuffer72, byte>(ref rawBuf);
 
         EncodeUInt256Hex(ref Unsafe.Add(ref b, 3), value);
 
         int nibbleCount = GetSignificantNibbleCount(value);
-        int start = 67 - nibbleCount;
+        nint spanStart = 64 - nibbleCount;
 
-        Unsafe.Add(ref b, start - 3) = (byte)'"';
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, start - 2), (ushort)0x7830); // "0x" LE
+        ref byte spanRef = ref Unsafe.Add(ref b, spanStart);
+        spanRef = (byte)'"';
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, 1), (ushort)0x7830); // "0x" LE
         Unsafe.Add(ref b, 67) = (byte)'"';
 
         writer.WriteRawValue(
-            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref b, start - 3), nibbleCount + 4),
+            MemoryMarshal.CreateReadOnlySpan(ref spanRef, nibbleCount + 4),
             skipInputValidation: true);
     }
 
@@ -216,15 +217,17 @@ public class UInt256Converter : JsonConverter<UInt256>
     private static void WriteUInt256ZeroPaddedHex(Utf8JsonWriter writer, UInt256 value)
     {
         // Raw JSON: '"' + "0x" + 64 hex chars + '"' = 68 bytes
-        Span<byte> buf = stackalloc byte[68];
-        ref byte b = ref MemoryMarshal.GetReference(buf);
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexWriter.HexBuffer72, byte>(ref rawBuf);
 
         Unsafe.Add(ref b, 0) = (byte)'"';
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
         EncodeUInt256Hex(ref Unsafe.Add(ref b, 3), value);
         Unsafe.Add(ref b, 67) = (byte)'"';
 
-        writer.WriteRawValue(buf, skipInputValidation: true);
+        writer.WriteRawValue(
+            MemoryMarshal.CreateReadOnlySpan(ref b, 68),
+            skipInputValidation: true);
     }
 
     public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
@@ -264,22 +267,23 @@ public class UInt256Converter : JsonConverter<UInt256>
     private static void WriteHexPropertyName(Utf8JsonWriter writer, UInt256 value, bool isZeroPadded)
     {
         // "0x" + 64 hex chars = 66 bytes max
-        Span<byte> buf = stackalloc byte[66];
-        ref byte b = ref MemoryMarshal.GetReference(buf);
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexWriter.HexBuffer72, byte>(ref rawBuf);
 
         EncodeUInt256Hex(ref Unsafe.Add(ref b, 2), value);
 
         if (isZeroPadded)
         {
             Unsafe.WriteUnaligned(ref b, (ushort)0x7830); // "0x" LE
-            writer.WritePropertyName(buf);
+            writer.WritePropertyName(MemoryMarshal.CreateReadOnlySpan(ref b, 66));
         }
         else
         {
             int nibbleCount = GetSignificantNibbleCount(value);
-            int start = 66 - nibbleCount;
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, start - 2), (ushort)0x7830); // "0x" LE
-            writer.WritePropertyName(buf[(start - 2)..]);
+            nint start = 64 - nibbleCount;
+            ref byte spanRef = ref Unsafe.Add(ref b, start);
+            Unsafe.WriteUnaligned(ref spanRef, (ushort)0x7830); // "0x" LE
+            writer.WritePropertyName(MemoryMarshal.CreateReadOnlySpan(ref spanRef, nibbleCount + 2));
         }
     }
 

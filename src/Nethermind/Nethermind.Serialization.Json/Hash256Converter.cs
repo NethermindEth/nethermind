@@ -47,8 +47,8 @@ public class Hash256Converter : JsonConverter<Hash256>
     internal static void WriteHashHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hash)
     {
         // Raw JSON: '"' + "0x" + 64 hex chars + '"' = 68 bytes
-        Span<byte> buf = stackalloc byte[68];
-        ref byte b = ref MemoryMarshal.GetReference(buf);
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexWriter.HexBuffer72, byte>(ref rawBuf);
 
         Unsafe.Add(ref b, 0) = (byte)'"';
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
@@ -57,7 +57,9 @@ public class Hash256Converter : JsonConverter<Hash256>
 
         Unsafe.Add(ref b, 67) = (byte)'"';
 
-        writer.WriteRawValue(buf, skipInputValidation: true);
+        writer.WriteRawValue(
+            MemoryMarshal.CreateReadOnlySpan(ref b, 68),
+            skipInputValidation: true);
     }
 
     // Methods needed to ser/de dictionary keys
