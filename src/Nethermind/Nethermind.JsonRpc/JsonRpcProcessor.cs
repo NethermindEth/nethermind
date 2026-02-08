@@ -132,6 +132,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         {
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
             yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+            yield break;
         }
 
         if (IsRecordingRequest)
