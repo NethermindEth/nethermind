@@ -8,7 +8,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.SnapSync;
 
@@ -33,10 +32,8 @@ namespace Nethermind.Synchronization.ParallelSync
             [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
             ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
             ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
-            ISyncFeed<SnapSyncBatch?> snapSyncFeed,
-            ILogManager logManager)
+            ISyncFeed<SnapSyncBatch?> snapSyncFeed)
         {
-            ArgumentNullException.ThrowIfNull(logManager);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
