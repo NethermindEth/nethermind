@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -159,11 +160,10 @@ internal static class FlatEntryWriter
         public bool MoveNext()
         {
             _path.TruncateMut(_originalPathLength);
+            Rlp.ValueDecoderContext ctx = new(_rlp) { Position = _rlpPosition };
 
             while (++_index < 16)
             {
-                Rlp.ValueDecoderContext ctx = new(_rlp) { Position = _rlpPosition };
-
                 int prefix = ctx.ReadByte();
 
                 switch (prefix)
@@ -182,17 +182,16 @@ internal static class FlatEntryWriter
                         int length = ctx.PeekNextRlpLength();
                         ReadOnlySpan<byte> inlineRlp = ctx.PeekNextItem();
 
-                        if (TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
-                        {
-                            _currentRlp = inlineRlp;
-                            _currentFullPath = _path.Append(_index).Append(currentKey).Path;
+                        if (!TryExtractLeafData(inlineRlp, out ReadOnlySpan<byte> currentKey, out _currentValue))
+                            throw new UnreachableException("There should not be any non-leaf inline child node");
 
-                            // Save position for next loop
-                            _rlpPosition = ctx.Position + length;
-                            return true;
-                        }
+                        _currentRlp = inlineRlp;
+                        _currentFullPath = _path.Append(_index).Append(currentKey).Path;
 
-                        continue;
+                        // Save position for next loop
+                        _rlpPosition = ctx.Position + length;
+                        return true;
+
                 }
             }
 
