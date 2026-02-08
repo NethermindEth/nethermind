@@ -38,6 +38,7 @@ public class PreimageRecordingPersistence : IPersistence
     }
 
     public void Flush() => _inner.Flush();
+    public void Clear() => _inner.Clear();
 
     private class RecordingWriteBatch(IPersistence.IWriteBatch inner, IWriteBatch preimageWriteBatch, IDb preimageDb) : IPersistence.IWriteBatch
     {
@@ -112,5 +113,17 @@ public class PreimageRecordingPersistence : IPersistence
             StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
             preimageWriteBatch.PutSpan(slotHash.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
         }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            inner.DeleteAccountRange(fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            inner.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
+            inner.DeleteStateTrieNodeRange(fromPath, toPath);
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
+            inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
     }
 }

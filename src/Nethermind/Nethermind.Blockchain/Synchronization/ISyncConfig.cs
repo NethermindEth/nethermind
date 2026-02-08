@@ -165,7 +165,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "true", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
 
     [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "200000000", HiddenFromDocs = true)]
