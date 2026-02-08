@@ -26,9 +26,9 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
 
     private readonly JsonWebTokenHandler _handler = new();
     private readonly SecurityKey _securityKey;
+    private readonly TokenValidationParameters _tokenValidationParameters;
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
-    private readonly LifetimeValidator _lifetimeValidator;
 
     // Single entry cache: last successfully validated token
     private TokenCacheEntry? _lastToken;
@@ -41,7 +41,15 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         _securityKey = new SymmetricSecurityKey(secret);
         _logger = logger;
         _timestamper = timestamper;
-        _lifetimeValidator = LifetimeValidator;
+        _tokenValidationParameters = new TokenValidationParameters
+        {
+            IssuerSigningKey = _securityKey,
+            RequireExpirationTime = false,
+            ValidateLifetime = true,
+            ValidateAudience = false,
+            ValidateIssuer = false,
+            LifetimeValidator = LifetimeValidator
+        };
     }
 
     public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, ILogger logger)
@@ -149,19 +157,9 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     {
         try
         {
-            TokenValidationParameters tokenValidationParameters = new()
-            {
-                IssuerSigningKey = _securityKey,
-                RequireExpirationTime = false,
-                ValidateLifetime = true,
-                ValidateAudience = false,
-                ValidateIssuer = false,
-                LifetimeValidator = _lifetimeValidator
-            };
-
             ReadOnlyMemory<char> tokenSlice = token.AsMemory(JwtMessagePrefix.Length);
             JsonWebToken jwtToken = _handler.ReadJsonWebToken(tokenSlice);
-            TokenValidationResult result = await _handler.ValidateTokenAsync(jwtToken, tokenValidationParameters);
+            TokenValidationResult result = await _handler.ValidateTokenAsync(jwtToken, _tokenValidationParameters);
 
             if (!result.IsValid)
             {
