@@ -110,6 +110,30 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return copy;
     }
 
+    /// <summary>
+    /// Returns the Path extended to 64 nibbles with zeros (lower bound of subtree).
+    /// </summary>
+    public readonly ValueHash256 ToLowerBoundPath() => Path;
+
+    /// <summary>
+    /// Returns the Path extended to 64 nibbles with 0xF (upper bound of subtree).
+    /// </summary>
+    public readonly ValueHash256 ToUpperBoundPath()
+    {
+        ValueHash256 result = Path;
+        Span<byte> bytes = result.BytesAsSpan;
+
+        int startByte = Length / 2;
+        if (Length % 2 == 1)
+        {
+            bytes[startByte] |= 0x0F;
+            startByte++;
+        }
+        bytes[startByte..].Fill(0xFF);
+
+        return result;
+    }
+
     public void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
