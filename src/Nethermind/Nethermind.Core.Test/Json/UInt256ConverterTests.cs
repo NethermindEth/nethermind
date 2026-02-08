@@ -152,5 +152,143 @@ namespace Nethermind.Core.Test.Json
             Assert.Throws<JsonException>(
                 static () => JsonSerializer.Deserialize<UInt256>("null", options));
         }
+
+        [Test]
+        public void Writes_zero()
+        {
+            string result = JsonSerializer.Serialize(UInt256.Zero, options);
+            Assert.That(result, Is.EqualTo("\"0x0\""));
+        }
+
+        [Test]
+        public void Writes_one()
+        {
+            string result = JsonSerializer.Serialize(UInt256.One, options);
+            Assert.That(result, Is.EqualTo("\"0x1\""));
+        }
+
+        [Test]
+        public void Writes_single_nibble()
+        {
+            string result = JsonSerializer.Serialize((UInt256)0xf, options);
+            Assert.That(result, Is.EqualTo("\"0xf\""));
+        }
+
+        [Test]
+        public void Writes_two_nibbles()
+        {
+            string result = JsonSerializer.Serialize((UInt256)0xff, options);
+            Assert.That(result, Is.EqualTo("\"0xff\""));
+        }
+
+        [Test]
+        public void Writes_multi_byte()
+        {
+            string result = JsonSerializer.Serialize((UInt256)0xabcdef, options);
+            Assert.That(result, Is.EqualTo("\"0xabcdef\""));
+        }
+
+        [Test]
+        public void Writes_u0_only()
+        {
+            string result = JsonSerializer.Serialize(new UInt256(ulong.MaxValue), options);
+            Assert.That(result, Is.EqualTo("\"0xffffffffffffffff\""));
+        }
+
+        [Test]
+        public void Writes_u1_boundary()
+        {
+            // Value that spans u0 and u1
+            UInt256 value = new(ulong.MaxValue, 1);
+            string result = JsonSerializer.Serialize(value, options);
+            Assert.That(result, Is.EqualTo("\"0x1ffffffffffffffff\""));
+        }
+
+        [Test]
+        public void Writes_u2_boundary()
+        {
+            // Value in u2 only
+            UInt256 value = new(0, 0, 1, 0);
+            string result = JsonSerializer.Serialize(value, options);
+            Assert.That(result, Is.EqualTo("\"0x100000000000000000000000000000000\""));
+        }
+
+        [Test]
+        public void Writes_u3_boundary()
+        {
+            // Value in u3 only
+            UInt256 value = new(0, 0, 0, 1);
+            string result = JsonSerializer.Serialize(value, options);
+            Assert.That(result, Is.EqualTo("\"0x1000000000000000000000000000000000000000000000000\""));
+        }
+
+        [Test]
+        public void Writes_max_value()
+        {
+            string result = JsonSerializer.Serialize(UInt256.MaxValue, options);
+            Assert.That(result, Is.EqualTo("\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""));
+        }
+
+        [Test]
+        public void Writes_hex_roundtrip_all_limb_boundaries()
+        {
+            // Test values at each limb boundary
+            UInt256[] values =
+            [
+                UInt256.One,
+                new UInt256(ulong.MaxValue),
+                new UInt256(0, 1),
+                new UInt256(ulong.MaxValue, ulong.MaxValue),
+                new UInt256(0, 0, 1, 0),
+                new UInt256(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0),
+                new UInt256(0, 0, 0, 1),
+                UInt256.MaxValue,
+            ];
+
+            foreach (UInt256 value in values)
+            {
+                string json = JsonSerializer.Serialize(value, options);
+                UInt256 deserialized = JsonSerializer.Deserialize<UInt256>(json, options);
+                Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for {value}");
+            }
+        }
+
+        [Test]
+        public void Writes_zero_padded_hex()
+        {
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+            try
+            {
+                string result = JsonSerializer.Serialize(UInt256.One, options);
+                Assert.That(result, Is.EqualTo("\"0x0000000000000000000000000000000000000000000000000000000000000001\""));
+
+                result = JsonSerializer.Serialize(UInt256.MaxValue, options);
+                Assert.That(result, Is.EqualTo("\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""));
+
+                result = JsonSerializer.Serialize(UInt256.Zero, options);
+                Assert.That(result, Is.EqualTo("\"0x0000000000000000000000000000000000000000000000000000000000000000\""));
+            }
+            finally
+            {
+                ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            }
+        }
+
+        [Test]
+        public void Writes_zero_padded_hex_roundtrip()
+        {
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+            try
+            {
+                UInt256 value = new(0xdeadbeef, 0xcafebabe, 0x12345678, 0x9abcdef0);
+                string json = JsonSerializer.Serialize(value, options);
+                UInt256 deserialized = JsonSerializer.Deserialize<UInt256>(json, options);
+                Assert.That(deserialized, Is.EqualTo(value));
+            }
+            finally
+            {
+                ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            }
+        }
     }
 }
