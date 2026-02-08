@@ -550,6 +550,70 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         TxIndexFor(txHashes[BlockProcessingConstants.MaxUncommittedBlocks]).Should().NotBeNull();
     }
 
+    [Test]
+    public void FindBlockHash_should_return_pending_entries_during_batch_before_commit()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 42, isLast: false);
+
+        // Not committed to DB yet
+        TxIndexFor(txHash1).Should().BeNull();
+        // But FindBlockHash should find it from the in-memory overlay
+        _storage.FindBlockHash(txHash1).Should().Be(block1.Hash!);
+        // txHash2 not added yet
+        _storage.FindBlockHash(txHash2).Should().BeNull();
+    }
+
+    [Test]
+    public void FindBlockHash_should_return_all_entries_after_batch_commit()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 42, isLast: false);
+        RaiseBatchEvent(block2, batchId: 42, isLast: true);
+
+        // Both committed to DB and findable
+        _storage.FindBlockHash(txHash1).Should().Be(block1.Hash!);
+        _storage.FindBlockHash(txHash2).Should().Be(block2.Hash!);
+    }
+
+    [Test]
+    public void FindBlockHash_should_not_return_discarded_batch_entries()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 50, isLast: false);
+        // Overlay has txHash1
+        _storage.FindBlockHash(txHash1).Should().Be(block1.Hash!);
+
+        // New batch id causes discard of previous batch
+        RaiseBatchEvent(block2, batchId: 51, isLast: true);
+
+        // txHash1 was discarded, not in DB
+        _storage.FindBlockHash(txHash1).Should().BeNull();
+        // txHash2 was committed
+        _storage.FindBlockHash(txHash2).Should().Be(block2.Hash!);
+    }
+
+    [Test]
+    public void FindBlockHash_should_not_return_entries_after_non_batched_event_discards_batch()
+    {
+        (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) = SetupBatchTest();
+
+        RaiseBatchEvent(block1, batchId: 60, isLast: false);
+        // Overlay has txHash1
+        _storage.FindBlockHash(txHash1).Should().Be(block1.Hash!);
+
+        // Non-batched event discards the pending batch and writes block2 directly to DB
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block2));
+
+        // txHash1 overlay was discarded
+        _storage.FindBlockHash(txHash1).Should().BeNull();
+        // txHash2 was committed directly (non-batched path)
+        _storage.FindBlockHash(txHash2).Should().Be(block2.Hash!);
+    }
+
     private (Block block1, Block block2, Hash256 txHash1, Hash256 txHash2) SetupBatchTest()
     {
         _receiptConfig.TxLookupLimit = 0;

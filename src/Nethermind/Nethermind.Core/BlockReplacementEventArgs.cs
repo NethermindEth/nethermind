@@ -5,12 +5,7 @@ namespace Nethermind.Core
 {
     public class BlockReplacementEventArgs : BlockEventArgs
     {
-        public BlockReplacementEventArgs(Block block)
-            : this(block, null)
-        {
-        }
-
-        public BlockReplacementEventArgs(Block block, Block? previousBlock)
+        public BlockReplacementEventArgs(Block block, Block? previousBlock = null)
             : this(block, previousBlock, isPartOfMainChainUpdate: false, isLastInMainChainUpdate: false, mainChainUpdateId: 0)
         {
         }

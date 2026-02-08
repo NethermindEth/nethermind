@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -39,6 +40,7 @@ namespace Nethermind.Blockchain.Receipts
         private long _pendingBatchId = -1;
         private long _latestSeenBatchId = -1;
         private int _pendingBatchBlockCount;
+        private readonly ConcurrentDictionary<ValueHash256, byte[]> _pendingTxIndex = new();
 
         private const int CacheSize = 64;
         private const int MaxIndexedBlocksPerBatch = BlockProcessingConstants.MaxUncommittedBlocks;
@@ -111,7 +113,13 @@ namespace Nethermind.Blockchain.Receipts
 
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            var blockHashData = _transactionDb.Get(txHash);
+            // Check in-memory overlay first for entries pending batch commit.
+            if (_pendingTxIndex.IsEmpty
+                || !_pendingTxIndex.TryGetValue(txHash, out byte[]? blockHashData))
+            {
+                blockHashData = _transactionDb.Get(txHash);
+            }
+
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
@@ -422,7 +430,7 @@ namespace Nethermind.Blockchain.Receipts
                 if (ShouldIndexBlock(block, _pendingBatchLastBlockNumber, out Transaction[] transactions))
                 {
                     _pendingBatch ??= _transactionDb.StartWriteBatch();
-                    WriteCanonicalTxIndex(block, transactions, _pendingBatch);
+                    WriteCanonicalTxIndex(block, transactions, _pendingBatch, addToOverlay: true);
                     if (++_pendingBatchBlockCount >= MaxIndexedBlocksPerBatch && !isLast)
                     {
                         FlushPendingBatchWrites();
@@ -449,7 +457,7 @@ namespace Nethermind.Blockchain.Receipts
             return limit != -1 && (limit is null or 0 || block.Number > lastBlockNumber - limit.Value);
         }
 
-        private void WriteCanonicalTxIndex(Block block, Transaction[] transactions, IWriteBatch writeBatch)
+        private void WriteCanonicalTxIndex(Block block, Transaction[] transactions, IWriteBatch writeBatch, bool addToOverlay = false)
         {
             if (_receiptConfig.CompactTxIndex)
             {
@@ -459,16 +467,19 @@ namespace Nethermind.Blockchain.Receipts
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
                     writeBatch[hash.Bytes] = blockNumber;
+                    if (addToOverlay) _pendingTxIndex[hash] = blockNumber;
                 }
             }
             else
             {
-                ReadOnlySpan<byte> blockHash = block.Hash.Bytes;
+                byte[]? blockHashArray = addToOverlay ? block.Hash!.Bytes.ToArray() : null;
+                ReadOnlySpan<byte> blockHash = blockHashArray ?? block.Hash!.Bytes;
                 foreach (Transaction tx in transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
                     writeBatch.PutSpan(hash.Bytes, blockHash);
+                    if (addToOverlay) _pendingTxIndex[hash] = blockHashArray!;
                 }
             }
         }
@@ -483,13 +494,13 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_pendingBatchId < 0) return;
             try { _pendingBatch?.Clear(); _pendingBatch?.Dispose(); }
-            finally { _pendingBatch = null; _pendingBatchId = -1; _pendingBatchBlockCount = 0; }
+            finally { _pendingBatch = null; _pendingBatchId = -1; _pendingBatchBlockCount = 0; _pendingTxIndex.Clear(); }
         }
 
         private void FlushPendingBatchWrites()
         {
             try { _pendingBatch?.Dispose(); }
-            finally { _pendingBatch = null; _pendingBatchBlockCount = 0; }
+            finally { _pendingBatch = null; _pendingBatchBlockCount = 0; _pendingTxIndex.Clear(); }
         }
     }
 }
