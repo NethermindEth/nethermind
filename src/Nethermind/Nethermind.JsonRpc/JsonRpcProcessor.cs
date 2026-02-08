@@ -139,7 +139,11 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             reader = await RecordRequest(reader);
         }
 
-        CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
+        // Engine API (authenticated) requests skip the timeout CTS entirely -- they are from
+        // trusted consensus clients, must complete for consensus, and connection drops are
+        // handled by the PipeReader. Non-engine paths still use the pooled CTS.
+        CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
         JsonReaderState readerState = CreateJsonReaderState(context);
         bool freshState = true;
         bool shouldExit = false;
@@ -152,7 +156,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 ReadResult readResult;
                 try
                 {
-                    readResult = await reader.ReadAsync(timeoutSource.Token);
+                    readResult = await reader.ReadAsync(timeoutToken);
                 }
                 catch (BadHttpRequestException e)
                 {
@@ -231,7 +235,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         finally
         {
             await reader.CompleteAsync();
-            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
+            if (timeoutSource is not null)
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
         }
     }
 
