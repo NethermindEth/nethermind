@@ -15,6 +15,7 @@ public readonly record struct StateId(long BlockNumber, in ValueHash256 StateRoo
     }
 
     public static readonly StateId PreGenesis = new(-1, Keccak.EmptyTreeHash);
+    public static readonly StateId Sync = new(long.MinValue, Keccak.EmptyTreeHash);
 
     public int CompareTo(StateId other)
     {

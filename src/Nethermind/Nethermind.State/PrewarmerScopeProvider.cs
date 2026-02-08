@@ -19,6 +19,7 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
     public static PrewarmerGetTimeLabels NonPrewarmer { get; } = new(false);
 
     public PrewarmerGetTimeLabel Commit { get; } = new("commit", isPrewarmer);
+    public PrewarmerGetTimeLabel WriteBatchToScopeDisposeTime { get; } = new("write_batch_to_dispose", isPrewarmer);
     public PrewarmerGetTimeLabel UpdateRootHash { get; } = new("update_root_hash", isPrewarmer);
     public PrewarmerGetTimeLabel AddressHit { get; } = new("address_hit", isPrewarmer);
     public PrewarmerGetTimeLabel AddressMiss { get; } = new("address_miss", isPrewarmer);
@@ -61,7 +62,16 @@ public class PrewarmerScopeProvider(
             _getFromBaseTree = GetFromBaseTree;
         }
 
-        public void Dispose() => baseScope.Dispose();
+        private long _writeBatchTime = 0;
+
+        public void Dispose()
+        {
+            if (_measureMetric)
+            {
+                _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
+            }
+            baseScope.Dispose();
+        }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -81,6 +91,7 @@ public class PrewarmerScopeProvider(
                 return baseScope.StartWriteBatch(estimatedAccountNum);
             }
 
+            _writeBatchTime = Stopwatch.GetTimestamp();
             long sw = Stopwatch.GetTimestamp();
             return new WriteBatchLifetimeMeasurer(
                 baseScope.StartWriteBatch(estimatedAccountNum),
