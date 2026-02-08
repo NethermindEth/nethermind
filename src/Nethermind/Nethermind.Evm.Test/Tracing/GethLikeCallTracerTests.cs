@@ -162,9 +162,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
           "address": "0x76e68a8696537e4141926f3e528733af9e237d69",
           "data": "0x",
-          "topics": [
-            "0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111",
-            "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
+          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
           "position": "0x1"
         }
@@ -194,9 +192,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
           "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
           "data": "0x",
-          "topics": [
-            "0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111",
-            "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
+          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
           "position": "0x1"
         }
@@ -366,9 +362,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
           "address": "0x76e68a8696537e4141926f3e528733af9e237d69",
           "data": "0x",
-          "topics": [
-            "0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111",
-            "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
+          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
           "position": "0x1"
         }
@@ -399,9 +393,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
           "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
           "data": "0x",
-          "topics": [
-            "0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111",
-            "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
+          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
           "position": "0x1"
         }
