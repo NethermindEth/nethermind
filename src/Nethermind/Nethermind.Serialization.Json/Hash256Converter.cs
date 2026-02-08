@@ -3,9 +3,11 @@
 
 #nullable enable
 using System;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -28,12 +30,18 @@ public class Hash256Converter : JsonConverter<Hash256>
         return bytes is null ? null : new Hash256(bytes);
     }
 
+    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         Hash256 keccak,
         JsonSerializerOptions options)
     {
-        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
+        // Fixed-size fast path for 32-byte hashes: "0x" + 64 hex chars = 66 bytes
+        Span<byte> hex = stackalloc byte[66];
+        hex[0] = (byte)'0';
+        hex[1] = (byte)'x';
+        keccak.Bytes.OutputBytesToByteHex(hex[2..], extraNibble: false);
+        writer.WriteStringValue(hex);
     }
 
     // Methods needed to ser/de dictionary keys
