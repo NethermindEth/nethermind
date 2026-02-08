@@ -48,7 +48,7 @@ public class FlatEntryWriterTests
         TreePath empty = TreePath.Empty;
         leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
 
-        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, ref path, leaf);
+        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, leaf);
 
         writeBatch.Received(1).SetAccountRaw(expectedPath, Arg.Any<Account>());
     }
@@ -65,13 +65,13 @@ public class FlatEntryWriterTests
         TrieNode branch = TrieNodeFactory.CreateBranch();
         branch[3] = TrieNodeFactory.CreateLeaf([0xa], SmallAccountRlp());
         branch.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, ref path, branch);
+        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, branch);
 
         // Extension with account leaf (too large to inline)
         TrieNode extension = TrieNodeFactory.CreateExtension([0x5], TrieNodeFactory.CreateLeaf([0xb], SmallAccountRlp()));
         empty = TreePath.Empty;
         extension.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, ref path, extension);
+        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, extension);
 
         writeBatch.DidNotReceive().SetAccountRaw(Arg.Any<Hash256>(), Arg.Any<Account>());
     }

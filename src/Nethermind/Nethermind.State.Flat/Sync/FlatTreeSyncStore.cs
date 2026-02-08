@@ -18,14 +18,9 @@ namespace Nethermind.State.Flat.Sync;
 
 public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
 {
-    ILogger _logger = logManager.GetClassLogger<FlatTreeSyncStore>();
+    // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
 
-    /// <summary>
-    /// Represents a deletion range with from/to bounds (full 256-bit paths).
-    /// </summary>
-    /// <param name="From">Inclusive lower bound of the range.</param>
-    /// <param name="To">Inclusive upper bound of the range.</param>
     internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
 
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
@@ -46,33 +41,19 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     {
         if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
 
-        // StateId.Sync bypasses from/to validation, allows writing without state continuity
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
 
         TrieNode node = new(NodeType.Unknown, data.ToArray());
         node.ResolveNode(NullTrieNodeResolver.Instance, path);
 
-        // Decode existing node if present for optimized deletion
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        // Check if there's an existing node at this path
-        byte[]? existingData = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-
-        TrieNode? existingNode = null;
-        if (existingData is not null)
-        {
-            existingNode = new TrieNode(NodeType.Unknown, existingData);
-            existingNode.ResolveNode(NullTrieNodeResolver.Instance, path);
-        }
+        TrieNode? existingNode = ReadExistingNode(address, path);
 
         if (address is null)
         {
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, node);
-            TreePath reffablePath = path;
-            FlatEntryWriter.WriteAccountFlatEntries(writeBatch, ref reffablePath, node);
+            FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
         }
         else
         {
@@ -81,6 +62,19 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             writeBatch.SetStorageTrieNode(address, path, node);
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
         }
+    }
+
+    private TrieNode? ReadExistingNode(Hash256? address, TreePath path)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        byte[]? existingData = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None)
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        if (existingData is null) return null;
+
+        TrieNode existingNode = new TrieNode(NodeType.Unknown, existingData);
+        existingNode.ResolveNode(NullTrieNodeResolver.Instance, path);
+        return existingNode;
     }
 
     private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)

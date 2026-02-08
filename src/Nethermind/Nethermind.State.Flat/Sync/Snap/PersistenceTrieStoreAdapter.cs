@@ -35,7 +35,7 @@ internal class PersistenceTrieStoreAdapter(
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
             writeBatch.SetStateTrieNode(path, node);
-            FlatEntryWriter.WriteAccountFlatEntries(writeBatch, ref path, node);
+            FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
             return node;
         }
 
