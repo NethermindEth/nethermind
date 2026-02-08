@@ -55,15 +55,36 @@ internal static class HexWriter
     }
 
     /// <summary>
-    /// Scalar: encode one byte to 2 hex chars.
+    /// 512-byte lookup table: for byte value i, HexByteLookup[i*2] and [i*2+1] are the
+    /// two lowercase hex ASCII chars. Single indexed load + 16-bit store per byte,
+    /// replacing ~10 ALU ops of a branchless arithmetic approach.
+    /// </summary>
+    private static ReadOnlySpan<byte> HexByteLookup =>
+        "000102030405060708090a0b0c0d0e0f"u8 +
+        "101112131415161718191a1b1c1d1e1f"u8 +
+        "202122232425262728292a2b2c2d2e2f"u8 +
+        "303132333435363738393a3b3c3d3e3f"u8 +
+        "404142434445464748494a4b4c4d4e4f"u8 +
+        "505152535455565758595a5b5c5d5e5f"u8 +
+        "606162636465666768696a6b6c6d6e6f"u8 +
+        "707172737475767778797a7b7c7d7e7f"u8 +
+        "808182838485868788898a8b8c8d8e8f"u8 +
+        "909192939495969798999a9b9c9d9e9f"u8 +
+        "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"u8 +
+        "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf"u8 +
+        "c0c1c2c3c4c5c6c7c8c9cacbcccdcecf"u8 +
+        "d0d1d2d3d4d5d6d7d8d9dadbdcdddedf"u8 +
+        "e0e1e2e3e4e5e6e7e8e9eaebecedeeef"u8 +
+        "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"u8;
+
+    /// <summary>
+    /// Scalar: encode one byte to 2 hex chars via lookup table.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeByte(ref byte dest, int byteVal)
     {
-        int hi = byteVal >> 4;
-        int lo = byteVal & 0xF;
-        Unsafe.Add(ref dest, 0) = (byte)(hi + 48 + (((9 - hi) >> 31) & 39));
-        Unsafe.Add(ref dest, 1) = (byte)(lo + 48 + (((9 - lo) >> 31) & 39));
+        Unsafe.WriteUnaligned(ref dest,
+            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetReference(HexByteLookup), byteVal * 2)));
     }
 
     /// <summary>
@@ -72,9 +93,12 @@ internal static class HexWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeUlongScalar(ref byte dest, ulong value)
     {
+        ref byte lookup = ref MemoryMarshal.GetReference(HexByteLookup);
         for (int i = 0; i < 8; i++)
         {
-            EncodeByte(ref Unsafe.Add(ref dest, i * 2), (int)(value >> ((7 - i) << 3)) & 0xFF);
+            int byteVal = (int)(value >> ((7 - i) << 3)) & 0xFF;
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref dest, i * 2),
+                Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref lookup, byteVal * 2)));
         }
     }
 
@@ -84,9 +108,11 @@ internal static class HexWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeBytesScalar(ref byte dest, ReadOnlySpan<byte> src)
     {
+        ref byte lookup = ref MemoryMarshal.GetReference(HexByteLookup);
         for (int i = 0; i < src.Length; i++)
         {
-            EncodeByte(ref Unsafe.Add(ref dest, i * 2), src[i]);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref dest, i * 2),
+                Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref lookup, src[i] * 2)));
         }
     }
 
