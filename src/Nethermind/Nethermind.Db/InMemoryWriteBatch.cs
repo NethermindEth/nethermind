@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Db
 {
     public class InMemoryWriteBatch : IWriteBatch
     {
         private readonly IKeyValueStore _store;
-        private readonly ConcurrentDictionary<byte[], byte[]?> _currentItems = new();
+        // Note: need to keep order of operation
+        private readonly ArrayPoolList<(byte[] Key, byte[]? Value)> _writes = new(1);
         private WriteFlags _writeFlags = WriteFlags.None;
 
         public InMemoryWriteBatch(IKeyValueStore storeWithNoBatchSupport)
@@ -21,22 +21,23 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _currentItems)
+            foreach ((byte[] Key, byte[]? Value) item in _writes)
             {
-                _store.Set(keyValuePair.Key, keyValuePair.Value, _writeFlags);
+                _store.Set(item.Key, item.Value, _writeFlags);
             }
 
+            _writes.Dispose();
             GC.SuppressFinalize(this);
         }
 
         public void Clear()
         {
-            _currentItems.Clear();
+            _writes.Clear();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            _currentItems[key.ToArray()] = value;
+            _writes.Add((key.ToArray(), value));
             _writeFlags = flags;
         }
 
