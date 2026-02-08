@@ -70,8 +70,8 @@ internal static class HexWriter
         // indices 0-31 select from hi, 32-63 select from lo
         Vector256<byte> interleaved0 = Avx512Vbmi.VL.PermuteVar32x8x2(hi,
             Vector256.Create(
-                (byte) 0, 32,  1, 33,  2, 34,  3, 35,  4, 36,  5, 37,  6, 38,  7, 39,
-                        8, 40,  9, 41, 10, 42, 11, 43, 12, 44, 13, 45, 14, 46, 15, 47), lo);
+                (byte)0, 32, 1, 33, 2, 34, 3, 35, 4, 36, 5, 37, 6, 38, 7, 39,
+                        8, 40, 9, 41, 10, 42, 11, 43, 12, 44, 13, 45, 14, 46, 15, 47), lo);
 
         Vector256<byte> interleaved1 = Avx512Vbmi.VL.PermuteVar32x8x2(hi,
             Vector256.Create(
