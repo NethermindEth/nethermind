@@ -108,19 +108,15 @@ public class UInt256Converter : JsonConverter<UInt256>
         NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
         if (value.IsZero)
         {
-            writer.WriteRawValue(usedConversion == NumberConversion.ZeroPaddedHex
-                ? "\"0x0000000000000000000000000000000000000000000000000000000000000000\""u8
-                : "\"0x0\""u8);
+            writer.WriteStringValue(usedConversion == NumberConversion.ZeroPaddedHex
+                ? "0x0000000000000000000000000000000000000000000000000000000000000000"u8
+                : "0x0"u8);
             return;
         }
         switch (usedConversion)
         {
             case NumberConversion.Hex:
-                {
-                    Span<byte> bytes = stackalloc byte[32];
-                    value.ToBigEndian(bytes);
-                    ByteArrayConverter.Convert(writer, bytes);
-                }
+                WriteUInt256HexDirect(writer, value);
                 break;
             case NumberConversion.Decimal:
                 writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
@@ -130,14 +126,52 @@ public class UInt256Converter : JsonConverter<UInt256>
                 break;
             case NumberConversion.ZeroPaddedHex:
                 {
+                    // Fixed 66-byte output: "0x" + 64 hex chars
+                    Span<byte> hex = stackalloc byte[66];
+                    hex[0] = (byte)'0';
+                    hex[1] = (byte)'x';
                     Span<byte> bytes = stackalloc byte[32];
                     value.ToBigEndian(bytes);
-                    ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
+                    bytes.OutputBytesToByteHex(hex[2..], extraNibble: false);
+                    writer.WriteStringValue(hex);
                 }
                 break;
             default:
                 throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
         }
+    }
+
+    [SkipLocalsInit]
+    private static void WriteUInt256HexDirect(Utf8JsonWriter writer, UInt256 value)
+    {
+        // Determine significant nibbles using LZCNT on limbs (big-endian: u3 is most significant)
+        int leadingZeroBits;
+        if (value.u3 != 0)
+            leadingZeroBits = BitOperations.LeadingZeroCount(value.u3);
+        else if (value.u2 != 0)
+            leadingZeroBits = 64 + BitOperations.LeadingZeroCount(value.u2);
+        else if (value.u1 != 0)
+            leadingZeroBits = 128 + BitOperations.LeadingZeroCount(value.u1);
+        else
+            leadingZeroBits = 192 + BitOperations.LeadingZeroCount(value.u0);
+
+        int significantNibbles = (256 - leadingZeroBits + 3) >> 2; // ceil(significantBits / 4)
+        if (significantNibbles == 0) significantNibbles = 1;
+
+        int totalLen = 2 + significantNibbles; // "0x" + nibbles
+        Span<byte> buf = stackalloc byte[66]; // max "0x" + 64
+        buf[0] = (byte)'0';
+        buf[1] = (byte)'x';
+
+        // Write nibbles from least significant to most significant
+        Span<byte> bytes = stackalloc byte[32];
+        value.ToBigEndian(bytes);
+        int byteOffset = 32 - ((significantNibbles + 1) >> 1);
+        ReadOnlySpan<byte> significant = bytes[byteOffset..];
+        bool extraNibble = (significantNibbles & 1) != 0;
+        significant.OutputBytesToByteHex(buf[2..totalLen], extraNibble: extraNibble);
+
+        writer.WriteStringValue(buf[..totalLen]);
     }
 
     public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>

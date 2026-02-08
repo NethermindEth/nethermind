@@ -6,7 +6,6 @@ using System;
 namespace Nethermind.Serialization.Json
 {
     using System.Buffers;
-    using System.Buffers.Binary;
     using System.Buffers.Text;
     using System.Globalization;
     using System.Runtime.CompilerServices;
@@ -54,19 +53,15 @@ namespace Nethermind.Serialization.Json
             switch (usedConversion)
             {
                 case NumberConversion.Hex:
+                    if (value == 0)
                     {
-                        if (value == 0)
-                        {
-                            writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
-                        }
-                        else
-                        {
-                            Span<byte> bytes = stackalloc byte[8];
-                            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
-                            ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
-                        }
-                        break;
+                        writer.WriteStringValue("0x0"u8);
                     }
+                    else
+                    {
+                        LongConverter.WriteHexDirect(writer, value);
+                    }
+                    break;
                 case NumberConversion.Decimal:
                     writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
                     break;

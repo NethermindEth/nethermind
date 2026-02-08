@@ -8,8 +8,8 @@ namespace Nethermind.Serialization.Json
 {
     using Nethermind.Core.Extensions;
     using System.Buffers;
-    using System.Buffers.Binary;
     using System.Buffers.Text;
+    using System.Numerics;
     using System.Runtime.CompilerServices;
     using System.Text.Json;
     using System.Text.Json.Serialization;
@@ -119,13 +119,11 @@ namespace Nethermind.Serialization.Json
                 case NumberConversion.Hex:
                     if (value == 0)
                     {
-                        writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+                        writer.WriteStringValue("0x0"u8);
                     }
                     else
                     {
-                        Span<byte> bytes = stackalloc byte[8];
-                        BinaryPrimitives.WriteInt64BigEndian(bytes, value);
-                        ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
+                        WriteHexDirect(writer, (ulong)value);
                     }
                     break;
                 case NumberConversion.Decimal:
@@ -136,8 +134,27 @@ namespace Nethermind.Serialization.Json
                     break;
                 default:
                     throw new NotSupportedException();
-
             }
+        }
+
+        [SkipLocalsInit]
+        internal static void WriteHexDirect(Utf8JsonWriter writer, ulong value)
+        {
+            // Max: "0x" + 16 hex chars = 18 bytes
+            Span<byte> buf = stackalloc byte[18];
+            buf[0] = (byte)'0';
+            buf[1] = (byte)'x';
+
+            int nibbles = (64 - BitOperations.LeadingZeroCount(value) + 3) >> 2; // ceil(significantBits / 4)
+            if (nibbles == 0) nibbles = 1;
+
+            for (int i = nibbles - 1; i >= 0; i--)
+            {
+                buf[2 + i] = (byte)"0123456789abcdef"[(int)(value & 0xF)];
+                value >>= 4;
+            }
+
+            writer.WriteStringValue(buf[..(2 + nibbles)]);
         }
     }
 }
