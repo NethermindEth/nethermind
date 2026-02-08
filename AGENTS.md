@@ -23,12 +23,14 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Use the `ArgumentNullException.ThrowIfNull` method for null checks and other similar methods
 - Use the `ObjectDisposedException.ThrowIf` method for disposal checks
 - Use documentation comments for all public APIs with proper structure
+- Avoid `var` when declaring variables, the only acceptable exceptions are very long type names e.g. nested generic types
 - Consider performance implications in high-throughput paths
 - Trust null annotations, do not add redundant null checks
+- When fixing a bug, always add a regression test that fails without the fix and passes with it
 - Add tests to existing test files rather than creating new ones
+- When adding a test, check if previous tests can be reused with new test case
 - Code comments must explain _why_, not _what_
 - **NEVER suggest using LINQ (`.Select()`, `.Where()`, `.Any()`, etc.) when a simple `foreach` or `for` loop would work.** LINQ has overhead and is less readable for simple iterations. Use LINQ only for complex queries where the declarative syntax significantly improves clarity.
-- When fixing a bug, always add a regression test that fails without the fix and passes with it
 - Keep changes minimal and focused: do not rename variables, reformat surrounding code, or refactor unrelated logic as part of a fix. Touch only what is necessary to solve the problem.
 - Follow DRY: after making changes, review the result for duplicated logic. Extract repeated blocks (roughly 5+ lines) into shared methods, but do not over-extract trivial one-liners into their own methods.
 - In generic types, move methods that do not depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type.
