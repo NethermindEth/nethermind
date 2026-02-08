@@ -132,8 +132,8 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
-        private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
-        private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
+        private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: true);
+        private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: false);
 
         private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
         {
