@@ -150,7 +150,8 @@ public class Startup : IStartup
                 ctx.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
 
             long startTime = Stopwatch.GetTimestamp();
-            CountingPipeReader request = new(ctx.Request.BodyReader);
+            // Engine API: skip CountingPipeReader, use Content-Length for metrics
+            PipeReader request = ctx.Request.BodyReader;
             try
             {
                 using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
@@ -234,7 +235,7 @@ public class Startup : IStartup
             }
             finally
             {
-                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? 0);
             }
         });
 
@@ -326,7 +327,10 @@ public class Startup : IStartup
                     ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
 
                 long startTime = Stopwatch.GetTimestamp();
-                CountingPipeReader request = new(ctx.Request.BodyReader);
+                // Skip CountingPipeReader when Content-Length is known
+                long? knownContentLength = ctx.Request.ContentLength;
+                CountingPipeReader countingReader = knownContentLength > 0 ? null : new(ctx.Request.BodyReader);
+                PipeReader request = countingReader ?? ctx.Request.BodyReader;
                 try
                 {
                     using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
@@ -433,7 +437,7 @@ public class Startup : IStartup
                 }
                 finally
                 {
-                    Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+                    Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, knownContentLength ?? countingReader!.Length);
                 }
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
