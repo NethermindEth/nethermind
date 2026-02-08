@@ -116,6 +116,128 @@ public class Startup : IStartup
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
         IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
 
+        // Engine API fast lane: authenticated engine port POST requests bypass
+        // routing, CORS, compression, and WebSocket middleware
+        app.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Method != "POST" ||
+                !(ctx.Request.ContentType?.Contains("application/json") ?? false) ||
+                !jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
+                !jsonRpcUrl.IsAuthenticated ||
+                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+            {
+                await next();
+                return;
+            }
+
+            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                return;
+            }
+
+            if (!await rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
+            {
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                JsonRpcErrorResponse authError = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, authError);
+                await ctx.Response.CompleteAsync();
+                return;
+            }
+
+            if (jsonRpcUrl.MaxRequestBodySize is not null)
+                ctx.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
+
+            long startTime = Stopwatch.GetTimestamp();
+            CountingPipeReader request = new(ctx.Request.BodyReader);
+            try
+            {
+                using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+                await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
+                {
+                    using (result)
+                    {
+                        // Engine API: always write directly to response body (no buffering)
+                        CountingPipeWriter resultWriter = new(ctx.Response.BodyWriter);
+                        try
+                        {
+                            ctx.Response.ContentType = "application/json";
+                            ctx.Response.StatusCode = GetStatusCode(result);
+                            await ctx.Response.StartAsync();
+
+                            if (result.IsCollection)
+                            {
+                                resultWriter.Write(_jsonOpeningBracket);
+                                bool first = true;
+                                JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
+                                try
+                                {
+                                    while (await enumerator.MoveNextAsync())
+                                    {
+                                        JsonRpcResult.Entry entry = enumerator.Current;
+                                        using (entry)
+                                        {
+                                            if (!first) resultWriter.Write(_jsonComma);
+                                            first = false;
+                                            await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
+                                            _ = jsonRpcLocalStats.ReportCall(entry.Report);
+                                        }
+                                    }
+                                }
+                                finally
+                                {
+                                    await enumerator.DisposeAsync();
+                                }
+                                resultWriter.Write(_jsonClosingBracket);
+                            }
+                            else
+                            {
+                                await jsonSerializer.SerializeAsync(resultWriter, result.Response);
+                            }
+                            await resultWriter.CompleteAsync();
+                        }
+                        catch (Exception e) when (e.InnerException is OperationCanceledException)
+                        {
+                            JsonRpcErrorResponse error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                            await jsonSerializer.SerializeAsync(resultWriter, error);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            JsonRpcErrorResponse error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                            await jsonSerializer.SerializeAsync(resultWriter, error);
+                        }
+                        finally
+                        {
+                            await ctx.Response.CompleteAsync();
+                        }
+
+                        long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
+                        _ = jsonRpcLocalStats.ReportCall(result.IsCollection
+                            ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
+                            : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
+                        Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
+                        break;
+                    }
+                }
+            }
+            catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
+            {
+                if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.StatusCode = e.StatusCode;
+                JsonRpcErrorResponse errResp = jsonRpcService.GetErrorResponse(
+                    e.StatusCode == StatusCodes.Status413PayloadTooLarge ? ErrorCodes.LimitExceeded : ErrorCodes.InvalidRequest,
+                    e.Message);
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
+                await ctx.Response.CompleteAsync();
+            }
+            finally
+            {
+                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+            }
+        });
+
         // If request is local, don't use response compression,
         // as it allocates a lot, but doesn't improve much for loopback
         app.UseWhen(ctx =>
