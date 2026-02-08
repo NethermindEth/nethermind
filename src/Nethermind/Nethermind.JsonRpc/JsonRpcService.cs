@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -403,6 +404,7 @@ public sealed class JsonRpcService : IJsonRpcService
         }
         else
         {
+            JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
@@ -412,11 +414,15 @@ public sealed class JsonRpcService : IJsonRpcService
 
                 executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                    : typeInfo is not null
+                        ? providedParameter.Deserialize(typeInfo)
+                        : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {
-                executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                executionParam = typeInfo is not null
+                    ? providedParameter.Deserialize(typeInfo)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
         }
 

@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
@@ -27,8 +28,10 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Resettables;
+using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -98,6 +101,11 @@ public class Startup : IStartup
         JsonRpcProcessor concreteProcessor = (JsonRpcProcessor)jsonRpcProcessor;
         JsonRpcService concreteService = (JsonRpcService)jsonRpcService;
         EthereumJsonSerializer concreteSerializer = (EthereumJsonSerializer)jsonSerializer;
+
+        // Register source-generated type info resolvers before warmup
+        EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default);
+        EthereumJsonSerializer.AddTypeInfoResolver(FacadeJsonContext.Default);
+        EthereumJsonSerializer.AddTypeInfoResolver(EthRpcJsonContext.Default);
 
         // Warm up System.Text.Json metadata for hot response types
         EthereumJsonSerializer.WarmupSerializer(
@@ -205,7 +213,7 @@ public class Startup : IStartup
                             }
                             else
                             {
-                                await concreteSerializer.SerializeAsync(resultWriter, result.Response);
+                                WriteJsonRpcResponse(resultWriter, result.Response);
                             }
                             await resultWriter.CompleteAsync();
                         }
@@ -403,7 +411,7 @@ public class Startup : IStartup
                                 }
                                 else
                                 {
-                                    await concreteSerializer.SerializeAsync(resultWriter, result.Response);
+                                    WriteJsonRpcResponse(resultWriter, result.Response);
                                 }
                                 await resultWriter.CompleteAsync();
                                 if (stream is not null)
@@ -500,6 +508,72 @@ public class Startup : IStartup
     {
         return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
+    }
+
+    /// <summary>
+    /// Writes a JSON-RPC response with typed serialization for the result/error payload,
+    /// avoiding polymorphic dispatch through the JsonRpcResponse base class hierarchy.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
+    {
+        using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { SkipValidation = true });
+
+        jsonWriter.WriteStartObject();
+        jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);
+
+        if (response is JsonRpcSuccessResponse successResponse)
+        {
+            jsonWriter.WritePropertyName("result"u8);
+            object? result = successResponse.Result;
+            if (result is not null)
+            {
+                JsonSerializer.Serialize(jsonWriter, result, result.GetType(), EthereumJsonSerializer.JsonOptions);
+            }
+            else
+            {
+                jsonWriter.WriteNullValue();
+            }
+        }
+        else if (response is JsonRpcErrorResponse errorResponse)
+        {
+            jsonWriter.WritePropertyName("error"u8);
+            if (errorResponse.Error is not null)
+            {
+                JsonSerializer.Serialize(jsonWriter, errorResponse.Error, EthereumJsonSerializer.JsonOptions);
+            }
+            else
+            {
+                jsonWriter.WriteNullValue();
+            }
+        }
+
+        jsonWriter.WritePropertyName("id"u8);
+        WriteId(jsonWriter, response.Id);
+
+        jsonWriter.WriteEndObject();
+    }
+
+    private static void WriteId(Utf8JsonWriter writer, object? id)
+    {
+        switch (id)
+        {
+            case int intId:
+                writer.WriteNumberValue(intId);
+                break;
+            case long longId:
+                writer.WriteNumberValue(longId);
+                break;
+            case string strId:
+                writer.WriteStringValue(strId);
+                break;
+            case null:
+                writer.WriteNullValue();
+                break;
+            default:
+                JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+                break;
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
