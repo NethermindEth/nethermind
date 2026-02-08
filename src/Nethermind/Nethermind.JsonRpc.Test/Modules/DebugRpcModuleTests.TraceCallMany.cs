@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -176,5 +177,21 @@ public partial class DebugRpcModuleTests
         var result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_caps_gas_to_gas_cap()
+    {
+        using Context ctx = await CreateContext();
+        long gasCap = 50_000;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        TransactionBundle bundle = CreateBundle(CreateTransaction(gas: 100_000));
+
+        var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        GethLikeTxTrace trace = result.Data.First().First();
+        trace.Gas.Should().BeLessThan(gasCap);
     }
 }
