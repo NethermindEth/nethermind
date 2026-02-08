@@ -253,15 +253,21 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             // Check exp if present: token must not be expired
             if (exp > 0 && nowUnixSeconds >= exp)
             {
-                if (_logger.IsWarn) _logger.Warn($"Token expired. exp: {exp}, now: {nowUnixSeconds}");
+                if (_logger.IsWarn) WarnTokenExpiredExp(exp, nowUnixSeconds);
                 return false;
             }
 
             if (Math.Abs(iat - nowUnixSeconds) > JwtTokenTtl)
             {
-                if (_logger.IsWarn) _logger.Warn($"Token expired. iat: {iat}, now: {nowUnixSeconds}");
+                if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
                 return false;
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void WarnTokenExpiredExp(long e, long now) => _logger.Warn($"Token expired. exp: {e}, now: {now}");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void WarnTokenExpiredIat(long i, long now) => _logger.Warn($"Token expired. iat: {i}, now: {now}");
 
             // Signature valid, iat within TTL
             CacheLastToken(token, iat);

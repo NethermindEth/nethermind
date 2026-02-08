@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
@@ -234,7 +235,7 @@ public class Startup : IStartup
             }
             catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
             {
-                if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                if (logger.IsDebug) LogBadRequest(logger, e);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = e.StatusCode;
                 JsonRpcErrorResponse errResp = concreteService.GetErrorResponse(
@@ -439,7 +440,7 @@ public class Startup : IStartup
                 }
                 catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
                 {
-                    if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                    if (logger.IsDebug) LogBadRequest(logger, e);
                     await PushErrorResponse(e.StatusCode, e.StatusCode == StatusCodes.Status413PayloadTooLarge
                                             ? ErrorCodes.LimitExceeded
                                             : ErrorCodes.InvalidRequest,
@@ -500,6 +501,10 @@ public class Startup : IStartup
         return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void LogBadRequest(ILogger logger, Exception e) =>
+        logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
 
     private sealed class CountingPipeReader(PipeReader stream) : PipeReader
     {
