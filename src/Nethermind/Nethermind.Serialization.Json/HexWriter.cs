@@ -55,6 +55,45 @@ internal static class HexWriter
     }
 
     /// <summary>
+    /// Encode 32 bytes to 64 hex chars using AVX-512 VBMI cross-lane byte permutation.
+    /// vpermi2b does arbitrary byte interleave across the full 256-bit register in a single
+    /// instruction, eliminating the UnpackLow/UnpackHigh + lane-crossing overhead of SSSE3/AVX2.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Avx512VbmiEncode32Bytes(ref byte dest, Vector256<byte> input)
+    {
+        Vector256<byte> mask = Vector256.Create((byte)0x0F);
+        Vector256<byte> hi = Avx2.ShiftRightLogical(input.AsUInt16(), 4).AsByte() & mask;
+        Vector256<byte> lo = input & mask;
+
+        // vpermi2b: pick hi[i], lo[i] pairs across full 256-bit width
+        // indices 0-31 select from hi, 32-63 select from lo
+        Vector256<byte> interleaved0 = Avx512Vbmi.VL.PermuteVar32x8x2(hi,
+            Vector256.Create(
+                (byte) 0, 32,  1, 33,  2, 34,  3, 35,  4, 36,  5, 37,  6, 38,  7, 39,
+                        8, 40,  9, 41, 10, 42, 11, 43, 12, 44, 13, 45, 14, 46, 15, 47), lo);
+
+        Vector256<byte> interleaved1 = Avx512Vbmi.VL.PermuteVar32x8x2(hi,
+            Vector256.Create(
+                (byte)16, 48, 17, 49, 18, 50, 19, 51, 20, 52, 21, 53, 22, 54, 23, 55,
+                       24, 56, 25, 57, 26, 58, 27, 59, 28, 60, 29, 61, 30, 62, 31, 63), lo);
+
+        // vpshufb: nibble-to-hex lookup (works within 128-bit lanes, lookup replicated in both)
+        Vector256<byte> hexLookup = Vector256.Create(
+            (byte)'0', (byte)'1', (byte)'2', (byte)'3',
+            (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+            (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+            (byte)'c', (byte)'d', (byte)'e', (byte)'f',
+            (byte)'0', (byte)'1', (byte)'2', (byte)'3',
+            (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+            (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+            (byte)'c', (byte)'d', (byte)'e', (byte)'f');
+
+        Avx2.Shuffle(hexLookup, interleaved0).StoreUnsafe(ref dest);
+        Avx2.Shuffle(hexLookup, interleaved1).StoreUnsafe(ref Unsafe.Add(ref dest, 32));
+    }
+
+    /// <summary>
     /// 512-byte lookup table: for byte value i, HexByteLookup[i*2] and [i*2+1] are the
     /// two lowercase hex ASCII chars. Single indexed load + 16-bit store per byte,
     /// replacing ~10 ALU ops of a branchless arithmetic approach.
@@ -134,12 +173,16 @@ internal static class HexWriter
     }
 
     /// <summary>
-    /// Encode 32 bytes to 64 hex chars, dispatching to SSSE3 or scalar.
+    /// Encode 32 bytes to 64 hex chars, dispatching to AVX-512 VBMI, SSSE3, or scalar.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Encode32Bytes(ref byte dest, ReadOnlySpan<byte> src)
     {
-        if (Ssse3.IsSupported)
+        if (Avx512Vbmi.VL.IsSupported)
+        {
+            Avx512VbmiEncode32Bytes(ref dest, Vector256.LoadUnsafe(ref MemoryMarshal.GetReference(src)));
+        }
+        else if (Ssse3.IsSupported)
         {
             ref byte srcRef = ref MemoryMarshal.GetReference(src);
             Ssse3Encode16Bytes(ref dest, Vector128.LoadUnsafe(ref srcRef));

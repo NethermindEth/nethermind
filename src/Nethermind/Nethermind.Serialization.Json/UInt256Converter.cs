@@ -137,12 +137,23 @@ public class UInt256Converter : JsonConverter<UInt256>
     }
 
     /// <summary>
-    /// Encode all 4 UInt256 limbs to 64 hex chars, dispatching to SSSE3 or scalar.
+    /// Encode all 4 UInt256 limbs to 64 hex chars, dispatching to AVX-512 VBMI, SSSE3, or scalar.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void EncodeUInt256Hex(ref byte dest, UInt256 value)
     {
-        if (Ssse3.IsSupported)
+        if (Avx512Vbmi.VL.IsSupported)
+        {
+            // Load 32-byte struct and reverse all bytes via vpermb: converts UInt256 memory layout
+            // [u0_LE, u1_LE, u2_LE, u3_LE] to big-endian display order [u3_BE, u2_BE, u1_BE, u0_BE]
+            Vector256<byte> reversed = Avx512Vbmi.VL.PermuteVar32x8(
+                Vector256.LoadUnsafe(ref Unsafe.As<UInt256, byte>(ref value)),
+                Vector256.Create(
+                    (byte)31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+                           15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0));
+            HexWriter.Avx512VbmiEncode32Bytes(ref dest, reversed);
+        }
+        else if (Ssse3.IsSupported)
         {
             // Pack limbs big-endian: [u3_BE, u2_BE] → bytes 0-15 (most significant first)
             HexWriter.Ssse3Encode16Bytes(ref dest,
