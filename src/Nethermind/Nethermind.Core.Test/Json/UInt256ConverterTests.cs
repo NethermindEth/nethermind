@@ -290,5 +290,61 @@ namespace Nethermind.Core.Test.Json
                 ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
             }
         }
+
+        [Test]
+        public void Writes_property_name_hex()
+        {
+            using var stream = new System.IO.MemoryStream();
+            using var writer = new Utf8JsonWriter(stream);
+
+            writer.WriteStartObject();
+            converter.WriteAsPropertyName(writer, (UInt256)0xabcdef, options);
+            writer.WriteNumberValue(1);
+            writer.WriteEndObject();
+            writer.Flush();
+
+            string result = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+            Assert.That(result, Is.EqualTo("{\"0xabcdef\":1}"));
+        }
+
+        [Test]
+        public void Writes_property_name_zero()
+        {
+            using var stream = new System.IO.MemoryStream();
+            using var writer = new Utf8JsonWriter(stream);
+
+            writer.WriteStartObject();
+            converter.WriteAsPropertyName(writer, UInt256.Zero, options);
+            writer.WriteNumberValue(1);
+            writer.WriteEndObject();
+            writer.Flush();
+
+            string result = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+            Assert.That(result, Is.EqualTo("{\"0x0\":1}"));
+        }
+
+        [Test]
+        public void Writes_property_name_zero_padded_hex()
+        {
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+            try
+            {
+                using var stream = new System.IO.MemoryStream();
+                using var writer = new Utf8JsonWriter(stream);
+
+                writer.WriteStartObject();
+                converter.WriteAsPropertyName(writer, UInt256.One, options);
+                writer.WriteNumberValue(1);
+                writer.WriteEndObject();
+                writer.Flush();
+
+                string result = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+                Assert.That(result, Is.EqualTo("{\"0x0000000000000000000000000000000000000000000000000000000000000001\":1}"));
+            }
+            finally
+            {
+                ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            }
+        }
     }
 }

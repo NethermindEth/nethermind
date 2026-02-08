@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
 
@@ -221,6 +222,119 @@ public static class HexWriter
         writer.WriteRawValue(
             MemoryMarshal.CreateReadOnlySpan(ref spanRef, (int)nibbleCount + 4),
             skipInputValidation: true);
+    }
+
+    /// <summary>
+    /// Write a UInt256 as a hex JSON string value ("0x...") using WriteRawValue.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static void WriteUInt256HexRawValue(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, out nint spanStart, out int spanLength);
+
+        writer.WriteRawValue(
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength),
+            skipInputValidation: true);
+    }
+
+    /// <summary>
+    /// Write a UInt256 as a hex property name ("0x...").
+    /// </summary>
+    [SkipLocalsInit]
+    internal static void WriteUInt256HexPropertyName(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        BuildUInt256Hex(ref buffer, value, includeQuotes: false, zeroPadded, out nint spanStart, out int spanLength);
+
+        writer.WritePropertyName(
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void BuildUInt256Hex(ref byte buffer, UInt256 value, bool includeQuotes, bool zeroPadded, out nint spanStart, out int spanLength)
+    {
+        nint hexOffset = includeQuotes ? 3 : 2;
+        EncodeUInt256Hex(ref Unsafe.Add(ref buffer, hexOffset), value);
+
+        int nibbleCount = zeroPadded ? 64 : GetSignificantNibbleCount(value);
+        spanStart = zeroPadded ? 0 : 64 - nibbleCount;
+        ref byte spanRef = ref Unsafe.Add(ref buffer, spanStart);
+
+        if (includeQuotes)
+        {
+            spanRef = (byte)'"';
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, 1), (ushort)0x7830); // "0x" LE
+            Unsafe.Add(ref spanRef, nibbleCount + 3) = (byte)'"';
+            spanLength = nibbleCount + 4;
+        }
+        else
+        {
+            Unsafe.WriteUnaligned(ref spanRef, (ushort)0x7830); // "0x" LE
+            spanLength = nibbleCount + 2;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetSignificantNibbleCount(UInt256 value)
+    {
+        int leadingZeroBits;
+        if (value.u3 != 0)
+        {
+            leadingZeroBits = BitOperations.LeadingZeroCount(value.u3);
+        }
+        else if (value.u2 != 0)
+        {
+            leadingZeroBits = 64 + BitOperations.LeadingZeroCount(value.u2);
+        }
+        else if (value.u1 != 0)
+        {
+            leadingZeroBits = 128 + BitOperations.LeadingZeroCount(value.u1);
+        }
+        else
+        {
+            leadingZeroBits = 192 + BitOperations.LeadingZeroCount(value.u0);
+        }
+
+        int nibbleCount = (259 - leadingZeroBits) >> 2;
+        return nibbleCount == 0 ? 1 : nibbleCount;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void EncodeUInt256Hex(ref byte dest, UInt256 value)
+    {
+        if (Avx512Vbmi.VL.IsSupported)
+        {
+            Vector256<byte> reversed = Avx512Vbmi.VL.PermuteVar32x8(
+                Vector256.LoadUnsafe(ref Unsafe.As<UInt256, byte>(ref value)),
+                Vector256.Create(
+                    (byte)31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+                           15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0));
+            Avx512VbmiEncode32Bytes(ref dest, reversed);
+        }
+        else if (Ssse3.IsSupported)
+        {
+            Ssse3Encode16Bytes(ref dest,
+                Vector128.Create(
+                    BinaryPrimitives.ReverseEndianness(value.u3),
+                    BinaryPrimitives.ReverseEndianness(value.u2)).AsByte());
+
+            Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, 32),
+                Vector128.Create(
+                    BinaryPrimitives.ReverseEndianness(value.u1),
+                    BinaryPrimitives.ReverseEndianness(value.u0)).AsByte());
+        }
+        else
+        {
+            EncodeUlongScalar(ref dest, value.u3);
+            EncodeUlongScalar(ref Unsafe.Add(ref dest, 16), value.u2);
+            EncodeUlongScalar(ref Unsafe.Add(ref dest, 32), value.u1);
+            EncodeUlongScalar(ref Unsafe.Add(ref dest, 48), value.u0);
+        }
     }
 
     /// <summary>
