@@ -536,7 +536,7 @@ namespace Nethermind.Db.LogIndex
             ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
                 ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
 
-            return new LogIndexEnumerator(this, sortedDb, key, from, to);
+            return new LogIndexEnumerator(sortedDb, _compressionAlgorithm, key, from, to);
         }
 
         // TODO: discuss potential optimizations
@@ -921,7 +921,7 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer)
+        private static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
@@ -929,8 +929,10 @@ namespace Nethermind.Db.LogIndex
             if (buffer.Length < len)
                 throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            _ = _compressionAlgorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
+            _ = algorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
         }
+
+        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer) => DecompressDbValue(_compressionAlgorithm, data, buffer);
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {
