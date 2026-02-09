@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain
             }
 
             long depth = currentBlock.Number - number;
-            Hash256[]? hashes = _hashes;
+            Hash256[]? hashes = Volatile.Read(ref _hashes);
 
             return depth switch
             {
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
             long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
-            _hashes = null;
+            Volatile.Write(ref _hashes, null);
             Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
 
             // This leverages that branch processing is single threaded
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain
             {
                 if (!token.IsCancellationRequested && prefetchVersion == Interlocked.Read(ref _prefetchVersion))
                 {
-                    _hashes = hashes;
+                    Volatile.Write(ref _hashes, hashes);
                 }
             }
         }
