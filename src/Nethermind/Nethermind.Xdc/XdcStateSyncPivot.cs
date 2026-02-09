@@ -16,6 +16,18 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
+/// <summary>
+/// Replaces the default <see cref="StateSyncPivot"/> for XDC networks.
+/// Serves epoch boundary (gap block) targets first, then the fixed pivot block.
+/// Each target's state is downloaded by the existing <see cref="StateSyncFeed"/> /
+/// <see cref="TreeSync"/> machinery — no extra services needed.
+///
+/// Targets are ordered furthest-from-pivot first so that <c>FindBestFullState()</c>
+/// (which only searches 128 blocks from head) never detects them, keeping
+/// <c>StateDownloaded</c> false until the real pivot is downloaded last.
+///
+/// No dynamic pivot shifting — XDC uses HotStuff BFT with absolute finality.
+/// </summary>
 internal sealed class XdcStateSyncPivot : IStateSyncPivot
 {
     private readonly IBlockTree _blockTree;
@@ -45,6 +57,7 @@ internal sealed class XdcStateSyncPivot : IStateSyncPivot
     {
         EnsureInitialized();
 
+        // Drain completed targets from the front of the queue; create snapshot as soon as state is available
         while (_targets.Count > 0 && _stateReader.HasStateForBlock(_targets.Peek()))
         {
             XdcBlockHeader completed = _targets.Dequeue();
@@ -56,6 +69,7 @@ internal sealed class XdcStateSyncPivot : IStateSyncPivot
             return _targets.Peek();
         }
 
+        // Queue drained — serve the fixed pivot
         return _pivotHeader;
     }
 
