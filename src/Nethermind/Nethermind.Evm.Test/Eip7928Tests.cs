@@ -296,6 +296,30 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .TestObject];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
+            UInt256 changedValue = 2;
+            byte[] revertToPreviousCode = Prepare.EvmCode
+                .PushData(0)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+            code = Prepare.EvmCode
+                .PushData(changedValue)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .DelegateCall(_callTargetAddress, 20_000)
+                .Done;
+            changes = [new(_callTargetAddress), Build.An.AccountChanges
+                .WithAddress(_testAddress)
+                .WithStorageChanges(slot, [new(0, changedValue)])
+                .WithNonceChanges([new(0, 1)])
+                .WithBalanceChanges([new(0, _testAccountBalance)])
+                .TestObject];
+            yield return new TestCaseData(changes, code, revertToPreviousCode, false)
+                { TestName = "revert_with_return_to_original" };
+
             code = Prepare.EvmCode
                 .Call(_callTargetAddress, 20_000)
                 .Done;
