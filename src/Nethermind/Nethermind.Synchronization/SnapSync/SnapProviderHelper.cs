@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
             }
 
-            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, null);
+            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, tree.RootHash);
         }
 
         public static (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) AddStorageRange(
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.SnapSync
                 tree, entries, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, tree.RootHash, false);
-            return (AddRangeResult.OK, moreChildrenToRight, null, isRootPersisted);
+            return (AddRangeResult.OK, moreChildrenToRight, tree.RootHash, isRootPersisted);
         }
 
         private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange(
@@ -252,7 +252,7 @@ namespace Nethermind.Synchronization.SnapSync
                         // The limit may have lower nibble that is less than the path's current nibble, even if upper
                         // nibble is higher. So need to check whole path
                         TreePath childPath = path.Append(ci);
-                        moreChildrenToRight |= (hasKeccak || child is not null) && (ci > right && (childPath.Path < limitHash || noLimit));
+                        moreChildrenToRight |= (hasKeccak || child is not null) && (ci > right && (childPath.Path <= limitHash || noLimit));
 
                         if (ci >= left && ci <= right)
                         {
@@ -330,15 +330,13 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static bool StitchBoundaries(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree tree, ValueHash256 startPath)
+        private static void StitchBoundaries(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree tree, ValueHash256 startPath)
         {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
-                // No proof means the tree is complete on its own
-                return true;
+                return;
             }
 
-            bool stitchToTheRoot = false;
             for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
             {
                 (TrieNode node, TreePath path) = sortedBoundaryList[i];
@@ -380,22 +378,7 @@ namespace Nethermind.Synchronization.SnapSync
                         node.IsBoundaryProofNode = !node.IsPersisted;
                     }
                 }
-
-                if (path.Length == 0 && !node.IsBoundaryProofNode)
-                {
-                    stitchToTheRoot = true;
-
-                    foreach ((TrieNode, TreePath) valueTuple in sortedBoundaryList)
-                    {
-                        if (valueTuple.Item1.IsBoundaryProofNode)
-                        {
-                            Console.Error.WriteLine($"Root can be persisted but child {valueTuple.Item2}, {valueTuple.Item1} cannot");
-                        }
-                    }
-                }
             }
-
-            return stitchToTheRoot;
         }
 
         private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree tree, ValueHash256 startPath)
