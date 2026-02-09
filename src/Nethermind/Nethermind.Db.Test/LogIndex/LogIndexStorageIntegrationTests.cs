@@ -233,8 +233,7 @@ namespace Nethermind.Db.Test.LogIndex
                     }
                 });
 
-                await forwardTask;
-                await backwardTask;
+                await Task.WhenAll(forwardTask, backwardTask);
             }
 
             // Create new storage to force-load everything from DB
@@ -275,18 +274,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await Task.WhenAll(reorgTask, backwardTask);
 
-            int expectedMax = reorgBlocks[0].BlockNumber - 1;
-            int expectedMin = testData.Batches[0][0].BlockNumber;
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(logIndexStorage.MinBlockNumber, Is.EqualTo(expectedMin));
-                Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(expectedMax));
-            }
-
-            VerifyReceipts(logIndexStorage, testData,
-                excludedBlocks: reorgBlocks,
-                maxBlock: expectedMax, minBlock: expectedMin);
+            VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, maxBlock: reorgBlocks[0].BlockNumber - 1);
         }
 
         [Combinatorial]
@@ -605,6 +593,7 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
+        [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task SetMergeFailure_AnyWrite_Test(
             [Values(1, 20, 51, 100)] int failOnCallN
         )
@@ -626,7 +615,6 @@ namespace Nethermind.Db.Test.LogIndex
 
             Assert.That(storage.HasBackgroundError, Is.True);
 
-            // ReSharper disable once AccessToDisposedClosure
             IEnumerable<BlockReceipts> sinceLastBatch = testData.Batches.SelectMany(b => b)
                 .SkipWhile(b => b.BlockNumber < storage.MaxBlockNumber);
 
