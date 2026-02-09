@@ -15,16 +15,17 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// </summary>
 public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManager) : ISnapTrieFactory
 {
-    private ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
-    private bool _databaseInitiallyCleared = false;
-    private Lock _lock = new Lock();
+    private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
+    private readonly Lock _lock = new Lock();
+
+    private bool _initialized = false;
 
     public ISnapTree CreateStateTree()
     {
         EnsureDatabaseCleared();
 
-        var reader = persistence.CreateReader();
-        var writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
+        IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
         return new FlatSnapStateTree(reader, writeBatch, logManager);
     }
 
@@ -32,23 +33,22 @@ public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManage
     {
         EnsureDatabaseCleared();
 
-        var reader = persistence.CreateReader();
-        var writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
+        IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState, WriteFlags.DisableWAL);
         return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), logManager);
     }
 
     private void EnsureDatabaseCleared()
     {
-        if (_databaseInitiallyCleared) return;
+        if (_initialized) return;
 
         using (_lock.EnterScope())
         {
-            if (_databaseInitiallyCleared) return;
+            if (_initialized) return;
+            _initialized = true;
 
             _logger.Info("Clearing database");
             persistence.Clear();
-
-            _databaseInitiallyCleared = true;
         }
     }
 }
