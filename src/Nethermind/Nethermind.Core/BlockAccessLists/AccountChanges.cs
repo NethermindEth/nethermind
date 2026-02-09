@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -19,21 +18,21 @@ public class AccountChanges : IEquatable<AccountChanges>
     public Address Address { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<SlotChanges> StorageChanges => new(_storageChanges.Values, _storageChanges.Count);
+    public IList<SlotChanges> StorageChanges => _storageChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<StorageRead> StorageReads => new(_storageReads, _storageReads.Count);
+    public IReadOnlyCollection<StorageRead> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<BalanceChange> BalanceChanges => new(_balanceChanges.Values, _balanceChanges.Count);
+    public IList<BalanceChange> BalanceChanges => _balanceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<NonceChange> NonceChanges => new(_nonceChanges.Values, _nonceChanges.Count);
+    public IList<NonceChange> NonceChanges => _nonceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<CodeChange> CodeChanges => new(_codeChanges.Values, _codeChanges.Count);
+    public IList<CodeChange> CodeChanges => _codeChanges.Values;
 
-    private readonly SortedDictionary<UInt256, SlotChanges> _storageChanges;
+    private readonly SortedList<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
     private readonly SortedList<ushort, BalanceChange> _balanceChanges;
     private readonly SortedList<ushort, NonceChange> _nonceChanges;
@@ -59,7 +58,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         _codeChanges = [];
     }
 
-    public AccountChanges(Address address, SortedDictionary<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<ushort, BalanceChange> balanceChanges, SortedList<ushort, NonceChange> nonceChanges, SortedList<ushort, CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<ushort, BalanceChange> balanceChanges, SortedList<ushort, NonceChange> nonceChanges, SortedList<ushort, CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;

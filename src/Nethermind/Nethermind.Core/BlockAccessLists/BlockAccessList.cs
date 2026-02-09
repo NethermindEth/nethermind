@@ -112,7 +112,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
-        if (Enumerable.SequenceEqual(before, after))
+        if (before.AsSpan().SequenceEqual(after))
         {
             return;
         }
@@ -313,12 +313,18 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     // for testing
     internal void AddAccountChanges(params AccountChanges[] accountChanges)
-        => _accountChanges.AddRange(accountChanges.ToDictionary(x => x.Address, x => x));
+    {
+        foreach (AccountChanges change in accountChanges)
+        {
+            _accountChanges.Add(change.Address, change);
+        }
+    }
 
     private bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
-        int count = accountChanges.BalanceChanges.Count();
+        IList<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
+        int count = balanceChanges.Count;
 
         if (count == 0)
         {
@@ -327,8 +333,9 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             return beforeInstr != afterInstr;
         }
 
-        foreach (BalanceChange balanceChange in accountChanges.BalanceChanges.Reverse())
+        for (int i = count - 1; i >= 0; i--)
         {
+            BalanceChange balanceChange = balanceChanges[i];
             if (balanceChange.BlockAccessIndex != Index)
             {
                 // balance changed in previous tx in block
@@ -362,8 +369,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             return beforeInstr != afterInstr;
         }
 
-        foreach (StorageChange storageChange in slotChanges.Changes.Values.AsEnumerable().Reverse())
+        IList<StorageChange> values = slotChanges.Changes.Values;
+        for (int i = values.Count - 1; i >= 0; i--)
         {
+            StorageChange storageChange = values[i];
             if (storageChange.BlockAccessIndex != Index)
             {
                 // storage changed in previous tx in block
@@ -393,21 +402,23 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     private bool HasCodeChangedDuringTx(Address address, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
-        int count = accountChanges.CodeChanges.Count();
+        IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+        int count = codeChanges.Count;
 
         if (count == 0)
         {
             // first code change of block
             // return code prior to this instruction
-            return !Enumerable.SequenceEqual(beforeInstr.ToArray(), afterInstr.ToArray());
+            return !beforeInstr.SequenceEqual(afterInstr);
         }
 
-        foreach (CodeChange codeChange in accountChanges.CodeChanges.Reverse())
+        for (int i = count - 1; i >= 0; i--)
         {
+            CodeChange codeChange = codeChanges[i];
             if (codeChange.BlockAccessIndex != Index)
             {
                 // code changed in previous tx in block
-                return !Enumerable.SequenceEqual(codeChange.NewCode, afterInstr.ToArray());
+                return !codeChange.NewCode.AsSpan().SequenceEqual(afterInstr);
             }
         }
 
@@ -417,7 +428,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             if (change.Type == ChangeType.CodeChange && change.Address == address && change.PreviousValue is null)
             {
                 // first change of this transaction & block
-                return change.PreTxCode is null || !Enumerable.SequenceEqual(change.PreTxCode, afterInstr.ToArray());
+                return change.PreTxCode is null || !change.PreTxCode.AsSpan().SequenceEqual(afterInstr);
             }
         }
 

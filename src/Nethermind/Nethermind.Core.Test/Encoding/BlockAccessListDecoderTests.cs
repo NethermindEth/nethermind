@@ -212,7 +212,7 @@ public class BlockAccessListDecoderTests
     {
         UInt256 slot1 = UInt256.One;
         UInt256 slot2 = new(2);
-        SortedDictionary<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())
+        SortedList<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())
         {
             { slot1, new SlotChanges(slot1) },
             { slot2, new SlotChanges(slot2) }
