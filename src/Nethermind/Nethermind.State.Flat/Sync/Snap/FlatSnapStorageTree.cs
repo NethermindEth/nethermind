@@ -44,16 +44,16 @@ public class FlatSnapStorageTree : ISnapTree
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void BulkSetAndUpdateRootHash(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags)
+    public void BulkSetAndUpdateRootHash(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries)
     {
-        _tree.BulkSet(entries, flags);
+        _tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
         _tree.UpdateRootHash();
     }
 
-    public void Commit(WriteFlags writeFlags, ValueHash256 upperBound)
+    public void Commit(ValueHash256 upperBound)
     {
         _adapter.UpperBound = upperBound;
-        _tree.Commit(writeFlags: writeFlags);
+        _tree.Commit(writeFlags: WriteFlags.DisableWAL);
     }
 
     public void Dispose()
