@@ -184,6 +184,7 @@ namespace Nethermind.Network.Test
         [TestCase(false, ConnectionDirection.In)]
         // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
         [TestCase(false, ConnectionDirection.Out)]
+        [NonParallelizable]
         public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
             ConnectionDirection firstDirection)
         {
@@ -207,8 +208,11 @@ namespace Nethermind.Network.Test
             {
                 if (session is null) return;
                 if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
-                session.Init(5, context, packetSender);
+                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
             }
+
+            bool expectedOutSessionClosing = firstDirection == ConnectionDirection.In ? shouldLose : !shouldLose;
+            bool expectedInSessionClosing = !expectedOutSessionClosing;
 
             if (firstDirection == ConnectionDirection.In)
             {
@@ -217,12 +221,6 @@ namespace Nethermind.Network.Test
                 {
                     throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
                 }
-
-                EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
-                EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
-
-                (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
-                (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
             }
             else
             {
@@ -233,15 +231,23 @@ namespace Nethermind.Network.Test
                 }
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
-
-                EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
-                EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
-
-                (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(!shouldLose);
-                (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(shouldLose);
             }
 
-            ctx.PeerManager.ActivePeers.Count.Should().Be(1);
+            Assert.That(() =>
+            {
+                Peer? activePeer = ctx.PeerManager.ActivePeers.SingleOrDefault();
+                if (activePeer is null) return false;
+
+                EnsureSession(activePeer.OutSession);
+                EnsureSession(activePeer.InSession);
+
+                return activePeer.OutSession is not null
+                    && activePeer.InSession is not null
+                    && activePeer.OutSession.IsClosing == expectedOutSessionClosing
+                    && activePeer.InSession.IsClosing == expectedInSessionClosing;
+            }, Is.True.After(_delayLonger, 20));
+
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1).After(_delay, 10));
         }
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e)
