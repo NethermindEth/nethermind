@@ -11,7 +11,8 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [TestFixture]
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class ReorgDepthFinalizedStateProviderTests
 {
     private IBlockTree _blockTree = null!;
