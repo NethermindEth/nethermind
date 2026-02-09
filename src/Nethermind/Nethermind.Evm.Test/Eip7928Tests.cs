@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -188,7 +189,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "staticcall" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create2" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "precompile" };
+
+            code = Prepare.EvmCode
+                .CallWithInput(PrecompiledAddresses.Identity, 20_000, [1, 2, 3, 4])
+                .Done;
+            changes = [testAccount, new(PrecompiledAddresses.Identity)];
+            yield return new TestCaseData(code, changes) { TestName = "precompile" };
+
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "zero_transfer" };
         }
     }
