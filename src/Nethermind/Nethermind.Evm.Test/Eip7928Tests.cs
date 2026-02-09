@@ -37,6 +37,12 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     private static readonly long _gasLimit = 100000;
     private static readonly Address _testAddress = ContractAddress.From(TestItem.AddressA, 0);
     private static readonly Address _callTargetAddress = TestItem.AddressC;
+    private static readonly Address _delegationTargetAddress = TestItem.AddressD;
+    private static readonly UInt256 _delegationSlot = 10;
+    private static readonly byte[] _delegatedCode = Prepare.EvmCode
+        .PushData(_delegationSlot)
+        .Op(Instruction.SLOAD)
+        .Done;
 
     [TestCaseSource(nameof(CodeTestSource))]
     public async Task Constructs_BAL_when_processing_code(
@@ -111,11 +117,19 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
         worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
 
+        worldState.CreateAccount(_delegationTargetAddress, 0);
+        worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
+
+        worldState.CreateAccount(_callTargetAddress, 0);
         if (extraCode is not null)
         {
-            worldState.CreateAccount(_callTargetAddress, 0);
             ValueHash256 codeHash = ValueKeccak.Compute(extraCode);
             worldState.InsertCode(_callTargetAddress, codeHash, extraCode, SpecProvider.GenesisSpec);
+        }
+        else
+        {
+            byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. _delegationTargetAddress.Bytes];
+            worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec);
         }
 
         worldState.Commit(SpecProvider.GenesisSpec);
@@ -128,7 +142,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         get
         {
             IEnumerable<AccountChanges> changes;
-            UInt256 slot = 10;
+            UInt256 slot = _delegationSlot;
             byte[] code = Prepare.EvmCode
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
@@ -227,7 +241,18 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .TestObject];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegations" };
+            code = Prepare.EvmCode
+                .Call(_callTargetAddress, 20_000)
+                .Done;
+            changes = [
+                testAccount,
+                Build.An.AccountChanges
+                    .WithAddress(_callTargetAddress)
+                    .WithStorageReads(_delegationSlot)
+                    .TestObject,
+                new AccountChanges(_delegationTargetAddress)
+            ];
+            yield return new TestCaseData(changes, code, null, false) { TestName = "delegated_account" };
 
             UInt256 callValue = 10_000;
             byte[] callTargetCode = Prepare.EvmCode
@@ -348,8 +373,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Done;
             changes = [testAccount, new(PrecompiledAddresses.Identity)];
             yield return new TestCaseData(changes, code, null, false) { TestName = "precompile" };
-
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "zero_transfer" };
         }
     }
 }
