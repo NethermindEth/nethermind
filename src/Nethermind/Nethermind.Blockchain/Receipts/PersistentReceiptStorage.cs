@@ -114,7 +114,6 @@ namespace Nethermind.Blockchain.Receipts
         public Hash256 FindBlockHash(Hash256 txHash)
         {
             // Check in-memory overlay first for entries pending batch commit.
-            // TryGetValue is lock-free; avoid IsEmpty which acquires all bucket locks.
             if (!_pendingTxIndex.TryGetValue(txHash, out byte[]? blockHashData))
             {
                 blockHashData = _transactionDb.Get(txHash);
