@@ -95,8 +95,7 @@ public class FlatSnapServer(
                                 for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                                 {
                                     byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
-                                    if (sRlp is not null)
-                                        response.Add(sRlp);
+                                    response.Add(sRlp!);
                                 }
                             }
                         }
