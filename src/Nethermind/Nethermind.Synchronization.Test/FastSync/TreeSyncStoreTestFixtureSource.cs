@@ -22,7 +22,7 @@ public class TreeSyncStoreTestFixtureSource : IEnumerable
 {
     public static void RegisterPatriciaStore(ContainerBuilder builder) => builder
         .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
-        .AddSingleton<ITestOperation, LocalDbContext>()
+        .AddSingleton<IStateSyncTestOperation, LocalDbContext>()
         ;
 
     // Future:
@@ -35,14 +35,9 @@ public class TreeSyncStoreTestFixtureSource : IEnumerable
             .SetArgDisplayNames("Patricia");
         // Future: yield return for Flat
     }
-
-    public interface ITestOperation
-    {
-        // Add here
-    }
 }
 
-public class LocalDbContext: TreeSyncStoreTestFixtureSource.ITestOperation
+public class LocalDbContext: IStateSyncTestOperation
 {
     public LocalDbContext(
         [KeyFilter(DbNames.Code)] IDb codeDb,
