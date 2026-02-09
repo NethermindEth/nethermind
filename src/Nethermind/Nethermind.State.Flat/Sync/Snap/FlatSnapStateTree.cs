@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Synchronization.SnapSync;
@@ -41,12 +40,11 @@ public class FlatSnapStateTree : ISnapTree
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
     }
 
-    public void Clear() => _tree.RootHash = Keccak.EmptyTreeHash;
-
-    public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags) =>
+    public void BulkSetAndUpdateRootHash(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, PatriciaTree.Flags flags)
+    {
         _tree.BulkSet(entries, flags);
-
-    public void UpdateRootHash() => _tree.UpdateRootHash();
+        _tree.UpdateRootHash();
+    }
 
     public void Commit(WriteFlags writeFlags, ValueHash256 upperBound)
     {
