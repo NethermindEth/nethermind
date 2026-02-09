@@ -19,18 +19,18 @@ namespace Nethermind.Consensus.Processing
 {
     public class BlockStatistics
     {
-        public long BlockCount { get; internal set; }
-        public long BlockFrom { get; internal set; }
-        public long BlockTo { get; internal set; }
-        public double ProcessingMs { get; internal set; }
-        public double SlotMs { get; internal set; }
+        public long BlockCount { get; set; }
+        public long BlockFrom { get; set; }
+        public long BlockTo { get; set; }
+        public double ProcessingMs { get; set; }
+        public double SlotMs { get; set; }
         [JsonPropertyName("mgasPerSecond")]
-        public double MGasPerSecond { get; internal set; }
-        public float MinGas { get; internal set; }
-        public float MedianGas { get; internal set; }
-        public float AveGas { get; internal set; }
-        public float MaxGas { get; internal set; }
-        public long GasLimit { get; internal set; }
+        public double MGasPerSecond { get; set; }
+        public float MinGas { get; set; }
+        public float MedianGas { get; set; }
+        public float AveGas { get; set; }
+        public float MaxGas { get; set; }
+        public long GasLimit { get; set; }
     }
     //TODO Consult on disabling of such metrics from configuration
     public class ProcessingStats : IProcessingStats
