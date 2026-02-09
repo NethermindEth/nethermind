@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.State;
 
-namespace Nethermind.State.Flat.Sync;
+namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
 /// Tracks mapping from state root hash to StateId for serving snap sync requests.
