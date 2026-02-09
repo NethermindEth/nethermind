@@ -128,24 +128,25 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
-        if (ProcessExit.IsCancellationRequested)
-        {
-            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
-            yield break;
-        }
-
-        if (IsRecordingRequest)
-        {
-            reader = await RecordRequest(reader);
-        }
-
-        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
-        JsonReaderState readerState = CreateJsonReaderState(context);
-        bool freshState = true;
-        bool shouldExit = false;
         try
         {
+            if (ProcessExit.IsCancellationRequested)
+            {
+                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+                yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+                yield break;
+            }
+
+            if (IsRecordingRequest)
+            {
+                reader = await RecordRequest(reader);
+            }
+
+            using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
+            JsonReaderState readerState = CreateJsonReaderState(context);
+            bool freshState = true;
+            bool shouldExit = false;
+
             while (!shouldExit)
             {
                 long startTime = Stopwatch.GetTimestamp();
