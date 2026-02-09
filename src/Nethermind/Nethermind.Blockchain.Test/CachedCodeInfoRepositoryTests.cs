@@ -36,7 +36,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile cachingPrecompile = new(supportsCaching: true);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(cachingPrecompile)
         }.ToFrozenDictionary();
@@ -51,7 +51,7 @@ public class CachedCodeInfoRepositoryTests
 
         // Act
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
         codeInfo.Should().NotBeNull();
@@ -66,7 +66,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile nonCachingPrecompile = new(supportsCaching: false);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(nonCachingPrecompile)
         }.ToFrozenDictionary();
@@ -81,7 +81,7 @@ public class CachedCodeInfoRepositoryTests
 
         // Act
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
         codeInfo.Should().NotBeNull();
@@ -92,7 +92,7 @@ public class CachedCodeInfoRepositoryTests
     public void IdentityPrecompile_IsNotWrapped_WhenCacheEnabled()
     {
         // Arrange
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance)
         }.ToFrozenDictionary();
@@ -107,7 +107,7 @@ public class CachedCodeInfoRepositoryTests
 
         // Act
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert
         codeInfo.Should().NotBeNull();
@@ -122,7 +122,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(cachingPrecompile)
         }.ToFrozenDictionary();
@@ -136,7 +136,7 @@ public class CachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
 
@@ -157,7 +157,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile nonCachingPrecompile = new(supportsCaching: false, onRun: () => runCount++);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(nonCachingPrecompile)
         }.ToFrozenDictionary();
@@ -171,7 +171,7 @@ public class CachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
 
@@ -191,7 +191,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile cachingPrecompile = new(supportsCaching: true);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(cachingPrecompile)
         }.ToFrozenDictionary();
@@ -205,7 +205,7 @@ public class CachedCodeInfoRepositoryTests
 
         // Act - pass null cache
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, null);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert - precompile should not be wrapped
         codeInfo.Should().NotBeNull();
@@ -216,7 +216,7 @@ public class CachedCodeInfoRepositoryTests
     public void Sha256Precompile_IsWrapped_WhenCacheEnabled()
     {
         // Arrange - Sha256Precompile has SupportsCaching = true (default)
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance)
         }.ToFrozenDictionary();
@@ -231,7 +231,7 @@ public class CachedCodeInfoRepositoryTests
 
         // Act
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         // Assert - Sha256Precompile should be wrapped (unlike IdentityPrecompile)
         codeInfo.Should().NotBeNull();
@@ -243,7 +243,7 @@ public class CachedCodeInfoRepositoryTests
     public void MixedPrecompiles_OnlyCachingEnabledAreWrapped()
     {
         // Arrange - mix of caching and non-caching precompiles
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),      // SupportsCaching = true
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance)   // SupportsCaching = false
@@ -264,8 +264,8 @@ public class CachedCodeInfoRepositoryTests
 
         // Act
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo sha256CodeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
-        ICodeInfo identityCodeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
+        CodeInfo sha256CodeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
+        CodeInfo identityCodeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert - Sha256 wrapped, Identity not wrapped
         sha256CodeInfo.Precompile.Should().NotBeSameAs(Sha256Precompile.Instance);
@@ -282,7 +282,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(cachingPrecompile)
         }.ToFrozenDictionary();
@@ -296,7 +296,7 @@ public class CachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input1 = [1, 2, 3];
         byte[] input2 = [4, 5, 6];
@@ -321,7 +321,7 @@ public class CachedCodeInfoRepositoryTests
         TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++, fixedOutput: expectedOutput);
         Address precompileAddress = Address.FromNumber(100);
 
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [precompileAddress] = new(cachingPrecompile)
         }.ToFrozenDictionary();
@@ -335,7 +335,7 @@ public class CachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
 
@@ -355,7 +355,7 @@ public class CachedCodeInfoRepositoryTests
     public void Sha256Precompile_CachesResults_WithRealComputation()
     {
         // Arrange
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance)
         }.ToFrozenDictionary();
@@ -369,7 +369,7 @@ public class CachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         byte[] input = [1, 2, 3, 4, 5];
 
@@ -388,7 +388,7 @@ public class CachedCodeInfoRepositoryTests
     public void IdentityPrecompile_DoesNotCache_WithRealComputation()
     {
         // Arrange
-        FrozenDictionary<AddressAsKey, PrecompileInfo> precompiles = new Dictionary<AddressAsKey, PrecompileInfo>
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
         {
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance)
         }.ToFrozenDictionary();
@@ -402,7 +402,7 @@ public class CachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
         CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
-        ICodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         byte[] input = [1, 2, 3, 4, 5];
 

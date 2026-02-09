@@ -1215,7 +1215,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         SectionIndex = VmState.FunctionIndex;
 
         // Retrieve the code information and create a read-only span of instructions.
-        ICodeInfo codeInfo = VmState.Env.CodeInfo;
+        CodeInfo codeInfo = VmState.Env.CodeInfo;
         ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
 
         // Initialize the exception type to "None".
@@ -1330,16 +1330,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
-        if (ReturnData is VmState<TGasPolicy> state)
+        if (ReturnData is byte[] data)
+        {
+            // Fall back to returning a CallResult with a byte array as the return data.
+            return new CallResult(null, data, null, codeInfo.Version);
+        }
+        else if (ReturnData is VmState<TGasPolicy> state)
         {
             return new CallResult(state);
         }
-        else if (ReturnData is EofCodeInfo eofCodeInfo)
-        {
-            return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
-        }
-        // Fall back to returning a CallResult with a byte array as the return data.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
+        return ReturnEof(codeInfo);
 
     Revert:
         // Return a CallResult indicating a revert.
@@ -1355,13 +1355,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Converts the code section bytes into a read-only span of instructions.
         // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
-        static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
+        static ReadOnlySpan<Instruction> GetInstructions(CodeInfo codeInfo)
         {
             ReadOnlySpan<byte> codeBytes = codeInfo.CodeSpan;
             return MemoryMarshal.CreateReadOnlySpan(
                 ref Unsafe.As<byte, Instruction>(ref MemoryMarshal.GetReference(codeBytes)),
                 codeBytes.Length);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        CallResult ReturnEof(CodeInfo codeInfo)
+            => new(ReturnData as EofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
 
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
