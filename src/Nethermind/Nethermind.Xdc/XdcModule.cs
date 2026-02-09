@@ -93,15 +93,13 @@ public class XdcModule : Module
             // sync
             .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
+            .AddSingleton<XdcStateSyncSnapshotManager>()
+            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
-
-            //Sync
-            .AddSingleton<XdcStateSyncSnapshotManager>()
-            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             ;
     }
 
