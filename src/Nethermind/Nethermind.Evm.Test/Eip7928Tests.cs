@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -29,8 +28,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
-    // private static readonly IReleaseSpec _spec = Amsterdam.Instance;
-    // private static readonly TestSpecProvider _specProvider = new(_spec);
     private static readonly EthereumEcdsa _ecdsa = new(0);
     private static readonly UInt256 _accountBalance = 10.Ether();
     private static readonly long _gasLimit = 100000;
@@ -134,9 +131,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.BALANCE)
                 .Done;
-            AccountChanges emptyTestAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithNonceChanges([new(0, 1)]).TestObject;
+            AccountChanges testAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithNonceChanges([new(0, 1)]).TestObject;
             AccountChanges emptyBAccount = new(TestItem.AddressB);
-            changes = [emptyTestAccount, emptyBAccount];
+            changes = [testAccount, emptyBAccount];
             yield return new TestCaseData(code, changes) { TestName = "balance" };
 
             code = Prepare.EvmCode
@@ -146,25 +143,43 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
-            changes = [emptyTestAccount, emptyBAccount];
+            changes = [testAccount, emptyBAccount];
             yield return new TestCaseData(code, changes) { TestName = "extcodecopy" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
-            changes = [emptyTestAccount, emptyBAccount];
+            changes = [testAccount, emptyBAccount];
             yield return new TestCaseData(code, changes) { TestName = "extcodehash" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
-            changes = [emptyTestAccount, emptyBAccount];
+            changes = [testAccount, emptyBAccount];
             yield return new TestCaseData(code, changes) { TestName = "extcodesize" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.SELFDESTRUCT)
+                .Done;
+            changes = [new(_testAddress), emptyBAccount];
+            yield return new TestCaseData(code, changes) { TestName = "selfdestruct" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct_oog" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "revert" };
+
+            code = Prepare.EvmCode
+                .PushData(slot)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+            // revert should convert storage load to read
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject];
+            yield return new TestCaseData(code, changes) { TestName = "revert" };
+
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegations" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call_oog" };
