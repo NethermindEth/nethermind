@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 
 namespace Nethermind.Core.Collections;
@@ -105,7 +106,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetValue(in TKey key, out TValue? value)
+    public unsafe bool TryGetValue(in TKey key, out TValue? value)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & SetMask;
@@ -116,6 +117,12 @@ public sealed class SeqlockCache<TKey, TValue>
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+
+        // Prefetch way 1 while we check way 0 — hides L2/L3 latency for skew layout.
+        if (Sse.IsSupported)
+        {
+            Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));
+        }
 
         // === Way 0 ===
         ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
@@ -185,12 +192,17 @@ public sealed class SeqlockCache<TKey, TValue>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryGetValueCore(in TKey key, int idx0, int idx1, long hashPart, out TValue? value)
+    private unsafe bool TryGetValueCore(in TKey key, int idx0, int idx1, long hashPart, out TValue? value)
     {
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+
+        if (Sse.IsSupported)
+        {
+            Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));
+        }
 
         // Way 0
         ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
@@ -291,9 +303,22 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             WriteEntry(ref e1, h1, in key, value, tagToStore);
         }
+        else if (h0Live && h1Live)
+        {
+            // Both ways live — alternate eviction using a hash bit to avoid
+            // always victimizing the same way. Bit 9 of hashPart (= bit 14 of
+            // the original hash) is independent of both set indices.
+            if ((hashPart & (1L << 9)) != 0)
+            {
+                WriteEntry(ref e0, h0, in key, value, tagToStore);
+            }
+            else
+            {
+                WriteEntry(ref e1, h1, in key, value, tagToStore);
+            }
+        }
         else if (h0 >= 0)
         {
-            // Both ways live, evict way 0 (newest gets the fast-read slot)
             WriteEntry(ref e0, h0, in key, value, tagToStore);
         }
         else if (h1 >= 0)
