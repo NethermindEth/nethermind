@@ -15,6 +15,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.State.Flat;
 
