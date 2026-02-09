@@ -600,12 +600,11 @@ internal class EpochSwitchManagerTests
     [Test]
     public void GetTimeoutCertificateEpochInfo_ShouldReturnEpochSwitchInfoForEpochContainingTcRound()
     {
-        var switchBlock = 1;
         var epochLength = 5;
         XdcReleaseSpec releaseSpec = new()
         {
             EpochLength = epochLength,
-            SwitchBlock = switchBlock,
+            SwitchBlock = 0,
             V2Configs = [new V2ConfigParams()]
         };
         _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
