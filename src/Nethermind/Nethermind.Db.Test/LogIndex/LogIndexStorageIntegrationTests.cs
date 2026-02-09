@@ -57,7 +57,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
-            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null
+            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
         )
         {
             LogIndexConfig config = new()
@@ -69,36 +69,16 @@ namespace Nethermind.Db.Test.LogIndex
                 CompressionAlgorithm = compressionAlgo ?? testData.Compression
             };
 
-            ILogIndexStorage storage = failOnBlock is not null || failOnCallN is not null
-                ? new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
+            ILogIndexStorage storage = failOnBlock is null && failOnCallN is null
+                ? new LogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
+                : new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
                 {
                     FailOnBlock = failOnBlock ?? 0,
-                    FailOnCallN = failOnCallN ?? 0
-                }
-                : new LogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config);
+                    FailOnCallN = failOnCallN ?? 0,
+                    FailOnMerge = failOnMerge
+                };
 
-            _createdStorages.Add(storage);
-            return storage;
-        }
-
-        private BackgroundFailingLogIndexStorage CreateBackgroundFailingLogIndexStorage(int corruptAfterCallN)
-        {
-            LogIndexConfig config = new()
-            {
-                Enabled = true,
-                CompactionDistance = 100,
-                MaxCompressionParallelism = 16,
-                MaxReorgDepth = 64,
-                CompressionAlgorithm = testData.Compression
-            };
-
-            BackgroundFailingLogIndexStorage storage = new(_dbFactory, LimboLogs.Instance, config)
-            {
-                CorruptAfterCallN = corruptAfterCallN
-            };
-
-            _createdStorages.Add(storage);
-            return storage;
+            return storage.AddTo(_createdStorages);
         }
 
         [SetUp]
@@ -222,7 +202,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            await using (var setStorage = CreateLogIndexStorage(compactionDistance))
+            await using (ILogIndexStorage setStorage = CreateLogIndexStorage(compactionDistance))
             {
                 int half = testData.Batches.Length / 2;
                 BlockReceipts[][] batches = testData.Batches
@@ -265,7 +245,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         [Repeat(RaceConditionTestRepeat)]
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
-        public async Task Concurrent_ReorgAndBackwardSync_Get_Test(
+        public async Task Concurrent_BackwardSet_Reorg_Get_Test(
             [Values(1, 5, 10)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
         )
@@ -281,14 +261,13 @@ namespace Nethermind.Db.Test.LogIndex
 
             BlockReceipts[] reorgBlocks = forwardBatches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
 
-            // Run reorg and backward sync concurrently — they use different semaphores
-            Task reorgTask = Task.Run(async () =>
+            var reorgTask = Task.Run(async () =>
             {
                 foreach (BlockReceipts block in reorgBlocks)
                     await logIndexStorage.RemoveReorgedAsync(block);
             });
 
-            Task backwardTask = Task.Run(async () =>
+            var backwardTask = Task.Run(async () =>
             {
                 foreach (BlockReceipts[] batch in Reverse(backwardBatches))
                     await AddReceiptsAsync(logIndexStorage, [batch], isBackwardsSync: true);
@@ -327,7 +306,7 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, maxBlock: reorgBlocks[0].BlockNumber - 1);
         }
 
-        [Ignore("Out-of-order reorgs are not supported: only the first (by write order) Reorg operand per key is applied by MergeOperator.")]
+        [Ignore("Out-of-order reorgs are not supported ATM: only the first (by write order) Reorg operand per key is applied by MergeOperator.")]
         [Combinatorial]
         public async Task Set_ReorgOutOfOrder_Get_Test(
             [Values(2, 5, 10)] int reorgDepth,
@@ -338,19 +317,14 @@ namespace Nethermind.Db.Test.LogIndex
 
             await AddReceiptsAsync(logIndexStorage, testData.Batches);
 
-            BlockReceipts[] reorgBlocks = testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
-            BlockReceipts[] reversed = reorgBlocks.Reverse().ToArray();
+            BlockReceipts[] reverseReorg = testData.Batches.SelectMany(b => b).Reverse().Take(reorgDepth).ToArray();
 
-            foreach (BlockReceipts block in reversed)
+            foreach (BlockReceipts block in reverseReorg)
                 await logIndexStorage.RemoveReorgedAsync(block);
 
-            // MaxBlockNumber is correctly tracked even with out-of-order reorgs
-            Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(reorgBlocks[0].BlockNumber - 1));
-
-            // Full data verification — would fail because MergeOperator only applies
-            // the first Reorg operand (the highest block in descending order),
-            // leaving intermediate blocks as stale data.
-            VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, maxBlock: reorgBlocks[0].BlockNumber - 1);
+            // Full data verification: would fail because MergeOperator only applies the first Reorg operand
+            // (the highest block in descending order), leaving intermediate blocks as stale data.
+            VerifyReceipts(logIndexStorage, testData, excludedBlocks: reverseReorg, maxBlock: reverseReorg[0].BlockNumber - 1);
         }
 
         [Combinatorial]
@@ -631,6 +605,51 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
+        public async Task SetMergeFailure_AnyWrite_Test(
+            [Values(1, 20, 51, 100)] int failOnCallN
+        )
+        {
+            var midBlock = testData.Batches[^1][^1].BlockNumber / 2;
+            await using var storage = (LogIndexStorage)CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN, failOnMerge: true);
+
+            try
+            {
+                await AddReceiptsAsync(storage, testData.Batches);
+
+                // force compaction if the error hasn't propagated already
+                await storage.CompactAsync();
+            }
+            catch (LogIndexStateException)
+            {
+                // Expected
+            }
+
+            Assert.That(storage.HasBackgroundError, Is.True);
+
+            // ReSharper disable once AccessToDisposedClosure
+            IEnumerable<BlockReceipts> sinceLastBatch = testData.Batches.SelectMany(b => b)
+                .SkipWhile(b => b.BlockNumber < storage.MaxBlockNumber);
+
+            await Assert.ThatAsync(
+                () => storage.AddReceiptsAsync(sinceLastBatch.Skip(1).Take(10).ToArray(), false),
+                Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
+            );
+
+            await Assert.ThatAsync(
+                () => storage.RemoveReorgedAsync(sinceLastBatch.First()),
+                Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
+            );
+
+            await Assert.ThatAsync(
+                () => storage.CompactAsync(),
+                Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
+            );
+
+            Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            Assert.DoesNotThrowAsync(() => storage.StopAsync());
+        }
+
+        [Combinatorial]
         public async Task Set_AlgoChange_Test()
         {
             if (CompressionAlgorithm.Supported.Count < 2)
@@ -644,45 +663,6 @@ namespace Nethermind.Db.Test.LogIndex
 
             NotSupportedException exception = Assert.Throws<NotSupportedException>(() => CreateLogIndexStorage(compressionAlgo: newAlgo));
             Assert.That(exception, Has.Message.Contain(oldAlgo).And.Message.Contain(newAlgo));
-        }
-
-        [Combinatorial]
-        public async Task Set_BackgroundJobFailure_SubsequentOps_Test([Values(10, 50)] int corruptAfterCallN)
-        {
-            await using BackgroundFailingLogIndexStorage storage = CreateBackgroundFailingLogIndexStorage(corruptAfterCallN);
-
-            // Add data — corruption is injected during one of the MergeBlockNumbers calls.
-            // The corrupt merge operand triggers MergeOperator error during DB operations,
-            // which may propagate within the same AddReceiptsAsync call via ThrowIfHasError.
-            try
-            {
-                await AddReceiptsAsync(storage, testData.Batches);
-
-                // If the error didn't propagate during AddReceiptsAsync, force compaction
-                // to trigger MergeOperator.Merge on the corrupt key
-                await storage.CompactAsync();
-            }
-            catch (LogIndexStateException ex)
-            {
-                // Expected — error propagated during batch processing
-                await TestContext.Out.WriteLineAsync($"Expected LogIndexStateException during background job: {ex}");
-            }
-
-            Assert.That(storage.HasBackgroundError, Is.True);
-
-            // ALL subsequent operations throw the stored background error
-            Assert.ThrowsAsync<LogIndexStateException>(
-                async () => await storage.AddReceiptsAsync(
-                    [testData.Batches[0][0]], false));
-
-            Assert.ThrowsAsync<LogIndexStateException>(
-                async () => await storage.RemoveReorgedAsync(testData.Batches[^1][^1]));
-
-            Assert.ThrowsAsync<LogIndexStateException>(
-                async () => await storage.CompactAsync());
-
-            // StopAsync should still work without throwing
-            Assert.DoesNotThrowAsync(async () => await storage.StopAsync());
         }
 
         private static BlockReceipts[] GenerateBlocks(Random random, int from, int count) =>
@@ -1110,8 +1090,10 @@ namespace Nethermind.Db.Test.LogIndex
 
             public int FailOnBlock { get; init; }
             public int FailOnCallN { get; init; }
+            public bool FailOnMerge { get; init; }
 
             private int _count;
+            private bool _corrupted;
 
             protected override void MergeBlockNumbers(IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<int> numbers, bool isBackwardSync, LogIndexUpdateStats? stats)
             {
@@ -1119,36 +1101,21 @@ namespace Nethermind.Db.Test.LogIndex
                     FailOnBlock >= Math.Min(numbers[0], numbers[^1]) &&
                     FailOnBlock <= Math.Max(numbers[0], numbers[^1]);
 
-                if (isFailBlock && Interlocked.Increment(ref _count) >= FailOnCallN)
-                    throw new(FailMessage);
-
-                base.MergeBlockNumbers(dbBatch, key, numbers, isBackwardSync, stats);
-            }
-        }
-
-        private class BackgroundFailingLogIndexStorage(IDbFactory dbFactory, ILogManager logManager, ILogIndexConfig config)
-            : LogIndexStorage(dbFactory, logManager, config)
-        {
-            public int CorruptAfterCallN { get; init; }
-
-            private int _count;
-            private bool _corrupted;
-
-            protected override void MergeBlockNumbers(
-                IWriteBatch dbBatch, ReadOnlySpan<byte> key, List<int> numbers,
-                bool isBackwardSync, LogIndexUpdateStats? stats)
-            {
-                base.MergeBlockNumbers(dbBatch, key, numbers, isBackwardSync, stats);
-
-                if (!_corrupted && Interlocked.Increment(ref _count) >= CorruptAfterCallN)
+                if (isFailBlock && Interlocked.Increment(ref _count) >= FailOnCallN && !Interlocked.Exchange(ref _corrupted, true))
                 {
-                    _corrupted = true;
-
-                    // Write an additional merge operand with block 0 — lower than existing data.
-                    // When MergeOperator processes this, AddEnsureSorted detects the order violation
-                    // and throws LogIndexStateException → caught → OnBackgroundError<MergeOperator>()
-                    base.MergeBlockNumbers(dbBatch, key, [0], isBackwardSync, stats);
+                    if (FailOnMerge)
+                    {
+                        // Force "invalid order" in MergeOperator
+                        int invalidBlockNum = isBackwardSync ? int.MaxValue : 0;
+                        base.MergeBlockNumbers(dbBatch, key, [invalidBlockNum], isBackwardSync, stats);
+                    }
+                    else
+                    {
+                        throw new(FailMessage);
+                    }
                 }
+
+                base.MergeBlockNumbers(dbBatch, key, numbers, isBackwardSync, stats);
             }
         }
     }
