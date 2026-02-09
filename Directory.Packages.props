@@ -22,7 +22,7 @@
     <PackageVersion Include="Google.Protobuf" Version="3.33.5" />
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.33.5" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
-    <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.78.0" />
     <PackageVersion Include="KubernetesClient" Version="18.0.13" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.2" />
@@ -73,7 +73,7 @@
     <PackageVersion Include="Polly" Version="8.6.5" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
-    <PackageVersion Include="Pyroscope" Version="0.13.0" />
+    <PackageVersion Include="Pyroscope" Version="0.14.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
     <PackageVersion Include="RocksDB" Version="[10.4.2.63147]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />

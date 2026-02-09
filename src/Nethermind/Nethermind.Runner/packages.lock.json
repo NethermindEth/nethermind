@@ -40,9 +40,9 @@
       },
       "Pyroscope": {
         "type": "Direct",
-        "requested": "[0.13.0, )",
-        "resolved": "0.13.0",
-        "contentHash": "rdthieTs1xwkAl3z9eePA3kpQM+xRCqhiqupyXt15emyU5wVp+X5ur29W//fDmaJx4Rm2OH9xcLgJqacdtOMKg=="
+        "requested": "[0.14.1, )",
+        "resolved": "0.14.1",
+        "contentHash": "i8BoY82ZBrBOmgal7Zbf69CzQ2tRJkV0v7se1yB54rsOuuxFIzcUMplyD0VIg6Gl+EkVORNpm5OUL5tJGhR+lg=="
       },
       "System.CommandLine": {
         "type": "Direct",
