@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Test;
@@ -31,17 +33,29 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
     private static readonly EthereumEcdsa _ecdsa = new(0);
     private static readonly UInt256 _accountBalance = 10.Ether();
+    private static readonly UInt256 _testAccountBalance = 1.Ether();
     private static readonly long _gasLimit = 100000;
     private static readonly Address _testAddress = ContractAddress.From(TestItem.AddressA, 0);
+    private static readonly Address _callTargetAddress = TestItem.AddressC;
 
     [TestCaseSource(nameof(CodeTestSource))]
-    public async Task Constructs_BAL_when_processing_code(byte[] code, IEnumerable<AccountChanges> expected)
+    public async Task Constructs_BAL_when_processing_code(
+        IEnumerable<AccountChanges> expected,
+        byte[] code,
+        byte[]? extraCode,
+        bool revert)
     {
-        InitWorldState(TestState);
+        InitWorldState(TestState, extraCode);
         ParallelWorldState worldState = TestState as ParallelWorldState;
         worldState.TracingEnabled = true;
 
-        Transaction createTx = Build.A.Transaction.WithCode(code).WithGasLimit(_gasLimit).WithValue(0).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        UInt256 value = _testAccountBalance;
+
+        Transaction createTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(_gasLimit)
+            .WithValue(value)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
         _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
@@ -50,9 +64,14 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         BlockAccessList bal = worldState.GeneratedBlockAccessList;
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
+        UInt256 newBalance = _accountBalance - gasUsed;
+        if (!revert)
+        {
+            newBalance -= value;
+        }
         AccountChanges accountChangesA = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges([new(0, _accountBalance - gasUsed)])
+            .WithBalanceChanges([new(0, newBalance)])
             .WithNonceChanges([new(0, 1)]).TestObject;
         AccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
 
@@ -66,14 +85,17 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
         foreach(AccountChanges expectedAccountChanges in expected)
         {
-            Assert.That(bal.GetAccountChanges(expectedAccountChanges.Address), Is.EqualTo(expectedAccountChanges));
+            AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
+            Console.WriteLine($"expected: {JsonSerializer.Serialize(expectedAccountChanges)}");
+            Console.WriteLine($"actual: {JsonSerializer.Serialize(actual)}");
+            Assert.That(actual, Is.EqualTo(expectedAccountChanges));
         }
     }
 
     private Action<ContainerBuilder> BuildContainer()
         => containerBuilder => containerBuilder.AddSingleton(SpecProvider);
 
-    private void InitWorldState(IWorldState worldState)
+    private void InitWorldState(IWorldState worldState, byte[]? extraCode = null)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
 
@@ -88,6 +110,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
         worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
         worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
+
+        if (extraCode is not null)
+        {
+            worldState.CreateAccount(_callTargetAddress, 0);
+            ValueHash256 codeHash = ValueKeccak.Compute(extraCode);
+            worldState.InsertCode(_callTargetAddress, codeHash, extraCode, SpecProvider.GenesisSpec);
+        }
 
         worldState.Commit(SpecProvider.GenesisSpec);
         worldState.CommitTree(0);
@@ -105,17 +134,27 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            AccountChanges readAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).WithNonceChanges([new(0, 1)]).TestObject;
+            AccountChanges readAccount = Build.An.AccountChanges
+                .WithAddress(_testAddress)
+                .WithStorageReads(slot)
+                .WithNonceChanges([new(0, 1)])
+                .WithBalanceChanges([new(0, _testAccountBalance)])
+                .TestObject;
             changes = [readAccount];
-            yield return new TestCaseData(code, changes) { TestName = "storage_read" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "storage_read" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
                 .Done;
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageChanges(slot, [new(0, slot)]).WithNonceChanges([new(0, 1)]).TestObject];
-            yield return new TestCaseData(code, changes) { TestName = "storage_write" };
+            changes = [Build.An.AccountChanges
+                .WithAddress(_testAddress)
+                .WithStorageChanges(slot, [new(0, slot)])
+                .WithNonceChanges([new(0, 1)])
+                .WithBalanceChanges([new(0, _testAccountBalance)])
+                .TestObject];
+            yield return new TestCaseData(changes, code, null, false) { TestName = "storage_write" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
@@ -126,16 +165,20 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Op(Instruction.SSTORE)
                 .Done;
             changes = [readAccount];
-            yield return new TestCaseData(code, changes) { TestName = "storage_write_return_to_original" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "storage_write_return_to_original" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.BALANCE)
                 .Done;
-            AccountChanges testAccount = Build.An.AccountChanges.WithAddress(_testAddress).WithNonceChanges([new(0, 1)]).TestObject;
+            AccountChanges testAccount = Build.An.AccountChanges
+                .WithAddress(_testAddress)
+                .WithNonceChanges([new(0, 1)])
+                .WithBalanceChanges([new(0, _testAccountBalance)])
+                .TestObject;
             AccountChanges emptyBAccount = new(TestItem.AddressB);
             changes = [testAccount, emptyBAccount];
-            yield return new TestCaseData(code, changes) { TestName = "balance" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "balance" };
 
             code = Prepare.EvmCode
                 .PushData(0)
@@ -145,28 +188,28 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             changes = [testAccount, emptyBAccount];
-            yield return new TestCaseData(code, changes) { TestName = "extcodecopy" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "extcodecopy" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             changes = [testAccount, emptyBAccount];
-            yield return new TestCaseData(code, changes) { TestName = "extcodehash" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "extcodehash" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             changes = [testAccount, emptyBAccount];
-            yield return new TestCaseData(code, changes) { TestName = "extcodesize" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "extcodesize" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.SELFDESTRUCT)
                 .Done;
-            changes = [new(_testAddress), emptyBAccount];
-            yield return new TestCaseData(code, changes) { TestName = "selfdestruct" };
+            changes = [new(_testAddress), Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges([new(0, _testAccountBalance)]).TestObject];
+            yield return new TestCaseData(changes, code, null, false) { TestName = "selfdestruct" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct_oog" };
 
             code = Prepare.EvmCode
@@ -177,12 +220,37 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.REVERT)
                 .Done;
-            // revert should convert storage load to read
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject];
-            yield return new TestCaseData(code, changes) { TestName = "revert" };
+            // revert should convert storage load to read, nonce and balance changes revert
+            changes = [Build.An.AccountChanges
+                .WithAddress(_testAddress)
+                .WithStorageReads(slot)
+                .TestObject];
+            yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegations" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call" };
+
+            UInt256 callValue = 10_000;
+            byte[] callTargetCode = Prepare.EvmCode
+                .PushData(slot)
+                .Op(Instruction.SLOAD)
+                .Done;
+            code = Prepare.EvmCode
+                .CallWithValue(_callTargetAddress, 20_000, callValue)
+                .Done;
+            changes = [
+                Build.An.AccountChanges
+                .WithAddress(_testAddress)
+                .WithNonceChanges([new(0, 1)])
+                .WithBalanceChanges([new(0, _testAccountBalance - callValue)])
+                .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(_callTargetAddress)
+                    .WithStorageReads(slot)
+                    .WithBalanceChanges([new(0, callValue)])
+                    .TestObject
+            ];
+            yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "call" };
+
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call_oog" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "callcode" };
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegatecall" };
@@ -194,7 +262,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .CallWithInput(PrecompiledAddresses.Identity, 20_000, [1, 2, 3, 4])
                 .Done;
             changes = [testAccount, new(PrecompiledAddresses.Identity)];
-            yield return new TestCaseData(code, changes) { TestName = "precompile" };
+            yield return new TestCaseData(changes, code, null, false) { TestName = "precompile" };
 
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "zero_transfer" };
         }
