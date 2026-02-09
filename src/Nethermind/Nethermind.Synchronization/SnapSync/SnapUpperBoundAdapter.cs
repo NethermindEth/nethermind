@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.SnapSync;
 /// UpperBound. This is to prevent double writes on partitioned snap ranges.
 /// </summary>
 /// <param name="baseTrieStore"></param>
-public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore): IScopedTrieStore
+public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore
 {
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
 
