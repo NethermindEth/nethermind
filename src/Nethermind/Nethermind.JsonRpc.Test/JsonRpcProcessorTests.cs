@@ -430,6 +430,38 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
+    public async Task Should_complete_pipe_reader_when_shutdown_requested()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(new CancellationToken(canceled: true));
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig(),
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance,
+            processExitSource);
+
+        Pipe pipe = new();
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"));
+
+        List<JsonRpcResult> results = await processor.ProcessAsync(pipe.Reader, new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
+
+        results.Should().HaveCount(1);
+        results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+
+        // Verify PipeReader was completed by the processor (reading again should throw)
+        await FluentActions.Invoking(async () => await pipe.Reader.ReadAsync())
+            .Should().ThrowAsync<InvalidOperationException>();
+
+        results.DisposeItems();
+    }
+
+    [Test]
     public void Cannot_accept_null_file_system()
     {
         Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
