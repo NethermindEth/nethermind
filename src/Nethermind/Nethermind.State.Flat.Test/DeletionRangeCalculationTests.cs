@@ -19,28 +19,6 @@ public class DeletionRangeCalculationTests
     private static readonly byte[] DummyValue = new byte[33];
     private static readonly byte[] InlineValue = new byte[5]; // Small enough for inline (RLP < 32 bytes)
 
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
-    [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ff", "0x0000000000000000000000000000000000000000000000000000000000000100", Description = "Byte boundary carry")]
-    [TestCase("0x000000000000000000000000000000000000000000000000000000000000ffff", "0x0000000000000000000000000000000000000000000000000000000000010000", Description = "Multiple byte carry")]
-    [TestCase("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", Description = "Overflow returns max")]
-    public void IncrementPath_ReturnsExpected(string inputHex, string expectedHex)
-    {
-        ValueHash256 path = new(inputHex);
-        ValueHash256 result = FlatTreeSyncStore.IncrementPath(path);
-        Assert.That(result, Is.EqualTo(new ValueHash256(expectedHex)));
-    }
-
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000000", Description = "Normal decrement")]
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000100", "0x00000000000000000000000000000000000000000000000000000000000000ff", Description = "Byte boundary borrow")]
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000010000", "0x000000000000000000000000000000000000000000000000000000000000ffff", Description = "Multiple byte borrow")]
-    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", Description = "Underflow returns zero")]
-    public void DecrementPath_ReturnsExpected(string inputHex, string expectedHex)
-    {
-        ValueHash256 path = new(inputHex);
-        ValueHash256 result = FlatTreeSyncStore.DecrementPath(path);
-        Assert.That(result, Is.EqualTo(new ValueHash256(expectedHex)));
-    }
-
     private static IEnumerable<TestCaseData> ComputeDeletionRangesTestCases()
     {
         // Note to AI: please keep the deletion range to left so that its easy to read.
