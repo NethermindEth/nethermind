@@ -103,7 +103,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         IEnumerable<AccountChanges> expected,
         byte[] code,
         byte[]? extraCode,
-        long executionGas)
+        long executionGas,
+        EvmExceptionType expectedException)
     {
         InitWorldState(TestState, extraCode);
         ParallelWorldState worldState = TestState as ParallelWorldState;
@@ -138,7 +139,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(res.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(res.EvmExceptionType, Is.EqualTo(expectedException));
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
             Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
@@ -435,6 +436,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             IEnumerable<AccountChanges> changes;
             byte[] code;
             UInt256 slot = _delegationSlot;
+            AccountChanges testAccount = new(_testAddress);
+            AccountChanges addressB = new(TestItem.AddressB);
+            AccountChanges callTarget = new(_callTargetAddress);
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -443,8 +447,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
-            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess - 1) { TestName = "balance_oog_pre_state_access" };
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess - 1, EvmExceptionType.OutOfGas)
+                { TestName = "balance_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -452,12 +457,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(TestItem.AddressB)];
+            changes = [testAccount, addressB];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "balance_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "balance_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .Op(Instruction.SELFBALANCE)
@@ -465,8 +471,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
-            yield return new TestCaseData(changes, code, null, GasCostOf.SelfBalance) { TestName = "selfbalance_oog_post_state_access" };
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.SelfBalance, EvmExceptionType.OutOfGas)
+                { TestName = "selfbalance_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -475,8 +482,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
-            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess - 1) { TestName = "extcodesize_oog_pre_state_access" };
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess - 1, EvmExceptionType.OutOfGas)
+                { TestName = "extcodesize_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -484,12 +492,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(TestItem.AddressB)];
+            changes = [testAccount, addressB];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "extcodesize_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "extcodesize_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -498,8 +507,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
-            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess - 1) { TestName = "extcodehash_oog_pre_state_access" };
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess - 1, EvmExceptionType.OutOfGas)
+                { TestName = "extcodehash_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -507,12 +517,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(TestItem.AddressB)];
+            changes = [testAccount, addressB];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "extcodehash_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "extcodehash_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(32)
@@ -524,12 +535,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.Memory) { TestName = "extcodecopy_oog_pre_state_access" };
+                GasCostOf.Memory,
+                EvmExceptionType.OutOfGas) { TestName = "extcodecopy_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(32)
@@ -540,12 +552,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(TestItem.AddressB)];
+            changes = [testAccount, addressB];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.ColdAccountAccess + GasCostOf.Memory * 2 + GasCostOf.ColdSLoad - 1) { TestName = "extcodecopy_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.Memory * 2 + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "extcodecopy_oog_post_state_access" };
 
             byte[] callTargetCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
             code = Prepare.EvmCode
@@ -554,24 +567,26 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess - 1) { TestName = "call_oog_pre_state_access" };
+                GasCostOf.ColdAccountAccess - 1,
+                EvmExceptionType.OutOfGas) { TestName = "call_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .Call(_callTargetAddress, 0)
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(_callTargetAddress)];
+            changes = [testAccount, callTarget];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "call_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "call_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .CallCode(_callTargetAddress, 0)
@@ -579,24 +594,26 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess - 1) { TestName = "callcode_oog_pre_state_access" };
+                GasCostOf.ColdAccountAccess - 1,
+                EvmExceptionType.OutOfGas) { TestName = "callcode_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .CallCode(_callTargetAddress, 0)
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(_callTargetAddress)];
+            changes = [testAccount, callTarget];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "callcode_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "callcode_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .DelegateCall(_callTargetAddress, 0)
@@ -604,24 +621,26 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess - 1) { TestName = "delegatecall_oog_pre_state_access" };
+                GasCostOf.ColdAccountAccess - 1,
+                EvmExceptionType.OutOfGas) { TestName = "delegatecall_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .DelegateCall(_callTargetAddress, 0)
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(_callTargetAddress)];
+            changes = [testAccount, callTarget];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "delegatecall_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "delegatecall_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .StaticCall(_callTargetAddress, 0)
@@ -629,24 +648,26 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess - 1) { TestName = "staticcall_oog_pre_state_access" };
+                GasCostOf.ColdAccountAccess - 1,
+                EvmExceptionType.OutOfGas) { TestName = "staticcall_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .StaticCall(_callTargetAddress, 0)
                 .PushData(slot)
                 .Op(Instruction.SLOAD)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(_callTargetAddress)];
+            changes = [testAccount, callTarget];
             yield return new TestCaseData(
                 changes,
                 code,
                 callTargetCode,
-                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1) { TestName = "staticcall_oog_post_state_access" };
+                GasCostOf.ColdAccountAccess + GasCostOf.ColdSLoad - 1,
+                EvmExceptionType.OutOfGas) { TestName = "staticcall_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(32)
@@ -657,12 +678,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Memory - 1) { TestName = "create_oog_pre_state_access" };
+                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
+                EvmExceptionType.OutOfGas) { TestName = "create_oog_pre_state_access" };
 
             byte[] create2Salt = new byte[32];
             create2Salt[^1] = 1;
@@ -676,12 +698,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1) { TestName = "create2_oog_pre_state_access" };
+                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
+                EvmExceptionType.OutOfGas) { TestName = "create2_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
@@ -690,8 +713,9 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).TestObject];
-            yield return new TestCaseData(changes, code, null, GasCostOf.ColdSLoad - 1) { TestName = "sload_oog_pre_state_access" };
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdSLoad - 1, EvmExceptionType.OutOfGas)
+                { TestName = "sload_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
@@ -705,7 +729,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.ColdSLoad + GasCostOf.VeryLow + GasCostOf.Memory - 1) { TestName = "sload_oog_post_state_access" };
+                GasCostOf.ColdSLoad + GasCostOf.VeryLow + GasCostOf.Memory - 1,
+                EvmExceptionType.OutOfGas) { TestName = "sload_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(6)
@@ -715,12 +740,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).TestObject];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.CallStipend) { TestName = "sstore_oog_pre_state_access" };
+                GasCostOf.CallStipend - 1,
+                EvmExceptionType.OutOfGas) { TestName = "sstore_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(6)
@@ -735,7 +761,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.SSet - 1) { TestName = "sstore_oog_post_state_access" };
+                GasCostOf.ColdSLoad + GasCostOf.SSet - 1,
+                EvmExceptionType.OutOfGas) { TestName = "sstore_oog_post_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -744,12 +771,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress)];
+            changes = [testAccount];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.VeryLow - 1) { TestName = "selfdestruct_oog_pre_state_access" };
+                GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.VeryLow - 1,
+                EvmExceptionType.OutOfGas) { TestName = "selfdestruct_oog_pre_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -758,12 +786,78 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new(TestItem.AddressB)];
+            changes = [testAccount, addressB];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.VeryLow) { TestName = "selfdestruct_oog_post_state_access" };
+                GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.VeryLow,
+                EvmExceptionType.OutOfGas) { TestName = "selfdestruct_oog_post_state_access" };
+
+            code = Prepare.EvmCode.Op(Instruction.BALANCE).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "balance_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.EXTCODESIZE).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "extcodesize_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.EXTCODEHASH).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "extcodehash_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.EXTCODECOPY).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "extcodecopy_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.SLOAD).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "sload_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.SSTORE).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.CallStipend + 1, EvmExceptionType.StackUnderflow)
+                { TestName = "sstore_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.CALL).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "call_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.CALLCODE).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "callcode_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.DELEGATECALL).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "delegatecall_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.STATICCALL).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "staticcall_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.CREATE).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "create_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.CREATE2).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.VeryLow, EvmExceptionType.StackUnderflow)
+                { TestName = "create2_stack_underflow" };
+
+            code = Prepare.EvmCode.Op(Instruction.SELFDESTRUCT).Done;
+            changes = [testAccount];
+            yield return new TestCaseData(changes, code, null, GasCostOf.SelfDestructEip150, EvmExceptionType.StackUnderflow)
+                { TestName = "selfdestruct_stack_underflow" };
         }
     }
 }
