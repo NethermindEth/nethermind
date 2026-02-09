@@ -21,8 +21,14 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
 
-    public Address MasternodeVotingContract { get; set; }
     public Address BlockSignerContract { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+
+    public Address MasternodeVotingContract { get; set; }
 
 
     private List<V2ConfigParams> _v2Configs = new();
@@ -36,6 +42,13 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             CheckConfig(_v2Configs);
         }
     }
+
+    public long TIP2019Block { get; set; }
+    public long MergeSignRange { get; set; }
+    public Address[] BlackListedAddresses { get; set; }
+    public long BlackListHFNumber { get; set; }
+    public long TipXDCX { get; set; }
+    public long TIPXDCXMinerDisable { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {

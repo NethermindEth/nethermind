@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
@@ -21,6 +22,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
@@ -61,6 +64,7 @@ namespace Ethereum.Test.Base
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
 
             EofValidator.Logger = _logger;
 
@@ -87,6 +91,7 @@ namespace Ethereum.Test.Base
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             using IDisposable _ = stateProvider.BeginScope(null);
+            IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
             InitializeTestState(test.Pre, stateProvider, specProvider);
@@ -100,6 +105,15 @@ namespace Ethereum.Test.Base
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
+
+            if (test.Transaction.ChainId is null)
+            {
+                test.Transaction.ChainId = test.ChainId;
+            }
+
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+            Transaction[] transactions = [test.Transaction];
+            Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? [] : null;
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -115,47 +129,29 @@ namespace Ethereum.Test.Base
                 StateRoot = test.PostHash,
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
-                WithdrawalsRoot = test.CurrentWithdrawalsRoot,
+                WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
                 ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
-                RequestsHash = test.RequestsHash
+                RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
+                TxRoot = TxTrie.CalculateRoot(transactions),
+                ReceiptsRoot = test.PostReceiptsRoot,
             };
+
             header.Hash = header.CalculateHash();
+            Block block = new(header, new BlockBody(transactions, [], withdrawals));
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
-            if (test.Transaction.ChainId is null)
-                test.Transaction.ChainId = test.ChainId;
-            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
-            {
-                BlockHeader parent = new(
-                    parentHash: Keccak.Zero,
-                    unclesHash: Keccak.OfAnEmptySequenceRlp,
-                    beneficiary: test.CurrentCoinbase,
-                    difficulty: test.CurrentDifficulty,
-                    number: test.CurrentNumber - 1,
-                    gasLimit: test.CurrentGasLimit,
-                    timestamp: test.CurrentTimestamp,
-                    extraData: []
-                )
-                {
-                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
-                };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-            }
-
-            ValidationResult txIsValid = new TxValidator(test.ChainId).IsWellFormed(test.Transaction, spec);
             TransactionResult? txResult = null;
-            if (txIsValid)
+
+            if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
             {
                 txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
             }
             else
             {
-                _logger.Info($"Skipping invalid tx with error: {txIsValid.Error}");
+                _logger.Info($"Skipping invalid tx with error: {blockValidationError}");
             }
 
             stopwatch.Stop();

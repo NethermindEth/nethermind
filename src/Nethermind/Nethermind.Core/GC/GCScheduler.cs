@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 
-namespace Nethermind.Consensus;
+namespace Nethermind.Core;
 
 public sealed class GCScheduler
 {
@@ -32,6 +32,8 @@ public sealed class GCScheduler
     private bool _gcTimerSet = false;
     private bool _fireGC = false;
     private long _countToGC = 0L;
+
+    private bool _skipNextGC = false;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -134,6 +136,11 @@ public sealed class GCScheduler
     /// </summary>
     private void PerformFullGC()
     {
+        if (Interlocked.Exchange(ref _skipNextGC, false))
+        {
+            return;
+        }
+
         // Decide if the next GC should compact the large object heap
         bool compacting = _isNextGcBlocking && _isNextGcCompacting;
 
@@ -189,4 +196,6 @@ public sealed class GCScheduler
 
         return true;
     }
+
+    public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
 }

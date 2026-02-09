@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 

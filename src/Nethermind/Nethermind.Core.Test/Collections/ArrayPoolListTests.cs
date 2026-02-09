@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -334,6 +335,32 @@ public class ArrayPoolListTests
 
         list.DisposeRecursive();
         list.DisposeRecursive();
+    }
+
+    [Test]
+    public void RemoveAt_should_not_throw_when_capacity_equals_count()
+    {
+        ArrayPool<int> pool = new ExactSizeArrayPool<int>();
+        using ArrayPoolList<int> list = new(pool, 8, 8);
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            list[i] = i;
+        }
+
+        Action act = () => list.RemoveAt(2);
+
+        act.Should().NotThrow();
+        list.Should().BeEquivalentTo(new[] { 0, 1, 3, 4, 5, 6, 7 });
+    }
+
+    private sealed class ExactSizeArrayPool<T> : ArrayPool<T>
+    {
+        public override T[] Rent(int minimumLength) => new T[minimumLength];
+
+        public override void Return(T[] array, bool clearArray = false)
+        {
+        }
     }
 
 #if DEBUG

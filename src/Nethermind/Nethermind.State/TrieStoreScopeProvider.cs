@@ -18,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NonBlocking;
 
 namespace Nethermind.State;
 
@@ -249,7 +248,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             }
             else
             {
-                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
+                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
                 _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
             }
         }

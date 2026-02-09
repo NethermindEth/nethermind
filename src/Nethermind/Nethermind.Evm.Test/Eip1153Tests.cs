@@ -409,7 +409,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     /// Revert undoes transient storage writes from inner calls that successfully returned
     /// </summary>
     [Test]
-    public void revert_resets_transient_state_from_succesful_calls()
+    public void revert_resets_transient_state_from_successful_calls()
     {
         // If caller is self, TLOAD and return value (break recursion)
         // Else, TSTORE and call self, return the response

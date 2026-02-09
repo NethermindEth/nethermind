@@ -110,7 +110,7 @@ public partial class BlockTree
 
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (header is not null)
             {
                 if (findBeacon && blockInfo.IsBeaconHeader)
@@ -138,7 +138,7 @@ public partial class BlockTree
 
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (block is not null)
             {
                 if (findBeacon && blockInfo.IsBeaconBody)

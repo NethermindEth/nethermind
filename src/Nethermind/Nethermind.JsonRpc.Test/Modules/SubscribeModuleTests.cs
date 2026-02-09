@@ -10,9 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Json;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -24,7 +22,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Stats.Model;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
@@ -34,7 +31,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 using Nethermind.Specs;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
@@ -864,7 +860,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
 
-            JToken.Parse(serialized).Should().BeEquivalentTo($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""");
+            JToken.Parse(serialized).Should().BeEquivalentTo($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""");
         }
 
         [TestCase(2)]

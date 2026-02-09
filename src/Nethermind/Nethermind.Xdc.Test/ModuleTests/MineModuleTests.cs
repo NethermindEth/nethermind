@@ -2,21 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Specs.Forks;
-using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
-using Org.BouncyCastle.Crypto;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
@@ -53,7 +45,7 @@ internal class MineModuleTests
 
         // mine the gap block that should trigger master node update
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -127,7 +119,7 @@ internal class MineModuleTests
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
         var gapBlock = await blockchain.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
+        while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
         {
             gapBlock = await blockchain.AddBlock();
         }
@@ -141,8 +133,6 @@ internal class MineModuleTests
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
-
-        long tstamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var epochSwitchBlock = await blockchain.AddBlock();
         while (!blockchain.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)tree.Head!.Header!))

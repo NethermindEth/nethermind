@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -22,6 +21,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -36,7 +36,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -155,7 +154,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     private void EnsureJsonRpcUrl()
     {
-        if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, wwe can skip this check, but we can still working with MergePlugin
+        if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
 
         IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
@@ -214,7 +213,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            _api.FinalizationManager = InitializeMergeFinilizationManager();
+            _api.FinalizationManager = InitializeMergeFinalizationManager();
 
             if (_poSSwitcher.TransitionFinished)
             {
@@ -236,7 +235,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
     }
 
-    protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
+    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()
     {
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }
@@ -343,6 +342,11 @@ public class BaseMergePluginModule : Module
                         ctx.Resolve<ILogManager>());
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
+                .AddSingleton<IGasLimitCalculator, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
+                    new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig))
+
+            // Testing rpc
+            .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
     }
 

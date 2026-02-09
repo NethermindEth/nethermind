@@ -132,7 +132,7 @@ public class JsonRpcUrlCollectionTests
     }
 
     [Test]
-    public void Skips_additional_urls_with_port_conficts()
+    public void Skips_additional_urls_with_port_conflicts()
     {
         JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
         {

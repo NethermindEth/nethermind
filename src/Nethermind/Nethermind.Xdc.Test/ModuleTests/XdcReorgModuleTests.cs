@@ -48,24 +48,24 @@ internal class XdcReorgModuleTests
             newHeadWaitHandle.SetResult();
         };
 
-        XdcBlockHeader forkparent = finalizedBlock;
+        XdcBlockHeader forkParent = finalizedBlock;
         for (int i = 0; i < 3; i++)
         {
             //Build a fork on finalized block, which should result in fork becoming new head
-            forkparent = (XdcBlockHeader)(await blockChain.AddBlockFromParent(forkparent)).Header;
+            forkParent = (XdcBlockHeader)(await blockChain.AddBlockFromParent(forkParent)).Header;
         }
 
-        if (blockChain.BlockTree.Head!.Hash != forkparent.Hash)
+        if (blockChain.BlockTree.Head!.Hash != forkParent.Hash)
         {
             //Wait for new head 
             await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(5_000));
         }
 
-        blockChain.BlockTree.Head!.Hash.Should().Be(forkparent.Hash!);
+        blockChain.BlockTree.Head!.Hash.Should().Be(forkParent.Hash!);
         //The new fork head should commit it's grandparent as finalized
-        blockChain.XdcContext.HighestCommitBlock.Hash.Should().Be(blockChain.BlockTree.FindHeader(forkparent.ParentHash!)!.ParentHash!);
+        blockChain.XdcContext.HighestCommitBlock.Hash.Should().Be(blockChain.BlockTree.FindHeader(forkParent.ParentHash!)!.ParentHash!);
         //Our lock QC should be parent of the fork head
-        blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash.Should().Be(forkparent.ParentHash!);
+        blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash.Should().Be(forkParent.ParentHash!);
     }
 
     [TestCase(5)]

@@ -31,13 +31,13 @@ internal static class XdcTestHelper
         return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
     }
 
-    public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
+    public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
         var encoder = new VoteDecoder();
         IEnumerable<Signature> signatures = keys.Select(k =>
         {
             var stream = new KeccakRlpStream();
-            encoder.Encode(stream, new Vote(roundInfo, gapnumber), RlpBehaviors.ForSealing);
+            encoder.Encode(stream, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
             return ecdsa.Sign(k, stream.GetValueHash());
         }).ToArray();
         return signatures.ToArray();

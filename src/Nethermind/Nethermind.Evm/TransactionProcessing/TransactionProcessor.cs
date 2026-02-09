@@ -91,6 +91,11 @@ namespace Nethermind.Evm.TransactionProcessing
             SkipValidation = 4,
 
             /// <summary>
+            /// Marker option used by state pre-warmer
+            /// </summary>
+            Warmup = 8,
+
+            /// <summary>
             /// Skip potential fail checks and commit state after execution
             /// </summary>
             SkipValidationAndCommit = Commit | SkipValidation,
@@ -155,7 +160,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -222,7 +227,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.SpentGas = spentGas.SpentGas;
+
+            //only main thread updates transaction
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -379,7 +387,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         /// <summary>
-        /// Validates the transaction, in a static manner (i.e. without accesing state/storage).
+        /// Validates the transaction, in a static manner (i.e. without accessing state/storage).
         /// It basically ensures the transaction is well formed (i.e. no null values where not allowed, no overflows, etc).
         /// As a part of validating the transaction the premium per gas will be calculated, to save computation this
         /// is returned in an out parameter.

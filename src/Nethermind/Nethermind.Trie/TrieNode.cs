@@ -35,9 +35,6 @@ namespace Nethermind.Trie
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
 
-        private static readonly Action<TrieNode, Hash256?, TreePath> _markPersisted = static (tn, _, _) =>
-            tn.IsPersisted = true;
-
         private const byte _dirtyMask = 0b001;
         private const byte _persistedMask = 0b010;
         private const byte _boundaryProof = 0b100;
@@ -1256,12 +1253,6 @@ namespace Nethermind.Trie
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 data = childOrRef = child;
 
-                                if (IsPersisted && !child.IsPersisted)
-                                {
-                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                        NullLogger.Instance);
-                                }
-
                                 break;
                             }
                         default:
@@ -1447,12 +1438,6 @@ namespace Nethermind.Trie
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                     data = childOrRef = child;
-
-                                    if (node.IsPersisted && !child.IsPersisted)
-                                    {
-                                        child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                            NullLogger.Instance);
-                                    }
 
                                     break;
                                 }
