@@ -22,7 +22,7 @@
     "VerifyTrieOnStateSyncFinished": true
   },
   "JsonRpc": {
-    "Enabled": false
+    "Enabled": true
   },
   "Merge": {
     "Enabled": false
