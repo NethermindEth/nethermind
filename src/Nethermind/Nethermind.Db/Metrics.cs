@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
@@ -16,6 +17,9 @@ namespace Nethermind.Db
 {
     public static class Metrics
     {
+        [DetailedMetricOnFlag]
+        public static bool DetailedMetricsEnabled { get; set; }
+
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
@@ -125,5 +129,15 @@ namespace Nethermind.Db
         [Description("Metrics extracted from RocksDB Compaction Stats")]
         [KeyIsLabel("db", "level", "metric")]
         public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
+
+        [DetailedMetric]
+        [Description("Prewarmer get operation times")]
+        [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.5, Count = 30, LabelNames = ["part", "is_prewarmer"])]
+        public static IMetricObserver PrewarmerGetTime { get; set; } = NoopMetricObserver.Instance;
+    }
+
+    public readonly struct PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
+    {
+        public string[] Labels { get; } = [part, isPrewarmer ? "true" : "false"];
     }
 }

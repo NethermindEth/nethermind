@@ -12,7 +12,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -27,15 +26,15 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
 [TestFixture(true)]
 [TestFixture(false)]
 [Todo(Improve.Refactor, "Check why fixture test cases did not work")]
-[Parallelizable(ParallelScope.Self)]
-public abstract class TransactionProcessorTests
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class TransactionProcessorTests
 {
     private readonly bool _isEip155Enabled;
     private readonly ISpecProvider _specProvider;

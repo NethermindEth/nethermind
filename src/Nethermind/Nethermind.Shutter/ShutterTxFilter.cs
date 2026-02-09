@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Int256;
 

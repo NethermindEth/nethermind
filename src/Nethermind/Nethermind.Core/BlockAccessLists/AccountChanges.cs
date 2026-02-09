@@ -121,7 +121,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
             {
-                yield return new(slotChanges.Slot, new SortedList<ushort, StorageChange>() {{index, storageChange}});
+                yield return new(slotChanges.Slot, new SortedList<ushort, StorageChange>() { { index, storageChange } });
             }
         }
     }

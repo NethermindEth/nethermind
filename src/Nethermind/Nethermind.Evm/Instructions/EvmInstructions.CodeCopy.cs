@@ -169,11 +169,11 @@ internal static partial class EvmInstructions
 
             (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
 
-            ICodeInfo codeInfo = vm.CodeInfoRepository
+            CodeInfo codeInfo = vm.CodeInfoRepository
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
             // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
+            ReadOnlySpan<byte> externalCode = codeInfo.Code.Span;
             // If contract is large, charge for access
             if (spec.IsEip7907Enabled)
             {

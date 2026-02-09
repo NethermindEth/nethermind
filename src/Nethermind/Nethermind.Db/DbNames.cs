@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Db
@@ -19,6 +19,7 @@ namespace Nethermind.Db
         public const string Metadata = "metadata";
         public const string BlobTransactions = "blobTransactions";
         public const string DiscoveryNodes = "discoveryNodes";
+        public const string DiscoveryV5Nodes = "discoveryV5Nodes";
         public const string PeersDb = "peers";
     }
 }

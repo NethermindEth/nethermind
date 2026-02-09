@@ -240,7 +240,7 @@ public partial class EngineModuleTests
             [],
             [],
             invalidBal);
-        
+
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -329,7 +329,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
         Block genesis = chain.BlockFinder.FindGenesisBlock()!;
-        PayloadAttributes payloadAttributes = new() {
+        PayloadAttributes payloadAttributes = new()
+        {
             Timestamp = timestamp,
             PrevRandao = genesis.Header.Random!,
             SuggestedFeeRecipient = Address.Zero,
@@ -554,7 +555,7 @@ public partial class EngineModuleTests
             .WithAddress(newContractAddress)
             .WithNonceChanges([new(2, 1)])
             .WithCodeChanges([new(2, Eip2935TestConstants.Code)]);
-        
+
         if (withIncorrectChange)
         {
             newContractAccount = newContractAccount.WithBalanceChanges([new(3, 1.GWei())]); // incorrect change
@@ -589,7 +590,7 @@ public partial class EngineModuleTests
                     .WithStorageReads(1)
                     .TestObject)
             .WithPrecompileChanges(parentHash, timestamp);
-        
+
         if (!withMissingChange)
         {
             expectedBlockAccessListBuilder.WithAccountChanges(newContractAccount.TestObject);
@@ -631,7 +632,7 @@ public partial class EngineModuleTests
             [],
             [withdrawal],
             expectedBlockAccessListBuilder.TestObject);
-        
+
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);

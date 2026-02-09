@@ -71,11 +71,11 @@ public class BlockValidator(
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
-               ValidateEip4844Fields(block, spec, ref errorMessage) &&
-               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
+               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
+               ValidateEip4844Fields(block, spec, ref errorMessage) &&
                ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
@@ -393,7 +393,7 @@ public class BlockValidator(
     public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
         // n.b. block BAL could be null if it doesn't come from engine API eg. RLP tests
-        
+
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
             error = BlockErrorMessages.BlockLevelAccessListNotEnabled;

@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,6 +31,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class TransactionsExecutorTests
     {
         public static IEnumerable ProperTransactionsSelectedTestCases
