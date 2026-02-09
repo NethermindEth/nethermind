@@ -52,7 +52,7 @@ public readonly ref struct TransactionSubstate
     public string? Error { get; }
     public string? SubstateError { get; }
     public EvmExceptionType EvmExceptionType { get; }
-    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
+    public (CodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
@@ -80,7 +80,7 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = true;
     }
 
-    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+    public TransactionSubstate((CodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IHashSetEnumerableCollection<Address> destroyList,
         IToArrayCollection<LogEntry> logs,

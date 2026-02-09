@@ -112,7 +112,7 @@ namespace Nethermind.Db.LogIndex
         [InlineArray(MaxTopics + 1)]
         private struct AllMergeOperators
         {
-            private MergeOperator _element;
+            private IMergeOperator _element;
         }
 
         private ref struct DbBatches : IDisposable
@@ -130,10 +130,8 @@ namespace Nethermind.Db.LogIndex
 
                 Meta = _batch.GetColumnBatch(LogIndexColumns.Meta);
                 Address = _batch.GetColumnBatch(LogIndexColumns.Addresses);
-                Topics[0] = _batch.GetColumnBatch(LogIndexColumns.Topics0);
-                Topics[1] = _batch.GetColumnBatch(LogIndexColumns.Topics1);
-                Topics[2] = _batch.GetColumnBatch(LogIndexColumns.Topics2);
-                Topics[3] = _batch.GetColumnBatch(LogIndexColumns.Topics3);
+                for (var topicIndex = 0; topicIndex < MaxTopics; topicIndex++)
+                    Topics[topicIndex] = _batch.GetColumnBatch(GetColumn(topicIndex));
             }
 
             // Require explicit Commit call instead of committing on Dispose
@@ -242,22 +240,14 @@ namespace Nethermind.Db.LogIndex
                     ? new Compactor(this, _logger, config.CompactionDistance)
                     : new NoOpCompactor();
 
-                _mergeOperators[0] = new(this, _compressor, topicIndex: null);
-                _mergeOperators[1] = new(this, _compressor, topicIndex: 0);
-                _mergeOperators[2] = new(this, _compressor, topicIndex: 1);
-                _mergeOperators[3] = new(this, _compressor, topicIndex: 2);
-                _mergeOperators[4] = new(this, _compressor, topicIndex: 3);
+                for (int i = -1; i < MaxTopics; i++)
+                    _mergeOperators[i + 1] = new MergeOperator(this, _compressor, topicIndex: i < 0 ? null : i);
 
                 _rootDb = CreateRootDb(dbFactory, config.Reset);
                 _metaDb = GetMetaDb(_rootDb);
                 _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
-                _topicDbs =
-                [
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics0),
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics1),
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics2),
-                    _rootDb.GetColumnDb(LogIndexColumns.Topics3),
-                ];
+                _topicDbs = Enumerable.Range(0, MaxTopics).Select(topicIndex => _rootDb.GetColumnDb(GetColumn(topicIndex))).ToArray();
+
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
@@ -316,14 +306,10 @@ namespace Nethermind.Db.LogIndex
             {
                 IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
                 {
-                    ColumnsMergeOperators = new Dictionary<string, IMergeOperator>
-                    {
-                        [$"{LogIndexColumns.Addresses}"] = _mergeOperators[0],
-                        [$"{LogIndexColumns.Topics0}"] = _mergeOperators[1],
-                        [$"{LogIndexColumns.Topics1}"] = _mergeOperators[2],
-                        [$"{LogIndexColumns.Topics2}"] = _mergeOperators[3],
-                        [$"{LogIndexColumns.Topics3}"] = _mergeOperators[4],
-                    }
+                    ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
+                        topicIndex => $"{GetColumn(topicIndex < 0 ? null : topicIndex)}",
+                        topicIndex => _mergeOperators[topicIndex + 1]
+                    )
                 });
 
                 return (db, GetMetaDb(db));
@@ -550,7 +536,7 @@ namespace Nethermind.Db.LogIndex
             ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
                 ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
 
-            return new LogIndexEnumerator(this, sortedDb, key, from, to);
+            return new LogIndexEnumerator(sortedDb, _compressionAlgorithm, key, from, to);
         }
 
         // TODO: discuss potential optimizations
@@ -627,8 +613,7 @@ namespace Nethermind.Db.LogIndex
             if (!FirstBlockAdded)
                 return;
 
-            SemaphoreSlim semaphore = _forwardWriteSemaphore;
-            await LockRunAsync(semaphore);
+            await LockRunAsync(_forwardWriteSemaphore);
 
             try
             {
@@ -636,7 +621,7 @@ namespace Nethermind.Db.LogIndex
             }
             finally
             {
-                semaphore.Release();
+                _forwardWriteSemaphore.Release();
             }
         }
 
@@ -644,14 +629,10 @@ namespace Nethermind.Db.LogIndex
         {
             const bool isBackwardSync = false;
 
-            Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
-            Span<byte> valueBuffer = stackalloc byte[BlockNumberSize + 1];
-
-            using IColumnsWriteBatch<LogIndexColumns>? batch = _rootDb.StartWriteBatch();
-
             using DbBatches batches = new(_rootDb);
 
-            Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, valueBuffer);
+            Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
+            Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, stackalloc byte[MergeOps.Size]);
 
             foreach (TxReceipt receipt in block.Receipts)
             {
@@ -677,7 +658,7 @@ namespace Nethermind.Db.LogIndex
 
             batches.Commit();
 
-            // Postpone values update until batch is committed
+            // Postpone in-memory values update until batch is committed
             UpdateRange(minBlock, maxBlock, isBackwardSync);
         }
 
@@ -708,7 +689,7 @@ namespace Nethermind.Db.LogIndex
             CompactingStats compactStats = await _compactor.ForceAsync();
             stats?.Compacting.Combine(compactStats);
 
-            foreach (MergeOperator mergeOperator in _mergeOperators)
+            foreach (IMergeOperator mergeOperator in _mergeOperators)
                 stats?.Combine(mergeOperator.Stats);
 
             if (_logger.IsInfo)
@@ -782,7 +763,7 @@ namespace Nethermind.Db.LogIndex
                 semaphore.Release();
             }
 
-            foreach (MergeOperator mergeOperator in _mergeOperators)
+            foreach (IMergeOperator mergeOperator in _mergeOperators)
                 stats?.Combine(mergeOperator.GetAndResetStats());
             stats?.Compressing.Combine(_compressor.GetAndResetStats());
             stats?.Compacting.Combine(_compactor.GetAndResetStats());
@@ -911,6 +892,10 @@ namespace Nethermind.Db.LogIndex
             return value;
         }
 
+        private static LogIndexColumns GetColumn(int? topicIndex) => topicIndex.HasValue
+            ? (LogIndexColumns)(topicIndex + LogIndexColumns.Topics0)
+            : LogIndexColumns.Addresses;
+
         private IDb GetDb(int? topicIndex) => topicIndex.HasValue ? _topicDbs[topicIndex.Value] : _addressDb;
 
         private static IDb GetMetaDb(IColumnsDb<LogIndexColumns> rootDb) => rootDb.GetColumnDb(LogIndexColumns.Meta);
@@ -936,7 +921,7 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer)
+        private static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
@@ -944,8 +929,10 @@ namespace Nethermind.Db.LogIndex
             if (buffer.Length < len)
                 throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            _ = _compressionAlgorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
+            _ = algorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
         }
+
+        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer) => DecompressDbValue(_compressionAlgorithm, data, buffer);
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {

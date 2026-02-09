@@ -37,11 +37,11 @@ partial class LogIndexStorage
     /// </remarks>
     private class Compressor : ICompressor
     {
-        private int MinLengthToCompress { get; }
+        private readonly int _minLengthToCompress;
 
         // Used instead of a channel to prevent duplicates
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
-        private readonly ConcurrentDictionary<byte[], bool>.AlternateLookup<ReadOnlySpan<byte>> _compressQueueAlternativeLookup;
+        private readonly ConcurrentDictionary<byte[], bool>.AlternateLookup<ReadOnlySpan<byte>> _compressQueueLookup;
         private readonly LogIndexStorage _storage;
         private readonly ActionBlock<(int?, byte[])> _processing;
         private readonly ManualResetEventSlim _startEvent = new(false);
@@ -58,10 +58,10 @@ partial class LogIndexStorage
 
         public Compressor(LogIndexStorage storage, int compressionDistance, int parallelism)
         {
-            _compressQueueAlternativeLookup = _compressQueue.GetAlternateLookup<ReadOnlySpan<byte>>();
+            _compressQueueLookup = _compressQueue.GetAlternateLookup<ReadOnlySpan<byte>>();
             _storage = storage;
 
-            MinLengthToCompress = compressionDistance * BlockNumberSize;
+            _minLengthToCompress = compressionDistance * BlockNumberSize;
 
             if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
             _processing = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
@@ -69,10 +69,10 @@ partial class LogIndexStorage
 
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
         {
-            if (dbValue.Length < MinLengthToCompress)
+            if (dbValue.Length < _minLengthToCompress)
                 return false;
 
-            if (_compressQueueAlternativeLookup.TryGetValue(dbKey, out _))
+            if (_compressQueueLookup.TryGetValue(dbKey, out _))
                 return false;
 
             byte[] dbKeyArr = dbKey.ToArray();
@@ -120,7 +120,7 @@ partial class LogIndexStorage
                 if (!UseBackwardSyncFor(dbKey))
                     dbValue = _storage.RemoveReorgableBlocks(dbValue);
 
-                if (dbValue.Length < MinLengthToCompress)
+                if (dbValue.Length < _minLengthToCompress)
                     return;
 
                 int truncateBlock = ReadLastBlockNumber(dbValue);
@@ -185,7 +185,6 @@ partial class LogIndexStorage
     public sealed class NoOpCompressor : ICompressor
     {
         private PostMergeProcessingStats Stats { get; } = new();
-        public int MinLengthToCompress => 256;
         public PostMergeProcessingStats GetAndResetStats() => Stats;
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
         public Task EnqueueAsync(int? topicIndex, byte[] dbKey) => Task.CompletedTask;

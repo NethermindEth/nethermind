@@ -73,7 +73,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public string Description => "log index builder";
 
-    public Task BackwardSyncCompletion => Direction(false).Completion.Task;
+    public Task BackwardSyncCompletion => Direction(isForward: false).Completion.Task;
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
@@ -94,8 +94,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
-        _directions[0] = new();
-        _directions[1] = new();
+
+        Direction(isForward: false) = new();
+        Direction(isForward: true) = new();
     }
 
     private void StartProcessing(bool isForward)
@@ -208,8 +209,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private void LogProgress()
     {
         LogStats();
-        Direction(false).Progress?.LogProgress();
-        Direction(true).Progress?.LogProgress();
+        Direction(isForward: false).Progress?.LogProgress();
+        Direction(isForward: true).Progress?.LogProgress();
     }
 
     private bool TrySetPivot(int? blockNumber)
@@ -299,8 +300,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         LastError = exception;
 
-        Direction(false).Completion.TrySetException(exception!);
-        Direction(true).Completion.TrySetException(exception!);
+        Direction(isForward: false).Completion.TrySetException(exception!);
+        Direction(isForward: true).Completion.TrySetException(exception!);
 
         if (!isStopping)
             await StopAsync();
@@ -395,7 +396,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (!_pivotTask.IsCompletedSuccessfully) return;
         var pivotNumber = _pivotTask.Result;
 
-        DirectionState forward = Direction(true);
+        DirectionState forward = Direction(isForward: true);
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
             forwardProgress.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
@@ -403,7 +404,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             forwardProgress.CurrentQueued = forward.Queue!.QueueCount;
         }
 
-        DirectionState backward = Direction(false);
+        DirectionState backward = Direction(isForward: false);
         if (backward.Progress is { HasEnded: false } backwardProgress)
         {
             backwardProgress.TargetValue = pivotNumber - MinTargetBlockNumber;

@@ -6,17 +6,18 @@ using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
+public sealed class EofCodeInfo : CodeInfo
 {
-    public EofContainer EofContainer { get; private set; } = container;
-    public ReadOnlyMemory<byte> Code => EofContainer.Container;
-    public int Version => EofContainer.Header.Version;
-    public bool IsEmpty => EofContainer.IsEmpty;
+    public EofCodeInfo(in EofContainer container) : base(container.Header.Version, container.Container)
+    {
+        EofContainer = container;
+    }
+
+    public EofContainer EofContainer { get; private set; }
     public ReadOnlyMemory<byte> TypeSection => EofContainer.TypeSection;
     public ReadOnlyMemory<byte> CodeSection => EofContainer.CodeSection;
     public ReadOnlyMemory<byte> DataSection => EofContainer.DataSection;
     public ReadOnlyMemory<byte> ContainerSection => EofContainer.ContainerSection;
-    ReadOnlySpan<byte> ICodeInfo.CodeSpan => CodeSection.Span;
 
     public SectionHeader CodeSectionOffset(int sectionId) => EofContainer.Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int sectionId) => EofContainer.Header.ContainerSections.Value[sectionId];

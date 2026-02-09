@@ -59,11 +59,6 @@ public class LogIndexBuilderTests
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
             new(batch);
 
-        public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
-        {
-            return AddReceiptsAsync(Aggregate(batch, isBackwardSync, stats), stats);
-        }
-
         public virtual Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
             var min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
@@ -91,8 +86,6 @@ public class LogIndexBuilderTests
         }
 
         public Task RemoveReorgedAsync(BlockReceipts block) => Task.CompletedTask;
-
-        public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) => Task.CompletedTask;
 
         public Task StopAsync() => Task.CompletedTask;
 

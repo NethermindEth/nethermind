@@ -13,8 +13,6 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
 {
     public bool Enabled => false;
 
-    public Task FirstBlockAdded => Task.CompletedTask;
-
     public string GetDbSize() => "0 B";
 
     public int? MaxBlockNumber => null;
@@ -29,16 +27,10 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
-    public Task AddReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
-        throw new NotSupportedException();
-
     public Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
     public Task RemoveReorgedAsync(BlockReceipts block) =>
-        throw new NotSupportedException();
-
-    public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
