@@ -57,29 +57,25 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         Index++;
     }
 
-    public void ResetBlockAccessIndex()
+    public void Clear()
     {
+        _accountChanges.Clear();
         _changes.Clear();
         Index = 0;
     }
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
-        if (address == Address.SystemUser && before == after)
+        bool isZeroBalanceChange = before == after;
+        if (address == Address.SystemUser && isZeroBalanceChange)
         {
             return;
         }
 
-        BalanceChange balanceChange = new()
-        {
-            BlockAccessIndex = Index,
-            PostBalance = after
-        };
-
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         // don't add zero balance transfers, but add empty account changes
-        if (before == after)
+        if (isZeroBalanceChange)
         {
             return;
         }
@@ -98,26 +94,20 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            accountChanges.AddBalanceChange(balanceChange);
+            accountChanges.AddBalanceChange(new(Index, after));
         }
     }
 
-    public void AddCodeChange(Address address, byte[] before, byte[] after)
+    public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
     {
-        CodeChange codeChange = new()
-        {
-            BlockAccessIndex = Index,
-            NewCode = after
-        };
-
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
-        if (before.AsSpan().SequenceEqual(after))
+        if (before.AsSpan().SequenceEqual(after.Span))
         {
             return;
         }
 
-        bool changedDuringTx = HasCodeChangedDuringTx(accountChanges.Address, before, after);
+        bool changedDuringTx = HasCodeChangedDuringTx(accountChanges.Address, before, after.Span);
         accountChanges.PopCodeChange(Index, out CodeChange? oldCodeChange);
         _changes.Push(new()
         {
@@ -129,7 +119,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            accountChanges.AddCodeChange(codeChange);
+            accountChanges.AddCodeChange(new(Index, after.ToArray()));
         }
     }
 
@@ -139,12 +129,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             return;
         }
-
-        NonceChange nonceChange = new()
-        {
-            BlockAccessIndex = Index,
-            NewNonce = newNonce
-        };
 
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
@@ -156,7 +140,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             PreviousValue = oldNonceChange
         });
 
-        accountChanges.AddNonceChange(nonceChange);
+        accountChanges.AddNonceChange(new(Index, newNonce));
     }
 
     public void AddAccountRead(Address address)
@@ -219,13 +203,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         if (changedDuringTx)
         {
-            StorageChange storageChange = new()
-            {
-                BlockAccessIndex = Index,
-                NewValue = after
-            };
-
-            slotChanges.Changes.Add(Index, storageChange);
+            slotChanges.Changes.Add(Index, new(Index, after));
             accountChanges.RemoveStorageRead(key);
         }
         else
@@ -354,7 +332,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
 
         // should never happen
-        Debug.Fail("Error calculating pre tx balance");
         throw new InvalidOperationException("Error calculating pre tx balance");
     }
 
@@ -395,7 +372,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
 
         // should never happen
-        Debug.Fail("Error calculating pre tx storage");
         throw new InvalidOperationException("Error calculating pre tx storage");
     }
 
@@ -433,7 +409,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
 
         // should never happen
-        Debug.Fail("Error calculating pre tx code");
         throw new InvalidOperationException("Error calculating pre tx code");
     }
 

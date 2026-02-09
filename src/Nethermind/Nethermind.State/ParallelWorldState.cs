@@ -64,10 +64,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     }
 
     public override IDisposable BeginScope(BlockHeader? baseBlock)
-    {
-        GeneratedBlockAccessList = new();
-        return _innerWorldState.BeginScope(baseBlock);
-    }
+        => _innerWorldState.BeginScope(baseBlock);
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
@@ -105,8 +102,8 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     {
         if (TracingEnabled)
         {
-            byte[] oldCode = _innerWorldState.GetCode(address) ?? [];
-            GeneratedBlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
+            byte[] oldCode = _innerWorldState.GetCode(address) ?? Array.Empty<byte>();
+            GeneratedBlockAccessList.AddCodeChange(address, oldCode, code);
         }
         return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
