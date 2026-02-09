@@ -21,8 +21,9 @@ public class OptimismTransactionProcessor(
     ILogManager logManager,
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
-    ICodeInfoRepository? codeInfoRepository
-    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ICodeInfoRepository? codeInfoRepository,
+    IFeeRecorder? feeRecorder = null
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder)
 {
     private UInt256? _currentTxL1Cost;
 

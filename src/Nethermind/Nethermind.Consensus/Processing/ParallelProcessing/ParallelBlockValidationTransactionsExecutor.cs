@@ -8,11 +8,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -37,15 +39,17 @@ public class ParallelBlockValidationTransactionsExecutor(
         TransactionResult[] results = new TransactionResult[txCount];
         OffParallelTrace trace = OffParallelTrace.Instance;
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
+        FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, results, in _blockExecutionContext);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, in _blockExecutionContext);
         using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
         parallelRunner.Run().GetAwaiter().GetResult();
         ThrowIfInvalidResults(block, transactions, results);
         FinalizeGasUsed(block, receipts);
-        PushChanges(stateProvider, multiVersionMemory, txCount);
+        FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, txCount);
+        ApplyAccumulatedFees(stateProvider, feeAccumulator, _blockExecutionContext.Spec, feeRecipientWrites);
         RaiseTransactionProcessedEvents(block, transactions, receipts);
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
         return receipts;
@@ -85,16 +89,26 @@ public class ParallelBlockValidationTransactionsExecutor(
         }
     }
 
-    private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, int txCount)
+    private FeeRecipientWriteInfo PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator, int txCount)
     {
         HashSet<Address> storageTouched = new();
+        Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
+        Address? feeCollector = feeAccumulator.FeeCollector;
+        int gasBeneficiaryLastWrite = -1;
+        int feeCollectorLastWrite = -1;
 
         for (int txIndex = 0; txIndex < txCount; txIndex++)
         {
             Dictionary<Address, Account?>? accountUpdates = null;
             HashSet<Address>? storageClears = null;
-            multiVersionMemory.ForEachWriteSet(txIndex, (cell, value) =>
+            multiVersionMemory.ForEachWriteSet(txIndex, (key, value) =>
             {
+                if (key.Kind != ParallelStateKeyKind.Storage)
+                {
+                    return;
+                }
+
+                StorageCell cell = key.StorageCell;
                 if (ReferenceEquals(value, MultiVersionMemory.SelfDestructMonit))
                 {
                     (storageClears ??= new HashSet<Address>()).Add(cell.Address);
@@ -127,8 +141,14 @@ public class ParallelBlockValidationTransactionsExecutor(
                 }
             }
 
-            multiVersionMemory.ForEachWriteSet(txIndex, (cell, value) =>
+            multiVersionMemory.ForEachWriteSet(txIndex, (key, value) =>
             {
+                if (key.Kind != ParallelStateKeyKind.Storage)
+                {
+                    return;
+                }
+
+                StorageCell cell = key.StorageCell;
                 if (value is byte[] bytes)
                 {
                     worldState.Set(cell, bytes);
@@ -141,10 +161,56 @@ public class ParallelBlockValidationTransactionsExecutor(
                 foreach (KeyValuePair<Address, Account?> accountUpdate in accountUpdates)
                 {
                     worldState.SetAccount(accountUpdate.Key, accountUpdate.Value);
+                    if (gasBeneficiary is not null && accountUpdate.Key == gasBeneficiary)
+                    {
+                        gasBeneficiaryLastWrite = txIndex;
+                    }
+
+                    if (feeCollector is not null && accountUpdate.Key == feeCollector)
+                    {
+                        feeCollectorLastWrite = txIndex;
+                    }
+                }
+            }
+        }
+
+        return new FeeRecipientWriteInfo(gasBeneficiaryLastWrite, feeCollectorLastWrite);
+    }
+
+    private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec, FeeRecipientWriteInfo feeRecipientWrites)
+    {
+        Address? gasBeneficiary = feeAccumulator.GasBeneficiary;
+        if (gasBeneficiary is not null && feeAccumulator.HasGasBeneficiaryPayments)
+        {
+            UInt256 total = feeAccumulator.GetTotalFees(gasBeneficiary);
+            UInt256 applied = feeRecipientWrites.GasBeneficiaryLastWrite >= 0
+                ? feeAccumulator.GetAccumulatedFees(gasBeneficiary, feeRecipientWrites.GasBeneficiaryLastWrite)
+                : UInt256.Zero;
+            UInt256 delta = total - applied;
+            if (!delta.IsZero || feeRecipientWrites.GasBeneficiaryLastWrite < 0)
+            {
+                worldState.AddToBalanceAndCreateIfNotExists(gasBeneficiary, delta, spec);
+            }
+        }
+
+        if (feeAccumulator.FeeCollector is { } feeCollector && feeCollector != gasBeneficiary)
+        {
+            UInt256 total = feeAccumulator.GetTotalFees(feeCollector);
+            if (!total.IsZero)
+            {
+                UInt256 applied = feeRecipientWrites.FeeCollectorLastWrite >= 0
+                    ? feeAccumulator.GetAccumulatedFees(feeCollector, feeRecipientWrites.FeeCollectorLastWrite)
+                    : UInt256.Zero;
+                UInt256 delta = total - applied;
+                if (!delta.IsZero)
+                {
+                    worldState.AddToBalanceAndCreateIfNotExists(feeCollector, delta, spec);
                 }
             }
         }
     }
+
+    private readonly record struct FeeRecipientWriteInfo(int GasBeneficiaryLastWrite, int FeeCollectorLastWrite);
 
     private static void FinalizeGasUsed(Block block, TxReceipt[] receipts)
     {
@@ -209,14 +275,16 @@ public class ParallelTransactionProcessor(
     BlockHeader parentBlock,
     ParallelEnvFactory parallelEnvFactory,
     MultiVersionMemory multiVersionMemory,
+    FeeAccumulator feeAccumulator,
     PreBlockCaches preBlockCaches,
     TxReceipt[] receipts,
     TransactionResult[] results,
-    in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<StorageCell, object>
+    in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<ParallelStateKey, object>
 {
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new DefaultPooledObjectPolicy<BlockReceiptsTracer>());
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;
     private readonly TransactionResult[] _results = results;
+    private readonly FeeAccumulator _feeAccumulator = feeAccumulator;
 
     public Status TryExecute(Version version, out int? blockingTx, out bool wroteNewLocation)
     {
@@ -225,7 +293,8 @@ public class ParallelTransactionProcessor(
         wroteNewLocation = false;
         Transaction transaction = block.Transactions[txIndex];
 
-        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches);
+        _feeAccumulator.ClearFee(txIndex);
+        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, _feeAccumulator, preBlockCaches);
         using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
         ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
 
@@ -244,12 +313,16 @@ public class ParallelTransactionProcessor(
             if (!result)
             {
                 receipts[txIndex] = null;
+                EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
+                _feeAccumulator.MarkCommitted(txIndex);
                 wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
                 return Status.Ok;
             }
 
             scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
             TxReceipt receipt = receipts[txIndex] = tracer.LastReceipt;
+            EnsureFeeKeys(env.WorldStateScopeProvider, txIndex);
+            _feeAccumulator.MarkCommitted(txIndex);
             wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
             return Status.Ok;
         }
@@ -263,6 +336,33 @@ public class ParallelTransactionProcessor(
             txTracer.Dispose();
             tracer.EndTxTrace();
             _tracers.Return(tracer);
+        }
+    }
+
+    private void EnsureFeeKeys(MultiVersionMemoryScopeProvider scopeProvider, int txIndex)
+    {
+        Address? gasBeneficiary = _feeAccumulator.GasBeneficiary;
+        EnsureFeeKey(scopeProvider, FeeRecipientKind.GasBeneficiary, gasBeneficiary, txIndex);
+
+        Address? feeCollector = _feeAccumulator.FeeCollector;
+        if (feeCollector != gasBeneficiary)
+        {
+            EnsureFeeKey(scopeProvider, FeeRecipientKind.FeeCollector, feeCollector, txIndex);
+        }
+    }
+
+    private void EnsureFeeKey(MultiVersionMemoryScopeProvider scopeProvider, FeeRecipientKind kind, Address? recipient, int txIndex)
+    {
+        if (recipient is null)
+        {
+            return;
+        }
+
+        ParallelStateKey key = ParallelStateKey.ForFee(kind, txIndex);
+        if (!scopeProvider.WriteSet.ContainsKey(key))
+        {
+            scopeProvider.WriteSet[key] = UInt256.Zero;
+            _feeAccumulator.RecordFee(txIndex, recipient, UInt256.Zero, createAccount: false);
         }
     }
 }

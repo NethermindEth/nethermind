@@ -15,11 +15,13 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 public class MultiVersionMemoryScopeProvider(
     Version version,
     IWorldStateScopeProvider baseProvider,
-    MultiVersionMemory multiVersionMemory)
+    MultiVersionMemory multiVersionMemory,
+    FeeAccumulator feeAccumulator)
     : IWorldStateScopeProvider
 {
-    public HashSet<Read<StorageCell>> ReadSet { get; private set; } = null!;
-    public Dictionary<StorageCell, object> WriteSet { get; private set; } = null!;
+    private readonly FeeAccumulator _feeAccumulator = feeAccumulator;
+    public HashSet<Read<ParallelStateKey>> ReadSet { get; private set; } = null!;
+    public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
@@ -27,16 +29,16 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = new(); //TODO: object poolling?
         WriteSet = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, ReadSet, WriteSet);
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, _feeAccumulator, ReadSet, WriteSet);
     }
 
     private static TResult Get<TStorage, TResult>(
-        StorageCell location,
+        ParallelStateKey location,
         int txIndex,
         MultiVersionMemory multiVersionMemory,
-        HashSet<Read<StorageCell>> readSet,
+        HashSet<Read<ParallelStateKey>> readSet,
         TStorage storage,
-        Func<TStorage, StorageCell, TResult> getFromStorage)
+        Func<TStorage, ParallelStateKey, TResult> getFromStorage)
     {
         Status status = multiVersionMemory.TryRead(location, txIndex, out Version version, out object? value);
         TResult result = status switch
@@ -47,7 +49,7 @@ public class MultiVersionMemoryScopeProvider(
             _ => ThrowArgumentOutOfRangeException()
         };
 
-        readSet.Add(new Read<StorageCell>(location, version));
+        readSet.Add(new Read<ParallelStateKey>(location, version));
         return result;
 
         [DoesNotReturn]
@@ -60,9 +62,11 @@ public class MultiVersionMemoryScopeProvider(
         Version version,
         IWorldStateScopeProvider.IScope baseScope,
         MultiVersionMemory multiVersionMemory,
-        HashSet<Read<StorageCell>> readSet,
-        Dictionary<StorageCell, object> writeSet) : IWorldStateScopeProvider.IScope
+        FeeAccumulator feeAccumulator,
+        HashSet<Read<ParallelStateKey>> readSet,
+        Dictionary<ParallelStateKey, object> writeSet) : IWorldStateScopeProvider.IScope
     {
+        private readonly FeeAccumulator _feeAccumulator = feeAccumulator;
         public void Dispose() => baseScope.Dispose();
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -72,15 +76,40 @@ public class MultiVersionMemoryScopeProvider(
         public Account? Get(Address address)
         {
             int txIndex = version.TxIndex;
-            Account? result = Get<IWorldStateScopeProvider.IScope, Account?>(
-                new StorageCell(address),
-                txIndex,
-                multiVersionMemory,
-                readSet,
-                baseScope,
-                static (scope, location) => scope.Get(location.Address));
+            ParallelStateKey location = ParallelStateKey.ForStorage(new StorageCell(address));
 
-            return result;
+            Status status = multiVersionMemory.TryRead(location, txIndex, out Version readVersion, out object? value);
+            Account? result = status switch
+            {
+                Status.ReadError => throw new AbortParallelExecutionException(in readVersion),
+                Status.NotFound => baseScope.Get(address),
+                Status.Ok => (Account?)value,
+                _ => throw new ArgumentOutOfRangeException(nameof(status), status, $"Unknown multi version memory read status: {status}")
+            };
+
+            readSet.Add(new Read<ParallelStateKey>(location, readVersion));
+
+            FeeRecipientKind? feeKind = GetFeeKind(address);
+            if (feeKind is null)
+            {
+                return result;
+            }
+
+            int startTxIndex = readVersion.IsEmpty ? 0 : readVersion.TxIndex;
+            AddFeeReadDependencies(feeKind.Value, startTxIndex, txIndex);
+
+            UInt256 fees = _feeAccumulator.GetAccumulatedFees(address, txIndex);
+            if (startTxIndex > 0)
+            {
+                fees -= _feeAccumulator.GetAccumulatedFees(address, startTxIndex);
+            }
+
+            if (fees.IsZero)
+            {
+                return result;
+            }
+
+            return result is null ? new Account(fees) : result.WithChangedBalance(result.Balance + fees);
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
@@ -95,7 +124,7 @@ public class MultiVersionMemoryScopeProvider(
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
-        private class MultiVersionMemoryWriteBatch(Dictionary<StorageCell, object> writeSet)
+        private class MultiVersionMemoryWriteBatch(Dictionary<ParallelStateKey, object> writeSet)
             : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
             public void Dispose() { }
@@ -104,19 +133,19 @@ public class MultiVersionMemoryScopeProvider(
 
             public void Set(Address key, Account? account)
             {
-                writeSet[new StorageCell(key)] = account;
+                writeSet[ParallelStateKey.ForStorage(new StorageCell(key))] = account;
                 OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
             }
 
             public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
                 new MultiVersionMemoryStorageWriteBatch(key, writeSet);
 
-            private class MultiVersionMemoryStorageWriteBatch(Address address, Dictionary<StorageCell, object> writeSet)
+            private class MultiVersionMemoryStorageWriteBatch(Address address, Dictionary<ParallelStateKey, object> writeSet)
                 : IWorldStateScopeProvider.IStorageWriteBatch
             {
                 public void Dispose() { }
-                public void Set(in UInt256 index, byte[] value) => writeSet[new StorageCell(address, index)] = value;
-                public void Clear() => writeSet[new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256)] = MultiVersionMemory.SelfDestructMonit;
+                public void Set(in UInt256 index, byte[] value) => writeSet[ParallelStateKey.ForStorage(new StorageCell(address, index))] = value;
+                public void Clear() => writeSet[ParallelStateKey.ForStorage(new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256))] = MultiVersionMemory.SelfDestructMonit;
             }
         }
 
@@ -125,28 +154,66 @@ public class MultiVersionMemoryScopeProvider(
             int txIndex,
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             MultiVersionMemory multiVersionMemory,
-            HashSet<Read<StorageCell>> readSet)
+            HashSet<Read<ParallelStateKey>> readSet)
             : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => baseStorageTree.RootHash;
 
             public byte[] Get(in UInt256 index) => Get<IWorldStateScopeProvider.IStorageTree, byte[]>(
-                new StorageCell(address, index),
+                ParallelStateKey.ForStorage(new StorageCell(address, index)),
                 txIndex,
                 multiVersionMemory,
                 readSet,
                 baseStorageTree,
-                static (scope, location) => scope.Get(location.Index));
+                static (scope, location) => scope.Get(location.StorageCell.Index));
 
             public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
             public byte[] Get(in ValueHash256 hash) => Get<IWorldStateScopeProvider.IStorageTree, byte[]>(
-                new StorageCell(address, hash),
+                ParallelStateKey.ForStorage(new StorageCell(address, hash)),
                 txIndex,
                 multiVersionMemory,
                 readSet,
                 baseStorageTree,
-                static (scope, location) => scope.Get(location.Hash));
+                static (scope, location) => scope.Get(location.StorageCell.Hash));
+        }
+
+        private FeeRecipientKind? GetFeeKind(Address address)
+        {
+            if (_feeAccumulator.GasBeneficiary is not null && address == _feeAccumulator.GasBeneficiary)
+            {
+                return FeeRecipientKind.GasBeneficiary;
+            }
+
+            if (_feeAccumulator.FeeCollector is not null && address == _feeAccumulator.FeeCollector)
+            {
+                return FeeRecipientKind.FeeCollector;
+            }
+
+            return null;
+        }
+
+        private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
+        {
+            for (int i = startTxIndex; i < txIndex; i++)
+            {
+                if (!_feeAccumulator.IsCommitted(i))
+                {
+                    throw new AbortParallelExecutionException(new Version(i, 0));
+                }
+
+                ParallelStateKey feeKey = ParallelStateKey.ForFee(feeKind, i);
+                Status status = multiVersionMemory.TryRead(feeKey, txIndex, out Version feeVersion, out _);
+                switch (status)
+                {
+                    case Status.ReadError:
+                        throw new AbortParallelExecutionException(in feeVersion);
+                    case Status.NotFound:
+                        throw new AbortParallelExecutionException(new Version(i, 0));
+                }
+
+                readSet.Add(new Read<ParallelStateKey>(feeKey, feeVersion));
+            }
         }
     }
 }

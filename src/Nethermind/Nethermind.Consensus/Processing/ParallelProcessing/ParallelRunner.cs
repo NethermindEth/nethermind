@@ -142,10 +142,10 @@ public class ParallelRunner<TLocation, TData, TLogger>(
 
 public sealed class ParallelRunner(
     ParallelScheduler<OffFlag> scheduler,
-    MultiVersionMemory<StorageCell, object, OffFlag> memory,
-    ParallelTrace<OffFlag> parallelTrace, IParallelTransactionProcessor<StorageCell, object> parallelTransactionProcessor,
+    MultiVersionMemory<ParallelStateKey, object, OffFlag> memory,
+    ParallelTrace<OffFlag> parallelTrace, IParallelTransactionProcessor<ParallelStateKey, object> parallelTransactionProcessor,
     int? concurrencyLevel = null)
-    : ParallelRunner<StorageCell, object, OffFlag>(scheduler, memory, parallelTrace, parallelTransactionProcessor, concurrencyLevel);
+    : ParallelRunner<ParallelStateKey, object, OffFlag>(scheduler, memory, parallelTrace, parallelTransactionProcessor, concurrencyLevel);
 
 /// <summary>
 /// Abstraction of transaction execution.

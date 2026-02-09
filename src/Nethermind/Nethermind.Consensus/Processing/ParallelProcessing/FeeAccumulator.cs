@@ -24,6 +24,7 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
 
     // Committed status per transaction
     private readonly int[] _committed = new int[txCount];
+    private readonly int[] _gasBeneficiaryCreates = new int[txCount];
 
     /// <summary>
     /// Gets the GasBeneficiary address.
@@ -34,6 +35,25 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// Gets the FeeCollector address.
     /// </summary>
     public Address? FeeCollector => feeCollector;
+
+    /// <summary>
+    /// Indicates whether any gas beneficiary payments were recorded.
+    /// </summary>
+    public bool HasGasBeneficiaryPayments
+    {
+        get
+        {
+            for (int i = 0; i < _committed.Length; i++)
+            {
+                if (Volatile.Read(ref _committed[i]) == 1 && Volatile.Read(ref _gasBeneficiaryCreates[i]) == 1)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 
     /// <summary>
     /// Checks if the given address is a fee recipient (GasBeneficiary or FeeCollector).
@@ -49,11 +69,16 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// <param name="txIndex">Transaction index</param>
     /// <param name="recipient">Fee recipient address</param>
     /// <param name="amount">Fee amount</param>
-    public void RecordFee(int txIndex, Address recipient, in UInt256 amount)
+    /// <param name="createAccount">True when the fee transfer should create the recipient account if missing.</param>
+    public void RecordFee(int txIndex, Address recipient, in UInt256 amount, bool createAccount)
     {
         if (IsGasBeneficiary(recipient))
         {
             _gasBeneficiaryFees[txIndex] += amount;
+            if (createAccount)
+            {
+                Volatile.Write(ref _gasBeneficiaryCreates[txIndex], 1);
+            }
         }
         else if (IsFeeCollector(recipient))
         {
@@ -66,6 +91,12 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// </summary>
     /// <param name="txIndex">Transaction index</param>
     public void MarkCommitted(int txIndex) => Interlocked.Exchange(ref _committed[txIndex], 1);
+
+    /// <summary>
+    /// Returns whether the transaction fees have been committed for the given transaction.
+    /// </summary>
+    /// <param name="txIndex">Transaction index</param>
+    public bool IsCommitted(int txIndex) => Volatile.Read(ref _committed[txIndex]) == 1;
 
     /// <summary>
     /// Gets the accumulated fees for a fee recipient up to (but not including) the specified transaction index.
@@ -111,5 +142,6 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
         _gasBeneficiaryFees[txIndex] = UInt256.Zero;
         _feeCollectorFees[txIndex] = UInt256.Zero;
         Interlocked.Exchange(ref _committed[txIndex], 0);
+        Volatile.Write(ref _gasBeneficiaryCreates[txIndex], 0);
     }
 }

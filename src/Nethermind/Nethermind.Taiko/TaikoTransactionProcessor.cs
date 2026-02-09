@@ -21,8 +21,9 @@ public class TaikoTransactionProcessor(
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
-    ILogManager? logManager
-    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ILogManager? logManager,
+    IFeeRecorder? feeRecorder = null
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
@@ -53,31 +54,66 @@ public class TaikoTransactionProcessor(
         // as zero. So there is no need to create the account and pay the fees to the beneficiary,
         // except for the case when a restore is required due to a failure.
         bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
-        if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+        bool payBeneficiary = statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed;
+        if (FeeRecorder is not null)
         {
-            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
-        }
-
-        if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
-        {
-            var taikoSpec = (ITaikoReleaseSpec)spec;
-            if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
+            if (header.GasBeneficiary is not null)
             {
-                byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;
-
-                UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
-
-                if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
-                {
-                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
-                }
-
-                UInt256 feeTreasury = baseFees - feeCoinbase;
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
+                UInt256 payableTip = payBeneficiary ? tipFees : UInt256.Zero;
+                FeeRecorder.RecordFee(header.GasBeneficiary, in payableTip, payBeneficiary);
             }
-            else
+
+            if (!tx.IsAnchorTx && spec.FeeCollector is not null)
             {
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, baseFees, spec);
+                var taikoSpec = (ITaikoReleaseSpec)spec;
+                if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
+                {
+                    byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;
+
+                    UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
+                    if (header.GasBeneficiary is not null)
+                    {
+                        UInt256 payableCoinbase = payBeneficiary ? feeCoinbase : UInt256.Zero;
+                        FeeRecorder.RecordFee(header.GasBeneficiary, in payableCoinbase, payBeneficiary);
+                    }
+
+                    UInt256 feeTreasury = baseFees - feeCoinbase;
+                    FeeRecorder.RecordFee(spec.FeeCollector, in feeTreasury, !feeTreasury.IsZero);
+                }
+                else
+                {
+                    FeeRecorder.RecordFee(spec.FeeCollector, in baseFees, !baseFees.IsZero);
+                }
+            }
+        }
+        else
+        {
+            if (payBeneficiary)
+            {
+                WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
+            }
+
+            if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
+            {
+                var taikoSpec = (ITaikoReleaseSpec)spec;
+                if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
+                {
+                    byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;
+
+                    UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
+
+                    if (payBeneficiary)
+                    {
+                        WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
+                    }
+
+                    UInt256 feeTreasury = baseFees - feeCoinbase;
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
+                }
+                else
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, baseFees, spec);
+                }
             }
         }
 

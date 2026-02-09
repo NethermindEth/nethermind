@@ -29,8 +29,9 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder)
     {
         _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
     }

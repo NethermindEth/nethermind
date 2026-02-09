@@ -371,7 +371,7 @@ public enum Status
 }
 
 public sealed class MultiVersionMemory(int txCount, ParallelTrace<OffFlag> parallelTrace)
-    : MultiVersionMemory<StorageCell, object, OffFlag>(txCount, parallelTrace)
+    : MultiVersionMemory<ParallelStateKey, object, OffFlag>(txCount, parallelTrace)
 {
     public static readonly object SelfDestructMonit = new();
 }

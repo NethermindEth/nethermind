@@ -29,8 +29,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
 
     /// <summary>
@@ -42,8 +43,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder);
 
     public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
     {
@@ -62,6 +64,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected ISpecProvider SpecProvider { get; }
         protected IWorldState WorldState { get; }
         protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
+        protected IFeeRecorder? FeeRecorder { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
@@ -112,7 +115,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IWorldState? worldState,
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            IFeeRecorder? feeRecorder = null)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -127,6 +131,7 @@ namespace Nethermind.Evm.TransactionProcessing
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
+            FeeRecorder = feeRecorder;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
@@ -870,10 +875,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
-            {
-                WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
-            }
+            bool payBeneficiary = statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed;
 
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
@@ -883,9 +885,30 @@ namespace Nethermind.Evm.TransactionProcessing
                 collectedFees += blobBaseFee;
             }
 
-            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+            if (FeeRecorder is not null)
             {
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+                if (header.GasBeneficiary is not null)
+                {
+                    UInt256 payableFees = payBeneficiary ? fees : UInt256.Zero;
+                    FeeRecorder.RecordFee(header.GasBeneficiary, in payableFees, payBeneficiary);
+                }
+
+                if (spec.FeeCollector is not null)
+                {
+                    FeeRecorder.RecordFee(spec.FeeCollector, in collectedFees, !collectedFees.IsZero);
+                }
+            }
+            else
+            {
+                if (payBeneficiary)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+                }
+
+                if (spec.FeeCollector is not null && !collectedFees.IsZero)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+                }
             }
 
             if (tracer.IsTracingFees)
@@ -971,8 +994,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        ILogManager? logManager,
+        IFeeRecorder? feeRecorder = null)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder);
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {
