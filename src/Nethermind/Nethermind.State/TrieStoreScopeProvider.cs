@@ -181,8 +181,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
-                (address, rootHash) => MarkDirty(address, rootHash), address);
+            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
         }
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
@@ -225,15 +224,10 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    public class StorageTreeBulkWriteBatch(
-        int estimatedEntries,
-        StorageTree storageTree,
-        Action<Address, Hash256> onRootUpdated,
-        AddressAsKey address,
-        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
+    private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WorldStateWriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
-        public const int MIN_ENTRIES_TO_BATCH = 16;
+        private const int MIN_ENTRIES_TO_BATCH = 16;
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
@@ -265,9 +259,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             {
                 storageTree.RootHash = Keccak.EmptyTreeHash;
             }
-
-            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-            _hasSelfDestruct = true;
+            else
+            {
+                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+                _hasSelfDestruct = true;
+            }
         }
 
         public void Dispose()
@@ -289,20 +285,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             if (hasSet)
             {
-                if (commit)
-                {
-                    storageTree.Commit();
-                }
-                else
-                {
-                    storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
-                }
-                onRootUpdated(address, storageTree.RootHash);
+                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
+                worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
             }
         }
     }
 
-    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    private class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash)
         {

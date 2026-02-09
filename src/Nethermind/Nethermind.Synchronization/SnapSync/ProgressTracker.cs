@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.SnapSync
         // partition is taking up most of the time at the end of the sync.
         private ConcurrentQueue<AccountRangePartition> AccountRangeReadyForRequest { get; set; } = new();
         private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
-        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
+        private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 

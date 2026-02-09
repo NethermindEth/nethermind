@@ -61,17 +61,12 @@ namespace Nethermind.Trie
         public bool ExpectAccounts { get; }
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default, bool expectAccounts = true)
-            : this(codeKeyValueStore, logManager, "Trie Verification", cancellationToken, expectAccounts)
-        {
-        }
-
-        protected TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, string progressTrackerName, CancellationToken cancellationToken, bool expectAccounts)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
             ExpectAccounts = expectAccounts;
             _cancellationToken = cancellationToken;
-            _progressTracker = new VisitorProgressTracker(progressTrackerName, logManager);
+            _progressTracker = new VisitorProgressTracker("Trie Verification", logManager);
         }
 
         public TrieStats Stats { get; } = new();
@@ -136,7 +131,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public virtual void VisitLeaf(in Context nodeContext, TrieNode node)
+        public void VisitLeaf(in Context nodeContext, TrieNode node)
         {
             if (nodeContext.IsStorage)
             {

@@ -42,7 +42,7 @@ public interface IWorldStateManager
     void FlushCache(CancellationToken cancellationToken);
 }
 
-public interface IOverridableWorldScope : IDisposable
+public interface IOverridableWorldScope
 {
     IWorldStateScopeProvider WorldState { get; }
     IStateReader GlobalStateReader { get; }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -23,7 +22,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
+public struct TreePath : IEquatable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -110,7 +109,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return copy;
     }
 
-    public void AppendMut(ReadOnlySpan<byte> nibbles)
+    internal void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
@@ -317,8 +316,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         return Length.CompareTo(otherTree.Length);
     }
 
-    int IComparable<TreePath>.CompareTo(TreePath otherTree) => CompareTo(in otherTree);
-
     /// <summary>
     /// Compare with otherTree, as if this TreePath was truncated to `length`.
     /// </summary>
@@ -341,11 +338,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
         return length.CompareTo(otherTree.Length);
     }
-
-    /// <summary>
-    /// Returns the Path as lower bound (remaining nibbles are 0x0, which TreePath already guarantees).
-    /// </summary>
-    public readonly ValueHash256 ToLowerBoundPath() => Path;
 
     /// <summary>
     /// Returns the Path extended to 64 nibbles with 0xF (upper bound of subtree).
@@ -437,15 +429,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     public bool StartsWith(TreePath otherPath)
     {
         return Truncate(otherPath.Length) == otherPath;
-    }
-
-    public readonly void EncodeWith8Byte(Span<byte> buffer)
-    {
-        Path.Bytes[..8].CopyTo(buffer);
-        byte lengthAsByte = (byte)Length;
-
-        // Pack length into lower 4 bits of last byte (upper 4 bits contain path data)
-        buffer[8 - 1] = (byte)((buffer[8 - 1] & 0xf0) | (lengthAsByte & 0x0f));
     }
 }
 

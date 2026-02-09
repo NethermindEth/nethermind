@@ -24,19 +24,4 @@ public class ConcurrencyControllerTests
         limiter.TryTakeSlot(out _).Should().Be(true);
         limiter.TryTakeSlot(out _).Should().Be(false);
     }
-
-    [Test]
-    public void ThreadLimiterWillLimitWithManualRequest()
-    {
-        ConcurrencyController limiter = new ConcurrencyController(3);
-
-        limiter.TryRequestConcurrencyQuota().Should().Be(true);
-        limiter.TryRequestConcurrencyQuota().Should().Be(true);
-        limiter.TryRequestConcurrencyQuota().Should().Be(false);
-
-        limiter.ReturnConcurrencyQuota();
-
-        limiter.TryRequestConcurrencyQuota().Should().Be(true);
-        limiter.TryRequestConcurrencyQuota().Should().Be(false);
-    }
 }
