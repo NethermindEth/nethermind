@@ -31,7 +31,8 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
             while (has1 && has2)
             {
-                var (c1, c2) = (e1.Current, e2.Current);
+                int c1 = e1.Current;
+                int c2 = e2.Current;
                 if (c1 == c2)
                 {
                     Current = c1;
@@ -64,60 +65,36 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
     internal sealed class UnionEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
     {
-        // TODO: reduce number of fields?
-        private bool _has1;
-        private bool _has2;
-        private bool _initialized;
+        private bool _has1 = e1.MoveNext();
+        private bool _has2 = e2.MoveNext();
 
-        public bool MoveNext()
+        public bool MoveNext() =>
+            (_has1, _has2) switch
+            {
+                (true, true) => e1.Current.CompareTo(e2.Current) switch
+                {
+                    0 => MoveNext(e1, out _has1) && MoveNext(e2, out _has2),
+                    < 0 => MoveNext(e1, out _has1),
+                    > 0 => MoveNext(e2, out _has2)
+                },
+                (true, false) => MoveNext(e1, out _has1),
+                (false, true) => MoveNext(e2, out _has2),
+                (false, false) => false
+            };
+
+        private bool MoveNext(IEnumerator<int> enumerator, out bool has)
         {
-            if (!_initialized)
-            {
-                _has1 = e1.MoveNext();
-                _has2 = e2.MoveNext();
-                _initialized = true;
-            }
-
-            switch (_has1, _has2)
-            {
-                case (false, false):
-                    return false;
-                case (false, true):
-                    Current = e2.Current;
-                    _has2 = e2.MoveNext();
-                    return true;
-                case (true, false):
-                    Current = e1.Current;
-                    _has1 = e1.MoveNext();
-                    return true;
-            }
-
-            var (c1, c2) = (e1.Current, e2.Current);
-            switch (c1.CompareTo(c2))
-            {
-                case < 0:
-                    Current = c1;
-                    _has1 = e1.MoveNext();
-                    return true;
-                case > 0:
-                    Current = c2;
-                    _has2 = e2.MoveNext();
-                    return true;
-                case 0:
-                    Current = c1;
-                    (_has1, _has2) = (e1.MoveNext(), e2.MoveNext());
-                    return true;
-            }
+            Current = enumerator.Current;
+            has = enumerator.MoveNext();
+            return true;
         }
 
         public void Reset()
         {
             e1.Reset();
             e2.Reset();
-
-            _has1 = false;
-            _has2 = false;
-            _initialized = false;
+            _has1 = e1.MoveNext();
+            _has2 = e2.MoveNext();
         }
 
         public int Current { get; private set; }
@@ -205,9 +182,6 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
 public static class LogIndexFilterVisitorExtensions
 {
-    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
-    {
-        return new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock)
-            .Select(static i => (long)i);
-    }
+    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock) =>
+        new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock).Select(static i => (long)i);
 }

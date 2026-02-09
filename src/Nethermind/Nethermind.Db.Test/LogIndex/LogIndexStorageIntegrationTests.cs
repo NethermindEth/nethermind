@@ -764,7 +764,7 @@ namespace Nethermind.Db.Test.LogIndex
         private static async Task CompactAsync(ILogIndexStorage logIndexStorage)
         {
             var timestamp = Stopwatch.GetTimestamp();
-            await logIndexStorage.CompactAsync();
+            await ((LogIndexStorage)logIndexStorage).CompactAsync();
 
             if (LogStatistics)
             {

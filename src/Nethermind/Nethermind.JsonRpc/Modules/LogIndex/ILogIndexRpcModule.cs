@@ -14,6 +14,4 @@ public interface ILogIndexRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Retrieves log index status.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<LogIndexStatus> logIndex_status();
-
-    // TODO: add compaction RPC
 }

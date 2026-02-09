@@ -20,7 +20,7 @@ public partial class LogIndexStorage
     {
         private const int CompletedIndex = int.MinValue;
 
-        private readonly LogIndexStorage _storage;
+        private readonly CompressionAlgorithm _compressionAlgorithm;
         private readonly byte[] _key;
         private readonly int _from;
         private readonly int _to;
@@ -29,14 +29,14 @@ public partial class LogIndexStorage
         private ArrayPoolList<int>? _value;
         private int _index;
 
-        public LogIndexEnumerator(LogIndexStorage storage, ISortedKeyValueStore db, byte[] key, int from, int to)
+        public LogIndexEnumerator(ISortedKeyValueStore db, CompressionAlgorithm compressionAlgorithm, byte[] key, int from, int to)
         {
             if (from < 0) from = 0;
             if (to < from) throw new ArgumentException("To must be greater or equal to from.", nameof(to));
 
-            _storage = storage;
             _key = key;
             (_from, _to) = (from, to);
+            _compressionAlgorithm = compressionAlgorithm;
 
             ReadOnlySpan<byte> fromKey = CreateDbKey(_key, Postfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
             ReadOnlySpan<byte> toKey = CreateDbKey(_key, Postfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
@@ -45,17 +45,11 @@ public partial class LogIndexStorage
 
         private bool IsWithinRange()
         {
-            var current = Current;
+            int current = Current;
             return current >= _from && current <= _to;
         }
 
-        public bool MoveNext()
-        {
-            if (_index == CompletedIndex)
-                return false;
-
-            return _value is null ? TryStart() : TryMove();
-        }
+        public bool MoveNext() => _index != CompletedIndex && (_value is null ? TryStart() : TryMove());
 
         private bool TryStart()
         {
@@ -127,7 +121,7 @@ public partial class LogIndexStorage
             {
                 // +1 fixes TurboPFor reading outside of array bounds
                 _value = new(capacity: length + 1, count: length);
-                _storage.DecompressDbValue(viewValue, _value.AsSpan());
+                DecompressDbValue(_compressionAlgorithm, viewValue, _value.AsSpan());
             }
             else
             {
@@ -141,7 +135,7 @@ public partial class LogIndexStorage
 
         private int FindFromIndex()
         {
-            var index = BinarySearch(_value!.AsSpan(), _from);
+            int index = BinarySearch(_value!.AsSpan(), _from);
             return index >= 0 ? index : ~index;
         }
 
