@@ -22,8 +22,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         get
         {
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            StateTree tree = new(new ReadOnlyTrieStore(reader), logManager);
-            return tree.RootHash;
+            return reader.CurrentState.StateRoot.ToHash256();
         }
     }
 
