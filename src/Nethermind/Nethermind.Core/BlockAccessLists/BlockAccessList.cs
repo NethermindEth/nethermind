@@ -274,6 +274,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         foreach (AccountChanges accountChanges in AccountChanges)
         {
+            bool isPostExecutionSystemContract =
+                accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
+                accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+
             yield return
             (
                 accountChanges.Address,
@@ -281,7 +285,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 accountChanges.NonceChangeAtIndex(index),
                 accountChanges.CodeChangeAtIndex(index),
                 accountChanges.SlotChangesAtIndex(index),
-                accountChanges.StorageReads.Count
+                isPostExecutionSystemContract ? 0 : accountChanges.StorageReads.Count
             );
         }
     }

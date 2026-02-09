@@ -341,13 +341,11 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             }
         }
 
-        if (gasRemaining < (suggestedReads - (generatedReads + _postExecutionReads)) * GasCostOf.ColdSLoad)
+        if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
             throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
         }
     }
-
-    private const int _postExecutionReads = 8;
 
     private static bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int) c)
         => c.BalanceChange is null &&
