@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.State.Healing;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;

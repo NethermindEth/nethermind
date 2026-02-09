@@ -28,14 +28,14 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
     public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignerContract, signer.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
 
         await signer.Sign(transaction);
 
-        bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+         AcceptTxResult added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            logger.Info("Failed to add signed transaction to the pool.");
+            logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         }
     }
 

@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using DotNetty.Buffers;
-using DotNetty.Common.Internal;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;

@@ -9,18 +9,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -29,9 +24,11 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
-using Nethermind.State;
-using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Logging;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Xdc;
 
@@ -54,6 +51,9 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+
+            .Add<StartXdcBlockProducer>()
+
 
             // stores
             .AddSingleton<IHeaderStore, XdcHeaderStore>()
@@ -98,6 +98,15 @@ public class XdcModule : Module
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
+            // sync
+            .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
+
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
@@ -108,6 +117,8 @@ public class XdcModule : Module
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+            .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
+            .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
 
             //Sync
             .AddSingleton<XdcStateSyncSnapshotManager>()

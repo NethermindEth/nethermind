@@ -20,7 +20,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State.Proofs;
-using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;

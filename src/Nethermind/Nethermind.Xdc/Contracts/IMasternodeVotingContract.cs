@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using System;
 
 namespace Nethermind.Xdc.Contracts;
 

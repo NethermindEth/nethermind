@@ -62,8 +62,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        var certThreshold = spec.CertThreshold;
-        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * certThreshold)
+        var CertificateThreshold = spec.CertificateThreshold;
+        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
         {
             OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
@@ -126,9 +126,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
-        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertThreshold)
+        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
-            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertThreshold}";
+            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 

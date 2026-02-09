@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             ArgumentNullException.ThrowIfNull(tree);
 
-            ValueHash256 effectiveStartingHAsh = startingHash ?? ValueKeccak.Zero;
+            ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
             List<(TrieNode, TreePath)> sortedBoundaryList = new();
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
@@ -219,7 +219,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
+            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHash.Bytes);
             TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
             TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
 

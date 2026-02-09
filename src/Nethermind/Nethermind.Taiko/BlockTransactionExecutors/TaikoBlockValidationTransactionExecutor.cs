@@ -5,7 +5,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;

@@ -34,6 +34,7 @@ using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
@@ -206,13 +207,14 @@ public class XdcTestBlockchain : TestBlockchain
                 var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
 
                 var compoundPolicy = new CompositeTxGossipPolicy();
-                if (gossipPolicy != null) {
+                if (gossipPolicy != null)
+                {
                     compoundPolicy.Policies.Add(gossipPolicy);
                 }
 
-                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider));
+                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
 
-                TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
+                Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
                     ctx.Resolve<IChainHeadInfoProvider>(),
                     ctx.Resolve<ITxPoolConfig>(),
@@ -261,7 +263,22 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.LimitPenaltyEpoch = 2;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
-        xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
+
+        xdcSpec.BlackListedAddresses =
+            [
+            new Address("0x00000000000000000000000000000000b1Ac701"),
+            new Address("0x00000000000000000000000000000000b1Ac702"),
+            new Address("0x00000000000000000000000000000000b1Ac703"),
+            new Address("0x00000000000000000000000000000000b1Ac704"),
+            new Address("0x00000000000000000000000000000000b1Ac705"),
+            new Address("0x00000000000000000000000000000000b1Ac706"),
+            new Address("0x00000000000000000000000000000000b1Ac707"),
+            ];
+        xdcSpec.MergeSignRange = 15;
+
+        xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
+        xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
+        xdcSpec.FoundationWallet = new Address("0x0000000000000000000000000000000000000068");
 
         xdcSpec.BlackListedAddresses =
             [
@@ -282,7 +299,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 0,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -290,7 +307,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 5,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -298,7 +315,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 10,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -306,7 +323,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 15,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -314,7 +331,7 @@ public class XdcTestBlockchain : TestBlockchain
             new V2ConfigParams {
                 SwitchRound = 20,
                 MaxMasternodes = 30,
-                CertThreshold = 0.667,
+                CertificateThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
                 MinePeriod = 2
@@ -584,7 +601,7 @@ public class XdcTestBlockchain : TestBlockchain
         return switchInfo
                     .Masternodes
                     .OrderBy(x => _random.Next())
-                    .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertThreshold)))
+                    .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertificateThreshold)))
                     .Select(a => MasterNodeCandidates.First(c => a == c.Address))
                     .ToArray();
     }

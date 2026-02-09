@@ -9,13 +9,13 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.TxPool;
 
-internal class XdcTxGossipPolicy(ISpecProvider provider) : ITxGossipPolicy
+internal class XdcTxGossipPolicy(ISpecProvider provider, IChainHeadInfoProvider chainHeadInfoProvider) : ITxGossipPolicy
 {
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        var spec = (IXdcReleaseSpec)provider.GetFinalSpec();
+        var spec = (IXdcReleaseSpec)provider.GetXdcSpec(chainHeadInfoProvider.HeadNumber);
 
         return !tx.RequiresSpecialHandling(spec);
     }

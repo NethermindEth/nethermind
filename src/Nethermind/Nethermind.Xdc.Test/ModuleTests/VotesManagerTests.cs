@@ -68,7 +68,7 @@ public class VotesManagerTests
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.CertThreshold.Returns(0.667);
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         ISigner signer = Substitute.For<ISigner>();
@@ -107,7 +107,7 @@ public class VotesManagerTests
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.CertThreshold.Returns(0.667);
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
 
         ISigner signer = Substitute.For<ISigner>();

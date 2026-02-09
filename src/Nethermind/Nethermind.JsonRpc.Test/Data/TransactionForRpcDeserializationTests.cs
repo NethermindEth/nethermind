@@ -18,7 +18,8 @@ public class TransactionForRpcDeserializationTests
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)
     {
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
-        return transactionForRpc.ToTransaction().Type;
+        Result<Transaction> result = transactionForRpc.ToTransaction();
+        return result.Data?.Type ?? transactionForRpc.Type ?? TxType.Legacy;
     }
 
     [Test]

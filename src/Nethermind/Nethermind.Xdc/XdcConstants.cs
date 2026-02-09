@@ -41,11 +41,11 @@ internal static class XdcConstants
     public static readonly UInt256 DifficultyDefault = UInt256.One;
 
 
-    public static byte[] SetSecret = Bytes.FromHexString("34d38600");
-    public static byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
-    public static byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
-    public static byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
-    public static byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
-    public static byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
-    public static byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
+    public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
+    public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
+    public static readonly byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
+    public static readonly byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
+    public static readonly byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
+    public static readonly byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
+    public static readonly byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
 }
