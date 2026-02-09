@@ -101,6 +101,8 @@ public class XdcModule : Module
             // sync
             .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
+            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+            .AddSingleton<XdcStateSyncSnapshotManager>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
@@ -119,10 +121,6 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-
-            //Sync
-            .AddSingleton<XdcStateSyncSnapshotManager>()
-            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             ;
     }
 
