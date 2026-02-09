@@ -210,11 +210,11 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         ValueHash256 subtreeStart = path.ToLowerBoundPath();
         ValueHash256 extensionStart = extendedPath.ToLowerBoundPath();
         if (extensionStart.CompareTo(subtreeStart) > 0)
-            ranges.Add(new DeletionRange(subtreeStart, DecrementPath(extensionStart)));
+            ranges.Add(new DeletionRange(subtreeStart, extensionStart.DecrementPath()));
 
         // Gap after the extension
         ValueHash256 extensionEnd = extendedPath.ToUpperBoundPath();
-        ValueHash256 afterExtension = IncrementPath(extensionEnd);
+        ValueHash256 afterExtension = extensionEnd.IncrementPath();
         ValueHash256 subtreeEnd = path.ToUpperBoundPath();
         if (afterExtension.CompareTo(subtreeEnd) <= 0)
             ranges.Add(new DeletionRange(afterExtension, subtreeEnd));
@@ -237,52 +237,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private static TreePath ComputeTreePathForHash(in ValueHash256 hash, int length) =>
         new(hash, length);
-
-    /// <summary>
-    /// Decrement a path by 1 (treating it as a 256-bit big-endian integer).
-    /// </summary>
-    internal static ValueHash256 DecrementPath(in ValueHash256 path)
-    {
-        ValueHash256 result = path;
-        Span<byte> bytes = result.BytesAsSpan;
-
-        for (int i = 31; i >= 0; i--)
-        {
-            if (bytes[i] > 0)
-            {
-                bytes[i]--;
-                return result;
-            }
-            bytes[i] = 0xFF;
-        }
-
-        // Underflow - return zero (shouldn't happen in practice)
-        return ValueKeccak.Zero;
-    }
-
-    /// <summary>
-    /// Increment a path by 1 (treating it as a 256-bit big-endian integer).
-    /// </summary>
-    internal static ValueHash256 IncrementPath(in ValueHash256 path)
-    {
-        ValueHash256 result = path;
-        Span<byte> bytes = result.BytesAsSpan;
-
-        for (int i = 31; i >= 0; i--)
-        {
-            if (bytes[i] < 0xFF)
-            {
-                bytes[i]++;
-                return result;
-            }
-            bytes[i] = 0x00;
-        }
-
-        // Overflow - return max (shouldn't happen in practice)
-        result = ValueKeccak.Zero;
-        result.BytesAsSpan.Fill(0xFF);
-        return result;
-    }
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
@@ -337,19 +291,5 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
-    }
-
-    /// <summary>
-    /// Minimal trie node resolver that throws on all operations.
-    /// Used only for ResolveNode where the node already has RLP data, so the resolver is never actually called.
-    /// </summary>
-    private sealed class NullTrieNodeResolver : ITrieNodeResolver
-    {
-        public static readonly NullTrieNodeResolver Instance = new();
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => throw new NotSupportedException();
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new NotSupportedException();
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new NotSupportedException();
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException();
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }
 }

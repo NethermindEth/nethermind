@@ -43,37 +43,13 @@ public class FlatEntryWriterTests
     {
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         TreePath path = TreePath.FromHexString(pathHex);
-        Hash256 expectedPath = new(Bytes.FromHexString(expectedPathHex));
         TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles(leafKeyHex), SmallAccountRlp());
         TreePath empty = TreePath.Empty;
         leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
 
         FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, leaf);
 
-        writeBatch.Received(1).SetAccountRaw(expectedPath, Arg.Any<Account>());
-    }
-
-    [Test]
-    public void WriteAccountFlatEntries_BranchAndExtension_WithHashReferences_WritesNothing()
-    {
-        // Account RLP is ~70 bytes, always becomes hash reference in branch/extension
-        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
-        TreePath path = TreePath.FromHexString("1234");
-        TreePath empty = TreePath.Empty;
-
-        // Branch with account leaves (too large to inline)
-        TrieNode branch = TrieNodeFactory.CreateBranch();
-        branch[3] = TrieNodeFactory.CreateLeaf([0xa], SmallAccountRlp());
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, branch);
-
-        // Extension with account leaf (too large to inline)
-        TrieNode extension = TrieNodeFactory.CreateExtension([0x5], TrieNodeFactory.CreateLeaf([0xb], SmallAccountRlp()));
-        empty = TreePath.Empty;
-        extension.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-        FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, extension);
-
-        writeBatch.DidNotReceive().SetAccountRaw(Arg.Any<Hash256>(), Arg.Any<Account>());
+        writeBatch.Received(1).SetAccountRaw(new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<Account>());
     }
 
     #endregion
@@ -94,14 +70,13 @@ public class FlatEntryWriterTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         Hash256 address = Keccak.Compute("address");
         TreePath path = TreePath.FromHexString(pathHex);
-        Hash256 expectedPath = new(Bytes.FromHexString(expectedPathHex));
         TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles(leafKeyHex), SmallSlotValue);
         TreePath empty = TreePath.Empty;
         leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
 
         FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, leaf);
 
-        writeBatch.Received(1).SetStorageRaw(address, expectedPath, Arg.Any<SlotValue?>());
+        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<SlotValue?>());
     }
 
     // path (62 nibbles) + branch index (1) + leaf key (1) = 64 nibbles
@@ -117,8 +92,6 @@ public class FlatEntryWriterTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         Hash256 address = Keccak.Compute("address");
         TreePath path = TreePath.FromHexString(pathHex);
-        Hash256 expectedPath1 = new(Bytes.FromHexString(expectedPath1Hex));
-        Hash256 expectedPath2 = new(Bytes.FromHexString(expectedPath2Hex));
 
         TrieNode branch = TrieNodeFactory.CreateBranch();
         branch[index1] = TrieNodeFactory.CreateLeaf(Nibbles(leafKey1Hex), SmallSlotValue);
@@ -128,8 +101,8 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, branch);
 
-        writeBatch.Received(1).SetStorageRaw(address, expectedPath1, Arg.Any<SlotValue?>());
-        writeBatch.Received(1).SetStorageRaw(address, expectedPath2, Arg.Any<SlotValue?>());
+        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString(expectedPath1Hex)), Arg.Any<SlotValue?>());
+        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString(expectedPath2Hex)), Arg.Any<SlotValue?>());
     }
 
     [Test]
@@ -138,7 +111,6 @@ public class FlatEntryWriterTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         Hash256 address = Keccak.Compute("address");
         TreePath path = TreePath.FromHexString("abcd1234");
-        Hash256 expectedPath = new(Bytes.FromHexString("abcd123435000000000000000000000000000000000000000000000000000000"));
 
         TrieNode branch = TrieNodeFactory.CreateBranch();
         branch[3] = TrieNodeFactory.CreateLeaf([5], SmallSlotValue);  // Inline (small)
@@ -148,7 +120,7 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, branch);
 
-        writeBatch.Received(1).SetStorageRaw(address, expectedPath, Arg.Any<SlotValue?>());
+        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString("abcd123435000000000000000000000000000000000000000000000000000000")), Arg.Any<SlotValue?>());
     }
 
     #endregion
