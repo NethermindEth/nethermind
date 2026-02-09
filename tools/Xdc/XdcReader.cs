@@ -16,10 +16,14 @@ namespace Xdc;
 
 public class XdcReader(IDb db)
 {
+    private const int EpochLength = 900;
+    private const int Gap = 450;
+
     // from schema.go
     private static readonly byte[] HeadHeaderKey = "LastHeader"u8.ToArray();
     private static readonly byte[] HeaderPrefix = "h"u8.ToArray();
     private static readonly byte[] HeaderNumberPrefix = "H"u8.ToArray();
+    private static readonly byte[] HeaderHashSuffix = "n"u8.ToArray();
     private static readonly byte[] HeaderTDPostfix = "t"u8.ToArray();
     private static readonly byte[] CodePrefix = "c"u8.ToArray();
 
@@ -34,6 +38,19 @@ public class XdcReader(IDb db)
     private static readonly XdcHeaderDecoder HeaderDecoder = new();
 
     public XdcBlockHeader? GetHeadHeader(bool includeTD = true) => db.Get(HeadHeaderKey) is not { } hash ? null : GetHeader(hash, includeTD);
+
+    public Snapshot? GetSnapshotFor(long blockNumber)
+    {
+        var snapNumber = Math.Max(0, blockNumber - blockNumber % EpochLength - Gap);
+        return GetHeader(snapNumber, false) is not { } snapHeader ? null : GetSnapshotAt(snapHeader);
+    }
+
+    public Snapshot? GetLatestSnapshot(long atOrBefore)
+    {
+        var snapNumber = Math.Max(0, atOrBefore - atOrBefore % EpochLength + EpochLength - Gap);
+        if (snapNumber >= atOrBefore) snapNumber -= EpochLength;
+        return GetHeader(snapNumber, false) is not { } snapHeader ? null : GetSnapshotAt(snapHeader);
+    }
 
     public Snapshot? GetSnapshotAt(XdcBlockHeader header)
     {
@@ -55,15 +72,26 @@ public class XdcReader(IDb db)
 
     public XdcBlockHeader? GetHeader(ReadOnlySpan<byte> hash, bool includeTD = true)
     {
-        // "H" + hash
+        // "H" + hash -> number
         byte[] headerNumberKey = [.. HeaderNumberPrefix, .. hash];
         byte[]? blockNumberBytes = db.Get(headerNumberKey);
         if (blockNumberBytes is null || blockNumberBytes.Length != 8)
             return null;
 
-        ulong blockNumber = BinaryPrimitives.ReadUInt64BigEndian(blockNumberBytes);
+        long blockNumber = BinaryPrimitives.ReadInt64BigEndian(blockNumberBytes);
+        return GetHeader(hash, blockNumber, includeTD);
+    }
 
-        // "h" + number(8 bytes BE) + hash
+    public XdcBlockHeader? GetHeader(long blockNumber, bool includeTD = true)
+    {
+        // "h" + number(8 bytes BE) + "n" -> canonical hash
+        byte[] hashKey = [.. HeaderPrefix, .. blockNumber.ToBigEndianByteArray(), .. HeaderHashSuffix];
+        return db.Get(hashKey) is not { Length: 32 } hash ? null : GetHeader(hash, blockNumber, includeTD);
+    }
+
+    private XdcBlockHeader? GetHeader(ReadOnlySpan<byte> hash, long blockNumber, bool includeTD)
+    {
+        // "h" + number(8 bytes BE) + hash -> header RLP
         byte[] headerKey = [.. HeaderPrefix, .. blockNumber.ToBigEndianByteArray(), .. hash];
         byte[]? headerRlp = db.Get(headerKey);
         if (headerRlp is null)

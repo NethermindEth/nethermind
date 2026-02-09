@@ -29,8 +29,9 @@ public static class Migrator
         var copier = new XdcTrieCopier(source, target);
         source.StateTree.Accept(copier, source.StateRoot, new VisitingOptions { FullScanMemoryBudget = 0 });
 
-        Console.WriteLine("Migrating snapshot...");
-        StoreSnapshot(source, target);
+        Console.WriteLine("Migrating snapshots...");
+        const int snapCount = 10; // TODO: allow in parameters?
+        StoreSnapshots(source, target, snapCount);
 
         if (args.Verify)
         {
@@ -43,7 +44,7 @@ public static class Migrator
         return new MigrationResult(copier.StateNodesCopied, copier.CodeNodesCopied);
     }
 
-    private static void StoreSnapshot(SourceContext source, TargetContext target)
+    private static void StoreSnapshots(SourceContext source, TargetContext target, int maxCount)
     {
         var manager = new SnapshotManager(
             target.SnapshotDb,
@@ -51,11 +52,17 @@ public static class Migrator
             Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>()
         );
 
-        XdcReader reader = source.Reader;
-        Snapshot? snapshot = null;
-        RetractUntil(source.Pivot, reader, "snapshot", header => (snapshot = reader.GetSnapshotAt(header)) is not null);
+        Snapshot? snapshot = source.Reader.GetLatestSnapshot(source.Pivot.Number);
+        var count = 0;
+        while (snapshot is not null && count < maxCount)
+        {
+            manager.StoreSnapshot(snapshot);
+            count++;
 
-        manager.StoreSnapshot(snapshot!);
+            snapshot = source.Reader.GetLatestSnapshot(snapshot.BlockNumber - 1);
+        }
+
+        Console.WriteLine($"Migrated {count} latest snapshots");
     }
 
     private static XdcBlockHeader RetractUntil(XdcBlockHeader from, XdcReader reader, string what, Func<XdcBlockHeader, bool> shouldStop)
@@ -83,7 +90,7 @@ public static class Migrator
         var db = new ReadOnlyLevelDb(dbPath);
         var reader = new XdcReader(db);
 
-        XdcBlockHeader? head = reader.GetHeadHeader()
+        XdcBlockHeader? head = reader.GetHeadHeader(includeTD: false)
             ?? throw new Exception("Failed to get head header.");
 
         Console.WriteLine($"Found head block at {Format(head)}");
@@ -113,5 +120,7 @@ public static class Migrator
             throw new Exception($"{counter.MissingCount} missing nodes found during verification.");
     }
 
-    private static string Format(XdcBlockHeader header) => $"{header.ToString(BlockHeader.Format.FullHashAndNumber)} [TD: {header.TotalDifficulty}]";
+    private static string Format(XdcBlockHeader header) => header.TotalDifficulty is null
+        ? $"{header.ToString(BlockHeader.Format.FullHashAndNumber)}"
+        : $"{header.ToString(BlockHeader.Format.FullHashAndNumber)} [TD: {header.TotalDifficulty}]";
 }
