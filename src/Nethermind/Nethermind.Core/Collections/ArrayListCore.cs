@@ -228,6 +228,10 @@ internal static class ArrayPoolListCore<T>
     public static void Truncate(int newLength, T[] array, ref int count)
     {
         GuardIndex(newLength, count, shouldThrow: true, allowEqualToCount: true);
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>() && newLength < count)
+        {
+            Array.Clear(array, newLength, count - newLength);
+        }
         count = newLength;
     }
 
