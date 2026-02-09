@@ -103,8 +103,6 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
-        CapGasLimit(tx);
-
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
@@ -457,14 +455,6 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
 
-    private void CapGasLimit(Transaction tx)
-    {
-        if (jsonRpcConfig.GasCap is not null and not 0)
-        {
-            tx.GasLimit = long.Min(tx.GasLimit, jsonRpcConfig.GasCap.Value);
-        }
-    }
-
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         jsonRpcConfig.BuildTimeoutCancellationToken();
 
@@ -510,7 +500,7 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
-            .GetBundleTraces(bundles, blockParameter, cancellationToken, options, jsonRpcConfig.GasCap);
+            .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
 
         if (_logger.IsTrace)
         {

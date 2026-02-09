@@ -211,15 +211,15 @@ public class DebugBridge : IDebugBridge
 
     public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
 
-    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, long? gasCap = null)
+    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
         foreach (TransactionBundle bundle in bundles)
         {
-            yield return GetBundleTrace(bundle, blockParameter, cancellationToken, gethTraceOptions, gasCap);
+            yield return GetBundleTrace(bundle, blockParameter, cancellationToken, gethTraceOptions);
         }
     }
 
-    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions, long? gasCap)
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
@@ -232,11 +232,6 @@ public class DebugBridge : IDebugBridge
             else
             {
                 Transaction tx = txResult.Data;
-
-                if (gasCap is not null and not 0)
-                {
-                    tx.GasLimit = long.Min(tx.GasLimit, gasCap.Value);
-                }
 
                 try
                 {

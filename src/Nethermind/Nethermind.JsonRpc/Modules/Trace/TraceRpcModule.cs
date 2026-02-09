@@ -111,6 +111,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
             Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
+
+            // Raw transactions bypass TransactionForRpc.EnsureDefaults, so we must cap gas explicitly
+            if (jsonRpcConfig.GasCap is not null and not 0)
+            {
+                tx.GasLimit = long.Min(tx.GasLimit, jsonRpcConfig.GasCap.Value);
+            }
+
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 
