@@ -98,8 +98,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         }
     }
 
-    [TestCaseSource(nameof(OogTestSource))]
-    public async Task Constructs_BAL_when_processing_code_runs_out_of_gas(
+    [TestCaseSource(nameof(ExceptionTestSource))]
+    public async Task Constructs_BAL_when_processing_code_exception(
         IEnumerable<AccountChanges> expected,
         byte[] code,
         byte[]? extraCode,
@@ -153,9 +153,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             Assert.That(actual, Is.EqualTo(expectedAccountChanges));
         }
     }
-
-    private Action<ContainerBuilder> BuildContainer()
-        => containerBuilder => containerBuilder.AddSingleton(SpecProvider);
 
     private void InitWorldState(IWorldState worldState, byte[]? extraCode = null)
     {
@@ -282,9 +279,20 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             yield return new TestCaseData(changes, code, null, false) { TestName = "selfdestruct" };
 
             code = Prepare.EvmCode
-                .PushData(slot)
+                .PushData(2)
                 .PushData(slot)
                 .Op(Instruction.SSTORE)
+                .PushData(slot)
+                .Op(Instruction.SLOAD)
+                .Op(Instruction.POP)
+                .Create(
+                    Prepare.EvmCode
+                        .ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done)
+                        .Done,
+                    0)
+                .Op(Instruction.POP)
+                .CallWithValue(TestItem.AddressB, 20_000, 1)
+                .Op(Instruction.POP)
                 .PushData(0)
                 .PushData(0)
                 .Op(Instruction.REVERT)
@@ -354,6 +362,22 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                     .TestObject
             ];
             yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "call" };
+
+            byte[] returnValueCode = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.CALLVALUE)
+                .Op(Instruction.CALLER)
+                .PushData(20_000)
+                .Op(Instruction.CALL)
+                .Done;
+            code = Prepare.EvmCode
+                .CallWithValue(_callTargetAddress, 20_000, 1.GWei())
+                .Done;
+            changes = [testAccount, new(_callTargetAddress)];
+            yield return new TestCaseData(changes, code, returnValueCode, false) { TestName = "balance_change_return_to_original" };
 
             code = Prepare.EvmCode
                 .CallCode(_callTargetAddress, 20_000)
@@ -450,10 +474,16 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Done;
             changes = [testAccount, new(PrecompiledAddresses.Identity)];
             yield return new TestCaseData(changes, code, null, false) { TestName = "precompile" };
+
+            code = Prepare.EvmCode
+                .Call(TestItem.AddressB, 20_000)
+                .Done;
+            changes = [testAccount, new(TestItem.AddressB)];
+            yield return new TestCaseData(changes, code, null, false) { TestName = "zero_value_call" };
         }
     }
 
-    private static IEnumerable<TestCaseData> OogTestSource
+    private static IEnumerable<TestCaseData> ExceptionTestSource
     {
         get
         {
