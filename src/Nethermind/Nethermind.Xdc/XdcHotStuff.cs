@@ -241,6 +241,11 @@ namespace Nethermind.Xdc
                 return;
             }
 
+            if (spec.SwitchBlock < roundParent.Number)
+            {
+                await CommitCertificateAndVote(roundParent, epochInfo);
+            }
+
             bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
 
             if (_writeRoundInfo)
@@ -250,7 +255,6 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
-
             }
 
             if (_highestSignTxNumber < roundParent.Number
@@ -261,10 +265,7 @@ namespace Nethermind.Xdc
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
-            if (spec.SwitchBlock < roundParent.Number)
-            {
-                await CommitCertificateAndVote(roundParent, epochInfo);
-            }
+
             _writeRoundInfo = false;
         }
 
