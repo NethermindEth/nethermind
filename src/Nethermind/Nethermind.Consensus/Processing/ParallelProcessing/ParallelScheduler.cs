@@ -134,7 +134,7 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     /// <param name="newStatus">New <see cref="Status"/> for the transaction</param>
     /// <param name="name">Name of the index</param>
     /// <returns>New transaction incarnation, <see cref="Version.Empty"/> if incarnation fails due to wrong <see cref="Status"/> in <see cref="_txStates"/></returns>
-    private Version TryIncarnate(int nextTx, int requiredStatus, int newStatus, string name)
+    private Version TryIncarnate(int nextTx, int requiredStatus, int newStatus, string name, bool trackActiveTasks = true)
     {
         // if we are in a block size
         if (nextTx < txCount)
@@ -150,7 +150,10 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
         }
 
         // if we didn't return a new incarnation, then we didn't spawn a task and need to decrement previous incrementation
-        Interlocked.Decrement(ref _activeTasks);
+        if (trackActiveTasks)
+        {
+            Interlocked.Decrement(ref _activeTasks);
+        }
         return Version.Empty;
     }
 
@@ -378,8 +381,12 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
             // if execution index already progressed try re-executing the transaction immediately
             if (Volatile.Read(ref _executionIndex) > txIndex)
             {
-                // don't decrement _activeTasks as we spawn a new one
-                return new TxTask(TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing, nameof(_executionIndex)), false);
+                Version incarnation = TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing, nameof(_executionIndex), trackActiveTasks: false);
+                if (!incarnation.IsEmpty)
+                {
+                    // don't decrement _activeTasks as we spawn a new one
+                    return new TxTask(incarnation, false);
+                }
             }
         }
 

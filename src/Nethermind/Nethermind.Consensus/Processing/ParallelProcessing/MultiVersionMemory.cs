@@ -101,13 +101,16 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         }
         txData.Lock.ExitWriteLock();
 
-        int oldCount = lastWritten.Count;
+        bool wroteNewLocation = false;
+        foreach (TLocation key in writeSet.Keys)
+        {
+            if (lastWritten.Add(key))
+            {
+                wroteNewLocation = true;
+            }
+        }
 
-        // add all currently written locations
-        lastWritten.UnionWith(writeSet.Keys);
-
-        // check if any new locations were written
-        return lastWritten.Count > oldCount;
+        return wroteNewLocation;
     }
 
     /// <summary>
@@ -123,6 +126,34 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         bool wroteNewLocation = ApplyWriteSet(version, writeSet);
         _lastReads[version.TxIndex] = readSet;
         return wroteNewLocation;
+    }
+
+    /// <summary>
+    /// Iterates over the final write-set for a given transaction.
+    /// </summary>
+    /// <param name="txIndex">Transaction index.</param>
+    /// <param name="apply">Action applied to each location/value pair.</param>
+    public void ForEachWriteSet(int txIndex, Action<TLocation, TData> apply)
+    {
+        DataDictionary<TLocation, Value> txData = _data[txIndex];
+        txData.Lock.EnterReadLock();
+        try
+        {
+            foreach (KeyValuePair<TLocation, Value> kvp in txData.Dictionary)
+            {
+                Value value = kvp.Value;
+                if (value.IsEstimate)
+                {
+                    continue;
+                }
+
+                apply(kvp.Key, value.Data);
+            }
+        }
+        finally
+        {
+            txData.Lock.ExitReadLock();
+        }
     }
 
     /// <summary>

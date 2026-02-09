@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -16,8 +15,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 public class MultiVersionMemoryScopeProvider(
     Version version,
     IWorldStateScopeProvider baseProvider,
-    MultiVersionMemory multiVersionMemory,
-    FeeAccumulator feeAccumulator)
+    MultiVersionMemory multiVersionMemory)
     : IWorldStateScopeProvider
 {
     public HashSet<Read<StorageCell>> ReadSet { get; private set; } = null!;
@@ -29,8 +27,7 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = new(); //TODO: object poolling?
         WriteSet = new();
-        feeAccumulator.ClearFee(version.TxIndex);
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, ReadSet, WriteSet, feeAccumulator);
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, ReadSet, WriteSet);
     }
 
     private static TResult Get<TStorage, TResult>(
@@ -64,8 +61,7 @@ public class MultiVersionMemoryScopeProvider(
         IWorldStateScopeProvider.IScope baseScope,
         MultiVersionMemory multiVersionMemory,
         HashSet<Read<StorageCell>> readSet,
-        Dictionary<StorageCell, object> writeSet,
-        FeeAccumulator feeAccumulator) : IWorldStateScopeProvider.IScope
+        Dictionary<StorageCell, object> writeSet) : IWorldStateScopeProvider.IScope
     {
         public void Dispose() => baseScope.Dispose();
 
@@ -84,16 +80,6 @@ public class MultiVersionMemoryScopeProvider(
                 baseScope,
                 static (scope, location) => scope.Get(location.Address));
 
-            if (feeAccumulator.IsFeeRecipient(address))
-            {
-                UInt256 accumulatedFees = feeAccumulator.GetAccumulatedFees(address, txIndex);
-                if (!accumulatedFees.IsZero)
-                {
-                    result ??= Account.TotallyEmpty;
-                    result = result.WithChangedBalance(result.Balance + accumulatedFees);
-                }
-            }
-
             return result;
         }
 
@@ -105,41 +91,19 @@ public class MultiVersionMemoryScopeProvider(
             new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-            new MultiVersionMemoryWriteBatch(version, writeSet, feeAccumulator);
+            new MultiVersionMemoryWriteBatch(writeSet);
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
-        private class MultiVersionMemoryWriteBatch(
-            Version version,
-            Dictionary<StorageCell, object> writeSet,
-            FeeAccumulator feeAccumulator) : IWorldStateScopeProvider.IWorldStateWriteBatch
+        private class MultiVersionMemoryWriteBatch(Dictionary<StorageCell, object> writeSet)
+            : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
-            private readonly Dictionary<Address, Account?> _previousFeeAccounts = new();
-
-            public void Dispose() => feeAccumulator.MarkCommitted(version.TxIndex);
+            public void Dispose() { }
 
             public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
             public void Set(Address key, Account? account)
             {
-                if (feeAccumulator.IsFeeRecipient(key))
-                {
-                    ref Account? prevAccount = ref CollectionsMarshal.GetValueRefOrAddDefault(_previousFeeAccounts, key, out bool exists);
-                    if (exists)
-                    {
-                        UInt256 prevBalance = prevAccount?.Balance ?? UInt256.Zero;
-                        UInt256 newBalance = account?.Balance ?? UInt256.Zero;
-                        if (newBalance > prevBalance)
-                        {
-                            UInt256 feeDelta = newBalance - prevBalance;
-                            feeAccumulator.RecordFee(version.TxIndex, key, feeDelta);
-                        }
-                    }
-                    _previousFeeAccounts[key] = account;
-                    OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                    return;
-                }
-
                 writeSet[new StorageCell(key)] = account;
                 OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
             }
@@ -164,7 +128,7 @@ public class MultiVersionMemoryScopeProvider(
             HashSet<Read<StorageCell>> readSet)
             : IWorldStateScopeProvider.IStorageTree
         {
-            public Hash256 RootHash => throw new NotSupportedException($"{nameof(MultiVersionMemoryStorageTree)}.{nameof(RootHash)} is not supported.");
+            public Hash256 RootHash => baseStorageTree.RootHash;
 
             public byte[] Get(in UInt256 index) => Get<IWorldStateScopeProvider.IStorageTree, byte[]>(
                 new StorageCell(address, index),

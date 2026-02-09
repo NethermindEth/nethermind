@@ -8,13 +8,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -36,16 +34,19 @@ public class ParallelBlockValidationTransactionsExecutor(
         Transaction[] transactions = block.Transactions;
         int txCount = transactions.Length;
         TxReceipt[] receipts = new TxReceipt[txCount];
+        TransactionResult[] results = new TransactionResult[txCount];
         OffParallelTrace trace = OffParallelTrace.Instance;
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler, feeAccumulator);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, results, in _blockExecutionContext);
         using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
         parallelRunner.Run().GetAwaiter().GetResult();
-        PushChanges(stateProvider, multiVersionMemory, feeAccumulator);
+        ThrowIfInvalidResults(block, transactions, results);
+        FinalizeGasUsed(block, receipts);
+        PushChanges(stateProvider, multiVersionMemory, txCount);
+        RaiseTransactionProcessedEvents(block, transactions, receipts);
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
         return receipts;
     }
@@ -53,65 +54,148 @@ public class ParallelBlockValidationTransactionsExecutor(
     private void FindNonceDependencies(int txIndex, Block block, ParallelScheduler scheduler)
     {
         Address? sender = block.Transactions[txIndex].SenderAddress;
+        if (sender is null)
+        {
+            return;
+        }
+
         for (int i = txIndex - 1; i >= 0; i--)
         {
             Transaction prevTx = block.Transactions[i];
             if (prevTx.SenderAddress == sender)
             {
                 scheduler.AbortExecution(txIndex, i, false);
+                break;
             }
 
-            if (prevTx.HasAuthorizationList)
+            if (!prevTx.HasAuthorizationList)
             {
-                foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
+                continue;
+            }
+
+            foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
+            {
+                // how to handle wrong authorizations?
+                if (tuple.Authority == sender)
                 {
-                    // how to handle wrong authorizations?
-                    if (tuple.Authority == sender)
+                    scheduler.AbortExecution(txIndex, i, false);
+                    return;
+                }
+            }
+        }
+    }
+
+    private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, int txCount)
+    {
+        HashSet<Address> storageTouched = new();
+
+        for (int txIndex = 0; txIndex < txCount; txIndex++)
+        {
+            Dictionary<Address, Account?>? accountUpdates = null;
+            HashSet<Address>? storageClears = null;
+            multiVersionMemory.ForEachWriteSet(txIndex, (cell, value) =>
+            {
+                if (ReferenceEquals(value, MultiVersionMemory.SelfDestructMonit))
+                {
+                    (storageClears ??= new HashSet<Address>()).Add(cell.Address);
+                    return;
+                }
+
+                if (value is Account account)
+                {
+                    (accountUpdates ??= new Dictionary<Address, Account?>())[cell.Address] = account;
+                    return;
+                }
+
+                if (value is null)
+                {
+                    (accountUpdates ??= new Dictionary<Address, Account?>())[cell.Address] = null;
+                }
+            });
+
+            if (storageClears is not null)
+            {
+                foreach (Address address in storageClears)
+                {
+                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? account) ?? false && account is null;
+                    // Avoid clearing when it's just an empty-base hint; keep prior tx writes intact.
+                    if (accountDeleted || !storageTouched.Contains(address))
                     {
-                        scheduler.AbortExecution(txIndex, i, false);
+                        worldState.ClearStorage(address);
+                        storageTouched.Add(address);
                     }
                 }
             }
-        }
-    }
 
-    private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator)
-    {
-        Dictionary<StorageCell, object> result = multiVersionMemory.Snapshot();
-        foreach (KeyValuePair<StorageCell, object> changes in result)
-        {
-            switch (changes.Value)
+            multiVersionMemory.ForEachWriteSet(txIndex, (cell, value) =>
             {
-                case Account account: worldState.SetAccount(changes.Key.Address, account); break;
-                case byte[] value: worldState.Set(changes.Key, value); break;
-                case { } o when o == MultiVersionMemory.SelfDestructMonit: worldState.ClearStorage(changes.Key.Address); break;
-            }
-        }
-
-        ApplyAccumulatedFees(worldState, feeAccumulator, _blockExecutionContext.Spec);
-    }
-
-    private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec)
-    {
-        ApplyFees(feeAccumulator.GasBeneficiary);
-        if (feeAccumulator.FeeCollector != feeAccumulator.GasBeneficiary)
-        {
-            ApplyFees(feeAccumulator.FeeCollector);
-        }
-
-        void ApplyFees(Address? address)
-        {
-            if (address is not null)
-            {
-                UInt256 totalFees = feeAccumulator.GetTotalFees(address);
-                if (!totalFees.IsZero)
+                if (value is byte[] bytes)
                 {
-                    worldState.AddToBalanceAndCreateIfNotExists(address, totalFees, spec);
+                    worldState.Set(cell, bytes);
+                    storageTouched.Add(cell.Address);
+                }
+            });
+
+            if (accountUpdates is not null)
+            {
+                foreach (KeyValuePair<Address, Account?> accountUpdate in accountUpdates)
+                {
+                    worldState.SetAccount(accountUpdate.Key, accountUpdate.Value);
                 }
             }
         }
     }
 
+    private static void FinalizeGasUsed(Block block, TxReceipt[] receipts)
+    {
+        long gasUsed = 0;
+        long gasLimit = block.Header.GasLimit;
+        Transaction[] transactions = block.Transactions;
+
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            Transaction transaction = transactions[i];
+            long remainingGas = gasLimit - gasUsed;
+            if (transaction.GasLimit > remainingGas)
+            {
+                InvalidTransactionException.ThrowInvalidTransactionException(
+                    TransactionResult.BlockGasLimitExceeded,
+                    block.Header,
+                    transaction,
+                    i);
+            }
+
+            gasUsed += receipts[i].GasUsed;
+            receipts[i].GasUsedTotal = gasUsed;
+        }
+
+        block.Header.GasUsed = gasUsed;
+    }
+
+    private static void ThrowIfInvalidResults(Block block, Transaction[] transactions, TransactionResult[] results)
+    {
+        for (int i = 0; i < results.Length; i++)
+        {
+            TransactionResult result = results[i];
+            if (!result)
+            {
+                InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transactions[i], i);
+            }
+        }
+    }
+
+    private void RaiseTransactionProcessedEvents(Block block, Transaction[] transactions, TxReceipt[] receipts)
+    {
+        if (transactionProcessedEventHandler is null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            transactionProcessedEventHandler.OnTransactionProcessed(new TxProcessedEventArgs(i, transactions[i], block.Header, receipts[i]));
+        }
+    }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
@@ -127,12 +211,12 @@ public class ParallelTransactionProcessor(
     MultiVersionMemory multiVersionMemory,
     PreBlockCaches preBlockCaches,
     TxReceipt[] receipts,
-    in BlockExecutionContext blockExecutionContext,
-    ITransactionProcessedEventHandler? transactionProcessedEventHandler,
-    FeeAccumulator? feeAccumulator = null) : IParallelTransactionProcessor<StorageCell, object>
+    TransactionResult[] results,
+    in BlockExecutionContext blockExecutionContext) : IParallelTransactionProcessor<StorageCell, object>
 {
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new DefaultPooledObjectPolicy<BlockReceiptsTracer>());
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;
+    private readonly TransactionResult[] _results = results;
 
     public Status TryExecute(Version version, out int? blockingTx, out bool wroteNewLocation)
     {
@@ -141,24 +225,32 @@ public class ParallelTransactionProcessor(
         wroteNewLocation = false;
         Transaction transaction = block.Transactions[txIndex];
 
-        using IReadOnlyTxProcessingScope scope = CreateProcessingScope(
-            out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env,
-            out ITransactionProcessor transactionProcessor);
+        using ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches);
+        using IReadOnlyTxProcessingScope scope = env.Build(parentBlock);
+        ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
 
-        using ITxTracer txTracer = PrepareTracers(out BlockReceiptsTracer tracer);
+        BlockReceiptsTracer tracer = _tracers.Get();
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
 
         try
         {
+            BlockHeader header = block.Header.Clone();
+            BlockExecutionContext txContext = new(header, _blockExecutionContext.Spec);
+            transactionProcessor.SetBlockExecutionContext(in txContext);
+
             TransactionResult result = transactionProcessor.Execute(transaction, tracer);
-            // TODO: How to handle transaction errors?
+            _results[txIndex] = result;
             if (!result)
             {
-                InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transaction, txIndex);
+                receipts[txIndex] = null;
+                wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
+                return Status.Ok;
             }
 
             scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
             TxReceipt receipt = receipts[txIndex] = tracer.LastReceipt;
-            transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(txIndex, transaction, block.Header, receipt));
+            wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
             return Status.Ok;
         }
         catch (AbortParallelExecutionException e)
@@ -168,26 +260,9 @@ public class ParallelTransactionProcessor(
         }
         finally
         {
+            txTracer.Dispose();
+            tracer.EndTxTrace();
             _tracers.Return(tracer);
-            wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
-        }
-
-        IReadOnlyTxProcessingScope CreateProcessingScope(
-            out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv environment,
-            out ITransactionProcessor txProcessor)
-        {
-            environment = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches, feeAccumulator);
-            IReadOnlyTxProcessingScope s = environment.Build(parentBlock);
-            txProcessor = s.TransactionProcessor;
-            txProcessor.SetBlockExecutionContext(_blockExecutionContext);
-            return s;
-        }
-
-        ITxTracer PrepareTracers(out BlockReceiptsTracer blockReceiptsTracer)
-        {
-            blockReceiptsTracer = _tracers.Get();
-            blockReceiptsTracer.StartNewBlockTrace(block);
-            return blockReceiptsTracer.StartNewTxTrace(transaction);
         }
     }
 }
