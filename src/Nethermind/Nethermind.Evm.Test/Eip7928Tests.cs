@@ -98,6 +98,61 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         }
     }
 
+    [TestCaseSource(nameof(OogTestSource))]
+    public async Task Constructs_BAL_when_processing_code_runs_out_of_gas(
+        IEnumerable<AccountChanges> expected,
+        byte[] code,
+        byte[]? extraCode,
+        long executionGas)
+    {
+        InitWorldState(TestState, extraCode);
+        ParallelWorldState worldState = TestState as ParallelWorldState;
+        worldState.TracingEnabled = true;
+
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(_testAccountBalance)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas;
+        long gasLimit = intrinsicGas + executionGas;
+
+        Transaction createTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(gasLimit)
+            .WithValue(_testAccountBalance)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.TestObject;
+
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        CallOutputTracer callOutputTracer = new();
+        TransactionResult res = _processor.Execute(createTx, callOutputTracer);
+        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
+
+        AccountChanges accountChangesA = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges([new(0, _accountBalance - gasUsed)])
+            .WithNonceChanges([new(0, 1)]).TestObject;
+        AccountChanges accountChangesZero = Build.An.AccountChanges.WithBalanceChanges([new(0, gasUsed)]).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
+            Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
+            Assert.That(bal.AccountChanges.Count(), Is.EqualTo(expected.Count() + 2));
+        }
+
+        foreach(AccountChanges expectedAccountChanges in expected)
+        {
+            AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
+            Console.WriteLine($"expected: {JsonSerializer.Serialize(expectedAccountChanges)}");
+            Console.WriteLine($"actual: {JsonSerializer.Serialize(actual)}");
+            Assert.That(actual, Is.EqualTo(expectedAccountChanges));
+        }
+    }
+
     private Action<ContainerBuilder> BuildContainer()
         => containerBuilder => containerBuilder.AddSingleton(SpecProvider);
 
@@ -373,6 +428,201 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Done;
             changes = [testAccount, new(PrecompiledAddresses.Identity)];
             yield return new TestCaseData(changes, code, null, false) { TestName = "precompile" };
+        }
+    }
+
+    private static IEnumerable<TestCaseData> OogTestSource
+    {
+        get
+        {
+            IEnumerable<AccountChanges> changes;
+            byte[] code;
+            UInt256 slot = _delegationSlot;
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.BALANCE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(TestItem.AddressB)];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess) { TestName = "balance_oog" };
+
+            code = Prepare.EvmCode
+                .Op(Instruction.SELFBALANCE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(_testAddress)];
+            yield return new TestCaseData(changes, code, null, GasCostOf.SelfBalance) { TestName = "selfbalance_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.EXTCODESIZE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(TestItem.AddressB)];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess) { TestName = "extcodesize_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.EXTCODEHASH)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(TestItem.AddressB)];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess) { TestName = "extcodehash_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.EXTCODECOPY)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(TestItem.AddressB)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                null,
+                GasCostOf.ColdAccountAccess + GasCostOf.Memory * 2) { TestName = "extcodecopy_oog" };
+
+            byte[] callTargetCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
+            code = Prepare.EvmCode
+                .Call(_callTargetAddress, 0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(_callTargetAddress)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                callTargetCode,
+                GasCostOf.ColdAccountAccess + GasCostOf.Memory) { TestName = "call_oog" };
+
+            code = Prepare.EvmCode
+                .CallCode(_callTargetAddress, 0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(_testAddress)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                callTargetCode,
+                GasCostOf.ColdAccountAccess + GasCostOf.Memory) { TestName = "callcode_oog" };
+
+            code = Prepare.EvmCode
+                .DelegateCall(_callTargetAddress, 0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(_testAddress)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                callTargetCode,
+                GasCostOf.ColdAccountAccess + GasCostOf.Memory) { TestName = "delegatecall_oog" };
+
+            code = Prepare.EvmCode
+                .StaticCall(_callTargetAddress, 0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(_callTargetAddress)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                callTargetCode,
+                GasCostOf.ColdAccountAccess + GasCostOf.Memory) { TestName = "staticcall_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.CREATE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            Address createdAddress = ContractAddress.From(_testAddress, 1);
+            changes = [new AccountChanges(createdAddress)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                null,
+                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Memory) { TestName = "create_oog" };
+
+            byte[] create2Salt = new byte[32];
+            create2Salt[^1] = 1;
+            Address createdAddress2 = ContractAddress.From(_testAddress, create2Salt, new byte[32]);
+            code = Prepare.EvmCode
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .PushData(create2Salt)
+                .Op(Instruction.CREATE2)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(createdAddress2)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                null,
+                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory) { TestName = "create2_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(slot)
+                .Op(Instruction.SLOAD)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject];
+            yield return new TestCaseData(changes, code, null, GasCostOf.ColdSLoad) { TestName = "sload_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(0)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject];
+            yield return new TestCaseData(
+                changes,
+                code,
+                null,
+                GasCostOf.CallStipend + GasCostOf.ColdSLoad + GasCostOf.WarmStateRead + 1) { TestName = "sstore_oog" };
+
+            code = Prepare.EvmCode
+                .PushData(TestItem.AddressB)
+                .Op(Instruction.SELFDESTRUCT)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [new AccountChanges(_testAddress), new AccountChanges(TestItem.AddressB)];
+            yield return new TestCaseData(
+                changes,
+                code,
+                null,
+                GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess) { TestName = "selfdestruct_oog" };
         }
     }
 }
