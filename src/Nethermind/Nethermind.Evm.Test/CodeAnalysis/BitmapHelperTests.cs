@@ -153,6 +153,69 @@ public class BitmapHelperTests
         }
     }
 
+    /// <summary>
+    /// Naive reference: sets <paramref name="bitCount"/> consecutive bits starting at position <paramref name="pc"/>
+    /// in <paramref name="bitVector"/>, then advances <paramref name="pc"/> by <paramref name="bitCount"/>.
+    /// </summary>
+    private static void NaiveFlagMultipleBits(int bitCount, Span<byte> bitVector, ref int pc)
+    {
+        for (int i = 0; i < bitCount; i++)
+        {
+            bitVector[(pc + i) / 8] |= (byte)(1 << ((pc + i) % 8));
+        }
+        pc += bitCount;
+    }
+
+    [Test]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(7)]
+    [TestCase(8)]
+    [TestCase(9)]
+    [TestCase(15)]
+    [TestCase(16)]
+    [TestCase(17)]
+    [TestCase(24)]
+    [TestCase(31)]
+    [TestCase(32)]
+    public void FlagMultipleBits_ShouldMatchNaive(int bitCount)
+    {
+        // Test at various bit-alignment offsets (0..7)
+        for (int startPc = 0; startPc < 8; startPc++)
+        {
+            int bitmapSize = (startPc + bitCount) / 8 + 2;
+
+            var expected = new byte[bitmapSize];
+            var actual = new byte[bitmapSize];
+
+            int expectedPc = startPc;
+            int actualPc = startPc;
+
+            NaiveFlagMultipleBits(bitCount, expected, ref expectedPc);
+            BitmapHelper.FlagMultipleBits(bitCount, actual, ref actualPc);
+
+            actualPc.Should().Be(expectedPc, $"pc mismatch for bitCount={bitCount}, startPc={startPc}");
+            actual.Should().BeEquivalentTo(expected,
+                $"bitmap mismatch for bitCount={bitCount}, startPc={startPc}");
+        }
+    }
+
+    [Test]
+    public void FlagMultipleBits_MultipleOf8_ShouldNotSetExtraBit()
+    {
+        // Regression: bitCount=8 must not set a bit at position pc+8
+        var bitVector = new byte[4];
+        int pc = 0;
+
+        BitmapHelper.FlagMultipleBits(8, bitVector, ref pc);
+
+        pc.Should().Be(8);
+        bitVector[0].Should().Be(0xFF, "all 8 bits in byte 0 should be set");
+        bitVector[1].Should().Be(0x00, "byte 1 should remain zero — no extra bit");
+    }
+
     private static readonly byte[] _lookup =
     {
         0b0000_0000,
