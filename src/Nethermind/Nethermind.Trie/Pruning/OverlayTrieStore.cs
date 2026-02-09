@@ -11,7 +11,7 @@ namespace Nethermind.Trie.Pruning;
 /// OverlayTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
 /// If a node is missing, then it will try to find from the base store.
 /// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
-/// see overlayed keys.
+/// see overlaid keys.
 /// </summary>
 public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {

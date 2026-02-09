@@ -21,7 +21,7 @@ public class ChiadoSpecProvider : ISpecProvider
 
     private ChiadoSpecProvider() { }
 
-    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber switch
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
     {
         _ => forkActivation.Timestamp switch
         {

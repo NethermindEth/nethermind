@@ -231,6 +231,7 @@ public struct TreePath : IEquatable<TreePath>
         Length--;
     }
 
+    [SkipLocalsInit]
     public readonly byte[] ToNibble()
     {
         bool odd = Length % 2 == 1;

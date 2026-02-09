@@ -10,7 +10,7 @@ namespace Nethermind.Xdc;
 
 public interface ISnapshotManager
 {
-    static bool IsTimeforSnapshot(long blockNumber, IXdcReleaseSpec spec)
+    static bool IsTimeForSnapshot(long blockNumber, IXdcReleaseSpec spec)
     {
         if (blockNumber == spec.SwitchBlock)
             return true;

@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -53,7 +52,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IMasternodeVotingContract, XdcTestDepositContract>()
 
             // add missing components
-            .AddSingleton<IPenaltyHandler, RandomPenalizer>()
+            .AddSingleton<IPenaltyHandler, RandomPenaltyHandler>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments
@@ -85,7 +84,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         });
     }
 
-    internal class RandomPenalizer(ISpecProvider specProvider) : IPenaltyHandler
+    internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler
     {
         readonly Dictionary<Hash256, Address[]> _penaltiesCache = new();
         public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)

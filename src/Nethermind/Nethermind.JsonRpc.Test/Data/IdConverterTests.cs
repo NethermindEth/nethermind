@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip_string()
         {
-            TestRoundtrip<SomethingWithId>("{\"id\":\"asdasdasd\"}");
+            TestRoundtrip<SomethingWithId>("{\"id\":\"test\"}");
         }
 
         [Test]

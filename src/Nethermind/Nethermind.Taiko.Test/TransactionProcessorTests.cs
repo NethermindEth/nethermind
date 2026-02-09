@@ -17,7 +17,6 @@ using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
-using Nethermind.State;
 using Nethermind.Taiko.TaikoSpec;
 using FluentAssertions;
 using Nethermind.Evm.TransactionProcessing;

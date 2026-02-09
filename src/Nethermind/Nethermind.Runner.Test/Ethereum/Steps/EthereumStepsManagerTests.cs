@@ -112,7 +112,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        public async Task With_ambigious_steps()
+        public async Task With_ambiguous_steps()
         {
             await using IContainer container = CreateNethermindEnvironment(
                 new StepInfo(typeof(StepWithLogManagerInConstructor)),

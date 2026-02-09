@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -95,7 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Returns account nonce (number of trnsactions from the account since genesis) at the given block number",
+            Description = "Returns account nonce (number of transactions from the account since genesis) at the given block number",
             IsSharable = true,
             ExampleResponse = "0x3e")]
         Task<ResultWrapper<UInt256>> eth_getTransactionCount([JsonRpcParameter(ExampleValue = "[\"0xae3ed7a6ccdddf2914133d0669b5f02ff6fa8ad2\"]")] Address address, BlockParameter? blockParameter = null);

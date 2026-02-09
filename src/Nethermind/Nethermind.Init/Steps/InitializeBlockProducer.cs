@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Init.Steps

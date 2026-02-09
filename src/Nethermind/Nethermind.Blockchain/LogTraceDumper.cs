@@ -102,21 +102,25 @@ public static class BlockTraceDumper
             blockHash = failedBlockHash.ToString();
             return false;
         }
-        else
+
+        if (blocksOrHash.Is(out IList<Block> blocks))
         {
-            blocksOrHash.To(out IList<Block> blocks);
             condition = "valid on rerun";
 
             if (blocks.Count == 1)
             {
-                blockHash = blocks[0].Hash.ToString();
+                blockHash = blocks[0].Hash?.ToString() ?? "unknown";
             }
             else
             {
-                blockHash = string.Join("|", blocks.Select(b => b.Hash.ToString()));
+                blockHash = string.Join("|", blocks.Select(static b => b.Hash?.ToString() ?? "unknown"));
             }
             return true;
         }
+
+        condition = "unknown";
+        blockHash = "unknown";
+        return false;
     }
 
     private static FileStream GetFileStream(string name) =>
