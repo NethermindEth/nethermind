@@ -188,6 +188,158 @@ public class BlockAccessListDecoderTests
         Assert.That(blockAccessList, Is.EqualTo(blockAccessListDecoded));
     }
 
+    [Test]
+    public void Decoding_block_access_list_with_unsorted_account_changes_throws()
+    {
+        AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
+        AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
+        SortedDictionary<Address, AccountChanges> accountChanges = new(DescendingComparer<Address>())
+        {
+            { accountChangesA.Address, accountChangesA },
+            { accountChangesB.Address, accountChangesB }
+        };
+
+        BlockAccessList blockAccessList = new(accountChanges);
+        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<BlockAccessList>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Account changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_account_changes_with_unsorted_storage_changes_throws()
+    {
+        UInt256 slot1 = UInt256.One;
+        UInt256 slot2 = new(2);
+        SortedDictionary<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())
+        {
+            { slot1, new SlotChanges(slot1) },
+            { slot2, new SlotChanges(slot2) }
+        };
+        AccountChanges accountChanges = new(
+            TestItem.AddressA,
+            storageChanges,
+            [],
+            [],
+            [],
+            []);
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_account_changes_with_unsorted_storage_reads_throws()
+    {
+        SortedSet<StorageRead> storageReads = new(DescendingComparer<StorageRead>())
+        {
+            new(UInt256.One),
+            new(new UInt256(2))
+        };
+        AccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [],
+            storageReads,
+            [],
+            [],
+            []);
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage reads were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_account_changes_with_unsorted_balance_changes_throws()
+    {
+        SortedList<ushort, BalanceChange> balanceChanges = new(DescendingComparer<ushort>())
+        {
+            { 1, new(1, UInt256.One) },
+            { 2, new(2, UInt256.Zero) }
+        };
+        AccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [],
+            [],
+            balanceChanges,
+            [],
+            []);
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
+    {
+        SortedList<ushort, NonceChange> nonceChanges = new(DescendingComparer<ushort>())
+        {
+            { 1, new(1, 1) },
+            { 2, new(2, 2) }
+        };
+        AccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [],
+            [],
+            [],
+            nonceChanges,
+            []);
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Nonce changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_account_changes_with_unsorted_code_changes_throws()
+    {
+        SortedList<ushort, CodeChange> codeChanges = new(DescendingComparer<ushort>())
+        {
+            { 1, new(1, [0x01]) },
+            { 2, new(2, [0x02]) }
+        };
+        AccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [],
+            [],
+            [],
+            [],
+            codeChanges);
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Code changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
+    {
+        SortedList<ushort, StorageChange> storageChanges = new(DescendingComparer<ushort>())
+        {
+            { 1, new(1, UInt256.One) },
+            { 2, new(2, UInt256.Zero) }
+        };
+        SlotChanges slotChanges = new(UInt256.One, storageChanges);
+        byte[] encoded = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
+    }
+
     private static IEnumerable<TestCaseData> BlockAccessListTestSource
     {
         get
@@ -278,4 +430,7 @@ public class BlockAccessListDecoderTests
             { TestName = "storage_changes" };
         }
     }
+
+    private static IComparer<T> DescendingComparer<T>() where T : IComparable<T>
+        => Comparer<T>.Create((left, right) => right.CompareTo(left));
 }
