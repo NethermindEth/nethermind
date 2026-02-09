@@ -9,14 +9,20 @@ using System.Threading;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// A high-performance 2-way set-associative cache using a seqlock-style header per entry.
+/// A high-performance 2-way skew-associative cache using a seqlock-style header per entry.
 ///
 /// Design goals:
 /// - Lock-free reads (seqlock pattern) - readers never take locks.
 /// - Best-effort writes - writers skip on contention.
 /// - O(1) logical Clear() via a global epoch (no per-entry zeroing).
-/// - 2-way set-associative: two entries per set dramatically reduces conflict misses
-///   compared to direct-mapped, while keeping reads bounded at 2 checks.
+/// - 2-way skew-associative: each way uses independent hash bits for set indexing,
+///   breaking correlation between ways ("power of two choices"). Keys that collide
+///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
+///
+/// Hash bit partitioning (64-bit hash):
+///   Bits  0-13: way 0 set index (14 bits)
+///   Bits 14-41: hash signature stored in header (28 bits)
+///   Bits 42-55: way 1 set index (14 bits, independent from way 0)
 ///
 /// Header layout (64-bit):
 /// [Lock:1][Epoch:26][Hash:28][Seq:8][Occ:1]
@@ -26,9 +32,7 @@ namespace Nethermind.Core.Collections;
 /// - Seq   (bits  1- 8): per-entry sequence counter (8 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
-/// Collision rate comparison (at 10K items, same 32K entry budget):
-///   1-way direct-mapped: ~31% next-insert collision rate
-///   2-way set-associative: ~2.6% next-insert collision rate (12x improvement)
+/// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
 /// </summary>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
@@ -64,14 +68,16 @@ public sealed class SeqlockCache<TKey, TValue>
     // Mask for checking if an entry is live in the current epoch.
     private const long EpochOccMask = EpochMask | OccupiedBit;
 
-    // With 14-bit set index (bits 0-13), hash signature needs bits 14+ of the original hash.
-    // HashShift=5 maps header bits 9-36 to original bits 14-41, avoiding overlap.
+    // With 14-bit set index (bits 0-13) for way 0, hash signature needs bits 14+.
+    // HashShift=5 maps header bits 9-36 to original bits 14-41, avoiding overlap with both ways.
     private const int HashShift = 5;
 
+    // Way 1 uses bits 42-55 of the original hash (completely independent from way 0's bits 0-13).
+    private const int Way1Shift = 42;
+
     /// <summary>
-    /// Array of entries laid out as [set0_way0, set0_way1, set1_way0, set1_way1, ...].
-    /// For StorageCell keys (64-byte entries), one set = 128 bytes = 2 cache lines.
-    /// For AddressAsKey (24-byte entries), one set = 48 bytes, fits in 1 cache line.
+    /// Array of entries: [way0_set0..way0_setN, way1_set0..way1_setN].
+    /// Split layout ensures each way is a contiguous block for better prefetch behavior.
     /// </summary>
     private readonly Entry[] _entries;
 
@@ -102,7 +108,8 @@ public sealed class SeqlockCache<TKey, TValue>
     public bool TryGetValue(in TKey key, out TValue? value)
     {
         long hashCode = key.GetHashCode64();
-        int setBase = ((int)hashCode & SetMask) << 1;
+        int idx0 = (int)hashCode & SetMask;
+        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
 
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long hashPart = (hashCode >> HashShift) & HashMask;
@@ -111,7 +118,7 @@ public sealed class SeqlockCache<TKey, TValue>
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
 
         // === Way 0 ===
-        ref Entry e0 = ref Unsafe.Add(ref entries, setBase);
+        ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
         long h1 = Volatile.Read(ref e0.HashEpochSeqLock);
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
@@ -128,7 +135,7 @@ public sealed class SeqlockCache<TKey, TValue>
         }
 
         // === Way 1 ===
-        ref Entry e1 = ref Unsafe.Add(ref entries, setBase + 1);
+        ref Entry e1 = ref Unsafe.Add(ref entries, idx1);
         long w1 = Volatile.Read(ref e1.HashEpochSeqLock);
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
@@ -162,22 +169,23 @@ public sealed class SeqlockCache<TKey, TValue>
     public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
     {
         long hashCode = key.GetHashCode64();
-        int setBase = ((int)hashCode & SetMask) << 1;
+        int idx0 = (int)hashCode & SetMask;
+        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
         long hashPart = (hashCode >> HashShift) & HashMask;
 
-        if (TryGetValueCore(in key, setBase, hashPart, out TValue? value))
+        if (TryGetValueCore(in key, idx0, idx1, hashPart, out TValue? value))
         {
             return value;
         }
 
         value = valueFactory(in key);
-        SetCore(in key, value, setBase, hashPart);
+        SetCore(in key, value, idx0, idx1, hashPart);
         return value;
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryGetValueCore(in TKey key, int setBase, long hashPart, out TValue? value)
+    private bool TryGetValueCore(in TKey key, int idx0, int idx1, long hashPart, out TValue? value)
     {
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long expectedTag = epochTag | hashPart | OccupiedBit;
@@ -185,7 +193,7 @@ public sealed class SeqlockCache<TKey, TValue>
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
 
         // Way 0
-        ref Entry e0 = ref Unsafe.Add(ref entries, setBase);
+        ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
         long h1 = Volatile.Read(ref e0.HashEpochSeqLock);
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
@@ -202,7 +210,7 @@ public sealed class SeqlockCache<TKey, TValue>
         }
 
         // Way 1
-        ref Entry e1 = ref Unsafe.Add(ref entries, setBase + 1);
+        ref Entry e1 = ref Unsafe.Add(ref entries, idx1);
         long w1 = Volatile.Read(ref e1.HashEpochSeqLock);
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
@@ -224,14 +232,14 @@ public sealed class SeqlockCache<TKey, TValue>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void SetCore(in TKey key, TValue? value, int setBase, long hashPart)
+    private void SetCore(in TKey key, TValue? value, int idx0, int idx1, long hashPart)
     {
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long tagToStore = epochTag | hashPart | OccupiedBit;
         long epochOccTag = epochTag | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
-        ref Entry e0 = ref Unsafe.Add(ref entries, setBase);
+        ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
 
         long h0 = Volatile.Read(ref e0.HashEpochSeqLock);
 
@@ -252,7 +260,7 @@ public sealed class SeqlockCache<TKey, TValue>
         }
 
         // === Way 1: check for matching key ===
-        ref Entry e1 = ref Unsafe.Add(ref entries, setBase + 1);
+        ref Entry e1 = ref Unsafe.Add(ref entries, idx1);
         long h1 = Volatile.Read(ref e1.HashEpochSeqLock);
 
         if (h1 >= 0 && (h1 & TagMask) == tagToStore)
@@ -304,10 +312,11 @@ public sealed class SeqlockCache<TKey, TValue>
     public void Set(in TKey key, TValue? value)
     {
         long hashCode = key.GetHashCode64();
-        int setBase = ((int)hashCode & SetMask) << 1;
+        int idx0 = (int)hashCode & SetMask;
+        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
         long hashPart = (hashCode >> HashShift) & HashMask;
 
-        SetCore(in key, value, setBase, hashPart);
+        SetCore(in key, value, idx0, idx1, hashPart);
     }
 
     /// <summary>
