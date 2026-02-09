@@ -279,7 +279,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .Done;
             changes = [new(_testAddress), Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges([new(0, _testAccountBalance)]).TestObject];
             yield return new TestCaseData(changes, code, null, false) { TestName = "selfdestruct" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "selfdestruct_oog" };
 
             code = Prepare.EvmCode
                 .PushData(slot)
@@ -330,8 +329,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                     .TestObject
             ];
             yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "call" };
-
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call_oog" };
 
             code = Prepare.EvmCode
                 .CallCode(_callTargetAddress, 20_000)
@@ -446,7 +443,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(TestItem.AddressB)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess) { TestName = "balance_oog" };
 
             code = Prepare.EvmCode
@@ -465,7 +462,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(TestItem.AddressB)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess) { TestName = "extcodesize_oog" };
 
             code = Prepare.EvmCode
@@ -475,7 +472,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(TestItem.AddressB)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(changes, code, null, GasCostOf.ColdAccountAccess) { TestName = "extcodehash_oog" };
 
             code = Prepare.EvmCode
@@ -488,7 +485,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(TestItem.AddressB)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(
                 changes,
                 code,
@@ -502,7 +499,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_callTargetAddress)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(
                 changes,
                 code,
@@ -541,7 +538,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_callTargetAddress)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(
                 changes,
                 code,
@@ -557,8 +554,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            Address createdAddress = ContractAddress.From(_testAddress, 1);
-            changes = [new AccountChanges(createdAddress)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(
                 changes,
                 code,
@@ -567,7 +563,6 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
             byte[] create2Salt = new byte[32];
             create2Salt[^1] = 1;
-            Address createdAddress2 = ContractAddress.From(_testAddress, create2Salt, new byte[32]);
             code = Prepare.EvmCode
                 .PushData(32)
                 .PushData(0)
@@ -578,7 +573,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(createdAddress2)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(
                 changes,
                 code,
@@ -592,7 +587,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject];
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).TestObject];
             yield return new TestCaseData(changes, code, null, GasCostOf.ColdSLoad) { TestName = "sload_oog" };
 
             code = Prepare.EvmCode
@@ -603,12 +598,12 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [Build.An.AccountChanges.WithAddress(_testAddress).WithStorageReads(slot).TestObject];
+            changes = [Build.An.AccountChanges.WithAddress(_testAddress).TestObject];
             yield return new TestCaseData(
                 changes,
                 code,
                 null,
-                GasCostOf.CallStipend + GasCostOf.ColdSLoad + GasCostOf.WarmStateRead + 1) { TestName = "sstore_oog" };
+                GasCostOf.CallStipend) { TestName = "sstore_oog" };
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -617,7 +612,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
                 .PushData(0)
                 .Op(Instruction.MSTORE)
                 .Done;
-            changes = [new AccountChanges(_testAddress), new AccountChanges(TestItem.AddressB)];
+            changes = [new AccountChanges(_testAddress)];
             yield return new TestCaseData(
                 changes,
                 code,
