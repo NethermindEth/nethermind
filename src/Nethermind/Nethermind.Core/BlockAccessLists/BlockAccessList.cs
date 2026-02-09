@@ -355,7 +355,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         // should never happen
         Debug.Fail("Error calculating pre tx balance");
-        return true;
+        throw new InvalidOperationException("Error calculating pre tx balance");
     }
 
     private bool HasStorageChangedDuringTx(Address address, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
@@ -396,7 +396,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         // should never happen
         Debug.Fail("Error calculating pre tx storage");
-        return true;
+        throw new InvalidOperationException("Error calculating pre tx storage");
     }
 
     private bool HasCodeChangedDuringTx(Address address, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
@@ -434,7 +434,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         // should never happen
         Debug.Fail("Error calculating pre tx code");
-        return true;
+        throw new InvalidOperationException("Error calculating pre tx code");
     }
 
     private AccountChanges GetOrAddAccountChanges(Address address)
