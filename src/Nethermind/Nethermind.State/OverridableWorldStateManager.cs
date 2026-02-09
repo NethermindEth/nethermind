@@ -29,4 +29,6 @@ public class OverridableWorldStateManager : IOverridableWorldScope
     {
         _dbProvider.ClearTempChanges();
     }
+
+    public void Dispose() { }
 }
