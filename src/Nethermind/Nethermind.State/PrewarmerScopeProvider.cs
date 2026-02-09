@@ -40,16 +40,26 @@ public class PrewarmerScopeProvider(
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
 
-    private sealed class ScopeWrapper(
-        IWorldStateScopeProvider.IScope baseScope,
-        PreBlockCaches preBlockCaches,
-        bool populatePreBlockCache)
-        : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
-        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
+        private readonly IWorldStateScopeProvider.IScope baseScope;
+        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
+        private readonly SeqlockCache<StorageCell, byte[]> storageCache;
+        private readonly bool populatePreBlockCache;
+        private readonly SeqlockCache<AddressAsKey, Account>.ValueFactory _getFromBaseTree;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
-        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private readonly PrewarmerGetTimeLabels _labels;
+
+        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
+        {
+            this.baseScope = baseScope;
+            preBlockCache = preBlockCaches.StateCache;
+            storageCache = preBlockCaches.StorageCache;
+            this.populatePreBlockCache = populatePreBlockCache;
+            _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+            _getFromBaseTree = GetFromBaseTree;
+        }
 
         public void Dispose() => baseScope.Dispose();
 
@@ -59,7 +69,7 @@ public class PrewarmerScopeProvider(
         {
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
-                preBlockCaches.StorageCache,
+                storageCache,
                 address,
                 populatePreBlockCache);
         }
@@ -114,7 +124,7 @@ public class PrewarmerScopeProvider(
             if (populatePreBlockCache)
             {
                 long priorReads = Metrics.ThreadLocalStateTreeReads;
-                Account? account = preBlockCache.GetOrAdd(address, GetFromBaseTree);
+                Account? account = preBlockCache.GetOrAdd(in addressAsKey, _getFromBaseTree);
 
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
@@ -129,7 +139,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
+                if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     baseScope.HintGet(address, account);
@@ -137,7 +147,7 @@ public class PrewarmerScopeProvider(
                 }
                 else
                 {
-                    account = GetFromBaseTree(addressAsKey);
+                    account = GetFromBaseTree(in addressAsKey);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -152,16 +162,30 @@ public class PrewarmerScopeProvider(
         }
     }
 
-    private sealed class StorageTreeWrapper(
-        IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, byte[]> preBlockCache,
-        Address address,
-        bool populatePreBlockCache
-    ) : IWorldStateScopeProvider.IStorageTree
+    private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
     {
+        private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
+        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;
+        private readonly Address address;
+        private readonly bool populatePreBlockCache;
+        private readonly SeqlockCache<StorageCell, byte[]>.ValueFactory _loadFromTreeStorage;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
-        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private readonly PrewarmerGetTimeLabels _labels;
+
+        public StorageTreeWrapper(
+            IWorldStateScopeProvider.IStorageTree baseStorageTree,
+            SeqlockCache<StorageCell, byte[]> preBlockCache,
+            Address address,
+            bool populatePreBlockCache)
+        {
+            this.baseStorageTree = baseStorageTree;
+            this.preBlockCache = preBlockCache;
+            this.address = address;
+            this.populatePreBlockCache = populatePreBlockCache;
+            _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+            _loadFromTreeStorage = LoadFromTreeStorage;
+        }
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
@@ -173,7 +197,7 @@ public class PrewarmerScopeProvider(
             {
                 long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
-                byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
+                byte[] value = preBlockCache.GetOrAdd(in storageCell, _loadFromTreeStorage);
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
@@ -189,15 +213,15 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
+                if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
-                    baseStorageTree.HintGet(index, value);
+                    baseStorageTree.HintGet(in index, value);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
                 {
-                    value = LoadFromTreeStorage(storageCell);
+                    value = LoadFromTreeStorage(in storageCell);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;

@@ -246,3 +246,100 @@ public class SeqlockCacheMixedWorkloadBenchmarks
         return hits;
     }
 }
+
+/// <summary>
+/// Benchmark measuring effective hit rate after populating with N keys.
+/// This directly measures the impact of collision rate.
+/// </summary>
+public class SeqlockCacheHitRateBenchmarks
+{
+    private SeqlockCache<StorageCell, byte[]> _seqlockCache = null!;
+    private StorageCell[] _keys = null!;
+    private byte[][] _values = null!;
+
+    [Params(1000, 5000, 10000, 20000)]
+    public int KeyCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _seqlockCache = new SeqlockCache<StorageCell, byte[]>();
+        _keys = new StorageCell[KeyCount];
+        _values = new byte[KeyCount][];
+
+        var random = new Random(42);
+        for (int i = 0; i < KeyCount; i++)
+        {
+            var addressBytes = new byte[20];
+            random.NextBytes(addressBytes);
+            _keys[i] = new StorageCell(new Address(addressBytes), new UInt256((ulong)i));
+            _values[i] = new byte[32];
+            random.NextBytes(_values[i]);
+            _seqlockCache.Set(in _keys[i], _values[i]);
+        }
+    }
+
+    [Benchmark]
+    public double MeasureHitRate()
+    {
+        int hits = 0;
+        for (int i = 0; i < KeyCount; i++)
+        {
+            if (_seqlockCache.TryGetValue(in _keys[i], out byte[]? val) && ReferenceEquals(val, _values[i]))
+                hits++;
+        }
+        return (double)hits / KeyCount * 100;
+    }
+}
+
+[MemoryDiagnoser]
+public class SeqlockCacheCallSiteBenchmarks
+{
+    private SeqlockCache<StorageCell, byte[]> _cache = null!;
+    private SeqlockCache<StorageCell, byte[]>.ValueFactory _cachedFactory = null!;
+    private StorageCell _key;
+    private byte[] _value = null!;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _cache = new SeqlockCache<StorageCell, byte[]>();
+
+        byte[] addressBytes = new byte[20];
+        new Random(123).NextBytes(addressBytes);
+        _key = new StorageCell(new Address(addressBytes), UInt256.One);
+        _value = new byte[32];
+
+        _cache.Set(in _key, _value);
+        _cachedFactory = LoadFromBackingStore;
+    }
+
+    [Benchmark(Baseline = true)]
+    public byte[]? GetOrAdd_Hit_PerCallMethodGroup()
+    {
+        return _cache.GetOrAdd(in _key, LoadFromBackingStore);
+    }
+
+    [Benchmark]
+    public byte[]? GetOrAdd_Hit_CachedDelegate()
+    {
+        return _cache.GetOrAdd(in _key, _cachedFactory);
+    }
+
+    [Benchmark]
+    public bool TryGetValue_WithIn()
+    {
+        return _cache.TryGetValue(in _key, out _);
+    }
+
+    [Benchmark]
+    public bool TryGetValue_WithoutIn()
+    {
+        return _cache.TryGetValue(_key, out _);
+    }
+
+    private byte[] LoadFromBackingStore(in StorageCell _)
+    {
+        return _value;
+    }
+}
