@@ -19,9 +19,7 @@ using NSubstitute;
 
 namespace Nethermind.Synchronization.Test;
 
-public class TestSynchronizerModule(
-    ISyncConfig syncConfig,
-    Func<INodeStorage, ILogManager, ISnapTrieFactory>? factoryCreator = null) : Module
+public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -39,14 +37,5 @@ public class TestSynchronizerModule(
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<CancelOnDisposeToken>()
             .AddSingleton<ILogManager>(LimboLogs.Instance);
-
-        // Override factory if provided (must come after SynchronizerModule to override)
-        if (factoryCreator is not null)
-        {
-            builder.Register(c => factoryCreator(
-                c.Resolve<INodeStorage>(),
-                c.Resolve<ILogManager>()
-            )).As<ISnapTrieFactory>().SingleInstance();
-        }
     }
 }

@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.SnapSync
             using ISnapTree tree = factory.CreateStateTree();
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
-            for (var index = 0; index < accounts.Count; index++)
+            for (int index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
                 Account accountValue = account.Account;
@@ -42,14 +42,14 @@ namespace Nethermind.Synchronization.SnapSync
                 Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
             }
 
-            var (result, moreChildrenToRight, _) = CommitRange(
+            (AddRangeResult result, bool moreChildrenToRight, _) = CommitRange(
                 tree, entries, startingHash, limitHash, expectedRootHash, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
-            for (var index = 0; index < accounts.Count; index++)
+            for (int index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
 
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
-            for (var index = 0; index < slots.Count; index++)
+            for (int index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
 
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                 entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             }
 
-            var (result, moreChildrenToRight, isRootPersisted) = CommitRange(
+            (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) = CommitRange(
                 tree, entries, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, tree.RootHash, false);
@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 // Special case with some server sending proof where the root is the same as the only path.
                 // Without this the proof's IsBoundaryNode flag will cause the key to not get saved.
-                var rootPath = TreePath.FromNibble(root.Key);
+                TreePath rootPath = TreePath.FromNibble(root.Key);
                 if (rootPath.Length == 64 && rootPath.Path.Equals(endHash))
                 {
                     return (AddRangeResult.OK, null, false);
@@ -385,7 +385,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     stitchToTheRoot = true;
 
-                    foreach (var valueTuple in sortedBoundaryList)
+                    foreach ((TrieNode, TreePath) valueTuple in sortedBoundaryList)
                     {
                         if (valueTuple.Item1.IsBoundaryProofNode)
                         {

@@ -497,7 +497,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void TrackAccountToHeal(ValueHash256 path)
         {
-            _logger.Warn($"Tracked {path} for healing");
+            if (_logger.IsDebug) _logger.Debug($"Tracked {path} for healing");
             _pivot.UpdatedStorages.Add(path.ToCommitment());
         }
 

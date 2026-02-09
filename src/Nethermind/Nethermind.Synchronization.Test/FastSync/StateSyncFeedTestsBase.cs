@@ -130,14 +130,12 @@ public abstract class StateSyncFeedTestsBase(
                 $"{GetType().Name}{remote.StateTree.RootHash}{TestChainLength}",
                 () => Build.A.BlockTree().WithStateRoot(remote.StateTree.RootHash).OfChainLength(TestChainLength)))
 
-            .Add<SafeContext>();
+            .Add<SafeContext>()
 
-        // State DB and INodeStorage are needed by SynchronizerModule components (e.g. PathNodeRecovery)
-        containerBuilder
+            // State DB and INodeStorage are needed by SynchronizerModule components (e.g. PathNodeRecovery)
             .AddKeyedSingleton<IDb>(DbNames.State, (_) => new TestMemDb())
-            .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)));
+            .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
 
-        containerBuilder
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<IStateSyncTestOperation, LocalDbContext>();
 
