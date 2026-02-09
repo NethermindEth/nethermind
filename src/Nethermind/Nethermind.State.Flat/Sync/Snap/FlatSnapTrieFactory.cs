@@ -7,7 +7,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Synchronization.SnapSync;
 
-namespace Nethermind.State.Flat.Sync;
+namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
 /// ISnapTrieFactory implementation for flat state storage.
@@ -51,5 +51,4 @@ public class FlatSnapTrieFactory(IPersistence persistence, ILogManager logManage
             _databaseInitiallyCleared = true;
         }
     }
-
 }

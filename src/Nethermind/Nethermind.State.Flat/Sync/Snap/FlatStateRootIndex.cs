@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State.Flat.Sync;
+namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
 /// Tracks mapping from state root hash to StateId for serving snap sync requests.
