@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -15,7 +16,8 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 public class MultiVersionMemoryScopeProvider(
     Version version,
     IWorldStateScopeProvider baseProvider,
-    MultiVersionMemory multiVersionMemory)
+    MultiVersionMemory multiVersionMemory,
+    FeeAccumulator feeAccumulator)
     : IWorldStateScopeProvider
 {
     public HashSet<Read<StorageCell>> ReadSet { get; private set; } = null!;
@@ -27,7 +29,8 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = new(); //TODO: object poolling?
         WriteSet = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, ReadSet, WriteSet);
+        feeAccumulator.ClearFee(version.TxIndex);
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, ReadSet, WriteSet, feeAccumulator);
     }
 
     private static TResult Get<TStorage, TResult>(
@@ -61,7 +64,8 @@ public class MultiVersionMemoryScopeProvider(
         IWorldStateScopeProvider.IScope baseScope,
         MultiVersionMemory multiVersionMemory,
         HashSet<Read<StorageCell>> readSet,
-        Dictionary<StorageCell, object> writeSet) : IWorldStateScopeProvider.IScope
+        Dictionary<StorageCell, object> writeSet,
+        FeeAccumulator feeAccumulator) : IWorldStateScopeProvider.IScope
     {
         public void Dispose() => baseScope.Dispose();
 
@@ -69,13 +73,29 @@ public class MultiVersionMemoryScopeProvider(
 
         public void UpdateRootHash() => baseScope.UpdateRootHash();
 
-        public Account? Get(Address address) => Get<IWorldStateScopeProvider.IScope, Account?>(
-            new StorageCell(address),
-            version.TxIndex,
-            multiVersionMemory,
-            readSet,
-            baseScope,
-            static (scope, location) => scope.Get(location.Address));
+        public Account? Get(Address address)
+        {
+            int txIndex = version.TxIndex;
+            Account? result = Get<IWorldStateScopeProvider.IScope, Account?>(
+                new StorageCell(address),
+                txIndex,
+                multiVersionMemory,
+                readSet,
+                baseScope,
+                static (scope, location) => scope.Get(location.Address));
+
+            if (feeAccumulator.IsFeeRecipient(address))
+            {
+                UInt256 accumulatedFees = feeAccumulator.GetAccumulatedFees(address, txIndex);
+                if (!accumulatedFees.IsZero)
+                {
+                    result ??= Account.TotallyEmpty;
+                    result = result.WithChangedBalance(result.Balance + accumulatedFees);
+                }
+            }
+
+            return result;
+        }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
@@ -85,22 +105,41 @@ public class MultiVersionMemoryScopeProvider(
             new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-            new MultiVersionMemoryWriteBatch(version, multiVersionMemory, readSet, writeSet);
+            new MultiVersionMemoryWriteBatch(version, writeSet, feeAccumulator);
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
         private class MultiVersionMemoryWriteBatch(
             Version version,
-            MultiVersionMemory multiVersionMemory,
-            HashSet<Read<StorageCell>> readSet,
-            Dictionary<StorageCell, object> writeSet) : IWorldStateScopeProvider.IWorldStateWriteBatch
+            Dictionary<StorageCell, object> writeSet,
+            FeeAccumulator feeAccumulator) : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
-            public void Dispose() => multiVersionMemory.Record(version, readSet, writeSet);
+            private readonly Dictionary<Address, Account?> _previousFeeAccounts = new();
+
+            public void Dispose() => feeAccumulator.MarkCommitted(version.TxIndex);
 
             public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
             public void Set(Address key, Account? account)
             {
+                if (feeAccumulator.IsFeeRecipient(key))
+                {
+                    ref Account? prevAccount = ref CollectionsMarshal.GetValueRefOrAddDefault(_previousFeeAccounts, key, out bool exists);
+                    if (exists)
+                    {
+                        UInt256 prevBalance = prevAccount?.Balance ?? UInt256.Zero;
+                        UInt256 newBalance = account?.Balance ?? UInt256.Zero;
+                        if (newBalance > prevBalance)
+                        {
+                            UInt256 feeDelta = newBalance - prevBalance;
+                            feeAccumulator.RecordFee(version.TxIndex, key, feeDelta);
+                        }
+                    }
+                    _previousFeeAccounts[key] = account;
+                    OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
+                    return;
+                }
+
                 writeSet[new StorageCell(key)] = account;
                 OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
             }
@@ -125,7 +164,7 @@ public class MultiVersionMemoryScopeProvider(
             HashSet<Read<StorageCell>> readSet)
             : IWorldStateScopeProvider.IStorageTree
         {
-            public Hash256 RootHash => throw new NotImplementedException();
+            public Hash256 RootHash => throw new NotSupportedException($"{nameof(MultiVersionMemoryStorageTree)}.{nameof(RootHash)} is not supported.");
 
             public byte[] Get(in UInt256 index) => Get<IWorldStateScopeProvider.IStorageTree, byte[]>(
                 new StorageCell(address, index),

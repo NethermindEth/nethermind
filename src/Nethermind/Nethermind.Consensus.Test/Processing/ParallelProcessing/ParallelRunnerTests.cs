@@ -195,13 +195,14 @@ public class ParallelRunnerTests
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();
 
-        public Status TryExecute(Version version, out int? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
+        public Status TryExecute(Version version, out int? blockingTx, out bool wroteNewLocation)
         {
             int txIndex = version.TxIndex;
-            readSet = _readSets[txIndex];
+            HashSet<Read<int>> readSet = _readSets[txIndex];
             readSet.Clear();
-            writeSet = _writeSets[txIndex];
+            Dictionary<int, byte[]> writeSet = _writeSets[txIndex];
             writeSet.Clear();
+            wroteNewLocation = false;
             Operation[] operations = operationsPerTx[txIndex];
             byte[] lastRead = null;
 
@@ -226,6 +227,7 @@ public class ParallelRunnerTests
                                         break;
                                     case Status.ReadError:
                                         blockingTx = v.TxIndex;
+                                        wroteNewLocation = false;
                                         return Status.ReadError;
                                 }
                             }
@@ -241,6 +243,7 @@ public class ParallelRunnerTests
                 }
             }
 
+            wroteNewLocation = memory.Record(version, readSet, writeSet);
             blockingTx = null;
             return Status.Ok;
         }

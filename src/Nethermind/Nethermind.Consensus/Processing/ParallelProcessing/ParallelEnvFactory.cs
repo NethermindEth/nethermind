@@ -11,14 +11,15 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 public class ParallelEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetime)
 {
-    public ParallelAutoReadOnlyTxProcessingEnv Create(Version version, MultiVersionMemory multiVersionMemory, PreBlockCaches preBlockCaches)
+    public ParallelAutoReadOnlyTxProcessingEnv Create(Version version, MultiVersionMemory multiVersionMemory, PreBlockCaches preBlockCaches, FeeAccumulator feeAccumulator)
     {
         MultiVersionMemoryScopeProvider worldState = new(
             version,
             new PrewarmerScopeProvider(worldStateManager.CreateResettableWorldState(),
                 preBlockCaches,
                 populatePreBlockCache: true),
-            multiVersionMemory
+            multiVersionMemory,
+            feeAccumulator
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope(builder =>

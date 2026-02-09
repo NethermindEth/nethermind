@@ -8,11 +8,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -39,10 +41,11 @@ public class ParallelBlockValidationTransactionsExecutor(
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
+        FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler, feeAccumulator);
         using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
         parallelRunner.Run().GetAwaiter().GetResult();
-        PushChanges(stateProvider, multiVersionMemory);
+        PushChanges(stateProvider, multiVersionMemory, feeAccumulator);
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
         return receipts;
     }
@@ -72,7 +75,7 @@ public class ParallelBlockValidationTransactionsExecutor(
         }
     }
 
-    private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory)
+    private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory, FeeAccumulator feeAccumulator)
     {
         Dictionary<StorageCell, object> result = multiVersionMemory.Snapshot();
         foreach (KeyValuePair<StorageCell, object> changes in result)
@@ -82,6 +85,29 @@ public class ParallelBlockValidationTransactionsExecutor(
                 case Account account: worldState.SetAccount(changes.Key.Address, account); break;
                 case byte[] value: worldState.Set(changes.Key, value); break;
                 case { } o when o == MultiVersionMemory.SelfDestructMonit: worldState.ClearStorage(changes.Key.Address); break;
+            }
+        }
+
+        ApplyAccumulatedFees(worldState, feeAccumulator, _blockExecutionContext.Spec);
+    }
+
+    private static void ApplyAccumulatedFees(IWorldState worldState, FeeAccumulator feeAccumulator, IReleaseSpec spec)
+    {
+        ApplyFees(feeAccumulator.GasBeneficiary);
+        if (feeAccumulator.FeeCollector != feeAccumulator.GasBeneficiary)
+        {
+            ApplyFees(feeAccumulator.FeeCollector);
+        }
+
+        void ApplyFees(Address? address)
+        {
+            if (address is not null)
+            {
+                UInt256 totalFees = feeAccumulator.GetTotalFees(address);
+                if (!totalFees.IsZero)
+                {
+                    worldState.AddToBalanceAndCreateIfNotExists(address, totalFees, spec);
+                }
             }
         }
     }
@@ -102,15 +128,17 @@ public class ParallelTransactionProcessor(
     PreBlockCaches preBlockCaches,
     TxReceipt[] receipts,
     in BlockExecutionContext blockExecutionContext,
-    ITransactionProcessedEventHandler? transactionProcessedEventHandler) : IParallelTransactionProcessor<StorageCell, object>
+    ITransactionProcessedEventHandler? transactionProcessedEventHandler,
+    FeeAccumulator? feeAccumulator = null) : IParallelTransactionProcessor<StorageCell, object>
 {
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new DefaultPooledObjectPolicy<BlockReceiptsTracer>());
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;
 
-    public Status TryExecute(Version version, out int? blockingTx, out HashSet<Read<StorageCell>> readSet, out Dictionary<StorageCell, object> writeSet)
+    public Status TryExecute(Version version, out int? blockingTx, out bool wroteNewLocation)
     {
         int txIndex = version.TxIndex;
         blockingTx = null;
+        wroteNewLocation = false;
         Transaction transaction = block.Transactions[txIndex];
 
         using IReadOnlyTxProcessingScope scope = CreateProcessingScope(
@@ -141,15 +169,14 @@ public class ParallelTransactionProcessor(
         finally
         {
             _tracers.Return(tracer);
-            readSet = env.WorldStateScopeProvider.ReadSet;
-            writeSet = env.WorldStateScopeProvider.WriteSet;
+            wroteNewLocation = multiVersionMemory.Record(version, env.WorldStateScopeProvider.ReadSet, env.WorldStateScopeProvider.WriteSet);
         }
 
         IReadOnlyTxProcessingScope CreateProcessingScope(
             out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv environment,
             out ITransactionProcessor txProcessor)
         {
-            environment = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches);
+            environment = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches, feeAccumulator);
             IReadOnlyTxProcessingScope s = environment.Build(parentBlock);
             txProcessor = s.TransactionProcessor;
             txProcessor.SetBlockExecutionContext(_blockExecutionContext);

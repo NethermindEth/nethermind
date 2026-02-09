@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -104,10 +103,17 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// and inform <see cref="ParallelScheduler{TLogger}"/> that it finished.
     /// Scheduler may return a validation task for this transaction as it will be the next high-priority.
     /// </remarks>
-    private TxTask TryExecute(TxTask task) =>
-        parallelTransactionProcessor.TryExecute(task.Version, out int? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
-            ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null")) ? task : TxTask.Empty
-            : scheduler.FinishExecution(task.Version, memory.Record(task.Version, readSet, writeSet));
+    private TxTask TryExecute(TxTask task)
+    {
+        Status status = parallelTransactionProcessor.TryExecute(task.Version, out int? blockingTx, out bool wroteNewLocation);
+        if (status == Status.ReadError)
+        {
+            ParallelProcessingMetrics.IncrementBlockedReads();
+            return !scheduler.AbortExecution(task.Version.TxIndex, blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null")) ? task : TxTask.Empty;
+        }
+
+        return scheduler.FinishExecution(task.Version, wroteNewLocation);
+    }
 
 
     /// <summary>
@@ -124,6 +130,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         bool aborted = !memory.ValidateReadSet(version.TxIndex) && scheduler.TryValidationAbort(version);
         if (aborted)
         {
+            ParallelProcessingMetrics.IncrementReexecutions();
             memory.ConvertWritesToEstimates(version.TxIndex);
         }
 
@@ -150,8 +157,7 @@ public interface IParallelTransactionProcessor<TLocation, TData> where TLocation
     /// </summary>
     /// <param name="version">Transaction information</param>
     /// <param name="blockingTx">Information about transaction this one depends on as it is expected to write to a location this one reads</param>
-    /// <param name="readSet">All locations read by the transaction</param>
-    /// <param name="writeSet">All locations and values written by the transaction</param>
+    /// <param name="wroteNewLocation">True if any new location was written that wasn't written by the previous incarnation</param>
     /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
-    public Status TryExecute(Version version, out int? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
+    public Status TryExecute(Version version, out int? blockingTx, out bool wroteNewLocation);
 }

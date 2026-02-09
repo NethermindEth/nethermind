@@ -364,6 +364,8 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     /// <returns>potentially same tx incarnation to execute</returns>
     public TxTask FinishValidation(int txIndex, bool aborted)
     {
+        ParallelProcessingMetrics.IncrementRevalidations();
+
         // if aborted
         if (aborted)
         {

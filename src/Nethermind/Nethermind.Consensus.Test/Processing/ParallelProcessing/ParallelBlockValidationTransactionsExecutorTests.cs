@@ -86,6 +86,39 @@ public class ParallelBlockValidationTransactionsExecutorTests
             await Single.AddBlock(transactions);
         }
 
+        public (Block Parallel, Block Single) ProcessBlockWithFeeRecipients(Address beneficiary, Address feeCollector, params Transaction[] transactions)
+        {
+            BlockHeader parallelHead = Parallel.BlockTree.Head!.Header;
+            BlockHeader singleHead = Single.BlockTree.Head!.Header;
+
+            Block parallelBlock = Build.A.Block
+                .WithTransactions(transactions)
+                .WithParent(parallelHead)
+                .WithBeneficiary(beneficiary)
+                .WithBaseFeePerGas(1.GWei())
+                .TestObject;
+
+            Block singleBlock = Build.A.Block
+                .WithTransactions(transactions)
+                .WithParent(singleHead)
+                .WithBeneficiary(beneficiary)
+                .WithBaseFeePerGas(1.GWei())
+                .TestObject;
+
+            OverridableReleaseSpec parallelSpec = (OverridableReleaseSpec)Parallel.SpecProvider.GetSpec(parallelBlock.Header);
+            OverridableReleaseSpec singleSpec = (OverridableReleaseSpec)Single.SpecProvider.GetSpec(singleBlock.Header);
+            parallelSpec.FeeCollector = feeCollector;
+            singleSpec.FeeCollector = feeCollector;
+
+            using IDisposable parallelScope = Parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
+            using IDisposable singleScope = Single.MainProcessingContext.WorldState.BeginScope(singleHead);
+
+            (Block pBlock, _) = Parallel.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec);
+            (Block sBlock, _) = Single.MainProcessingContext.BlockProcessor.ProcessOne(singleBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, singleSpec);
+
+            return (pBlock, sBlock);
+        }
+
         public ValueTask DisposeAsync()
         {
             Parallel.Dispose();
@@ -169,6 +202,108 @@ public class ParallelBlockValidationTransactionsExecutorTests
             }
             yield return Test("15 Transactions from 3 senders", manyTxs);
         }
+    }
+
+    public static IEnumerable<TestCaseData> FeeRecipientTransferTests
+    {
+        get
+        {
+            // GasBeneficiary sends a transaction while receiving fees from all
+            yield return new TestCaseData(
+                TestItem.AddressA, null,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),
+                    Tx(TestItem.PrivateKeyB, TestItem.AddressF, 0, 2.Ether()),
+                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                })
+            { TestName = "GasBeneficiary sends one transaction" };
+
+            // GasBeneficiary sends multiple transactions with nonce dependency
+            yield return new TestCaseData(
+                TestItem.AddressA, null,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 1, 2.Ether()),
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 2, 3.Ether()),
+                })
+            { TestName = "GasBeneficiary sends multiple transactions with nonce dependency" };
+
+            // FeeCollector sends a transaction while receiving base fees
+            yield return new TestCaseData(
+                TestItem.AddressF, TestItem.AddressB,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),
+                    Tx(TestItem.PrivateKeyB, TestItem.AddressF, 0, 2.Ether()),  // FeeCollector sends
+                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                })
+            { TestName = "FeeCollector sends one transaction" };
+
+            // FeeCollector sends multiple transactions with nonce dependency
+            yield return new TestCaseData(
+                TestItem.AddressF, TestItem.AddressA,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 1, 2.Ether()),
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 2, 3.Ether()),
+                })
+            { TestName = "FeeCollector sends multiple transactions with nonce dependency" };
+
+            // Both GasBeneficiary and FeeCollector send transactions
+            yield return new TestCaseData(
+                TestItem.AddressA, TestItem.AddressB,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),  // GasBeneficiary sends
+                    Tx(TestItem.PrivateKeyB, TestItem.AddressF, 0, 2.Ether()),  // FeeCollector sends
+                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                })
+            { TestName = "Both GasBeneficiary and FeeCollector send transactions" };
+
+            // GasBeneficiary and FeeCollector are the same address
+            yield return new TestCaseData(
+                TestItem.AddressA, TestItem.AddressA,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),  // Same address gets both fees
+                    Tx(TestItem.PrivateKeyB, TestItem.AddressF, 0, 2.Ether()),
+                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                })
+            { TestName = "GasBeneficiary and FeeCollector are the same address" };
+
+            // GasBeneficiary not involved in any transaction — only receives fees (single Set() per tx)
+            yield return new TestCaseData(
+                TestItem.AddressD, null,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),
+                    Tx(TestItem.PrivateKeyB, TestItem.AddressF, 0, 2.Ether()),
+                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                })
+            { TestName = "GasBeneficiary not involved in any transaction" };
+
+            // FeeCollector not involved in any transaction — only receives base fees
+            yield return new TestCaseData(
+                TestItem.AddressF, TestItem.AddressD,
+                new[]
+                {
+                    Tx(TestItem.PrivateKeyA, TestItem.AddressF, 0, 1.Ether()),
+                    Tx(TestItem.PrivateKeyB, TestItem.AddressF, 0, 2.Ether()),
+                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                })
+            { TestName = "FeeCollector not involved in any transaction" };
+        }
+    }
+
+    [TestCaseSource(nameof(FeeRecipientTransferTests))]
+    public async Task Fee_recipient_transfer_tests(Address beneficiary, Address feeCollector, Transaction[] transactions)
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create();
+        BlockPair blocks = chains.ProcessBlockWithFeeRecipients(beneficiary, feeCollector, transactions);
+        blocks.AssertStateRootsMatch();
     }
 
     public static IEnumerable<TestCaseData> ContractBlocksTests
