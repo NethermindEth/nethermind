@@ -252,11 +252,96 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "call" };
 
             // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "call_oog" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "callcode" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "delegatecall" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "staticcall" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create" };
-            // yield return new TestCaseData(code, new Dictionary<Address, AccountChanges>{{_testAddress, readAccount}}) { TestName = "create2" };
+
+            code = Prepare.EvmCode
+                .CallCode(_callTargetAddress, 20_000)
+                .Done;
+            changes = [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithNonceChanges([new(0, 1)])
+                    .WithBalanceChanges([new(0, _testAccountBalance)])
+                    .WithStorageReads(slot)
+                    .TestObject,
+                new AccountChanges(_callTargetAddress)
+            ];
+            // storage read happens in test account context
+            yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "callcode" };
+
+            code = Prepare.EvmCode
+                .DelegateCall(_callTargetAddress, 20_000)
+                .Done;
+            changes = [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithNonceChanges([new(0, 1)])
+                    .WithBalanceChanges([new(0, _testAccountBalance)])
+                    .WithStorageReads(slot)
+                    .TestObject,
+                new AccountChanges(_callTargetAddress)
+            ];
+            // storage read happens in test account context
+            yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "delegatecall" };
+
+            code = Prepare.EvmCode
+                .StaticCall(_callTargetAddress, 20_000)
+                .Done;
+            changes = [
+                testAccount,
+                Build.An.AccountChanges
+                    .WithAddress(_callTargetAddress)
+                    .WithStorageReads(slot)
+                    .TestObject
+            ];
+            yield return new TestCaseData(changes, code, callTargetCode, false) { TestName = "staticcall" };
+
+            byte[] createdRuntimeCode = Prepare.EvmCode
+                .Op(Instruction.STOP)
+                .Done;
+            byte[] createInitCode = Prepare.EvmCode
+                .PushData(slot)
+                .Op(Instruction.SLOAD)
+                .ForInitOf(createdRuntimeCode)
+                .Done;
+            Address createdAddress = ContractAddress.From(_testAddress, 1);
+            code = Prepare.EvmCode
+                .Create(createInitCode, 0)
+                .Done;
+            changes = [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithNonceChanges([new(0, 2)])
+                    .WithBalanceChanges([new(0, _testAccountBalance)])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(createdAddress)
+                    .WithNonceChanges([new(0, 1)])
+                    .WithStorageReads(slot)
+                    .WithCodeChanges([new(0, createdRuntimeCode)])
+                    .TestObject
+            ];
+            yield return new TestCaseData(changes, code, null, false) { TestName = "create" };
+
+            byte[] create2Salt = new byte[32];
+            create2Salt[^1] = 1;
+            Address createdAddress2 = ContractAddress.From(_testAddress, create2Salt, createInitCode);
+            code = Prepare.EvmCode
+                .Create2(createInitCode, create2Salt, 0)
+                .Done;
+            changes = [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithNonceChanges([new(0, 2)])
+                    .WithBalanceChanges([new(0, _testAccountBalance)])
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(createdAddress2)
+                    .WithNonceChanges([new(0, 1)])
+                    .WithStorageReads(slot)
+                    .WithCodeChanges([new(0, createdRuntimeCode)])
+                    .TestObject
+            ];
+            yield return new TestCaseData(changes, code, null, false) { TestName = "create2" };
 
             code = Prepare.EvmCode
                 .CallWithInput(PrecompiledAddresses.Identity, 20_000, [1, 2, 3, 4])
