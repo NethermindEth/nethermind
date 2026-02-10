@@ -229,7 +229,12 @@ public class XdcTestBlockchain : TestBlockchain
                 return txPool;
             })
 
-            .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
+            .AddSingleton<TestProcessExitManager>()
+            .AddSingleton<IProcessExitSource>((ctx) =>
+            {
+                var exitManager = ctx.Resolve<TestProcessExitManager>();
+                return new ProcessExitSource(exitManager.Token);
+            })
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
