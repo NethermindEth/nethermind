@@ -228,7 +228,6 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.ProtectorReward = 1.0;    // 1 Ether per protector
         xdcSpec.ObserverReward = 0.5;     // 0.5 Ether per observer
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
-        xdcSpec.LimitPenaltyEpoch = 2;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
         xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
