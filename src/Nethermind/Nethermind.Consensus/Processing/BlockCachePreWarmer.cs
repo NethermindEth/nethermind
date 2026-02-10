@@ -57,7 +57,7 @@ public sealed class BlockCachePreWarmer(
         if (preBlockCaches is not null)
         {
             CacheType result = preBlockCaches.ClearCaches();
-            result |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+            nodeStorageCache.ClearCaches();
             nodeStorageCache.Enabled = true;
             if (result != default)
             {
