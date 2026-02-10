@@ -82,7 +82,7 @@ public class NodeLifecycleManagerTests
         IMsgSender udpClient = Substitute.For<IMsgSender>();
 
         SimpleFilePublicKeyDb discoveryDb = new("Test", "test", logManager);
-        _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, null, logManager);
+        _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, new NetworkConfig(), logManager);
         _discoveryManager.MsgSender = udpClient;
 
         _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
