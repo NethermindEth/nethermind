@@ -14,7 +14,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -92,7 +91,6 @@ public class BranchProcessor(
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
-            WorldStateScopeProviderMetricsDecorator? metricsDecorator = _stateProvider.ScopeProvider as WorldStateScopeProviderMetricsDecorator;
 
             for (int i = 0; i < blocksCount; i++)
             {
@@ -148,10 +146,6 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    if (metricsDecorator is not null)
-                    {
-                        Metrics.StateMerkleizationTime = metricsDecorator.StateMerkleizationTime;
-                    }
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -175,7 +169,6 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
-                metricsDecorator?.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler

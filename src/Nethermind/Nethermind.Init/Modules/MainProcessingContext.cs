@@ -32,7 +32,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     {
 
         IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
-        worldState = new WorldStateScopeProviderMetricsDecorator(worldState);
+        WorldStateScopeProviderMetricsDecorator metricsDecorator = new WorldStateScopeProviderMetricsDecorator(worldState);
+        worldState = metricsDecorator;
         if (logManager.GetClassLogger<WorldStateScopeOperationLogger>().IsTrace)
         {
             worldState = new WorldStateScopeOperationLogger(worldState, logManager);
@@ -48,7 +49,15 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddModule(mainProcessingModules)
 
                 .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
-                    new BlockchainProcessor(
+                {
+                    // Subscribe to block processed event to update metrics
+                    branchProcessor.BlockProcessed += (sender, args) =>
+                    {
+                        Blockchain.Metrics.StateMerkleizationTime = metricsDecorator.StateMerkleizationTime;
+                        metricsDecorator.Reset();
+                    };
+                    
+                    return new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
                         compositeBlockPreprocessorStep,
@@ -62,7 +71,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                         processingStats)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
-                    })
+                    };
+                })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.
