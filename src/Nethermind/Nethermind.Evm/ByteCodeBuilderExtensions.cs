@@ -12,7 +12,6 @@ namespace Nethermind.Evm
     ///
     public static class BytecodeBuilder
     {
-        #region helper_functions
         internal static Prepare PushSingle(this Prepare @this, UInt256? value)
         {
             if (value is not null)
@@ -45,11 +44,9 @@ namespace Nethermind.Evm
             }
             return @this;
         }
-        #endregion
 
         public static Prepare COMMENT(this Prepare @this, string comment) => @this;
 
-        #region opcodes_with_0_arg
         public static Prepare STOP(this Prepare @this)
             => @this.Op(Instruction.STOP);
 
@@ -105,9 +102,7 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.INVALID);
         public static Prepare CLZ(this Prepare @this)
             => @this.Op(Instruction.CLZ);
-        #endregion
 
-        #region opcodes_with_1_arg
         public static Prepare SELFDESTRUCT(this Prepare @this, Address? address = null)
             => @this.PushSingle(address)
                     .Op(Instruction.SELFDESTRUCT);
@@ -146,9 +141,7 @@ namespace Nethermind.Evm
         public static Prepare ISZERO(this Prepare @this, UInt256? val = null)
             => @this.PushSingle(val)
                     .Op(Instruction.ISZERO);
-        #endregion
 
-        #region opcodes_with_2_args
         public static Prepare ADD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.ADD);
@@ -246,9 +239,7 @@ namespace Nethermind.Evm
         public static Prepare REVERT(this Prepare @this, UInt256? pos = null, UInt256? len = null)
             => @this.PushSequence(len, pos)
                     .Op(Instruction.REVERT);
-        #endregion
 
-        #region opcodes_with_3_args
         public static Prepare MCOPY(this Prepare @this, UInt256? dst = null, UInt256? src = null, UInt256? len = null)
             => @this.PushSequence(len, src, dst)
                     .Op(Instruction.MCOPY);
@@ -271,9 +262,7 @@ namespace Nethermind.Evm
         public static Prepare RETURNDATACOPY(this Prepare @this, UInt256? dest = null, UInt256? src = null, UInt256? len = null)
             => @this.PushSequence(len, src, dest)
                     .Op(Instruction.RETURNDATACOPY);
-        #endregion
 
-        #region opcodes_with_4+_args
         public static Prepare CALL(this Prepare @this, UInt256? gasLim = null,
                                         Address? codeSrc = null, UInt256? callValue = null,
                                         UInt256? dataOffset = null, UInt256? dataLength = null,
@@ -310,6 +299,5 @@ namespace Nethermind.Evm
             => @this.PushSequence(len, src, dest)
                     .PushSingle(codeSrc)
                     .Op(Instruction.EXTCODECOPY);
-        #endregion
     }
 }
