@@ -311,14 +311,14 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compactor));
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
     }
 
     [Test]
     public void CompactSnapshotBundle_UsesMidCompactorUsageNonBoundary()
     {
         StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(15, Keccak.Zero);
+        StateId to = new StateId(8, Keccak.Zero);
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
@@ -327,7 +327,7 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.MidCompactor));
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact8));
     }
 
 [Test]
@@ -422,12 +422,23 @@ public class SnapshotCompactorTests
     [TestCase(10)] // 10 & -10 = 2 < MinCompactSize(4)
     public void GetSnapshotsToCompact_BelowMinCompactSize_ReturnsEmpty(long blockNumber)
     {
-        BuildSnapshotChain(0, blockNumber);
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 16, MinCompactSize = 4 };
+        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
+        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, repo, LimboLogs.Instance);
+
+        for (long i = 0; i < blockNumber; i++)
+        {
+            StateId from = CreateStateId(i);
+            StateId to = CreateStateId(i + 1);
+            Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            repo.TryAddSnapshot(snapshot);
+            repo.AddStateId(to);
+        }
 
         StateId targetTo = CreateStateId(blockNumber);
-        _snapshotRepository.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
 
-        using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot!);
+        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
 
         Assert.That(snapshots.Count, Is.EqualTo(0));
         targetSnapshot!.Dispose();

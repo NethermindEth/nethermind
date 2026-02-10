@@ -101,7 +101,6 @@ public class SnapshotCompactor : ISnapshotCompactor
 
         long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
-        // _logger.Info($"Snapshot range for {blockNumber}, {startingBlockNumber} -> {blockNumber}. size: {compactSize}");
 
         bool snapshotsOk = false;
         try
@@ -112,7 +111,6 @@ public class SnapshotCompactor : ISnapshotCompactor
             {
                 // Could happen especially at start where the block may not be aligned, but not a big problem.
                 if (_logger.IsDebug) _logger.Debug($"Unable to compile snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
-                if (_logger.IsInfo) _logger.Info($"Unable to compile snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
 
                 return SnapshotPooledList.Empty();
             }
@@ -134,9 +132,8 @@ public class SnapshotCompactor : ISnapshotCompactor
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        ResourcePool.Usage usage = (to.BlockNumber % _compactSize == 0)
-            ? ResourcePool.Usage.Compactor
-            : ResourcePool.Usage.MidCompactor;
+        int compactSize = (int)Math.Min(to.BlockNumber & -to.BlockNumber, _compactSize);
+        ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
         ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
