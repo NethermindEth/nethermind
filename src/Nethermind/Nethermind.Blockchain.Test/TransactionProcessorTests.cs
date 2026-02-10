@@ -32,7 +32,8 @@ namespace Nethermind.Evm.Test;
 [TestFixture(true)]
 [TestFixture(false)]
 [Todo(Improve.Refactor, "Check why fixture test cases did not work")]
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class TransactionProcessorTests
 {
     private readonly bool _isEip155Enabled;

@@ -10,18 +10,14 @@ using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public abstract class ExecutorBase<TResult, TRequest, TProcessing>
+public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
+    IBlockchainBridge blockchainBridge,
+    IBlockFinder blockFinder,
+    IJsonRpcConfig rpcConfig)
 {
-    protected readonly IBlockchainBridge _blockchainBridge;
-    protected readonly IBlockFinder _blockFinder;
-    protected readonly IJsonRpcConfig _rpcConfig;
-
-    protected ExecutorBase(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-    {
-        _blockchainBridge = blockchainBridge;
-        _blockFinder = blockFinder;
-        _rpcConfig = rpcConfig;
-    }
+    protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
+    protected readonly IBlockFinder _blockFinder = blockFinder;
+    protected readonly IJsonRpcConfig _rpcConfig = rpcConfig;
 
     public virtual ResultWrapper<TResult> Execute(
         TRequest call,
@@ -32,32 +28,20 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.Value.IsError) return ResultWrapper<TResult>.Fail(searchResult.Value);
 
-        BlockHeader header = searchResult.Value.Object;
-        if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
-                ErrorCodes.ResourceUnavailable);
+        BlockHeader header = searchResult.Value.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+        {
+            return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        string? error = Validate(call);
-        if (error is not null)
-        {
-            return ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput);
-        }
-        TProcessing toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        Result<TProcessing> prepareResult = Prepare(call);
+        return !prepareResult.Success(out TProcessing? data, out string? error)
+            ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, timeout.Token);
     }
 
-    protected virtual string? Validate(TRequest call)
-    {
-        return null;
-    }
-
-    protected abstract TProcessing Prepare(TRequest call);
+    protected abstract Result<TProcessing> Prepare(TRequest call);
 
     protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
-
-    protected ResultWrapper<TResult>? TryGetInputError(CallOutput result)
-    {
-        return result.InputError ? ResultWrapper<TResult>.Fail(result.Error!, ErrorCodes.InvalidInput) : null;
-    }
 }
