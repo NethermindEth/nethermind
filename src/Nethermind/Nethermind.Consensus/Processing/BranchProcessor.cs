@@ -92,6 +92,7 @@ public class BranchProcessor(
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
+            WorldStateScopeProviderMetricsDecorator? metricsDecorator = _stateProvider.ScopeProvider as WorldStateScopeProviderMetricsDecorator;
 
             for (int i = 0; i < blocksCount; i++)
             {
@@ -147,7 +148,7 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    if (_stateProvider.ScopeProvider is WorldStateScopeProviderMetricsDecorator metricsDecorator)
+                    if (metricsDecorator is not null)
                     {
                         Metrics.StateMerkleizationTime = metricsDecorator.StateMerkleizationTime;
                     }
@@ -174,10 +175,7 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
-                if (_stateProvider.ScopeProvider is WorldStateScopeProviderMetricsDecorator metrics)
-                {
-                    metrics.Reset();
-                }
+                metricsDecorator?.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
