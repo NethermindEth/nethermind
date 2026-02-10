@@ -31,11 +31,13 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        var signingTxCache = new SigningTxCache(chain.BlockTree);
         var rc = new XdcRewardCalculator(
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
-            masternodeVotingContract
+            masternodeVotingContract,
+            signingTxCache
         );
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
@@ -131,11 +133,13 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        var signingTxCache = new SigningTxCache(chain.BlockTree);
         var rc = new XdcRewardCalculator(
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
-            masternodeVotingContract
+            masternodeVotingContract,
+            signingTxCache
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -270,14 +274,16 @@ public class RewardTests
         blocks[31] = new Block(blockHeaders[31], new BlockBody(txsBlock31.ToArray(), null, null));
         tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
             .Returns(ci => blockHeaders[(long)ci.Args()[1]]);
-        tree.FindBlock(Arg.Any<long>())
-            .Returns(ci => blocks[(long)ci.Args()[0]]);
+        tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
+            .Returns(ci => blocks[(long)ci.Args()[1]]);
 
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.Arg<Address>());
 
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract);
+        var xdcContext = new XdcConsensusContext();
+        var signingTxCache = new SigningTxCache(tree);
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         // Expect ownerA, ownerB, and foundation

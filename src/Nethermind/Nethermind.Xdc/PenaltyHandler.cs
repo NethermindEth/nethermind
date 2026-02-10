@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -16,9 +15,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager) : IPenaltyHandler
+internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
-    private LruCache<Hash256, Transaction[]> _signTransactionCache = new(XdcConstants.BlockSignersCacheLimit, "XDC Signing Txs Cache");
     private readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
 
     private Address[] GetPreviousPenalties(Hash256 currentHash, IXdcReleaseSpec spec, ulong limit)
@@ -162,17 +160,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                         mapBlockHash[blockHash] = true;
                     }
 
-                    Transaction[] signingTxs = _signTransactionCache.Get(blockHash); // get them from cache
-                    if(signingTxs is null)
-                    {
-                        var blockBody = tree.FindBlock(blockHash, blockNumber);
-                        if (blockBody is null)
-                        {
-                            continue;
-                        }
-
-                        signingTxs = CacheSigningTransactions(blockHash, blockBody.Transactions, currentSpec); // caches them 
-                    }
+                    Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
 
                     foreach (var tx in signingTxs)
                     {
@@ -244,17 +232,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                         mapBlockHash[blockHash] = true;
                     }
 
-                    Transaction[] signingTxs = _signTransactionCache.Get(blockHash); // get them from cache
-                    if (signingTxs is null)
-                    {
-                        var blockBody = tree.FindBlock(blockHash, blockNumber);
-                        if (blockBody is null)
-                        {
-                            continue;
-                        }
-
-                        signingTxs = CacheSigningTransactions(blockHash, blockBody.Transactions, currentSpec); // caches them 
-                    }
+                    Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
 
                     foreach (var tx in signingTxs)
                     {
@@ -285,22 +263,5 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
         }
 
         return penalties.ToArray();
-    }
-
-    private Transaction[] CacheSigningTransactions(Hash256 blockHash, Transaction[] transactions, IXdcReleaseSpec spec)
-    {
-        List<Transaction> signingTxs = [];
-        foreach (var tx in transactions)
-        {
-            if(tx.IsSigningTransaction(spec))
-            {
-                signingTxs.Add(tx);
-            }
-        }
-
-        var signingTxArr = signingTxs.ToArray();
-
-        _signTransactionCache.Set(blockHash, signingTxArr);
-        return signingTxArr;
     }
 }

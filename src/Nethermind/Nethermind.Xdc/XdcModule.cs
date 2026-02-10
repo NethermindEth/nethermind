@@ -60,6 +60,9 @@ public class XdcModule : Module
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
 
+            // signing transactions cache
+            .AddSingleton<ISigningTxCache, SigningTxCache>()
+
             // penalty handler
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
