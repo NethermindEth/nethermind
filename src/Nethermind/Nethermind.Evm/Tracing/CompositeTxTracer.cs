@@ -344,6 +344,30 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
+            {
+                innerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+            }
+        }
+    }
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
+            {
+                innerTracer.LoadOperationTransientStorage(address, storageIndex, value);
+            }
+        }
+    }
+
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         for (int index = 0; index < _txTracers.Count; index++)
