@@ -22,9 +22,6 @@ jobs:
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'performance is good')
     runs-on: ubuntu-latest
-    env:
-      BASELINE_PREFIX: nethermind-benchmark-baseline-linux-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-
-      BASELINE_KEY: nethermind-benchmark-baseline-linux-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-${{ github.sha }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -32,15 +29,29 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
 
+      - name: Compute baseline cache key
+        id: baseline-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            "global.json"
+            "src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj"
+            "src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj"
+            "src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj"
+          )
+          fingerprint="$(sha256sum "${files[@]}" | sha256sum | cut -d' ' -f1)"
+          echo "prefix=nethermind-benchmark-baseline-linux-${fingerprint}-" >> "$GITHUB_OUTPUT"
+
       - name: Restore master benchmark baseline
         if: github.event_name == 'pull_request'
         id: restore-baseline
         uses: actions/cache/restore@v4
         with:
           path: .benchmark-baseline
-          key: ${{ env.BASELINE_PREFIX }}current-run
+          key: ${{ steps.baseline-key.outputs.prefix }}current-run
           restore-keys: |
-            ${{ env.BASELINE_PREFIX }}
+            ${{ steps.baseline-key.outputs.prefix }}
 
       - name: Run focused benchmarks
         env:
@@ -78,7 +89,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .benchmark-baseline
-          key: ${{ env.BASELINE_KEY }}
+          key: ${{ steps.baseline-key.outputs.prefix }}${{ github.sha }}
 
       - name: Compare PR benchmarks with master baseline
         if: github.event_name == 'pull_request'
