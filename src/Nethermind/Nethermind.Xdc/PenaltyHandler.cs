@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.AspNetCore.Http.HttpResults;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -13,15 +12,14 @@ using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using static Nethermind.Xdc.XdcExtensions;
 
 namespace Nethermind.Xdc;
 
 internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager) : IPenaltyHandler
 {
     private LruCache<Hash256, Transaction[]> _signTransactionCache = new(XdcConstants.BlockSignersCacheLimit, "XDC Signing Txs Cache");
+    private readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
 
     private Address[] GetPreviousPenalties(Hash256 currentHash, IXdcReleaseSpec spec, ulong limit)
     {
@@ -50,10 +48,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
 
     public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
     {
-        DateTime startTime = DateTime.UtcNow;
-
         List<Hash256> listBlockHash = [currentHash];
-
         Dictionary<Address, int> minerStatistics = new();
 
         long parentNumber = number - 1;
@@ -63,7 +58,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
 
         for (int timeout = 0; ; timeout++)
         {
-            var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash);
+            var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
             if(parentHeader is not null)
             {
                 var spec = specProvider.GetXdcSpec(parentHeader);
@@ -81,7 +76,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
 
         for (int i = 1; ; i++)
         {
-            var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash);
+            var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
             var isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
 
             if (isEpochSwitch)
@@ -89,8 +84,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                 break;
             }
 
-            var xdcHeaderDecoder = new XdcHeaderDecoder();
-            Address miner = parentHeader.Beneficiary ?? ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
+            Address miner = parentHeader.Beneficiary ?? ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(_xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
 
             if (!minerStatistics.ContainsKey(miner)) {
                 minerStatistics[miner] = 1;
@@ -171,9 +165,13 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                     Transaction[] signingTxs = _signTransactionCache.Get(blockHash); // get them from cache
                     if(signingTxs is null)
                     {
-                        var blockBody = tree.FindBlock(blockNumber);
-                        var transactions = blockBody.Transactions;
-                        signingTxs = CacheSigningTransactions(blockHash, transactions, currentSpec); // caches them 
+                        var blockBody = tree.FindBlock(blockHash, blockNumber);
+                        if (blockBody is null)
+                        {
+                            continue;
+                        }
+
+                        signingTxs = CacheSigningTransactions(blockHash, blockBody.Transactions, currentSpec); // caches them 
                     }
 
                     foreach (var tx in signingTxs)
@@ -249,9 +247,13 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                     Transaction[] signingTxs = _signTransactionCache.Get(blockHash); // get them from cache
                     if (signingTxs is null)
                     {
-                        var blockBody = tree.FindBlock(blockNumber);
-                        var transactions = blockBody.Transactions;
-                        signingTxs = CacheSigningTransactions(blockHash, transactions, currentSpec); // caches them 
+                        var blockBody = tree.FindBlock(blockHash, blockNumber);
+                        if (blockBody is null)
+                        {
+                            continue;
+                        }
+
+                        signingTxs = CacheSigningTransactions(blockHash, blockBody.Transactions, currentSpec); // caches them 
                     }
 
                     foreach (var tx in signingTxs)
