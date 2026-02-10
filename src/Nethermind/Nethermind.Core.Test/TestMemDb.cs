@@ -74,8 +74,39 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     public override IWriteBatch StartWriteBatch() => new InMemoryWriteBatch(this);
     public override void Flush(bool onlyWal) => FlushCount++;
 
-    public byte[]? FirstKey => Keys.Min();
-    public byte[]? LastKey => Keys.Max();
+    public byte[]? FirstKey
+    {
+        get
+        {
+            byte[]? min = null;
+            foreach (byte[] key in Keys)
+            {
+                if (min is null || Bytes.BytesComparer.Compare(key, min) < 0)
+                {
+                    min = key;
+                }
+            }
+
+            return min;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            byte[]? max = null;
+            foreach (byte[] key in Keys)
+            {
+                if (max is null || Bytes.BytesComparer.Compare(key, max) > 0)
+                {
+                    max = key;
+                }
+            }
+
+            return max;
+        }
+    }
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
     {
         ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
