@@ -108,7 +108,6 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         Status status = parallelTransactionProcessor.TryExecute(task.Version, out int? blockingTx, out bool wroteNewLocation);
         if (status == Status.ReadError)
         {
-            ParallelProcessingMetrics.IncrementBlockedReads();
             return !scheduler.AbortExecution(task.Version.TxIndex, blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null")) ? task : TxTask.Empty;
         }
 
@@ -130,7 +129,6 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         bool aborted = !memory.ValidateReadSet(version.TxIndex) && scheduler.TryValidationAbort(version);
         if (aborted)
         {
-            ParallelProcessingMetrics.IncrementReexecutions();
             memory.ConvertWritesToEstimates(version.TxIndex);
         }
 

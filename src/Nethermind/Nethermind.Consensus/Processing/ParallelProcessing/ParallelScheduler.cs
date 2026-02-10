@@ -208,7 +208,7 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
         if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Dependency added for tx {txIndex} on {blockingTxIndex} to set {set.GetHashCode()}");
 
         // if blocking transaction finished execution while we were adding the dependency, then we need to now call resume dependencies ASAP
-        // This missing was one of issues in original paper
+        // This missing was one of the issues in the original paper
         blockingTxStatus = Volatile.Read(ref blockingTxState.Status);
         if (blockingTxStatus == TxStatus.Executed)
         {
@@ -367,8 +367,6 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     /// <returns>potentially same tx incarnation to execute</returns>
     public TxTask FinishValidation(int txIndex, bool aborted)
     {
-        ParallelProcessingMetrics.IncrementRevalidations();
-
         // if aborted
         if (aborted)
         {

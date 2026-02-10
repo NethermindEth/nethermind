@@ -23,8 +23,8 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     private readonly UInt256[] _feeCollectorFees = new UInt256[txCount];
 
     // Committed status per transaction
-    private readonly int[] _committed = new int[txCount];
-    private readonly int[] _gasBeneficiaryCreates = new int[txCount];
+    private readonly bool[] _committed = new bool[txCount];
+    private readonly bool[] _gasBeneficiaryCreates = new bool[txCount];
 
     /// <summary>
     /// Gets the GasBeneficiary address.
@@ -45,7 +45,7 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
         {
             for (int i = 0; i < _committed.Length; i++)
             {
-                if (Volatile.Read(ref _committed[i]) == 1 && Volatile.Read(ref _gasBeneficiaryCreates[i]) == 1)
+                if (Volatile.Read(ref _committed[i]) && Volatile.Read(ref _gasBeneficiaryCreates[i]))
                 {
                     return true;
                 }
@@ -55,10 +55,6 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
         }
     }
 
-    /// <summary>
-    /// Checks if the given address is a fee recipient (GasBeneficiary or FeeCollector).
-    /// </summary>
-    public bool IsFeeRecipient(Address address) => IsGasBeneficiary(address) || IsFeeCollector(address);
     private bool IsFeeCollector(Address address) => AreSame(address, feeCollector);
     private bool IsGasBeneficiary(Address address) => AreSame(address, gasBeneficiary);
     private static bool AreSame(Address address, Address? feesAddress) => feesAddress is not null && address == feesAddress;
@@ -77,7 +73,7 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
             _gasBeneficiaryFees[txIndex] += amount;
             if (createAccount)
             {
-                Volatile.Write(ref _gasBeneficiaryCreates[txIndex], 1);
+                Volatile.Write(ref _gasBeneficiaryCreates[txIndex], true);
             }
         }
         else if (IsFeeCollector(recipient))
@@ -90,13 +86,13 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     /// Marks a transaction as committed.
     /// </summary>
     /// <param name="txIndex">Transaction index</param>
-    public void MarkCommitted(int txIndex) => Interlocked.Exchange(ref _committed[txIndex], 1);
+    public void MarkCommitted(int txIndex) => Interlocked.Exchange(ref _committed[txIndex], true);
 
     /// <summary>
     /// Returns whether the transaction fees have been committed for the given transaction.
     /// </summary>
     /// <param name="txIndex">Transaction index</param>
-    public bool IsCommitted(int txIndex) => Volatile.Read(ref _committed[txIndex]) == 1;
+    public bool IsCommitted(int txIndex) => Volatile.Read(ref _committed[txIndex]);
 
     /// <summary>
     /// Gets the accumulated fees for a fee recipient up to (but not including) the specified transaction index.
@@ -109,17 +105,18 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     {
         UInt256 total = UInt256.Zero;
 
-        UInt256[] fees = IsGasBeneficiary(recipient)
-            ? _gasBeneficiaryFees
-            : IsFeeCollector(recipient) ? _feeCollectorFees : null;
+        UInt256[]? fees =
+            IsGasBeneficiary(recipient) ? _gasBeneficiaryFees :
+            IsFeeCollector(recipient) ? _feeCollectorFees : null;
 
-        if (fees is null) return total;
-
-        for (int i = 0; i < upToTxIndex && i < txCount; i++)
+        if (fees is not null)
         {
-            if (Volatile.Read(ref _committed[i]) == 1)
+            for (int i = 0; i < upToTxIndex && i < txCount; i++)
             {
-                total += fees[i];
+                if (Volatile.Read(ref _committed[i]))
+                {
+                    total += fees[i];
+                }
             }
         }
 
@@ -141,7 +138,7 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
     {
         _gasBeneficiaryFees[txIndex] = UInt256.Zero;
         _feeCollectorFees[txIndex] = UInt256.Zero;
-        Interlocked.Exchange(ref _committed[txIndex], 0);
-        Volatile.Write(ref _gasBeneficiaryCreates[txIndex], 0);
+        Interlocked.Exchange(ref _committed[txIndex], false);
+        Volatile.Write(ref _gasBeneficiaryCreates[txIndex], false);
     }
 }

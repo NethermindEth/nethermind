@@ -139,20 +139,36 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         txData.Lock.EnterReadLock();
         try
         {
-            foreach (KeyValuePair<TLocation, Value> kvp in txData.Dictionary)
+            foreach ((TLocation key, Value value) in txData.Dictionary)
             {
-                Value value = kvp.Value;
                 if (value.IsEstimate)
                 {
                     continue;
                 }
 
-                apply(kvp.Key, value.Data);
+                apply(key, value.Data);
             }
         }
         finally
         {
             txData.Lock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Iterates over the final read-set for a given transaction.
+    /// </summary>
+    /// <param name="txIndex">Transaction index.</param>
+    /// <param name="apply">Action applied to each read entry.</param>
+    public void ForEachReadSet(int txIndex, Action<Read<TLocation>> apply)
+    {
+        HashSet<Read<TLocation>>? reads = _lastReads[txIndex];
+        if (reads is not null)
+        {
+            foreach (Read<TLocation> read in reads)
+            {
+                apply(read);
+            }
         }
     }
 
@@ -278,7 +294,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
                 switch (status)
                 {
                     // if we read different version (so later incarnation of dependent transaction wrote to same slot
-                    // TODO: We could potentially also check the value, if the value is the same we can consider it valid? Or not lover incarnation when applying the set
+                    // TODO: We could potentially also check the value, if the value is the same we can consider it valid? Or not lower incarnation when applying the set
                     case Status.Ok when read.Version != version:
                     // if currently we don't find the location, but read the version isn't empty,
                     // this means that the location was written previously by some lower transaction, but re-execution removed this writing
@@ -297,38 +313,6 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         return true;
     }
 
-    // public ISingleBlockProcessingCache<Address, byte[]> GetAddressCache(ISingleBlockProcessingCache<Address, byte[]> innerCache, ushort txIndex, ushort incarnation)
-    // {
-    //     return new ExecutionCache<Address, byte[]>(this, innerCache, txIndex, incarnation);
-    // }
-
-    // public class ExecutionCache<TKey, TValue>(
-    //     MultiVersionMemory multiVersionMemory,
-    //     ISingleBlockProcessingCache<Address, byte[]> innerCache,
-    //     ushort txIndex,
-    //     ushort incarnation) : ISingleBlockProcessingCache<TKey, TValue>
-    // {
-    //     public TValue? GetOrAdd(TKey key, Func<TKey, TValue> valueFactory)
-    //     {
-    //     }
-    //
-    //     public bool TryGetValue(TKey key, out TValue value)
-    //     {
-    //         throw new NotImplementedException();
-    //     }
-    //
-    //     public TValue this[TKey key]
-    //     {
-    //         get => throw new NotImplementedException();
-    //         set => throw new NotImplementedException();
-    //     }
-    //
-    //     public bool NoResizeClear()
-    //     {
-    //         throw new NotImplementedException();
-    //     }
-    // }
-
     private readonly struct DataDictionary<TKey, TValue>
     {
         public readonly Dictionary<TKey, TValue> Dictionary = new();
@@ -345,7 +329,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
 /// </summary>
 /// <param name="Location">Location that was read</param>
 /// <param name="Version">Version of transaction that written that Location earlier. <see cref="ParallelProcessing.Version.Empty"/> if Location was read from database</param>
-/// <typeparam name="TLocation">Location Id type</typeparam>
+/// <typeparam name="TLocation">Location id type</typeparam>
 public readonly record struct Read<TLocation>(TLocation Location, Version Version); // TODO: version->incarnation?
 
 /// <summary>

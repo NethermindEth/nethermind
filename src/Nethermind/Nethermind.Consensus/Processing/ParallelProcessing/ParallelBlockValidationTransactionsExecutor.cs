@@ -44,15 +44,23 @@ public class ParallelBlockValidationTransactionsExecutor(
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, in _blockExecutionContext);
-        using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
-        parallelRunner.Run().GetAwaiter().GetResult();
-        ThrowIfInvalidResults(block, transactions, results);
-        FinalizeGasUsed(block, receipts);
-        FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, txCount);
-        ApplyAccumulatedFees(stateProvider, feeAccumulator, _blockExecutionContext.Spec, feeRecipientWrites);
-        RaiseTransactionProcessedEvents(block, transactions, receipts);
-        BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
-        return receipts;
+        try
+        {
+            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
+            parallelRunner.Run().GetAwaiter().GetResult();
+            ThrowIfInvalidResults(block, transactions, results);
+            FinalizeGasUsed(block, receipts);
+            FeeRecipientWriteInfo feeRecipientWrites = PushChanges(stateProvider, multiVersionMemory, feeAccumulator, txCount);
+            ApplyAccumulatedFees(stateProvider, feeAccumulator, _blockExecutionContext.Spec, feeRecipientWrites);
+            RaiseTransactionProcessedEvents(block, transactions, receipts);
+            BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
+            return receipts;
+        }
+        finally
+        {
+            ParallelBlockMetrics snapshot = ParallelBlockMetricsCalculator.Calculate(transactions, multiVersionMemory);
+            Metrics.ReportBlock(snapshot);
+        }
     }
 
     private void FindNonceDependencies(int txIndex, Block block, ParallelScheduler scheduler)
@@ -131,7 +139,7 @@ public class ParallelBlockValidationTransactionsExecutor(
             {
                 foreach (Address address in storageClears)
                 {
-                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? account) ?? false && account is null;
+                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? _) ?? false;
                     // Avoid clearing when it's just an empty-base hint; keep prior tx writes intact.
                     if (accountDeleted || !storageTouched.Contains(address))
                     {
