@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -10,108 +9,114 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark
 {
+    [MemoryDiagnoser]
     public class EvmStackBenchmarks
     {
-        public IEnumerable<UInt256> ValueSource => new[]
-        {
-            UInt256.Parse("125124123718263172357123"),
-            UInt256.Parse("0"),
-            UInt256.MaxValue
-        };
+        [Params(16, 128, 512)]
+        public int Operations { get; set; }
 
-        private byte[] _stack;
+        [Params(1, 8, 16)]
+        public int Depth { get; set; }
+
+        private byte[] _stack = null!;
+        private UInt256[] _values = null!;
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
+            _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * EvmStack.WordSize];
+            _values =
+            [
+                UInt256.Zero,
+                UInt256.One,
+                UInt256.Parse("125124123718263172357123"),
+                UInt256.MaxValue
+            ];
         }
 
-        [Benchmark(OperationsPerInvoke = 4)]
-        [ArgumentsSource(nameof(ValueSource))]
-        public UInt256 Uint256(UInt256 v)
+        [Benchmark]
+        public UInt256 PushPopUInt256Loop()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = CreateStack();
+            UInt256 value = UInt256.Zero;
 
-            stack.PushUInt256<OffFlag>(in v);
-            stack.PopUInt256(out UInt256 value);
-
-            stack.PushUInt256<OffFlag>(in value);
-            stack.PopUInt256(out value);
-
-            stack.PushUInt256<OffFlag>(in value);
-            stack.PopUInt256(out value);
-
-            stack.PushUInt256<OffFlag>(in value);
-            stack.PopUInt256(out value);
+            for (int i = 0; i < Operations; i++)
+            {
+                UInt256 input = _values[i & 3];
+                stack.PushUInt256<OffFlag>(in input);
+                stack.PopUInt256(out value);
+            }
 
             return value;
         }
 
-        [Benchmark(OperationsPerInvoke = 4)]
-        public byte Byte()
+        [Benchmark]
+        public byte PushPopByteLoop()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = CreateStack();
+            byte value = 0x1f;
+            for (int i = 0; i < Operations; i++)
+            {
+                stack.PushByte<OffFlag>(value);
+                value = stack.PopByte();
+            }
 
-            byte b = 1;
-
-            stack.PushByte<OffFlag>(b);
-            b = stack.PopByte();
-
-            stack.PushByte<OffFlag>(b);
-            b = stack.PopByte();
-
-            stack.PushByte<OffFlag>(b);
-            b = stack.PopByte();
-
-            stack.PushByte<OffFlag>(b);
-            b = stack.PopByte();
-
-            return b;
+            return value;
         }
 
-        [Benchmark(OperationsPerInvoke = 4)]
-        public void PushZero()
+        [Benchmark]
+        public int DupDeep()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = CreateFilledStack(Depth + 1);
+            for (int i = 0; i < Operations; i++)
+            {
+                stack.Dup<OffFlag>(Depth);
+            }
 
-            stack.PushZero<OffFlag>();
-            stack.PushZero<OffFlag>();
-            stack.PushZero<OffFlag>();
-            stack.PushZero<OffFlag>();
+            return stack.Head;
         }
 
-        [Benchmark(OperationsPerInvoke = 4)]
-        public void PushOne()
+        [Benchmark]
+        public int SwapDeep()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = CreateFilledStack(Depth + 1);
+            for (int i = 0; i < Operations; i++)
+            {
+                stack.Swap<OffFlag>(Depth);
+            }
 
-            stack.PushOne<OffFlag>();
-            stack.PushOne<OffFlag>();
-            stack.PushOne<OffFlag>();
-            stack.PushOne<OffFlag>();
+            return stack.Head;
         }
 
-        [Benchmark(OperationsPerInvoke = 4)]
-        public void Swap()
+        [Benchmark]
+        public int MixedStackPattern()
         {
-            EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = CreateFilledStack(Math.Max(Depth + 1, 4));
+            for (int i = 0; i < Operations; i++)
+            {
+                UInt256 input = _values[i & 3];
+                stack.PushUInt256<OffFlag>(in input);
+                stack.Dup<OffFlag>(Depth);
+                stack.Swap<OffFlag>(Depth);
+                stack.PopLimbo();
+                stack.PopLimbo();
+            }
 
-            stack.Swap<OffFlag>(2);
-            stack.Swap<OffFlag>(2);
-            stack.Swap<OffFlag>(2);
-            stack.Swap<OffFlag>(2);
+            return stack.Head;
         }
 
-        [Benchmark(OperationsPerInvoke = 4)]
-        public void Dup()
-        {
-            EvmStack stack = new(1, NullTxTracer.Instance, _stack.AsSpan());
+        private EvmStack CreateStack() => new(0, NullTxTracer.Instance, _stack.AsSpan());
 
-            stack.Dup<OffFlag>(1);
-            stack.Dup<OffFlag>(1);
-            stack.Dup<OffFlag>(1);
-            stack.Dup<OffFlag>(1);
+        private EvmStack CreateFilledStack(int size)
+        {
+            EvmStack stack = CreateStack();
+            for (int i = 0; i < size; i++)
+            {
+                UInt256 value = _values[i & 3];
+                stack.PushUInt256<OffFlag>(in value);
+            }
+
+            return stack;
         }
     }
 }

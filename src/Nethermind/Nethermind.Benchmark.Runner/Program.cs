@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
@@ -31,6 +33,7 @@ namespace Nethermind.Benchmark.Runner
             AddColumnProvider(DefaultColumnProviders.Metrics);
             AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
+            AddExporter(CsvExporter.Default);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
         }
@@ -38,7 +41,7 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core90))
+        public PrecompileBenchmarkConfig(Job job) : base(job)
         {
             AddColumnProvider(new GasColumnProvider());
         }
@@ -48,6 +51,8 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            Job selectedJob = ResolveJob();
+
             List<Assembly> additionalJobAssemblies = [
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
@@ -67,16 +72,43 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(selectedJob), args);
                 }
 
                 foreach (Assembly assembly in simpleJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(selectedJob), args);
                 }
 
-                BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(), args);
+                if (ShouldRunPrecompiles())
+                {
+                    BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(selectedJob), args);
+                }
+                else
+                {
+                    Console.WriteLine("Skipping precompile benchmarks. Set NETH_BENCHMARK_INCLUDE_PRECOMPILES=true to include them.");
+                }
             }
+        }
+
+        private static Job ResolveJob()
+        {
+            string configuredJob = Environment.GetEnvironmentVariable("NETH_BENCHMARK_JOB");
+            return configuredJob?.Trim().ToLowerInvariant() switch
+            {
+                "dry" => Job.Dry,
+                "short" => Job.ShortRun,
+                "long" => Job.LongRun,
+                _ => Job.MediumRun
+            };
+        }
+
+        private static bool ShouldRunPrecompiles()
+        {
+            string includePrecompiles = Environment.GetEnvironmentVariable("NETH_BENCHMARK_INCLUDE_PRECOMPILES");
+            return includePrecompiles is not null && (
+                includePrecompiles.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+                includePrecompiles.Equals("true", StringComparison.OrdinalIgnoreCase));
         }
     }
 }

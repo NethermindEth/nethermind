@@ -1,0 +1,132 @@
+name: Benchmark PR Comparison
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, labeled, synchronize, reopened]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: benchmark-pr-comparison-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  benchmark-and-compare:
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'performance is good')
+    runs-on: ubuntu-latest
+    env:
+      BASELINE_PREFIX: nethermind-benchmark-baseline-${{ runner.os }}-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-
+      BASELINE_KEY: nethermind-benchmark-baseline-${{ runner.os }}-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-${{ github.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+
+      - name: Restore master benchmark baseline
+        if: github.event_name == 'pull_request'
+        id: restore-baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: .benchmark-baseline
+          key: ${{ env.BASELINE_PREFIX }}current-run
+          restore-keys: |
+            ${{ env.BASELINE_PREFIX }}
+
+      - name: Run focused benchmarks
+        env:
+          NETH_BENCHMARK_INCLUDE_PRECOMPILES: "false"
+          NETH_BENCHMARK_JOB: "short"
+        run: |
+          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
+            --filter '*EvmStackBenchmarks*' '*BlockProcessingBenchmarks*' \
+            --artifacts .benchmark-artifacts
+
+      - name: Aggregate benchmark results
+        shell: pwsh
+        run: |
+          ./scripts/benchmarks/aggregate-benchmark-results.ps1 `
+            -ResultsDir .benchmark-artifacts/results `
+            -OutputPath .benchmark-results/benchmark-summary.json
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: |
+            .benchmark-artifacts/results/**
+            .benchmark-results/benchmark-summary.json
+          retention-days: 7
+
+      - name: Prepare and save master baseline cache
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p .benchmark-baseline
+          cp .benchmark-results/benchmark-summary.json .benchmark-baseline/benchmark-summary.json
+
+      - name: Save master benchmark baseline
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: .benchmark-baseline
+          key: ${{ env.BASELINE_KEY }}
+
+      - name: Compare PR benchmarks with master baseline
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          ./scripts/benchmarks/compare-benchmark-results.ps1 `
+            -CurrentPath .benchmark-results/benchmark-summary.json `
+            -BaselinePath .benchmark-baseline/benchmark-summary.json `
+            -OutputJsonPath .benchmark-results/benchmark-comparison.json `
+            -OutputMarkdownPath .benchmark-results/benchmark-comparison.md `
+            -RegressionThresholdPercent 5 `
+            -TopCount 15
+
+      - name: Comment benchmark comparison on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const marker = "<!-- benchmark-comparison -->";
+            const path = ".benchmark-results/benchmark-comparison.md";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let body = fs.readFileSync(path, "utf8");
+            body += `\n\n[Workflow run details](${runUrl})`;
+            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100
+            });
+
+            const existing = comments.find((comment) => comment.body && comment.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+            }
