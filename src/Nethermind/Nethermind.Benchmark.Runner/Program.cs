@@ -9,6 +9,7 @@ using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
@@ -18,6 +19,42 @@ using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
 {
+    public class FilteringLogger(ILogger innerLogger) : ILogger
+    {
+        public string Id => innerLogger.Id;
+
+        public int Priority => innerLogger.Priority;
+
+        public void Flush() => innerLogger.Flush();
+
+        public void Write(LogKind logKind, string text)
+        {
+            if (ShouldSuppress(logKind, text))
+            {
+                return;
+            }
+
+            innerLogger.Write(logKind, text);
+        }
+
+        public void WriteLine() => innerLogger.WriteLine();
+
+        public void WriteLine(LogKind logKind, string text)
+        {
+            if (ShouldSuppress(logKind, text))
+            {
+                return;
+            }
+
+            innerLogger.WriteLine(logKind, text);
+        }
+
+        private static bool ShouldSuppress(LogKind logKind, string text) =>
+            logKind == LogKind.Warning &&
+            !string.IsNullOrWhiteSpace(text) &&
+            text.Contains("Failed to set up priority", StringComparison.OrdinalIgnoreCase);
+    }
+
     public class DashboardConfig : ManualConfig
     {
         public DashboardConfig(params Job[] jobs)
@@ -31,7 +68,7 @@ namespace Nethermind.Benchmark.Runner
             AddColumnProvider(DefaultColumnProviders.Statistics);
             AddColumnProvider(DefaultColumnProviders.Params);
             AddColumnProvider(DefaultColumnProviders.Metrics);
-            AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
+            AddLogger(new FilteringLogger(ConsoleLogger.Default));
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddExporter(CsvExporter.Default);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
