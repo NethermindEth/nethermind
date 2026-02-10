@@ -246,12 +246,12 @@ namespace Nethermind.Xdc
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
 
-            bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
+            bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
 
             if (_writeRoundInfo)
                 _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
-            if (isMyTurn)
+            if (isMyTurn && IsItTimeToPropose(roundParent, currentRound, spec))
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
@@ -264,7 +264,6 @@ namespace Nethermind.Xdc
                 _highestSignTxNumber = roundParent.Number;
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
-
 
             _writeRoundInfo = false;
         }
@@ -324,9 +323,9 @@ namespace Nethermind.Xdc
             }
 
             XdcBlockHeader FindHeaderToBuildOn(QuorumCertificate highestQC) =>
-                (XdcBlockHeader)_blockTree.FindHeader(
+                _blockTree.FindHeader(
                     highestQC.ProposedBlockInfo.Hash,
-                    highestQC.ProposedBlockInfo.BlockNumber);
+                    highestQC.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         }
 
         /// <summary>
@@ -398,10 +397,9 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Check if the current node is the leader for the given round.
-        /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
+        /// Check if it's time to propose a block for the given round.
         /// </summary>
-        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
+        private bool IsItTimeToPropose(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
         {
             if (_highestSelfMinedRound >= round)
             {
@@ -420,7 +418,15 @@ namespace Nethermind.Xdc
                 //We have not reached QC vote threshold yet
                 return false;
             }
+            return true;
+        }
 
+        /// <summary>
+        /// Check if the current node is the leader for the given round.
+        /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
+        /// </summary>
+        private bool IsMyTurn(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
+        {
             Address leaderAddress = GetLeaderAddress(parent, round, spec);
             return leaderAddress == _signer.Address;
         }
