@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,7 +19,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage
+    public class PersistentReceiptStorage : IReceiptStorage, IDisposable
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
@@ -35,15 +34,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
         private readonly bool _legacyHashKey;
-        private IWriteBatch? _pendingBatch;
-        private long _pendingBatchLastBlockNumber;
-        private long _pendingBatchId = -1;
-        private long _latestSeenBatchId = -1;
-        private int _pendingBatchBlockCount;
-        private readonly ConcurrentDictionary<ValueHash256, byte[]> _pendingTxIndex = new();
-
         private const int CacheSize = 64;
-        private const int MaxIndexedBlocksPerBatch = BlockProcessingConstants.MaxUncommittedBlocks;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
@@ -77,20 +68,12 @@ namespace Nethermind.Blockchain.Receipts
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+            _blockTree.OnUpdateMainChain += BlockTreeOnUpdateMainChain;
         }
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             Block newMain = e.Block;
-            if (e.IsPartOfMainChainUpdate)
-            {
-                EnsureCanonicalBatched(newMain, e.MainChainUpdateId, e.IsLastInMainChainUpdate);
-            }
-            else
-            {
-                DiscardPendingBatch();
-                EnsureCanonical(newMain);
-            }
 
             NewCanonicalReceipts?.Invoke(this, e);
 
@@ -111,13 +94,30 @@ namespace Nethermind.Blockchain.Receipts
             });
         }
 
+        private void BlockTreeOnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
+        {
+            long lastBlockNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            IReadOnlyList<Block> blocks = e.Blocks;
+
+            if (blocks.Count == 1)
+            {
+                EnsureCanonical(blocks[0], lastBlockNumber);
+                return;
+            }
+
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            foreach (Block block in blocks)
+            {
+                if (ShouldIndexBlock(block, lastBlockNumber, out Transaction[] transactions))
+                {
+                    WriteCanonicalTxIndex(block, transactions, writeBatch);
+                }
+            }
+        }
+
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            // Check in-memory overlay first for entries pending batch commit.
-            if (!_pendingTxIndex.TryGetValue(txHash, out byte[]? blockHashData))
-            {
-                blockHashData = _transactionDb.Get(txHash);
-            }
+            byte[]? blockHashData = _transactionDb.Get(txHash);
 
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
@@ -398,55 +398,6 @@ namespace Nethermind.Blockchain.Receipts
             WriteCanonicalTxIndex(block, transactions, writeBatch);
         }
 
-        private void EnsureCanonicalBatched(Block block, long batchId, bool isLast)
-        {
-            bool shouldCommit = false;
-            try
-            {
-                // Ignore out-of-order stale events from older updates.
-                if (batchId < _latestSeenBatchId)
-                {
-                    return;
-                }
-
-                if (batchId > _latestSeenBatchId)
-                {
-                    _latestSeenBatchId = batchId;
-                }
-
-                if (_pendingBatchId >= 0 && _pendingBatchId != batchId)
-                {
-                    DiscardPendingBatch();
-                }
-
-                if (_pendingBatchId < 0)
-                {
-                    _pendingBatchId = batchId;
-                    _pendingBatchLastBlockNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-                    _pendingBatchBlockCount = 0;
-                }
-
-                if (ShouldIndexBlock(block, _pendingBatchLastBlockNumber, out Transaction[] transactions))
-                {
-                    _pendingBatch ??= _transactionDb.StartWriteBatch();
-                    WriteCanonicalTxIndex(block, transactions, _pendingBatch, addToOverlay: true);
-                    if (++_pendingBatchBlockCount >= MaxIndexedBlocksPerBatch && !isLast)
-                    {
-                        FlushPendingBatchWrites();
-                    }
-                }
-
-                shouldCommit = isLast && _pendingBatchId == batchId;
-            }
-            finally
-            {
-                if (shouldCommit)
-                {
-                    CommitPendingBatch();
-                }
-            }
-        }
-
         private bool ShouldIndexBlock(Block block, long lastBlockNumber, out Transaction[] transactions)
         {
             transactions = block.Transactions;
@@ -456,7 +407,7 @@ namespace Nethermind.Blockchain.Receipts
             return limit != -1 && (limit is null or 0 || block.Number > lastBlockNumber - limit.Value);
         }
 
-        private void WriteCanonicalTxIndex(Block block, Transaction[] transactions, IWriteBatch writeBatch, bool addToOverlay = false)
+        private void WriteCanonicalTxIndex(Block block, Transaction[] transactions, IWriteBatch writeBatch)
         {
             if (_receiptConfig.CompactTxIndex)
             {
@@ -464,42 +415,24 @@ namespace Nethermind.Blockchain.Receipts
                 foreach (Transaction tx in transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
-                    Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockNumber;
-                    if (addToOverlay) _pendingTxIndex[hash] = blockNumber;
+                    writeBatch[tx.Hash.Bytes] = blockNumber;
                 }
             }
             else
             {
-                byte[]? blockHashArray = addToOverlay ? block.Hash!.Bytes.ToArray() : null;
-                ReadOnlySpan<byte> blockHash = blockHashArray ?? block.Hash!.Bytes;
+                ReadOnlySpan<byte> blockHash = block.Hash!.Bytes;
                 foreach (Transaction tx in transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
-                    Hash256 hash = tx.Hash;
-                    writeBatch.PutSpan(hash.Bytes, blockHash);
-                    if (addToOverlay) _pendingTxIndex[hash] = blockHashArray!;
+                    writeBatch.PutSpan(tx.Hash.Bytes, blockHash);
                 }
             }
         }
 
-        private void CommitPendingBatch()
+        public void Dispose()
         {
-            try { FlushPendingBatchWrites(); }
-            finally { _pendingBatchId = -1; }
-        }
-
-        private void DiscardPendingBatch()
-        {
-            if (_pendingBatchId < 0) return;
-            try { _pendingBatch?.Clear(); _pendingBatch?.Dispose(); }
-            finally { _pendingBatch = null; _pendingBatchId = -1; _pendingBatchBlockCount = 0; _pendingTxIndex.Clear(); }
-        }
-
-        private void FlushPendingBatchWrites()
-        {
-            try { _pendingBatch?.Dispose(); }
-            finally { _pendingBatch = null; _pendingBatchBlockCount = 0; _pendingTxIndex.Clear(); }
+            _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
+            _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
         }
     }
 }

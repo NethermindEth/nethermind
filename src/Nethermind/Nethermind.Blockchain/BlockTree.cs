@@ -53,7 +53,6 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private long _mainChainUpdateCounter;
 
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
@@ -965,10 +964,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            bool isBatchUpdate = blocks.Count > 1;
-            long mainChainUpdateId = isBatchUpdate ? Interlocked.Increment(ref _mainChainUpdateCounter) : 0;
-
-            bool ascendingOrder = !isBatchUpdate || blocks[^1].Number >= blocks[0].Number;
+            bool ascendingOrder = blocks.Count <= 1 || blocks[^1].Number >= blocks[0].Number;
 
 #if DEBUG
             for (int i = 1; i < blocks.Count; i++)
@@ -1003,6 +999,10 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            // Fire before the per-block loop so subscribers (e.g. receipt tx-index batching)
+            // can write data before BlockAddedToMain / NewCanonicalReceipts notifies JSON-RPC clients.
+            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
+
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
@@ -1020,15 +1020,10 @@ namespace Nethermind.Blockchain
                     blocks[i],
                     batch,
                     wereProcessed,
-                    forceUpdateHeadBlock && lastProcessedBlock,
-                    isPartOfMainChainUpdate: isBatchUpdate,
-                    isLastInMainChainUpdate: isBatchUpdate && lastProcessedBlock,
-                    mainChainUpdateId);
+                    forceUpdateHeadBlock && lastProcessedBlock);
             }
 
             TryUpdateSyncPivot();
-
-            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
         private void TryUpdateSyncPivot()
@@ -1147,19 +1142,13 @@ namespace Nethermind.Blockchain
         /// <param name="batch">Db batch</param>
         /// <param name="wasProcessed">Was block processed (full sync), or not (fast sync)</param>
         /// <param name="forceUpdateHeadBlock">Force updating <see cref="Head"/> to this block, even when <see cref="Block.TotalDifficulty"/> is not higher than previous head.</param>
-        /// <param name="isPartOfMainChainUpdate">Whether this block is processed as part of a multi-block main chain update batch.</param>
-        /// <param name="isLastInMainChainUpdate">Whether this block is the last block in the current main chain update batch.</param>
-        /// <param name="mainChainUpdateId">Identifier of the current main chain update batch.</param>
         /// <exception cref="InvalidOperationException">Invalid block</exception>
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(
             Block block,
             BatchWrite batch,
             bool wasProcessed,
-            bool forceUpdateHeadBlock,
-            bool isPartOfMainChainUpdate,
-            bool isLastInMainChainUpdate,
-            long mainChainUpdateId)
+            bool forceUpdateHeadBlock)
         {
             if (Logger.IsTrace) Logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             if (block.Hash is null)
@@ -1211,14 +1200,7 @@ namespace Nethermind.Blockchain
 
             if (Logger.IsTrace) Logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
 
-            BlockAddedToMain?.Invoke(
-                this,
-                new BlockReplacementEventArgs(
-                    block,
-                    previous,
-                    isPartOfMainChainUpdate,
-                    isLastInMainChainUpdate,
-                    mainChainUpdateId));
+            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (Logger.IsTrace) Logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }

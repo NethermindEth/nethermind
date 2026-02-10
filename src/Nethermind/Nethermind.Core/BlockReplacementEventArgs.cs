@@ -3,32 +3,8 @@
 
 namespace Nethermind.Core
 {
-    public class BlockReplacementEventArgs : BlockEventArgs
+    public class BlockReplacementEventArgs(Block block, Block? previousBlock = null) : BlockEventArgs(block)
     {
-        public BlockReplacementEventArgs(Block block, Block? previousBlock = null)
-            : this(block, previousBlock, isPartOfMainChainUpdate: false, isLastInMainChainUpdate: false, mainChainUpdateId: 0)
-        {
-        }
-
-        public BlockReplacementEventArgs(
-            Block block,
-            Block? previousBlock,
-            bool isPartOfMainChainUpdate,
-            bool isLastInMainChainUpdate,
-            long mainChainUpdateId) : base(block)
-        {
-            PreviousBlock = previousBlock;
-            IsPartOfMainChainUpdate = isPartOfMainChainUpdate;
-            IsLastInMainChainUpdate = isLastInMainChainUpdate;
-            MainChainUpdateId = mainChainUpdateId;
-        }
-
-        public Block? PreviousBlock { get; }
-
-        public bool IsPartOfMainChainUpdate { get; }
-
-        public bool IsLastInMainChainUpdate { get; }
-
-        public long MainChainUpdateId { get; }
+        public Block? PreviousBlock { get; } = previousBlock;
     }
 }
