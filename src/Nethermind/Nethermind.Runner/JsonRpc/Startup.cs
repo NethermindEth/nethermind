@@ -89,19 +89,15 @@ public class Startup : IStartup
         Configure(
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
-            services.GetRequiredService<IJsonRpcProcessor>(),
-            services.GetRequiredService<IJsonRpcService>(),
+            services.GetRequiredService<JsonRpcProcessor>(),
+            services.GetRequiredService<JsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
-            services.GetRequiredService<IJsonSerializer>(),
+            services.GetRequiredService<EthereumJsonSerializer>(),
             services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
-        // Capture concrete types for devirtualization in hot-path closures
-        JsonRpcProcessor concreteProcessor = (JsonRpcProcessor)jsonRpcProcessor;
-        JsonRpcService concreteService = (JsonRpcService)jsonRpcService;
-        EthereumJsonSerializer concreteSerializer = (EthereumJsonSerializer)jsonSerializer;
 
         // Register source-generated type info resolvers before warmup
         EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default);
@@ -147,7 +143,7 @@ public class Startup : IStartup
                 return;
             }
 
-            if (concreteProcessor.ProcessExit.IsCancellationRequested)
+            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
             {
                 ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 return;
@@ -157,8 +153,8 @@ public class Startup : IStartup
             {
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                JsonRpcErrorResponse authError = concreteService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
-                await concreteSerializer.SerializeAsync(ctx.Response.BodyWriter, authError);
+                JsonRpcErrorResponse authError = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, authError);
                 await ctx.Response.CompleteAsync();
                 return;
             }
@@ -172,7 +168,7 @@ public class Startup : IStartup
             try
             {
                 using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                await foreach (JsonRpcResult result in concreteProcessor.ProcessAsync(request, jsonRpcContext))
+                await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                 {
                     using (result)
                     {
@@ -198,7 +194,7 @@ public class Startup : IStartup
                                         {
                                             if (!first) resultWriter.Write(_jsonComma);
                                             first = false;
-                                            await concreteSerializer.SerializeAsync(resultWriter, entry.Response);
+                                            await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
                                             _ = jsonRpcLocalStats.ReportCall(entry.Report);
                                         }
                                     }
@@ -243,8 +239,8 @@ public class Startup : IStartup
 
                 Task SerializeTimeoutException(CountingPipeWriter resultStream)
                 {
-                    JsonRpcErrorResponse error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                    return concreteSerializer.SerializeAsync(resultStream, error);
+                    JsonRpcErrorResponse error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                    return jsonSerializer.SerializeAsync(resultStream, error);
                 }
             }
             catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
@@ -252,10 +248,10 @@ public class Startup : IStartup
                 if (logger.IsDebug) LogBadRequest(logger, e);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = e.StatusCode;
-                JsonRpcErrorResponse errResp = concreteService.GetErrorResponse(
+                JsonRpcErrorResponse errResp = jsonRpcService.GetErrorResponse(
                     e.StatusCode == StatusCodes.Status413PayloadTooLarge ? ErrorCodes.LimitExceeded : ErrorCodes.InvalidRequest,
                     e.Message);
-                await concreteSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
                 await ctx.Response.CompleteAsync();
             }
             finally
@@ -319,7 +315,7 @@ public class Startup : IStartup
                 return;
             }
 
-            if (concreteProcessor.ProcessExit.IsCancellationRequested)
+            if (jsonRpcProcessor.ProcessExit.IsCancellationRequested)
             {
                 ctx.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
                 return;
@@ -362,7 +358,7 @@ public class Startup : IStartup
                 try
                 {
                     using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                    await foreach (JsonRpcResult result in concreteProcessor.ProcessAsync(request, jsonRpcContext))
+                    await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                     {
                         using (result)
                         {
@@ -399,7 +395,7 @@ public class Startup : IStartup
                                                 }
 
                                                 first = false;
-                                                await concreteSerializer.SerializeAsync(resultWriter, entry.Response);
+                                                await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to respond to more request in the batch
@@ -470,15 +466,15 @@ public class Startup : IStartup
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
             {
-                JsonRpcErrorResponse? error = concreteService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                return concreteSerializer.SerializeAsync(resultStream, error);
+                JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                return jsonSerializer.SerializeAsync(resultStream, error);
             }
             async Task PushErrorResponse(int statusCode, int errorCode, string message)
             {
-                JsonRpcErrorResponse? response = concreteService.GetErrorResponse(errorCode, message);
+                JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(errorCode, message);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = statusCode;
-                await concreteSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
+                await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
         }));
