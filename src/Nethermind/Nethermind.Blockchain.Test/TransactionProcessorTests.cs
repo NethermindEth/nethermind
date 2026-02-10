@@ -743,7 +743,7 @@ public class TransactionProcessorTests
         return tracer;
     }
 
-    protected TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
+    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
         tracer?.StartNewTxTrace(tx);
