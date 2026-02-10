@@ -57,11 +57,11 @@ namespace Nethermind.Benchmark.Runner
 
     public class DashboardConfig : ManualConfig
     {
-        public DashboardConfig(params Job[] jobs)
+        public DashboardConfig(bool useInProcessToolchain, params Job[] jobs)
         {
             foreach (Job job in jobs)
             {
-                AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
+                AddJob(useInProcessToolchain ? job.WithToolchain(InProcessNoEmitToolchain.Instance) : job);
             }
 
             AddColumnProvider(DefaultColumnProviders.Descriptor);
@@ -78,7 +78,7 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig(Job job) : base(job)
+        public PrecompileBenchmarkConfig(bool useInProcessToolchain, Job job) : base(useInProcessToolchain, job)
         {
             AddColumnProvider(new GasColumnProvider());
         }
@@ -89,6 +89,7 @@ namespace Nethermind.Benchmark.Runner
         public static void Main(string[] args)
         {
             Job selectedJob = ResolveJob();
+            bool useInProcessToolchain = ShouldUseInProcessToolchain();
 
             List<Assembly> additionalJobAssemblies = [
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
@@ -109,17 +110,17 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(selectedJob), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(useInProcessToolchain, selectedJob), args);
                 }
 
                 foreach (Assembly assembly in simpleJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(selectedJob), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(useInProcessToolchain, selectedJob), args);
                 }
 
                 if (ShouldRunPrecompiles())
                 {
-                    BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(selectedJob), args);
+                    BenchmarkRunner.Run(typeof(KeccakBenchmark).Assembly, new PrecompileBenchmarkConfig(useInProcessToolchain, selectedJob), args);
                 }
                 else
                 {
@@ -138,6 +139,18 @@ namespace Nethermind.Benchmark.Runner
                 "long" => Job.LongRun,
                 _ => Job.MediumRun
             };
+        }
+
+        private static bool ShouldUseInProcessToolchain()
+        {
+            string configuredToolchain = Environment.GetEnvironmentVariable("NETH_BENCHMARK_INPROCESS");
+            if (string.IsNullOrWhiteSpace(configuredToolchain))
+            {
+                return true;
+            }
+
+            return configuredToolchain.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+                configuredToolchain.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ShouldRunPrecompiles()

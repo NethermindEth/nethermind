@@ -27,7 +27,10 @@ function Format-BenchmarkDisplayName {
         return $BenchmarkId
     }
 
-    return $BenchmarkId.Replace("Nethermind.Evm.Benchmark.", "").Replace("Nethermind.Benchmarks.Blockchain.", "")
+    return $BenchmarkId
+        .Replace("Nethermind.Evm.Benchmark.", "")
+        .Replace("Nethermind.Benchmarks.Blockchain.", "")
+        .Replace("Nethermind.Benchmarks.Evm.", "")
 }
 
 if (-not (Test-Path $CurrentPath)) {

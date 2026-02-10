@@ -7,7 +7,6 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Benchmarks.Core;
 
-[DisassemblyDiagnoser(maxDepth: 2)]
 public class SpanSourceBenchmark
 {
     private static readonly SpanSource Array = new([1, 2, 3]);

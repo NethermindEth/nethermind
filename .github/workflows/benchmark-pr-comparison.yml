@@ -57,21 +57,11 @@ jobs:
         env:
           NETH_BENCHMARK_INCLUDE_PRECOMPILES: "false"
           NETH_BENCHMARK_JOB: "medium"
+          NETH_BENCHMARK_INPROCESS: "false"
         run: |
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
-            --filter '*Nethermind.Benchmarks.*' \
-            --artifacts .benchmark-artifacts-main
-          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
-            --filter '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' \
-            --artifacts .benchmark-artifacts-evm
-
-      - name: Combine benchmark result files
-        run: |
-          mkdir -p .benchmark-artifacts/results
-          cp .benchmark-artifacts-main/results/*-report.csv .benchmark-artifacts/results/ || true
-          cp .benchmark-artifacts-evm/results/*-report.csv .benchmark-artifacts/results/ || true
-          cp .benchmark-artifacts-main/results/*-report-full-compressed.json .benchmark-artifacts/results/ || true
-          cp .benchmark-artifacts-evm/results/*-report-full-compressed.json .benchmark-artifacts/results/ || true
+            --filter '*Nethermind.Benchmarks.Blockchain.BlockProcessingBenchmarks*' '*Nethermind.Benchmarks.Evm.*' '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' '*Nethermind.Evm.Benchmark.EvmBenchmarks*' \
+            --artifacts .benchmark-artifacts
 
       - name: Aggregate benchmark results
         shell: pwsh

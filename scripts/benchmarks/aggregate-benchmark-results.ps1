@@ -9,16 +9,28 @@ $ErrorActionPreference = "Stop"
 function Convert-MeanToNs {
     param([string]$Mean)
 
-    if ([string]::IsNullOrWhiteSpace($Mean)) {
-        throw "Mean value is empty."
+    if ([string]::IsNullOrWhiteSpace($Mean) -or $Mean.Trim().Equals("NA", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
     }
 
-    if ($Mean -notmatch '([0-9]+(?:\.[0-9]+)?)') {
+    $tokens = $Mean.Trim().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+    if ($tokens.Length -lt 2) {
         throw "Failed to parse mean value '$Mean'."
     }
 
-    $value = [double]$Matches[1]
-    $unit = ($Mean.Trim().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | Select-Object -Last 1).ToLowerInvariant()
+    $valueToken = $tokens[0].Replace(",", "")
+    $value = 0.0
+    $parsed = [double]::TryParse(
+        $valueToken,
+        [System.Globalization.NumberStyles]::Float,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [ref]$value)
+
+    if (-not $parsed) {
+        throw "Failed to parse mean value '$Mean'."
+    }
+
+    $unit = $tokens[$tokens.Length - 1].ToLowerInvariant()
 
     if ($unit -eq "ns") { return $value }
     if ($unit -eq "ms") { return $value * 1e6 }
@@ -61,7 +73,7 @@ if ($files.Count -eq 0) {
 
 $entries = @()
 foreach ($file in $files) {
-    $rows = Import-Csv -Path $file.FullName
+    $rows = @(Import-Csv -Path $file.FullName)
     $className = [IO.Path]::GetFileNameWithoutExtension($file.Name).Replace("-report", "")
     if ($rows.Count -eq 0) {
         continue
@@ -71,6 +83,12 @@ foreach ($file in $files) {
     $parameterColumns = Get-ParameterColumns -Columns $columns
 
     foreach ($row in $rows) {
+        $mean = [string]$row.Mean
+        $meanNs = Convert-MeanToNs -Mean $mean
+        if ($null -eq $meanNs) {
+            continue
+        }
+
         $parameterPairs = @()
         foreach ($column in $parameterColumns) {
             $value = [string]$row.$column
@@ -88,8 +106,8 @@ foreach ($file in $files) {
             id = $id
             benchmark = "$className.$($row.Method)"
             parameters = $parameterPairs
-            mean = [string]$row.Mean
-            meanNs = [double](Convert-MeanToNs -Mean ([string]$row.Mean))
+            mean = $mean
+            meanNs = [double]$meanNs
             allocated = [string]$row.Allocated
             source = $file.Name
         }
