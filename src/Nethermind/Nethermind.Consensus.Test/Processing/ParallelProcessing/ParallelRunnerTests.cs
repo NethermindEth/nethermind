@@ -159,7 +159,7 @@ public class ParallelRunnerTests
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
         Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
-        Dictionary<int, byte[]> result = multiVersionMemory.CaptureFinalWriteSet();
+        Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
         if (typeof(T) == typeof(OnFlag)) await PrintInfo(parallelTrace, result, expected);
         TimeSpan time = Stopwatch.GetElapsedTime(start);
         await TestContext.Out.WriteLineAsync($"Execution time: {time.TotalMilliseconds}ms");

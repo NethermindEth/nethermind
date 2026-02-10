@@ -72,32 +72,28 @@ public class ParallelBlockValidationTransactionsExecutor(
     private void FindNonceDependencies(int txIndex, Block block, ParallelScheduler scheduler)
     {
         Address? sender = block.Transactions[txIndex].SenderAddress;
-        if (sender is null)
+        if (sender is not null)
         {
-            return;
-        }
-
-        for (int i = txIndex - 1; i >= 0; i--)
-        {
-            Transaction prevTx = block.Transactions[i];
-            if (prevTx.SenderAddress == sender)
+            for (int i = txIndex - 1; i >= 0; i--)
             {
-                scheduler.AbortExecution(txIndex, i, false);
-                break;
-            }
-
-            if (!prevTx.HasAuthorizationList)
-            {
-                continue;
-            }
-
-            foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
-            {
-                // how to handle wrong authorizations?
-                if (tuple.Authority == sender)
+                Transaction prevTx = block.Transactions[i];
+                if (prevTx.SenderAddress == sender)
                 {
                     scheduler.AbortExecution(txIndex, i, false);
                     return;
+                }
+
+                if (prevTx.HasAuthorizationList)
+                {
+                    foreach (AuthorizationTuple tuple in prevTx.AuthorizationList)
+                    {
+                        // how to handle wrong authorizations?
+                        if (tuple.Authority == sender)
+                        {
+                            scheduler.AbortExecution(txIndex, i, false);
+                            return;
+                        }
+                    }
                 }
             }
         }
@@ -110,42 +106,56 @@ public class ParallelBlockValidationTransactionsExecutor(
         Address? feeCollector = feeAccumulator.FeeCollector;
         int gasBeneficiaryLastWrite = -1;
         int feeCollectorLastWrite = -1;
-
         for (int txIndex = 0; txIndex < txCount; txIndex++)
         {
             Dictionary<Address, Account?>? accountUpdates = null;
             HashSet<Address>? storageClears = null;
-            multiVersionMemory.VisitFinalWriteSet(txIndex, (key, value) =>
+            List<(StorageCell Cell, byte[] Value)>? storageWrites = null;
+
+            foreach (KeyValuePair<ParallelStateKey, MultiVersionMemory.Value> write in multiVersionMemory.GetFinalWriteSet(txIndex))
             {
+                if (write.Value.IsEstimate)
+                {
+                    continue;
+                }
+
+                ParallelStateKey key = write.Key;
                 if (key.Kind != ParallelStateKeyKind.Storage)
                 {
-                    return;
+                    continue;
                 }
 
                 StorageCell cell = key.StorageCell;
+                object value = write.Value.Data;
                 if (ReferenceEquals(value, MultiVersionMemory.SelfDestructMonit))
                 {
                     (storageClears ??= new HashSet<Address>()).Add(cell.Address);
-                    return;
+                    continue;
+                }
+
+                if (value is byte[] bytes)
+                {
+                    (storageWrites ??= new List<(StorageCell Cell, byte[] Value)>()).Add((cell, bytes));
+                    continue;
                 }
 
                 if (value is Account account)
                 {
                     (accountUpdates ??= new Dictionary<Address, Account?>())[cell.Address] = account;
-                    return;
+                    continue;
                 }
 
                 if (value is null)
                 {
                     (accountUpdates ??= new Dictionary<Address, Account?>())[cell.Address] = null;
                 }
-            });
+            }
 
             if (storageClears is not null)
             {
                 foreach (Address address in storageClears)
                 {
-                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? _) ?? false;
+                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? account) ?? false && account is null;
                     // Avoid clearing when it's just an empty-base hint; keep prior tx writes intact.
                     if (accountDeleted || !storageTouched.Contains(address))
                     {
@@ -155,20 +165,14 @@ public class ParallelBlockValidationTransactionsExecutor(
                 }
             }
 
-            multiVersionMemory.VisitFinalWriteSet(txIndex, (key, value) =>
+            if (storageWrites is not null)
             {
-                if (key.Kind != ParallelStateKeyKind.Storage)
+                foreach ((StorageCell Cell, byte[] Value) write in storageWrites)
                 {
-                    return;
+                    worldState.Set(write.Cell, write.Value);
+                    storageTouched.Add(write.Cell.Address);
                 }
-
-                StorageCell cell = key.StorageCell;
-                if (value is byte[] bytes)
-                {
-                    worldState.Set(cell, bytes);
-                    storageTouched.Add(cell.Address);
-                }
-            });
+            }
 
             if (accountUpdates is not null)
             {

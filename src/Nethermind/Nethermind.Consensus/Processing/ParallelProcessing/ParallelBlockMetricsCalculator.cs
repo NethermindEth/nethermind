@@ -24,33 +24,31 @@ internal static class ParallelBlockMetricsCalculator
 
         for (int txIndex = 0; txIndex < txCount; txIndex++)
         {
-            bool readDependency = false;
-            multiVersionMemory.VisitFinalReadSet(txIndex, read =>
+            foreach (Read<ParallelStateKey> read in multiVersionMemory.GetFinalReadSet(txIndex))
             {
-                if (!readDependency && !read.Version.IsEmpty)
+                if (!read.Version.IsEmpty)
                 {
-                    readDependency = true;
+                    hasReadDependency[txIndex] = true;
+                    break;
                 }
-            });
-            hasReadDependency[txIndex] = readDependency;
-
-            bool writeDependency = false;
-            writeKeys.Clear();
-            multiVersionMemory.VisitFinalWriteSet(txIndex, (key, _) =>
-            {
-                if (!writeDependency && previousWrites.Contains(key))
-                {
-                    writeDependency = true;
-                }
-
-                writeKeys.Add(key);
-            });
-            hasWriteDependency[txIndex] = writeDependency;
-
-            foreach (ParallelStateKey key in writeKeys)
-            {
-                previousWrites.Add(key);
             }
+
+            writeKeys.Clear();
+            foreach (KeyValuePair<ParallelStateKey, MultiVersionMemory.Value> write in multiVersionMemory.GetFinalWriteSet(txIndex))
+            {
+                if (!write.Value.IsEstimate)
+                {
+                    ParallelStateKey key = write.Key;
+                    if (previousWrites.Contains(key))
+                    {
+                        hasWriteDependency[txIndex] = true;
+                    }
+
+                    writeKeys.Add(key);
+                }
+            }
+
+            previousWrites.UnionWith(writeKeys);
         }
 
         long reexecutions = 0;

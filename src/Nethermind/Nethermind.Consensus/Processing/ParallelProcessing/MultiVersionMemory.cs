@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -28,12 +27,16 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// </summary>
     /// <param name="Incarnation">Incarnation of the transaction that stored value</param>
     /// <param name="Data">Actual value written by transaction</param>
-    private readonly record struct Value(int Incarnation, TData Data)
+    public readonly record struct Value(int Incarnation, TData Data)
     {
         /// <summary>
         /// Special case when we know the transaction will be re-executed, so we can mark it's writes as estimates.
         /// </summary>
         public static readonly Value Estimate = new(-1, default);
+
+        /// <summary>
+        /// Indicates the value represents an estimate rather than a finalized write.
+        /// </summary>
         public bool IsEstimate => Incarnation == -1;
     }
 
@@ -60,6 +63,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// Mapping between TransactionIndex -> HashSet that will store reads by the last incarnation of the transaction.
     /// </summary>
     private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
+    private static readonly HashSet<Read<TLocation>> EmptyReadSet = new();
 
     // For given transaction incarnation it stores it's writeset into _data and updates _lastWrittenLocations
     private bool ApplyWriteSet(Version version, Dictionary<TLocation, TData> writeSet)
@@ -129,48 +133,22 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     }
 
     /// <summary>
-    /// Iterates over the final write-set for the latest incarnation of a transaction.
+    /// Provides access to the final write-set for the latest incarnation of a transaction.
     /// </summary>
+    /// <remarks>
+    /// This does not lock; only call after block processing completes.
+    /// </remarks>
     /// <param name="txIndex">Transaction index.</param>
-    /// <param name="apply">Action applied to each location/value pair.</param>
-    public void VisitFinalWriteSet(int txIndex, Action<TLocation, TData> apply)
-    {
-        DataDictionary<TLocation, Value> txData = _data[txIndex];
-        txData.Lock.EnterReadLock();
-        try
-        {
-            foreach ((TLocation key, Value value) in txData.Dictionary)
-            {
-                if (value.IsEstimate)
-                {
-                    continue;
-                }
-
-                apply(key, value.Data);
-            }
-        }
-        finally
-        {
-            txData.Lock.ExitReadLock();
-        }
-    }
+    public Dictionary<TLocation, Value> GetFinalWriteSet(int txIndex) => _data[txIndex].Dictionary;
 
     /// <summary>
-    /// Iterates over the final read-set for the latest incarnation of a transaction.
+    /// Provides access to the final read-set for the latest incarnation of a transaction.
     /// </summary>
+    /// <remarks>
+    /// This does not lock; only call after block processing completes.
+    /// </remarks>
     /// <param name="txIndex">Transaction index.</param>
-    /// <param name="apply">Action applied to each read entry.</param>
-    public void VisitFinalReadSet(int txIndex, Action<Read<TLocation>> apply)
-    {
-        HashSet<Read<TLocation>>? reads = _lastReads[txIndex];
-        if (reads is not null)
-        {
-            foreach (Read<TLocation> read in reads)
-            {
-                apply(read);
-            }
-        }
-    }
+    public HashSet<Read<TLocation>> GetFinalReadSet(int txIndex) => _lastReads[txIndex] ?? EmptyReadSet;
 
     /// <summary>
     /// Converts all transaction writes to estimates.
@@ -252,18 +230,22 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     }
 
     /// <summary>
-    /// Captures the final write-set for the whole block.
+    /// Grabs the final write-set of the whole block.
     /// </summary>
     /// <returns>Final write-set keyed by location.</returns>
-    public Dictionary<TLocation, TData> CaptureFinalWriteSet()
+    public Dictionary<TLocation, TData> Snapshot()
     {
         Dictionary<TLocation, TData> result = new();
         // need to iterate backwards, as the later transaction writes are the final written to the same location
         for (int index = _data.Length - 1; index >= 0; index--)
         {
-            DataDictionary<TLocation, Value> data = _data[index];
-            foreach (KeyValuePair<TLocation, Value> location in data.Dictionary)
+            foreach (KeyValuePair<TLocation, Value> location in GetFinalWriteSet(index))
             {
+                if (location.Value.IsEstimate)
+                {
+                    continue;
+                }
+
                 // only add if previously not added
                 result.TryAdd(location.Key, location.Value.Data);
             }
@@ -313,15 +295,12 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         return true;
     }
 
-    private readonly struct DataDictionary<TKey, TValue>
+    private readonly struct DataDictionary<TKey, TValue>()
     {
         public readonly Dictionary<TKey, TValue> Dictionary = new();
         public readonly ReaderWriterLockSlim Lock = new();
-
-        public DataDictionary()
-        {
-        }
     }
+
 }
 
 /// <summary>
