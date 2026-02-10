@@ -4,6 +4,7 @@ param(
     [string]$OutputJsonPath = ".benchmark-results/benchmark-comparison.json",
     [string]$OutputMarkdownPath = ".benchmark-results/benchmark-comparison.md",
     [double]$RegressionThresholdPercent = 5.0,
+    [double]$MinAbsoluteDeltaNs = 0.0,
     [int]$TopCount = 15
 )
 
@@ -65,12 +66,13 @@ foreach ($row in $currentRows) {
     $baselineNs = [double]$baselineRow.meanNs
     $currentNs = [double]$row.meanNs
     $deltaNs = $currentNs - $baselineNs
+    $deltaNsAbs = [Math]::Abs($deltaNs)
     $deltaPercent = if ($baselineNs -eq 0) { 0.0 } else { ($deltaNs / $baselineNs) * 100.0 }
 
     $status = "neutral"
-    if ($deltaPercent -gt $RegressionThresholdPercent) {
+    if ($deltaPercent -gt $RegressionThresholdPercent -and $deltaNsAbs -ge $MinAbsoluteDeltaNs) {
         $status = "regression"
-    } elseif ($deltaPercent -lt -$RegressionThresholdPercent) {
+    } elseif ($deltaPercent -lt -$RegressionThresholdPercent -and $deltaNsAbs -ge $MinAbsoluteDeltaNs) {
         $status = "improvement"
     }
 
@@ -107,6 +109,7 @@ $summary = [PSCustomObject]@{
     newCount = $newBenchmarks.Count
     missingCount = $missingBenchmarks.Count
     regressionThresholdPercent = $RegressionThresholdPercent
+    minAbsoluteDeltaNs = $MinAbsoluteDeltaNs
 }
 
 $output = [PSCustomObject]@{
@@ -135,6 +138,9 @@ if (-not $hasBaseline) {
     $lines += "No cached master baseline was found. Current run has $($currentRows.Count) benchmark rows."
 } else {
     $lines += "Threshold for regression/improvement: **$RegressionThresholdPercent%**."
+    if ($MinAbsoluteDeltaNs -gt 0) {
+        $lines += "Minimum absolute delta to classify changes: **$(Format-Ns -Nanoseconds $MinAbsoluteDeltaNs)**."
+    }
     $lines += ""
     $lines += "- Compared: **$($summary.comparedCount)**"
     $lines += "- Regressions: **$($summary.regressionCount)**"

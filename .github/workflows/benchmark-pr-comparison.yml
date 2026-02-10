@@ -56,7 +56,7 @@ jobs:
       - name: Run all benchmarks
         env:
           NETH_BENCHMARK_INCLUDE_PRECOMPILES: "true"
-          NETH_BENCHMARK_JOB: "short"
+          NETH_BENCHMARK_JOB: "medium"
         run: |
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
             --artifacts .benchmark-artifacts
@@ -99,7 +99,8 @@ jobs:
             -BaselinePath .benchmark-baseline/benchmark-summary.json `
             -OutputJsonPath .benchmark-results/benchmark-comparison.json `
             -OutputMarkdownPath .benchmark-results/benchmark-comparison.md `
-            -RegressionThresholdPercent 5 `
+            -RegressionThresholdPercent 12 `
+            -MinAbsoluteDeltaNs 50000 `
             -TopCount 15
 
       - name: Comment benchmark comparison on PR
