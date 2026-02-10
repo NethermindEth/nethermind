@@ -46,8 +46,7 @@ public sealed class PreCachedTrieStore : ITrieStore
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak),
-            (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash));
+        byte[]? rlp = _preBlockCache.GetOrAdd(new(address, in path, in keccak), _tryLoadRlp);
 
         return rlp is not null;
     }

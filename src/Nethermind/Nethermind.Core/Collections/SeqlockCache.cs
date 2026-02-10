@@ -185,7 +185,18 @@ public sealed class SeqlockCache<TKey, TValue>
             return value;
         }
 
-        value = valueFactory(in key);
+        return GetOrAddMiss(in key, valueFactory, idx0, idx1, hashPart);
+    }
+
+    /// <summary>
+    /// Cold path for GetOrAdd: invokes factory and stores the result.
+    /// Kept out-of-line so the hot path (cache hit) compiles to a lean method body
+    /// with minimal register saves and stack frame.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private TValue? GetOrAddMiss(in TKey key, ValueFactory valueFactory, int idx0, int idx1, long hashPart)
+    {
+        TValue? value = valueFactory(in key);
         SetCore(in key, value, idx0, idx1, hashPart);
         return value;
     }
@@ -291,41 +302,23 @@ public sealed class SeqlockCache<TKey, TValue>
         }
 
         // === Key not in either way. Evict into an available slot. ===
-        // Prefer stale/empty entries to preserve live data.
+        // Priority: stale/empty unlocked > live (alternating by hash bit) > any unlocked > skip.
+        // The decision tree selects which way to evict into, then issues a single WriteEntry call.
         bool h0Live = h0 >= 0 && (h0 & EpochOccMask) == epochOccTag;
         bool h1Live = h1 >= 0 && (h1 & EpochOccMask) == epochOccTag;
 
-        if (!h0Live && h0 >= 0)
-        {
-            WriteEntry(ref e0, h0, in key, value, tagToStore);
-        }
-        else if (!h1Live && h1 >= 0)
-        {
-            WriteEntry(ref e1, h1, in key, value, tagToStore);
-        }
-        else if (h0Live && h1Live)
-        {
-            // Both ways live — alternate eviction using a hash bit to avoid
-            // always victimizing the same way. Bit 9 of hashPart (= bit 14 of
-            // the original hash) is independent of both set indices.
-            if ((hashPart & (1L << 9)) != 0)
-            {
-                WriteEntry(ref e0, h0, in key, value, tagToStore);
-            }
-            else
-            {
-                WriteEntry(ref e1, h1, in key, value, tagToStore);
-            }
-        }
-        else if (h0 >= 0)
-        {
-            WriteEntry(ref e0, h0, in key, value, tagToStore);
-        }
-        else if (h1 >= 0)
-        {
-            WriteEntry(ref e1, h1, in key, value, tagToStore);
-        }
-        // else both locked, skip
+        bool pick0;
+        if (!h0Live && h0 >= 0) pick0 = true;
+        else if (!h1Live && h1 >= 0) pick0 = false;
+        else if (h0Live && h1Live) pick0 = (hashPart & (1L << 9)) != 0;
+        else if (h0 >= 0) pick0 = true;
+        else if (h1 >= 0) pick0 = false;
+        else return; // both locked, skip
+
+        WriteEntry(
+            ref pick0 ? ref e0 : ref e1,
+            pick0 ? h0 : h1,
+            in key, value, tagToStore);
     }
 
     /// <summary>
@@ -346,8 +339,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
     /// <summary>
     /// Attempts a CAS-guarded write to a single entry.
+    /// Kept out-of-line: the CAS atomic dominates latency, so call overhead is invisible,
+    /// while de-duplication reclaims ~350 bytes of inlined copies across SetCore call sites.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore)
     {
         if (existing < 0) return; // locked
