@@ -416,7 +416,7 @@ namespace Ethereum.Test.Base
             {
                 testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 Console.WriteLine(e);
                 Dictionary<string, HalfBlockchainTestJson> half =
