@@ -6,12 +6,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Equivalency;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -57,11 +55,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown()
     {
+        _storage?.Dispose();
         _receiptsDb.Dispose();
     }
 
     private void CreateStorage()
     {
+        _storage?.Dispose();
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
