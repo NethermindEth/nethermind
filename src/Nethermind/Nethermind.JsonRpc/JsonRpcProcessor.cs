@@ -152,27 +152,29 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
-        if (ProcessExit.IsCancellationRequested)
-        {
-            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
-        }
-
-        if (IsRecordingRequest)
-        {
-            reader = await RecordRequest(reader);
-        }
-
         // Engine API (authenticated) requests skip the timeout CTS entirely -- they are from
         // trusted consensus clients, must complete for consensus, and connection drops are
         // handled by the PipeReader. Non-engine paths still use the pooled CTS.
         CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
         CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
-        JsonReaderState readerState = CreateJsonReaderState(context);
-        bool freshState = true;
-        bool shouldExit = false;
         try
         {
+            if (ProcessExit.IsCancellationRequested)
+            {
+                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+                yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+                yield break;
+            }
+
+            if (IsRecordingRequest)
+            {
+                reader = await RecordRequest(reader);
+            }
+
+            JsonReaderState readerState = CreateJsonReaderState(context);
+            bool freshState = true;
+            bool shouldExit = false;
+
             while (!shouldExit)
             {
                 long startTime = Stopwatch.GetTimestamp();
