@@ -20,7 +20,7 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public class Address : IEquatable<Address>, IComparable<Address>
+    public sealed class Address : IEquatable<Address>, IComparable<Address>
     {
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
