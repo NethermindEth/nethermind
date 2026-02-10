@@ -24,6 +24,25 @@ public sealed class TxDecoder : TxDecoder<Transaction>
         Instance = new TxDecoder(static () => TxObjectPool.Get());
         Rlp.RegisterDecoder(typeof(Transaction), Instance);
     }
+
+    /// <summary>
+    /// Gets the block-format length of a pre-encoded CL-format transaction.
+    /// Legacy txs use the same format; typed txs are wrapped in an RLP byte string.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetBlockFormatLength(TxType type, int clEncodedLength)
+        => type == TxType.Legacy ? clEncodedLength : Rlp.LengthOfSequence(clEncodedLength);
+
+    /// <summary>
+    /// Writes a pre-encoded CL-format transaction in block format.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteBlockFormat(RlpStream stream, TxType type, byte[] clEncoded)
+    {
+        if (type != TxType.Legacy)
+            stream.StartByteArray(clEncoded.Length, false);
+        stream.Write(clEncoded);
+    }
 }
 
 public sealed class SystemTxDecoder : TxDecoder<SystemTransaction>;
