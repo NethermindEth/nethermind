@@ -4,9 +4,9 @@ import sys
 
 network = os.getenv("NETWORK")
 
-bad_logs = {"Exception": 1, "Missing node found!": 1}
-good_logs = {"Processed": 0, "Stats after finishing state": 0}
-required_count = {"Processed": 20, "Stats after finishing state": 1}
+bad_logs = {"Exception": 1, "Verification failed": 1}
+good_logs = {"Processed": 0, "Verification complete.": 0, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 0}
+required_count = {"Processed": 20, "Verification complete.": 1, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 1}
 
 if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta"}:
     good_logs["Synced Chain Head"] = 0
