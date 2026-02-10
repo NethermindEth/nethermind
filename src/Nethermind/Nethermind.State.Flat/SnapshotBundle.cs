@@ -24,10 +24,14 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!;
+    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!;
+    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!;
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
+
+    private bool _trieChanged = false;
+    private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = new();
+    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _readStorageNodes = new();
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -142,18 +146,22 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_changedStateNodes.TryGetValue(path, out TrieNode? node))
+        if (_trieChanged && _changedStateNodes.TryGetValue(path, out TrieNode? node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+        }
+        else if (_readStateNodes.TryGetValue(path, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _changedStateNodes.GetOrAdd(path, node);
+            node = _readStateNodes.GetOrAdd(path, node);
         }
         else
         {
-            node = _changedStateNodes.GetOrAdd(path,
+            node = _readStateNodes.GetOrAdd(path,
                 DoFindStateNodeExternal(path, hash, out node)
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
@@ -206,19 +214,23 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
+
+        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            _transientResource.UpdateStorageNode((Hash256AsKey)address, path, node);
+        }
+        else if (_readStorageNodes.TryGetValue(((Hash256AsKey)address, path), out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
+            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), node);
         }
         else
         {
-            node = _changedStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
+            node = _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path),
                 DoTryFindStorageNodeExternal((Hash256AsKey)address, path, hash, out node) && node is not null
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
@@ -291,6 +303,7 @@ public sealed class SnapshotBundle : IDisposable
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
+        _trieChanged = true;
         _changedStateNodes[path] = newNode;
 
         // Note to self:
@@ -306,6 +319,7 @@ public sealed class SnapshotBundle : IDisposable
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
+        _trieChanged = true;
         _changedStorageNodes[(addr, path)] = newNode;
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
@@ -404,6 +418,10 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             _transientResource = _resourcePool.GetCachedResource(_usage);
+            _trieChanged = false;
+
+            _readStateNodes = _transientResource.ReadStateNodes;
+            _readStorageNodes = _transientResource.ReadStorageNodes;
 
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
@@ -416,27 +434,13 @@ public sealed class SnapshotBundle : IDisposable
             snapshot.Dispose(); // Revert the lease before
 
             _transientResource.Reset();
+            _readStateNodes = null!;
+            _readStorageNodes = null!;
+
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
 
             return (null, null);
         }
-    }
-
-    public void Reset()
-    {
-        if (_isDisposed) return;
-
-        // Dispose all snapshots in the list
-        _snapshots.Dispose();
-        _snapshots = new SnapshotPooledList(1);
-
-        // Reset the current pooled content (clears _changedAccounts, _changedSlots, etc.)
-        _currentPooledContent.Reset();
-
-        // Reset transient resource (clears trie node cache and bloom filter)
-        _transientResource.Reset();
-
-        ExpandCurrentPooledContent();
     }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -452,6 +456,8 @@ public sealed class SnapshotBundle : IDisposable
         _changedSlots = null!;
         _changedAccounts = null!;
         _changedStorageNodes = null!;
+        _readStateNodes = null!;
+        _readStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
