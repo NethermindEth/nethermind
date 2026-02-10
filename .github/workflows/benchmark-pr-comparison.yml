@@ -60,10 +60,18 @@ jobs:
         run: |
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
             --filter '*Nethermind.Benchmarks.*' \
-            --artifacts .benchmark-artifacts
+            --artifacts .benchmark-artifacts-main
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
             --filter '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' \
-            --artifacts .benchmark-artifacts
+            --artifacts .benchmark-artifacts-evm
+
+      - name: Combine benchmark result files
+        run: |
+          mkdir -p .benchmark-artifacts/results
+          cp .benchmark-artifacts-main/results/*-report.csv .benchmark-artifacts/results/ || true
+          cp .benchmark-artifacts-evm/results/*-report.csv .benchmark-artifacts/results/ || true
+          cp .benchmark-artifacts-main/results/*-report-full-compressed.json .benchmark-artifacts/results/ || true
+          cp .benchmark-artifacts-evm/results/*-report-full-compressed.json .benchmark-artifacts/results/ || true
 
       - name: Aggregate benchmark results
         shell: pwsh
