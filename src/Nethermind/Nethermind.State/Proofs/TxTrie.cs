@@ -57,6 +57,15 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         }
     }
 
+    private void InitializeFromEncodedTransactions(ReadOnlySpan<byte[]> list)
+    {
+        for (int key = 0; key < list.Length; key++)
+        {
+            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
+            Set(keyBuffer.Span, list[key]);
+        }
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
@@ -72,5 +81,14 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
         Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
         return rootHash;
+    }
+
+    public static Hash256 CalculateRoot(ReadOnlySpan<byte[]> encodedTransactions)
+    {
+        using TrackingCappedArrayPool cappedArray = new(encodedTransactions.Length * 2);
+        TxTrie txTrie = new(ReadOnlySpan<Transaction>.Empty, canBuildProof: false, bufferPool: cappedArray);
+        txTrie.InitializeFromEncodedTransactions(encodedTransactions);
+        txTrie.UpdateRootHash();
+        return txTrie.RootHash;
     }
 }
