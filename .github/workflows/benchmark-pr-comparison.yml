@@ -53,13 +53,12 @@ jobs:
           restore-keys: |
             ${{ steps.baseline-key.outputs.prefix }}
 
-      - name: Run focused benchmarks
+      - name: Run all benchmarks
         env:
-          NETH_BENCHMARK_INCLUDE_PRECOMPILES: "false"
+          NETH_BENCHMARK_INCLUDE_PRECOMPILES: "true"
           NETH_BENCHMARK_JOB: "short"
         run: |
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
-            --filter '*EvmStackBenchmarks*' '*BlockProcessingBenchmarks*' \
             --artifacts .benchmark-artifacts
 
       - name: Aggregate benchmark results
