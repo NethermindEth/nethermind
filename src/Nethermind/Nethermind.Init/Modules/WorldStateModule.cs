@@ -79,6 +79,9 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
 
+            // Register the metrics decorator for injection into processors
+            .Map<WorldStateScopeProviderMetricsDecorator, PruningTrieStateFactoryOutput>((o) => o.MetricsDecorator)
+
             // Some admin rpc to trigger verify trie and pruning
             .Map<IPruningTrieStateAdminRpcModule, PruningTrieStateFactoryOutput>((m) => m.AdminRpcModule)
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
@@ -100,12 +103,14 @@ public class WorldStateModule(IInitConfig initConfig) : Module
     {
         public IWorldStateManager WorldStateManager { get; }
         public IPruningTrieStateAdminRpcModule AdminRpcModule { get; }
+        public WorldStateScopeProviderMetricsDecorator MetricsDecorator { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
-            (IWorldStateManager worldStateManager, IPruningTrieStateAdminRpcModule adminRpc) = factory.Build();
+            (IWorldStateManager worldStateManager, IPruningTrieStateAdminRpcModule adminRpc, WorldStateScopeProviderMetricsDecorator metricsDecorator) = factory.Build();
             WorldStateManager = worldStateManager;
             AdminRpcModule = adminRpc;
+            MetricsDecorator = metricsDecorator;
         }
     }
 

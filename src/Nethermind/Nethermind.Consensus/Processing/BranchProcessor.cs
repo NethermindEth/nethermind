@@ -25,11 +25,13 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
+    WorldStateScopeProviderMetricsDecorator metricsDecorator,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    protected readonly IWorldState _stateProvider = stateProvider;
+    private readonly WorldStateScopeProviderMetricsDecorator _metricsDecorator = metricsDecorator;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -147,7 +149,7 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _stateProvider.StateMerkleizationTime;
+                    Metrics.StateMerkleizationTime = _metricsDecorator.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -171,6 +173,7 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
+                _metricsDecorator.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
