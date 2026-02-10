@@ -18,41 +18,22 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BranchProcessor : IBranchProcessor
+public class BranchProcessor(
+    IBlockProcessor blockProcessor,
+    ISpecProvider specProvider,
+    IWorldState stateProvider,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashProvider blockhashProvider,
+    ILogManager logManager,
+    IBlockCachePreWarmer? preWarmer = null)
+    : IBranchProcessor
 {
-    private readonly ILogger _logger;
-    protected readonly IWorldState _stateProvider;
-    private readonly WorldStateScopeProviderMetricsDecorator _metricsDecorator;
-    private readonly IBlockProcessor _blockProcessor;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
-    private readonly IBlockhashProvider _blockhashProvider;
-    private readonly IBlockCachePreWarmer? _preWarmer;
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    protected readonly IWorldState _stateProvider = stateProvider;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches;
-
-    public BranchProcessor(
-        IBlockProcessor blockProcessor,
-        ISpecProvider specProvider,
-        IWorldState stateProvider,
-        IBeaconBlockRootHandler beaconBlockRootHandler,
-        IBlockhashProvider blockhashProvider,
-        ILogManager logManager,
-        WorldStateScopeProviderMetricsDecorator metricsDecorator,
-        IBlockCachePreWarmer? preWarmer = null)
-    {
-        _blockProcessor = blockProcessor;
-        _specProvider = specProvider;
-        _stateProvider = stateProvider;
-        _beaconBlockRootHandler = beaconBlockRootHandler;
-        _blockhashProvider = blockhashProvider;
-        _logger = logManager.GetClassLogger();
-        _metricsDecorator = metricsDecorator;
-        _preWarmer = preWarmer;
-        _clearCaches = _ => _preWarmer?.ClearCaches();
-    }
+    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -100,9 +81,9 @@ public class BranchProcessor : IBranchProcessor
         {
             // Start prewarming as early as possible
             WaitForCacheClear();
-            IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
+            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-            Task? prefetchBlockhash = _blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -119,13 +100,13 @@ public class BranchProcessor : IBranchProcessor
                 if (i > 0)
                 {
                     // Refresh spec
-                    spec = _specProvider.GetSpec(suggestedBlock.Header);
+                    spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 backgroundCancellation ??= new CancellationTokenSource();
                 preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= _blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -142,17 +123,17 @@ public class BranchProcessor : IBranchProcessor
 
                 if (preWarmTask is not null)
                 {
-                    (processedBlock, receipts) = _blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
                 else
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = _preWarmer?.ClearCaches() ?? default;
+                    CacheType result = preWarmer?.ClearCaches() ?? default;
                     if (result != default)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = _blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
                 // Block is processed, we can cancel background tasks
@@ -166,7 +147,10 @@ public class BranchProcessor : IBranchProcessor
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _metricsDecorator.StateMerkleizationTime;
+                    if (_stateProvider.ScopeProvider is WorldStateScopeProviderMetricsDecorator metricsDecorator)
+                    {
+                        Metrics.StateMerkleizationTime = metricsDecorator.StateMerkleizationTime;
+                    }
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -190,7 +174,10 @@ public class BranchProcessor : IBranchProcessor
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
-                _metricsDecorator.Reset();
+                if (_stateProvider.ScopeProvider is WorldStateScopeProviderMetricsDecorator metrics)
+                {
+                    metrics.Reset();
+                }
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
@@ -223,11 +210,11 @@ public class BranchProcessor : IBranchProcessor
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
         suggestedBlock.Transactions.Length < 3
             ? null
-            : _preWarmer?.PreWarmCaches(suggestedBlock,
+            : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
                 spec,
                 token,
-                _beaconBlockRootHandler);
+                beaconBlockRootHandler);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
@@ -238,9 +225,9 @@ public class BranchProcessor : IBranchProcessor
             // Can start clearing caches in background
             _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
         }
-        else if (_preWarmer is not null)
+        else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(_preWarmer.ClearCaches);
+            _clearTask = Task.Run(preWarmer.ClearCaches);
         }
     }
 

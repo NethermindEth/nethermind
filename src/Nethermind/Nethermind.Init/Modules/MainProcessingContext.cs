@@ -32,9 +32,10 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     {
 
         IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
+        worldState = new WorldStateScopeProviderMetricsDecorator(worldState);
         if (logManager.GetClassLogger<WorldStateScopeOperationLogger>().IsTrace)
         {
-            worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
+            worldState = new WorldStateScopeOperationLogger(worldState, logManager);
         }
 
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>

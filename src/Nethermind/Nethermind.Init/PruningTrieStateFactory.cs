@@ -50,7 +50,7 @@ public class PruningTrieStateFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
-    public (IWorldStateManager, IPruningTrieStateAdminRpcModule, WorldStateScopeProviderMetricsDecorator) Build()
+    public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
@@ -76,10 +76,8 @@ public class PruningTrieStateFactory(
                 codeDb,
                 logManager);
 
-        WorldStateScopeProviderMetricsDecorator metricsDecorator = new(scopeProvider);
-
         IWorldStateManager stateManager = new WorldStateManager(
-            metricsDecorator,
+            scopeProvider,
             trieStore,
             dbProvider,
             logManager,
@@ -112,7 +110,7 @@ public class PruningTrieStateFactory(
             verifyTrieStarter!
         );
 
-        return (stateManager, adminRpcModule, metricsDecorator);
+        return (stateManager, adminRpcModule);
     }
 
     private void InitializeFullPruning(IDb stateDb,
