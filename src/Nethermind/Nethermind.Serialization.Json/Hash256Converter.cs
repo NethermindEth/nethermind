@@ -36,7 +36,7 @@ public class Hash256Converter : JsonConverter<Hash256>
         Hash256 keccak,
         JsonSerializerOptions options)
     {
-        WriteHashHex(writer, keccak.Bytes);
+        WriteHashHex(writer, in keccak.ValueHash256);
     }
 
     /// <summary>
@@ -44,7 +44,7 @@ public class Hash256Converter : JsonConverter<Hash256>
     /// Writes raw JSON (including quotes) via WriteRawValue to bypass the encoder entirely.
     /// </summary>
     [SkipLocalsInit]
-    internal static void WriteHashHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hash)
+    internal static void WriteHashHex(Utf8JsonWriter writer, in ValueHash256 hash)
     {
         // Raw JSON: '"' + "0x" + 64 hex chars + '"' = 68 bytes
         Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
@@ -53,7 +53,7 @@ public class Hash256Converter : JsonConverter<Hash256>
         Unsafe.Add(ref b, 0) = (byte)'"';
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
 
-        HexWriter.Encode32Bytes(ref Unsafe.Add(ref b, 3), hash);
+        HexWriter.Encode32Bytes(ref Unsafe.Add(ref b, 3), hash.Bytes);
 
         Unsafe.Add(ref b, 67) = (byte)'"';
 

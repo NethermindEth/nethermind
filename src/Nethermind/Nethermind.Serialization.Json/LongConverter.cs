@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Globalization;
 using System.Buffers;
 using System.Buffers.Text;
+using System.Globalization;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -91,14 +91,9 @@ public class LongConverter : JsonConverter<long>
         }
         else if (reader.TokenType == JsonTokenType.String)
         {
-            if (!reader.HasValueSequence)
-            {
-                return FromString(reader.ValueSpan);
-            }
-            else
-            {
-                return FromString(reader.ValueSequence.ToArray());
-            }
+            return !reader.HasValueSequence
+                ? FromString(reader.ValueSpan)
+                : FromString(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();

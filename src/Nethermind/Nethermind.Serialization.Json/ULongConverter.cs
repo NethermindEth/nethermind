@@ -87,14 +87,9 @@ public class ULongConverter : JsonConverter<ulong>
         }
         if (reader.TokenType == JsonTokenType.String)
         {
-            if (!reader.HasValueSequence)
-            {
-                return FromString(reader.ValueSpan);
-            }
-            else
-            {
-                return FromString(reader.ValueSequence.ToArray());
-            }
+            return !reader.HasValueSequence
+                ? FromString(reader.ValueSpan)
+                : FromString(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();

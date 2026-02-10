@@ -34,6 +34,6 @@ public class ValueHash256Converter : JsonConverter<ValueHash256>
         ValueHash256 keccak,
         JsonSerializerOptions options)
     {
-        Hash256Converter.WriteHashHex(writer, keccak.Bytes);
+        Hash256Converter.WriteHashHex(writer, in keccak);
     }
 }

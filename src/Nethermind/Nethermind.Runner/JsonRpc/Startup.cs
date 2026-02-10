@@ -118,9 +118,6 @@ public class Startup : IStartup
             app.UseDeveloperExceptionPage();
         }
 
-        app.UseRouting();
-        app.UseCors();
-
         IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
         IRpcAuthentication? rpcAuthentication = app.ApplicationServices.GetService<IRpcAuthentication>();
 
@@ -266,6 +263,9 @@ public class Startup : IStartup
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? 0);
             }
         });
+
+        app.UseRouting();
+        app.UseCors();
 
         // If request is local, don't use response compression,
         // as it allocates a lot, but doesn't improve much for loopback
@@ -580,8 +580,14 @@ public class Startup : IStartup
                 writer.WriteNullValue();
                 break;
             default:
-                JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+                WriteOther(writer, id);
                 break;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WriteOther(Utf8JsonWriter writer, object? id)
+        {
+            JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
         }
     }
 
@@ -614,18 +620,30 @@ public class Startup : IStartup
                     writer.Advance(written);
                     break;
                 }
-            case string strId:
-                {
-                    Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
-                    buf[0] = (byte)'"';
-                    int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
-                    buf[len + 1] = (byte)'"';
-                    writer.Advance(len + 2);
-                    break;
-                }
             default:
-                writer.Write("null"u8);
+                WriteOther(writer, id);
                 break;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WriteOther(PipeWriter writer, object? id)
+        {
+            switch (id)
+            {
+                case string strId:
+                    {
+                        // JSON-RPC IDs are simple values (typically numeric); no escaping needed
+                        Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
+                        buf[0] = (byte)'"';
+                        int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
+                        buf[len + 1] = (byte)'"';
+                        writer.Advance(len + 2);
+                        break;
+                    }
+                default:
+                    writer.Write("null"u8);
+                    break;
+            }
         }
     }
 
