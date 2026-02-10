@@ -4,8 +4,6 @@
 using System;
 using System.Buffers;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;

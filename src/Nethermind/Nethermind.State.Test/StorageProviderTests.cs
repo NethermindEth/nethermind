@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -610,6 +609,25 @@ public class StorageProviderTests
         provider.ClearStorage(TestItem.AddressA);
         provider.Commit(Paris.Instance);
         provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [Test]
+    public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
+    {
+        IWorldState worldState = new WorldState(
+            new TrieStoreScopeProvider(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+
+        // Create an empty account (balance=0, nonce=0, no code) and set storage on it.
+        // EIP-161 (via SpuriousDragon+) deletes empty accounts during commit, but the
+        // storage flush has already produced a non-empty storage root. The commit must
+        // handle this gracefully by skipping the storage root update for deleted accounts.
+        worldState.CreateAccount(TestItem.AddressA, 0);
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
+        worldState.Commit(SpuriousDragon.Instance);
+
+        worldState.AccountExists(TestItem.AddressA).Should().BeFalse();
     }
 
     [TestCase(2)]

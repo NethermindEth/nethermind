@@ -22,7 +22,7 @@ namespace Nethermind.Evm;
 /// </remarks>
 public class CodeInfoRepository : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     protected readonly IWorldState _worldState;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
@@ -31,7 +31,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         _worldState = worldState;
     }
 
-    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
@@ -39,7 +39,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _localPrecompiles[codeSource];
         }
 
-        ICodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
+        CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
 
         if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
         {
@@ -50,13 +50,13 @@ public class CodeInfoRepository : ICodeInfoRepository
         return codeInfo;
     }
 
-    private ICodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+    private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
         return InternalGetCodeInfo(in codeHash, vmSpec);
     }
 
-    protected virtual ICodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    protected virtual CodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec)
     {
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
@@ -112,7 +112,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        ICodeInfo codeInfo = InternalGetCodeInfo(in codeHash, spec);
+        CodeInfo codeInfo = InternalGetCodeInfo(in codeHash, spec);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
             : codeHash;

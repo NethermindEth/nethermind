@@ -19,9 +19,9 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
 {
     private static readonly CodeLruCache _codeCache = new();
 
-    protected override ICodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    protected override CodeInfo InternalGetCodeInfo(in ValueHash256 codeHash, IReleaseSpec vmSpec)
     {
-        ICodeInfo? cachedCodeInfo = null;
+        CodeInfo? cachedCodeInfo = null;
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
@@ -61,7 +61,7 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
         if (_worldState.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
-            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
+            CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
     }
@@ -92,33 +92,33 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly ClockCache<ValueHash256, ICodeInfo>[] _caches;
+        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new ClockCache<ValueHash256, ICodeInfo>[CacheCount];
+            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
+                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
             }
         }
 
-        public ICodeInfo? Get(in ValueHash256 codeHash)
+        public CodeInfo? Get(in ValueHash256 codeHash)
         {
-            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
-        public bool Set(in ValueHash256 codeHash, ICodeInfo codeInfo)
+        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
-            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
 
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out ICodeInfo? codeInfo)
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
         {
             codeInfo = Get(in codeHash);
             return codeInfo is not null;
