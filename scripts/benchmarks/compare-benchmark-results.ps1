@@ -19,6 +19,16 @@ function Format-Ns {
     return "{0:N3} ns" -f $Nanoseconds
 }
 
+function Format-BenchmarkDisplayName {
+    param([string]$BenchmarkId)
+
+    if ([string]::IsNullOrWhiteSpace($BenchmarkId)) {
+        return $BenchmarkId
+    }
+
+    return $BenchmarkId.Replace("Nethermind.Evm.Benchmark.", "").Replace("Nethermind.Benchmarks.Blockchain.", "")
+}
+
 if (-not (Test-Path $CurrentPath)) {
     throw "Current benchmark summary '$CurrentPath' does not exist."
 }
@@ -139,7 +149,8 @@ if (-not $hasBaseline) {
         $lines += "| Benchmark | Baseline | Current | Delta |"
         $lines += "|---|---:|---:|---:|"
         foreach ($row in $regressions | Select-Object -First $TopCount) {
-            $lines += "| $($row.id) | $(Format-Ns -Nanoseconds $row.baselineMeanNs) | $(Format-Ns -Nanoseconds $row.currentMeanNs) | +$([Math]::Round($row.deltaPercent, 2))% |"
+            $displayName = Format-BenchmarkDisplayName -BenchmarkId ([string]$row.id)
+            $lines += "| $displayName | $(Format-Ns -Nanoseconds $row.baselineMeanNs) | $(Format-Ns -Nanoseconds $row.currentMeanNs) | +$([Math]::Round($row.deltaPercent, 2))% |"
         }
         $lines += ""
     }
@@ -149,7 +160,8 @@ if (-not $hasBaseline) {
         $lines += "| Benchmark | Baseline | Current | Delta |"
         $lines += "|---|---:|---:|---:|"
         foreach ($row in $improvements | Select-Object -First $TopCount) {
-            $lines += "| $($row.id) | $(Format-Ns -Nanoseconds $row.baselineMeanNs) | $(Format-Ns -Nanoseconds $row.currentMeanNs) | $([Math]::Round($row.deltaPercent, 2))% |"
+            $displayName = Format-BenchmarkDisplayName -BenchmarkId ([string]$row.id)
+            $lines += "| $displayName | $(Format-Ns -Nanoseconds $row.baselineMeanNs) | $(Format-Ns -Nanoseconds $row.currentMeanNs) | $([Math]::Round($row.deltaPercent, 2))% |"
         }
         $lines += ""
     }
