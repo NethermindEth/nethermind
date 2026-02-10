@@ -2,7 +2,7 @@ name: Benchmark PR Comparison
 
 on:
   pull_request:
-    branches: [master]
+    branches: [master, performance_benchmarkdotnet_workflow]
     types: [opened, labeled, synchronize, reopened]
   push:
     branches: [master]
