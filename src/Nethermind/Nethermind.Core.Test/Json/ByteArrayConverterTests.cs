@@ -308,8 +308,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     [TestCase(new byte[] { 0x0a }, false, true, "\"0x0a\"")]
     public void Write_OutputFormat(byte[] input, bool skipLeadingZeros, bool addHexPrefix, string expected)
     {
-        using var ms = new System.IO.MemoryStream();
-        using var writer = new Utf8JsonWriter(ms);
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
         ByteArrayConverter.Convert(writer, input, skipLeadingZeros, addHexPrefix);
         writer.Flush();
         Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
@@ -322,11 +322,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         byte[] input = new byte[200];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
 
-        using var ms = new System.IO.MemoryStream();
-        using var writer = new Utf8JsonWriter(ms);
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
         ByteArrayConverter.Convert(writer, input, skipLeadingZeros: false);
         writer.Flush();
-        var output = Encoding.UTF8.GetString(ms.ToArray());
+        string output = Encoding.UTF8.GetString(ms.ToArray());
         output.Should().StartWith("\"0x");
         output.Should().EndWith("\"");
         output.Length.Should().Be(404); // 400 hex + 2 prefix + 2 quotes
@@ -335,9 +335,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     [Test]
     public void WriteAsPropertyName_Format()
     {
-        var converter = new ByteArrayConverter();
-        using var ms = new System.IO.MemoryStream();
-        using var writer = new Utf8JsonWriter(ms);
+        ByteArrayConverter converter = new();
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
         writer.WriteStartObject();
         converter.WriteAsPropertyName(writer, new byte[] { 0xab, 0xcd }, JsonSerializerOptions.Default);
         writer.WriteNumberValue(1);
@@ -349,9 +349,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     [Test]
     public void WriteAsPropertyName_AllZeros()
     {
-        var converter = new ByteArrayConverter();
-        using var ms = new System.IO.MemoryStream();
-        using var writer = new Utf8JsonWriter(ms);
+        ByteArrayConverter converter = new();
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
         writer.WriteStartObject();
         converter.WriteAsPropertyName(writer, new byte[] { 0x00, 0x00 }, JsonSerializerOptions.Default);
         writer.WriteNumberValue(1);
