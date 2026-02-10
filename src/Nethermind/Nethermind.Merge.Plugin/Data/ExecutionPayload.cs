@@ -101,7 +101,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-4844</see>.
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public virtual byte[]? BlockAccessList { get; set; }

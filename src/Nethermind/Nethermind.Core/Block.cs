@@ -122,10 +122,10 @@ public class Block
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
     public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
 
+    // suggested BAL from network
     [JsonIgnore]
     public BlockAccessList? BlockAccessList { get; set; }
 
-    // for debugging by rpc
     [JsonIgnore]
     public BlockAccessList? GeneratedBlockAccessList { get; set; }
 
