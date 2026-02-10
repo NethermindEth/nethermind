@@ -59,7 +59,10 @@ jobs:
           NETH_BENCHMARK_JOB: "medium"
         run: |
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
-            --filter '*Nethermind.Benchmarks.*' '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' \
+            --filter '*Nethermind.Benchmarks.*' \
+            --artifacts .benchmark-artifacts
+          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
+            --filter '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' \
             --artifacts .benchmark-artifacts
 
       - name: Aggregate benchmark results
