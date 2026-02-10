@@ -25,7 +25,7 @@ public class DbConfig : IDbConfig
 
         // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
         // file which affect compactions. The options here does not effect how the sst files are read... probably.
-        // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
+        // But read does go through the write buffer first, before going through the row cache (or is it before memtable?)
         // block cache and then finally the LSM/SST files.
         "min_write_buffer_number_to_merge=1;" +
         "write_buffer_size=16000000;" +
@@ -66,7 +66,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.format_version=5;" +
 
         // Two level index split the index into two level. First index point to second level index, which actually
-        // point to the block, which get bsearched to the value. This means potentially two iop instead of one per
+        // point to the block, which get binary searched to the value. This means potentially two iop instead of one per
         // read, and probably more processing overhead. But it significantly reduces memory usage and make block
         // processing time more consistent. So its enabled by default. That said, if you got the RAM, maybe disable
         // this.

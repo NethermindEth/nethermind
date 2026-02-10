@@ -334,6 +334,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Logger.IsWarn) Logger.Warn($"Timeout on waiting for active tasks for feed {Feed.GetType().Name} {_activeTasks.CurrentCount}");
             }
+            _activeTasks.Dispose();
             _cancellationTokenSource.Dispose();
             _concurrentProcessingSemaphore.Dispose();
         }

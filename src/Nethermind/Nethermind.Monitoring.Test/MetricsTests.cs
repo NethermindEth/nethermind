@@ -43,13 +43,16 @@ public class MetricsTests
         [SummaryMetric]
         public static IMetricObserver SomeObservation { get; set; } = NoopMetricObserver.Instance;
 
-        [System.ComponentModel.Description("Histograrm metric")]
+        [System.ComponentModel.Description("Histogram metric")]
         [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 10)]
         public static IMetricObserver HistogramObservation { get; set; } = NoopMetricObserver.Instance;
 
         [System.ComponentModel.Description("A test description")]
         [DetailedMetric]
         public static long DetailedMetric { get; set; }
+
+        [DetailedMetricOnFlag]
+        public static bool DetailedMetricsEnabled { get; set; }
     }
 
     public enum SomeEnum
@@ -131,6 +134,7 @@ public class MetricsTests
         Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
         string metricName = "TestMetrics.DetailedMetric";
         Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
+        Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
     }
 
     [Test]
@@ -202,13 +206,14 @@ public class MetricsTests
                 PropertyInfo[] properties = metricsType.GetProperties(BindingFlags.Static | BindingFlags.Public);
                 foreach (PropertyInfo property in properties)
                 {
+                    if (property.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null) continue;
                     try
                     {
                         verifier(property);
                     }
-                    catch (Exception e)
+                    catch (AssertionException e)
                     {
-                        throw new Exception(property.Name, e);
+                        throw new AssertionException($"{property.Name}: {e.Message}", e);
                     }
                 }
             }

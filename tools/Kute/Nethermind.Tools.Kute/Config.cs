@@ -89,7 +89,7 @@ public static class Config
 
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
-        Description = "Batch requests will be unwraped to single requests",
+        Description = "Batch requests will be unwrapped to single requests",
     };
 
     public static Option<Dictionary<string, string>> Labels { get; } = new("--labels", "-l")

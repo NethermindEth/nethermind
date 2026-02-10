@@ -205,4 +205,31 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="intrinsicGas">The intrinsic gas to subtract.</param>
     /// <returns>Available gas with preserved tracking data.</returns>
     static abstract TSelf CreateAvailableFromIntrinsic(long gasLimit, in TSelf intrinsicGas);
+
+    /// <summary>
+    /// Consumes gas for code copy operations (CODECOPY, CALLDATACOPY, EXTCODECOPY, etc.).
+    /// Allows policies to categorize external code copy differently (state trie access).
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="isExternalCode">True for EXTCODECOPY (external account code).</param>
+    /// <param name="baseCost">Fixed opcode cost.</param>
+    /// <param name="dataCost">Per-word copy cost.</param>
+    static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, long baseCost, long dataCost);
+
+    /// <summary>
+    /// Hook called before instruction execution when tracing is active.
+    /// Allows gas policies to capture pre-execution state.
+    /// </summary>
+    /// <param name="gas">The current gas state.</param>
+    /// <param name="pc">The program counter before incrementing.</param>
+    /// <param name="instruction">The instruction about to be executed.</param>
+    /// <param name="depth">The current call depth.</param>
+    static abstract void OnBeforeInstructionTrace(in TSelf gas, int pc, Instruction instruction, int depth);
+
+    /// <summary>
+    /// Hook called after instruction execution when tracing is active.
+    /// Allows gas policies to capture post-execution state.
+    /// </summary>
+    /// <param name="gas">The current gas state after execution.</param>
+    static abstract void OnAfterInstructionTrace(in TSelf gas);
 }

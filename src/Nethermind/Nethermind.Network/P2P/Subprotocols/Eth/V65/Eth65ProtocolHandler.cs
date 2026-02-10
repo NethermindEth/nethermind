@@ -229,7 +229,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 Hash256 hash = hashes[i];
                 if (!_txPool.IsKnown(hash))
                 {
-                    if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
+                    if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
                     {
                         discoveredTxHashesAndSizes.Add(hash);
                     }

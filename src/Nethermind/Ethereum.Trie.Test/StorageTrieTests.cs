@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -25,7 +26,7 @@ namespace Ethereum.Trie.Test
             StorageTree tree = CreateStorageTrie();
             Hash256 rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
-            tree.Set(1, new byte[] { });
+            tree.Set(1, Array.Empty<byte>());
             tree.UpdateRootHash();
             Hash256 rootAfter = tree.RootHash;
             Assert.That(rootAfter, Is.EqualTo(rootBefore));

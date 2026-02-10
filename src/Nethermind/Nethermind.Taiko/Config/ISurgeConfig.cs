@@ -48,4 +48,7 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Filter transactions exceeding the max allowed ratio of gas limit to the actual gas used (e.g. 1, 2 etc.). Set to 0 to disable.", DefaultValue = "0")]
     int MaxGasLimitRatio { get; set; }
+
+    [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
+    bool TdxEnabled { get; set; }
 }

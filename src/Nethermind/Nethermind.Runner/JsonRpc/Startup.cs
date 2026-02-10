@@ -12,7 +12,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -120,7 +119,7 @@ public class Startup : IStartup
         // If request is local, don't use response compression,
         // as it allocates a lot, but doesn't improve much for loopback
         app.UseWhen(ctx =>
-            !IsLocalhost(ctx.Connection.RemoteIpAddress),
+            !IsLocalhost(ctx.Connection.RemoteIpAddress!),
             builder => builder.UseResponseCompression());
 
         if (initConfig.WebSocketsEnabled)
@@ -154,7 +153,6 @@ public class Startup : IStartup
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
 
-                IServiceProvider services = app.ApplicationServices;
                 endpoints.MapDataFeeds(lifetime);
             }
         });
@@ -192,7 +190,7 @@ public class Startup : IStartup
             }
 
             if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 &&
-                !ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal))
+                !ctx.Request.Headers.Accept[0]!.Contains("text/html", StringComparison.Ordinal))
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
@@ -242,12 +240,10 @@ public class Startup : IStartup
                                                 await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
-                                                // We reached the limit and don't want to responded to more request in the batch
+                                                // We reached the limit and don't want to respond to more request in the batch
                                                 if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
                                                 {
-                                                    if (logger.IsWarn)
-                                                        logger.Warn(
-                                                            $"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
+                                                    if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
                                                     enumerator.IsStopped = true;
                                                 }
                                             }
@@ -307,7 +303,7 @@ public class Startup : IStartup
                 }
                 finally
                 {
-                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+                    Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                 }
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
@@ -361,51 +357,45 @@ public class Startup : IStartup
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
     }
 
-    private sealed class CountingPipeReader : PipeReader
+    private sealed class CountingPipeReader(PipeReader stream) : PipeReader
     {
-        private readonly PipeReader _wrappedReader;
         private ReadOnlySequence<byte> _currentSequence;
 
         public long Length { get; private set; }
 
-        public CountingPipeReader(PipeReader stream)
-        {
-            _wrappedReader = stream;
-        }
-
         public override void AdvanceTo(SequencePosition consumed)
         {
             Length += _currentSequence.GetOffset(consumed);
-            _wrappedReader.AdvanceTo(consumed);
+            stream.AdvanceTo(consumed);
         }
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
             Length += _currentSequence.GetOffset(consumed);
-            _wrappedReader.AdvanceTo(consumed, examined);
+            stream.AdvanceTo(consumed, examined);
         }
 
         public override void CancelPendingRead()
         {
-            _wrappedReader.CancelPendingRead();
+            stream.CancelPendingRead();
         }
 
         public override void Complete(Exception? exception = null)
         {
             Length += _currentSequence.Length;
-            _wrappedReader.Complete(exception);
+            stream.Complete(exception);
         }
 
         public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
         {
-            ReadResult result = await _wrappedReader.ReadAsync(cancellationToken);
+            ReadResult result = await stream.ReadAsync(cancellationToken);
             _currentSequence = result.Buffer;
             return result;
         }
 
         public override bool TryRead(out ReadResult result)
         {
-            bool didRead = _wrappedReader.TryRead(out result);
+            bool didRead = stream.TryRead(out result);
             if (didRead)
             {
                 _currentSequence = result.Buffer;

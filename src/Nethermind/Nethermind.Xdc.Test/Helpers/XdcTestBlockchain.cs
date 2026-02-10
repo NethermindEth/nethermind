@@ -11,12 +11,15 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;
@@ -29,7 +32,9 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
@@ -178,7 +183,6 @@ public class XdcTestBlockchain : TestBlockchain
                 new XdcTestGenesisBuilder(
                     ctx.Resolve<ISpecProvider>(),
                     ctx.Resolve<IWorldState>(),
-                    ctx.Resolve<ISnapshotManager>(),
                     ctx.Resolve<IEnumerable<IGenesisPostProcessor>>().ToArray(),
                     ctx.Resolve<Configuration>(),
                     MasterNodeCandidates
@@ -189,17 +193,47 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton<ISigner>(ctx =>
             {
                 var spec = ctx.Resolve<ISpecProvider>();
-                var logmanager = ctx.Resolve<ILogManager>();
+                var logManager = ctx.Resolve<ILogManager>();
                 //Set the first signer to be a non master node to avoid accidental block proposals
-                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logmanager);
+                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logManager);
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
+
+            .AddSingleton<ITxPool>((ctx) =>
+            {
+                var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
+
+                var compoundPolicy = new CompositeTxGossipPolicy();
+                if (gossipPolicy != null)
+                {
+                    compoundPolicy.Policies.Add(gossipPolicy);
+                }
+
+                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
+
+                Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
+                    ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
+                    ctx.Resolve<IChainHeadInfoProvider>(),
+                    ctx.Resolve<ITxPoolConfig>(),
+                    ctx.Resolve<ITxValidator>(),
+                    ctx.Resolve<ILogManager>(),
+                    new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
+                    compoundPolicy,
+                    new SignTransactionFilter(Signer, BlockTree, SpecProvider),
+                    ctx.Resolve<ITxValidator>()
+                );
+
+                return txPool;
+            })
+
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
+
+
 
             .AddSingleton((ctx) => new PoWTestBlockchainUtil(
                 ctx.Resolve<IBlockProducerRunner>(),
@@ -229,7 +263,22 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.LimitPenaltyEpoch = 2;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
-        xdcSpec.BlockSignerContract = new Address("0x0000000000000000000000000000000000000089");
+
+        xdcSpec.BlackListedAddresses =
+            [
+            new Address("0x00000000000000000000000000000000b1Ac701"),
+            new Address("0x00000000000000000000000000000000b1Ac702"),
+            new Address("0x00000000000000000000000000000000b1Ac703"),
+            new Address("0x00000000000000000000000000000000b1Ac704"),
+            new Address("0x00000000000000000000000000000000b1Ac705"),
+            new Address("0x00000000000000000000000000000000b1Ac706"),
+            new Address("0x00000000000000000000000000000000b1Ac707"),
+            ];
+        xdcSpec.MergeSignRange = 15;
+
+        xdcSpec.BlockSignerContract = new Address("0x00000000000000000000000000000000b000089");
+        xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
+        xdcSpec.FoundationWallet = new Address("0x0000000000000000000000000000000000000068");
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
@@ -314,7 +363,6 @@ public class XdcTestBlockchain : TestBlockchain
     private class XdcTestGenesisBuilder(
         ISpecProvider specProvider,
         IWorldState state,
-        ISnapshotManager snapshotManager,
         IGenesisPostProcessor[] postProcessors,
         Configuration testConfiguration,
         List<PrivateKey> masterNodeCandidates
@@ -333,6 +381,19 @@ public class XdcTestBlockchain : TestBlockchain
 
             IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 
+            var genesisSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
+
+            state.CreateAccount(finalSpec.BlockSignerContract, 100_000);
+            state.CreateAccount(finalSpec.RandomizeSMCBinary, 100_000);
+
+            var dummyCode = Prepare.EvmCode
+                .STOP()
+                .Done;
+            var dummyCodeHashcode = Keccak.Compute(dummyCode);
+
+            state.InsertCode(finalSpec.BlockSignerContract, dummyCodeHashcode, dummyCode, genesisSpec!, true);
+            state.InsertCode(finalSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true);
+
             XdcBlockHeaderBuilder xdcBlockHeaderBuilder = new();
 
             var genesisBlock = new Block(xdcBlockHeaderBuilder
@@ -350,7 +411,6 @@ public class XdcTestBlockchain : TestBlockchain
             state.CommitTree(0);
             genesisBlock.Header.StateRoot = state.StateRoot;
             genesisBlock.Header.Hash = genesisBlock.Header.CalculateHash();
-            snapshotManager.StoreSnapshot(new Types.Snapshot(genesisBlock.Number, genesisBlock.Hash!, finalSpec.GenesisMasterNodes));
             return genesisBlock;
         }
     }
@@ -392,20 +452,17 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
+
     public override async Task<Block> AddBlock(params Transaction[] transactions)
     {
         var b = await AddBlockWithoutCommitQc(transactions);
         CreateAndCommitQC((XdcBlockHeader)b.Header);
-
         return b;
     }
 
     public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
         var b = await base.AddBlockFromParent(parent, transactions);
-
-        CheckIfTimeForSnapshot();
-
         CreateAndCommitQC((XdcBlockHeader)b.Header);
 
         return b;
@@ -414,20 +471,7 @@ public class XdcTestBlockchain : TestBlockchain
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
     {
         await base.AddBlock(txs);
-
-        CheckIfTimeForSnapshot();
-
         return BlockTree.Head!;
-    }
-
-    private void CheckIfTimeForSnapshot()
-    {
-        var head = (XdcBlockHeader)BlockTree.Head!.Header;
-        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
-        if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
-        {
-            SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
-        }
     }
 
     public async Task TriggerAndSimulateBlockProposalAndVoting()
