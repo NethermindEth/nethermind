@@ -23,8 +23,8 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'performance is good')
     runs-on: ubuntu-latest
     env:
-      BASELINE_PREFIX: nethermind-benchmark-baseline-${{ runner.os }}-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-
-      BASELINE_KEY: nethermind-benchmark-baseline-${{ runner.os }}-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-${{ github.sha }}
+      BASELINE_PREFIX: nethermind-benchmark-baseline-linux-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-
+      BASELINE_KEY: nethermind-benchmark-baseline-linux-${{ hashFiles('global.json', 'src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj', 'src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj', 'src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj') }}-${{ github.sha }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
