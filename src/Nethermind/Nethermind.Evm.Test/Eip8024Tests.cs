@@ -183,10 +183,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_HighRangeImmediate_Succeeds()
     {
-        // Test 0xd0: k=160, q=10, r=0, q>=r -> n=r+2=2, m=(29-q)+2=21
-        // Exchange(2, 21) needs 21 items on stack
+        // Test 0xd0: k=160, q=10, r=0, q>=r -> n=r+2=2, m=(29-q)+1=20
+        // Exchange(2, 20) needs 20 items on stack
         Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 21; i++) prepare.PushData(i);
+        for (int i = 1; i <= 20; i++) prepare.PushData(i);
         byte[] code = prepare
             .Op(Instruction.EXCHANGE).Data(0xd0)
             .MSTORE(0).Return(32, 0)
@@ -194,8 +194,8 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
         result.StatusCode.Should().Be(StatusCode.Success);
-        // Stack top is 21, which is stored
-        new UInt256(result.ReturnValue, true).Should().Be(21);
+        // Stack top is 20, which is stored
+        new UInt256(result.ReturnValue, true).Should().Be(20);
     }
 
     [Test]
@@ -217,10 +217,10 @@ public class Eip8024Tests : VirtualMachineTestsBase
     [Test]
     public void Exchange_EdgeCase_0x80_Succeeds()
     {
-        // 0x80: k=80 (128-48), q=5, r=0, q>=r -> n=r+2=2, m=(29-5)+2=26
-        // Exchange(2, 26) needs 26 items on stack
+        // 0x80: k=80 (128-48), q=5, r=0, q>=r -> n=r+2=2, m=(29-5)+1=25
+        // Exchange(2, 25) needs 25 items on stack
         Prepare prepare = Prepare.EvmCode;
-        for (int i = 1; i <= 26; i++) prepare.PushData(i);
+        for (int i = 1; i <= 25; i++) prepare.PushData(i);
         byte[] code = prepare
             .Op(Instruction.EXCHANGE).Data(0x80)
             .MSTORE(0).Return(32, 0)
@@ -315,13 +315,13 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void Exchange_MaxDepth_StackUnderflow()
     {
         Prepare prepare = Prepare.EvmCode;
-        for (int i = 0; i < 30; i++)
+        for (int i = 0; i < 29; i++)
         {
             prepare.PushData(0);
         }
 
         byte[] code = prepare
-            .Op(Instruction.EXCHANGE).Data(0x00) // n=2, m=31 -> needs depth 31
+            .Op(Instruction.EXCHANGE).Data(0x00) // n=2, m=30 -> needs depth 30, only 29 items
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
