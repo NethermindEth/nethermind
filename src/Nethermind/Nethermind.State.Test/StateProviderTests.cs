@@ -52,7 +52,7 @@ public class StateProviderTests
     [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
-        IWorldState provider = TestWorldStateFactory.CreateForTest();
+        IWorldState provider = TestWorldStateFactory.CreateForTest(parallel: false);
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 

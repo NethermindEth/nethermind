@@ -8,13 +8,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
@@ -26,6 +24,9 @@ using Nethermind.Logging;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Api.Steps;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Xdc;
 
@@ -88,6 +89,10 @@ public class XdcModule : Module
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
+
+            // sync
+            .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 

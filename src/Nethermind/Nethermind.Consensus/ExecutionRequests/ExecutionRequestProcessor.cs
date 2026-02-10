@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
@@ -171,7 +170,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     }
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
-        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError, ITxTracer? additionalTracer = null)
+        Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))
         {
@@ -180,7 +179,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(systemTx, additionalTracer is null ? tracer : new CompositeTxTracer(tracer, additionalTracer));
+        _transactionProcessor.Execute(systemTx, tracer);
 
         if (tracer.StatusCode == StatusCode.Failure)
         {

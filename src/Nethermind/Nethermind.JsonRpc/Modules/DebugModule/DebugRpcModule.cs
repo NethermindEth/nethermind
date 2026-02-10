@@ -41,6 +41,7 @@ public class DebugRpcModule(
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
+
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
         ChainLevelInfo levelInfo = debugBridge.GetLevelInfo(number);
@@ -96,7 +97,12 @@ public class DebugRpcModule(
         // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-        Transaction tx = call.ToTransaction();
+        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction? tx, out string? error))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 

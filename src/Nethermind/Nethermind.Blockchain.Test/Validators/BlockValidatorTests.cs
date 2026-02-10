@@ -20,6 +20,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockValidatorTests
 {
     private static BlockValidator _blockValidator = null!;
@@ -285,16 +287,6 @@ public class BlockValidatorTests
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
             "ExceededBlockSizeLimit")
         { TestName = "ExceededBlockSizeLimit" };
-
-        yield return new TestCaseData(
-            Build.A.Block
-                .WithParent(parent)
-                .WithBlobGasUsed(0)
-                .WithWithdrawals([]).TestObject,
-            parent,
-            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
-            "MissingBlockLevelAccessList")
-        { TestName = "MissingBlockLevelAccessList" };
 
         yield return new TestCaseData(
             Build.A.Block

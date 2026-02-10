@@ -83,8 +83,7 @@ namespace Nethermind.Serialization.Rlp
         public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => _txDecoder.Encode(this, value, rlpBehaviors);
 
-        public void Encode(Withdrawal value)
-            => _withdrawalDecoder.Encode(this, value);
+        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
 
         public void Encode(LogEntry value) => _logEntryDecoder.Encode(this, value);
 

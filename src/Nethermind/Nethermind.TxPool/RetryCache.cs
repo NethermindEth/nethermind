@@ -122,11 +122,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (!_requestingResources.Contains(resourceId))
         {
             AnnounceResult result = AnnounceResult.Delayed;
-            _retryRequests.AddOrUpdate(resourceId, (resourceId, retryHandler) =>
-            {
-                return AnnounceAdd(resourceId, retryHandler, out result);
-            }, _announceUpdate, handler);
-
+            _retryRequests.AddOrUpdate(resourceId, (resourceId, retryHandler) => AnnounceAdd(resourceId, retryHandler, out result), _announceUpdate, handler);
             return result;
         }
 

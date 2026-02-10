@@ -162,7 +162,6 @@ public static class BlockErrorMessages
 
     public const string BlockLevelAccessListHashNotEnabled =
         "BlockLevelAccessListHashNotEnabled: Block header cannot have block level access list hash.";
-
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 

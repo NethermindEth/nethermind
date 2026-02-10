@@ -483,12 +483,6 @@ namespace Nethermind.State
             }
         }
 
-        // public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
-        //     => AddToBalanceAndCreateIfNotExists(address, balance, spec, out _);
-
-        // public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
-        //     => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
-
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
             Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0

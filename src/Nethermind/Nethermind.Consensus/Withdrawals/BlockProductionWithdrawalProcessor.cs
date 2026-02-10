@@ -9,9 +9,12 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Withdrawals;
 
-public class BlockProductionWithdrawalProcessor(IWithdrawalProcessor processor) : IWithdrawalProcessor
+public class BlockProductionWithdrawalProcessor : IWithdrawalProcessor
 {
-    private readonly IWithdrawalProcessor _processor = processor ?? throw new ArgumentNullException(nameof(processor));
+    private readonly IWithdrawalProcessor _processor;
+
+    public BlockProductionWithdrawalProcessor(IWithdrawalProcessor processor) =>
+        _processor = processor ?? throw new ArgumentNullException(nameof(processor));
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {

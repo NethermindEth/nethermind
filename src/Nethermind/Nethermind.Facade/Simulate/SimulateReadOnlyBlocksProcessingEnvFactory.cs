@@ -41,7 +41,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
 
         IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
-        // need tmp?
 
         BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
         BlockTreeOverlay overrideBlockTree = new BlockTreeOverlay(baseBlockTree, tempBlockTree);

@@ -1173,7 +1173,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"Invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
 
     [Test]
@@ -1224,7 +1224,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", txForRpc);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Balance is zero, cannot pay gas\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"InsufficientFunds, Balance is zero, cannot pay gas\"},\"id\":67}"));
     }
 
     public enum AccessListProvided
@@ -1296,16 +1296,16 @@ public partial class EthRpcModuleTests
         long toTransactionWitDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
-            Transaction tx = rpcTx.ToTransaction();
-            toTransactionWitDefaultsGasLimit = tx.GasLimit;
+            Result<Transaction> tx = rpcTx.ToTransaction();
+            toTransactionWitDefaultsGasLimit = ((Transaction)tx).GasLimit;
         }
 
         long ensureDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             rpcTx.EnsureDefaults(gasCap);
-            var tx = rpcTx.ToTransaction();
-            ensureDefaultsGasLimit = tx.GasLimit;
+            Result<Transaction> tx = rpcTx.ToTransaction();
+            ensureDefaultsGasLimit = ((Transaction)tx).GasLimit;
         }
 
         toTransactionWitDefaultsGasLimit.Should().Be(ensureDefaultsGasLimit);
@@ -1584,7 +1584,6 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
-        Console.WriteLine(serialized);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[{\"key\":\"0x0\"},{\"key\":\"0x1\"},{\"key\":\"0x2\"},{\"key\":\"0x3\"}],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"slot\":\"0x2\",\"changes\":{\"0\":{\"blockAccessIndex\":0,\"newValue\":\"0xe111c9ffdfa4f0c91d25a057c6187276049d8b621c0b5452384cdcc69e823c3d\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0xa410\"},{\"blockAccessIndex\":2,\"postBalance\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5dea00002\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"blockAccessIndex\":1,\"postBalance\":\"0x3635c9adc5de9f5bee\"},{\"blockAccessIndex\":2,\"postBalance\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"blockAccessIndex\":1,\"newNonce\":\"0x2\"},{\"blockAccessIndex\":2,\"newNonce\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
     }
 

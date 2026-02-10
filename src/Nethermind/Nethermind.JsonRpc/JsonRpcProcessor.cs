@@ -128,23 +128,25 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
-        if (ProcessExit.IsCancellationRequested)
-        {
-            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
-        }
-
-        if (IsRecordingRequest)
-        {
-            reader = await RecordRequest(reader);
-        }
-
-        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
-        JsonReaderState readerState = CreateJsonReaderState(context);
-        bool freshState = true;
-        bool shouldExit = false;
         try
         {
+            if (ProcessExit.IsCancellationRequested)
+            {
+                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+                yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+                yield break;
+            }
+
+            if (IsRecordingRequest)
+            {
+                reader = await RecordRequest(reader);
+            }
+
+            using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
+            JsonReaderState readerState = CreateJsonReaderState(context);
+            bool freshState = true;
+            bool shouldExit = false;
+
             while (!shouldExit)
             {
                 long startTime = Stopwatch.GetTimestamp();
@@ -391,12 +393,11 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)
         {
-            // tmp
-            // if (localErrorResponse?.Error?.SuppressWarning == false)
-            // {
-            //     if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
-            //     if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
-            // }
+            if (localErrorResponse?.Error?.SuppressWarning == false)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+            }
             Metrics.JsonRpcErrors++;
         }
         else

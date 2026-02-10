@@ -32,14 +32,15 @@ namespace Nethermind.Evm.Test;
 [TestFixture(true)]
 [TestFixture(false)]
 [Todo(Improve.Refactor, "Check why fixture test cases did not work")]
-[Parallelizable(ParallelScope.Self)]
-public abstract class TransactionProcessorTests
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class TransactionProcessorTests
 {
     private readonly bool _isEip155Enabled;
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    protected ITransactionProcessor _transactionProcessor;
-    protected IWorldState _stateProvider;
+    private ITransactionProcessor _transactionProcessor;
+    private IWorldState _stateProvider;
     private BlockHeader _baseBlock = null!;
     private IDisposable _stateCloser;
 
@@ -49,7 +50,7 @@ public abstract class TransactionProcessorTests
         _specProvider = MainnetSpecProvider.Instance;
     }
 
-    protected static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether();
 
     [SetUp]
     public void Setup()
@@ -742,7 +743,7 @@ public abstract class TransactionProcessorTests
         return tracer;
     }
 
-    protected TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
+    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
         tracer?.StartNewTxTrace(tx);

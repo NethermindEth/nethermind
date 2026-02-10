@@ -64,10 +64,12 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
     {
-        var tx = base.ToTransaction();
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        if (baseResult.IsError) return baseResult;
 
+        Transaction tx = baseResult.Data;
         tx.SourceHash = SourceHash ?? throw new ArgumentNullException(nameof(SourceHash));
         tx.SenderAddress = From ?? throw new ArgumentNullException(nameof(From));
         tx.To = To;
