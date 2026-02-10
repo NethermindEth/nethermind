@@ -13,12 +13,13 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
+[NonParallelizable]
 public class VoteTests
 {
     [Test]
     public async Task HandleVote_SuccessfullyGenerateAndProcessQc()
     {
-        var blockchain = await XdcTestBlockchain.Create();
+        using var blockchain = await XdcTestBlockchain.Create();
         var votesManager = CreateVotesManager(blockchain);
         IXdcConsensusContext ctx = blockchain.XdcContext;
 

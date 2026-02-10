@@ -8,12 +8,13 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
+[NonParallelizable]
 internal class BlockInfoTests
 {
     [Test]
     public async Task VerifyGenesisV2Block()
     {
-        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader genesisBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(xdcTestBlockchain.BlockTree.Genesis!.Number + 1)!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(genesisBlock.Hash!, 1, genesisBlock.Number);
@@ -26,7 +27,7 @@ internal class BlockInfoTests
     [Test]
     public async Task RoundMismatch_Fails()
     {
-        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound - 1, headBlock.Number);
@@ -40,7 +41,7 @@ internal class BlockInfoTests
     [Test]
     public async Task HashMismatch_Fails()
     {
-        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
         XdcBlockHeader parentBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(headBlock.ParentHash!)!;
 
@@ -55,7 +56,7 @@ internal class BlockInfoTests
     [Test]
     public async Task NumberMismatch_Fails()
     {
-        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
         XdcBlockHeader parentBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(headBlock.ParentHash!)!;
 
@@ -70,7 +71,7 @@ internal class BlockInfoTests
     [Test]
     public async Task NoMismatch_Pass()
     {
-        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, headBlock.Number);
