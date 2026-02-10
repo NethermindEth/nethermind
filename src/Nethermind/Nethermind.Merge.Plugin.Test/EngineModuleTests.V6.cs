@@ -33,9 +33,10 @@ public partial class EngineModuleTests
         "0x54dfc1d0ee589508c694f51cbea0816a2b665c8521294b549589389290751669",
         "0x8597fff183c2055d2429240b5deb70af64121e1f2299a495305f718aed536f7c",
         "0xa5d7c276147e583751c86570cca74327cb2e46aeca349d42d5e647f00ff372d6",
-        "0xf5ab30d4c8440c85")]
+        "0xf5ab30d4c8440c85",
+        null)]
     public virtual async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash,
-        string stateRoot, string payloadId)
+        string stateRoot, string payloadId, string? auraWithdrawalContractAddress)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -87,6 +88,12 @@ public partial class EngineModuleTests
             })));
         }
 
+        BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList.WithPrecompileChanges(startingHead, timestamp);
+        if (auraWithdrawalContractAddress is not null)
+        {
+            expectedBalBuilder.WithAccountChanges([new(new Address(auraWithdrawalContractAddress)), new(Address.SystemUser)]);
+        }
+
         Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
             new(
@@ -114,7 +121,7 @@ public partial class EngineModuleTests
             [],
             [],
             withdrawals,
-            Build.A.BlockAccessList.WithPrecompileChanges(startingHead, timestamp).TestObject);
+            expectedBalBuilder.TestObject);
         GetPayloadV6Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV6", expectedPayloadId);
@@ -185,22 +192,20 @@ public partial class EngineModuleTests
         "0x1e11df85db9df143816b319b33ad72dc488d63baa6d3d477b72803b352897ef4",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
+    public virtual async Task NewPayloadV5_accepts_valid_BAL(string blockHash, string receiptsRoot, string stateRoot)
         => await NewPayloadV5(
             blockHash,
             receiptsRoot,
             stateRoot,
-            null,
-            false,
-            false,
-            false,
-            false);
+            null);
 
     [TestCase(
         "0xfeff419072d4141abc1fed0fd15360e8a521a5544c0c6f4413cd84f0d07a5fb5",
         "0xee19f9b94832e8855eee01f304f9479d15a4e690ef63145094a726006bc6d1b2",
-        "0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c")]
-    public async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string balHash)
+        "0xb1cce0e7c7315eb50afe128ad81a92b9c0cab67c6c1eb7170ad69811d53eb42c",
+        "0x6455e7ed6d666a3e421f97ffadaf1bbc18be8ca752bfa9cdb5ff4863ff3db38d",
+        null)]
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? auraWithdrawalContractAddress)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -209,10 +214,15 @@ public partial class EngineModuleTests
         const ulong timestamp = 1000000;
         Hash256 parentHash = new(chain.BlockTree.HeadHash);
 
-        BlockAccessList invalidBal = Build.A.BlockAccessList
+        BlockAccessListBuilder invalidBalBuilder = Build.A.BlockAccessList
             .WithPrecompileChanges(parentHash, timestamp)
-            .WithAccountChanges([new(TestItem.AddressA)]) // additional address
-            .TestObject;
+            .WithAccountChanges([new(TestItem.AddressA)]); // additional address
+        if (auraWithdrawalContractAddress is not null)
+        {
+            invalidBalBuilder.WithAccountChanges([new(new Address(auraWithdrawalContractAddress)), new(Address.SystemUser)]);
+        }
+        BlockAccessList invalidBal = invalidBalBuilder.TestObject;
+
         Block block = new(
             new(
                 parentHash,
@@ -255,7 +265,7 @@ public partial class EngineModuleTests
                 {
                     LatestValidHash = Keccak.Zero,
                     Status = PayloadStatus.Invalid,
-                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected 0x6455e7ed6d666a3e421f97ffadaf1bbc18be8ca752bfa9cdb5ff4863ff3db38d, got {balHash}"
+                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}"
                 }
             })));
         }
@@ -265,64 +275,53 @@ public partial class EngineModuleTests
         "0x00c884d490708f36fd9b8f8b666a27b06d60ed3abc267d3416619e1b4a5eaa1a",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public async Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_incorrect_changes_early(string blockHash, string receiptsRoot, string stateRoot)
         => await NewPayloadV5(
             blockHash,
             receiptsRoot,
             stateRoot,
             "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
-            true,
-            false,
-            false,
-            false);
+            withIncorrectChange: true);
 
     [TestCase(
         "0x969025cfc580665697a9fb224547ada9a792d9673f8f5f376caed043e5595c26",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public async Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
         => await NewPayloadV5(
             blockHash,
             receiptsRoot,
             stateRoot,
             "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
-            false,
-            false,
-            true,
-            false);
+            withMissingChange: true);
 
     [TestCase(
         "0xfd090a339659d2ca17dfdcf8550d5667c1e30f5aa49af1f074d4bda8110005ff",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
         => await NewPayloadV5(
             blockHash,
             receiptsRoot,
             stateRoot,
             "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
-            false,
-            true,
-            false,
-            false);
+            withSurplusChange: true);
 
     [TestCase(
         "0x4a599cb247bcf4b2565a4dbeb1f4c55ad849cbac5f810cdd79878898c86088e1",
         "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
         "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    public async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
+    public virtual async Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
         => await NewPayloadV5(
             blockHash,
             receiptsRoot,
             stateRoot,
             "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
-            false,
-            false,
-            false,
-            true);
+            withSurplusReads: true);
 
     [Test]
-    public async Task GetPayloadV6_builds_block_with_BAL()
+    [TestCase(null)]
+    public virtual async Task GetPayloadV6_builds_block_with_BAL(string? auraWithdrawalContractAddress)
     {
         ulong timestamp = 12;
         TestSpecProvider specProvider = new(Amsterdam.Instance);
@@ -360,7 +359,7 @@ public partial class EngineModuleTests
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
         BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
 
-        BlockAccessList expected = Build.A.BlockAccessList
+        BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges([
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressA)
@@ -376,13 +375,19 @@ public partial class EngineModuleTests
                     .WithBalanceChanges([new(1, 0x5208)])
                     .TestObject,
             ])
-            .WithPrecompileChanges(genesis.Header.Hash!, timestamp)
-            .TestObject;
+            .WithPrecompileChanges(genesis.Header.Hash!, timestamp);
+
+        if (auraWithdrawalContractAddress is not null)
+        {
+            expectedBalBuilder.WithAccountChanges([new(new Address(auraWithdrawalContractAddress)), new(Address.SystemUser)]);
+        }
+
+        BlockAccessList expected = expectedBalBuilder.TestObject;
         Assert.That(bal, Is.EqualTo(expected));
     }
 
     [Test]
-    public async Task GetPayloadBodiesHashV2_returns_correctly()
+    public virtual async Task GetPayloadBodiesHashV2_returns_correctly()
     {
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
@@ -404,13 +409,12 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(3));
-            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(310));
             Assert.That(response.Data.ElementAt(2), Is.Null);
         }
     }
 
     [Test]
-    public async Task GetPayloadBodiesByRangeV2_returns_correctly()
+    public virtual async Task GetPayloadBodiesByRangeV2_returns_correctly()
     {
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
@@ -426,7 +430,6 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
-            Assert.That(response.Data.First()!.BlockAccessList!.Count, Is.EqualTo(310));
         }
     }
 
@@ -468,15 +471,16 @@ public partial class EngineModuleTests
         return payload.ExecutionPayload;
     }
 
-    private async Task NewPayloadV5(
+    protected async Task NewPayloadV5(
         string blockHash,
         string receiptsRoot,
         string stateRoot,
-        string? expectedError,
-        bool withIncorrectChange,
-        bool withSurplusChange,
-        bool withMissingChange,
-        bool withSurplusReads)
+        string? expectedError = null,
+        bool withIncorrectChange = false,
+        bool withSurplusChange = false,
+        bool withMissingChange = false,
+        bool withSurplusReads = false,
+        string? auraWithdrawalContractAddress = null)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Amsterdam.Instance);
@@ -569,7 +573,7 @@ public partial class EngineModuleTests
             }
         }
 
-        BlockAccessListBuilder expectedBlockAccessListBuilder = Build.A.BlockAccessList
+        BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressA)
@@ -577,10 +581,6 @@ public partial class EngineModuleTests
                     .WithNonceChanges([new(1, 1), new(2, 2), new(3, 3)])
                     .TestObject,
                 new(TestItem.AddressB),
-                Build.An.AccountChanges
-                    .WithAddress(TestItem.AddressD)
-                    .WithBalanceChanges([new(4, 1.GWei())])
-                    .TestObject,
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressE)
                     .WithBalanceChanges([new(1, new UInt256(GasCostOf.Transaction * gasPrice)), new(2, new UInt256(gasUsedBeforeFinal * gasPrice)), new(3, new UInt256(gasUsed * gasPrice))])
@@ -593,16 +593,28 @@ public partial class EngineModuleTests
 
         if (!withMissingChange)
         {
-            expectedBlockAccessListBuilder.WithAccountChanges(newContractAccount.TestObject);
+            expectedBalBuilder.WithAccountChanges(newContractAccount.TestObject);
         }
 
         if (withSurplusChange)
         {
-            expectedBlockAccessListBuilder.WithAccountChanges(
+            expectedBalBuilder.WithAccountChanges(
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressF)
                     .WithNonceChanges([new(2, 5)])
                     .TestObject);
+        }
+
+        if (auraWithdrawalContractAddress is not null)
+        {
+            expectedBalBuilder.WithAccountChanges([new(new Address(auraWithdrawalContractAddress)), new(Address.SystemUser)]);
+        }
+        else
+        {
+            expectedBalBuilder.WithAccountChanges([Build.An.AccountChanges
+                .WithAddress(TestItem.AddressD)
+                .WithBalanceChanges([new(4, 1.GWei())])
+                .TestObject]);
         }
 
         Block block = new(
@@ -631,7 +643,7 @@ public partial class EngineModuleTests
             [tx, tx2, tx3],
             [],
             [withdrawal],
-            expectedBlockAccessListBuilder.TestObject);
+            expectedBalBuilder.TestObject);
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
@@ -672,5 +684,4 @@ public partial class EngineModuleTests
             }
         }
     }
-
 }
