@@ -129,11 +129,11 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     }
 
     /// <summary>
-    /// Iterates over the final write-set for a given transaction.
+    /// Iterates over the final write-set for the latest incarnation of a transaction.
     /// </summary>
     /// <param name="txIndex">Transaction index.</param>
     /// <param name="apply">Action applied to each location/value pair.</param>
-    public void ForEachWriteSet(int txIndex, Action<TLocation, TData> apply)
+    public void VisitFinalWriteSet(int txIndex, Action<TLocation, TData> apply)
     {
         DataDictionary<TLocation, Value> txData = _data[txIndex];
         txData.Lock.EnterReadLock();
@@ -156,11 +156,11 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     }
 
     /// <summary>
-    /// Iterates over the final read-set for a given transaction.
+    /// Iterates over the final read-set for the latest incarnation of a transaction.
     /// </summary>
     /// <param name="txIndex">Transaction index.</param>
     /// <param name="apply">Action applied to each read entry.</param>
-    public void ForEachReadSet(int txIndex, Action<Read<TLocation>> apply)
+    public void VisitFinalReadSet(int txIndex, Action<Read<TLocation>> apply)
     {
         HashSet<Read<TLocation>>? reads = _lastReads[txIndex];
         if (reads is not null)
@@ -252,10 +252,10 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     }
 
     /// <summary>
-    /// Grabs the result write-set of the whole block
+    /// Captures the final write-set for the whole block.
     /// </summary>
-    /// <returns>Write a set of the block</returns>
-    public Dictionary<TLocation, TData> Snapshot()
+    /// <returns>Final write-set keyed by location.</returns>
+    public Dictionary<TLocation, TData> CaptureFinalWriteSet()
     {
         Dictionary<TLocation, TData> result = new();
         // need to iterate backwards, as the later transaction writes are the final written to the same location

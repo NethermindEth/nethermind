@@ -8,8 +8,9 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 public enum FeeRecipientKind : byte
 {
-    GasBeneficiary = 0,
-    FeeCollector = 1
+    None = 0,
+    GasBeneficiary = 1,
+    FeeCollector = 2
 }
 
 public enum ParallelStateKeyKind : byte

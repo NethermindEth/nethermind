@@ -141,4 +141,9 @@ public class FeeAccumulator(int txCount, Address? gasBeneficiary, Address? feeCo
         Interlocked.Exchange(ref _committed[txIndex], false);
         Volatile.Write(ref _gasBeneficiaryCreates[txIndex], false);
     }
+
+    public FeeRecipientKind GetFeeKind(Address recipient) =>
+        IsGasBeneficiary(recipient) ? FeeRecipientKind.GasBeneficiary :
+        IsFeeCollector(recipient) ? FeeRecipientKind.FeeCollector :
+        FeeRecipientKind.None;
 }

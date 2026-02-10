@@ -25,7 +25,7 @@ internal static class ParallelBlockMetricsCalculator
         for (int txIndex = 0; txIndex < txCount; txIndex++)
         {
             bool readDependency = false;
-            multiVersionMemory.ForEachReadSet(txIndex, read =>
+            multiVersionMemory.VisitFinalReadSet(txIndex, read =>
             {
                 if (!readDependency && !read.Version.IsEmpty)
                 {
@@ -36,7 +36,7 @@ internal static class ParallelBlockMetricsCalculator
 
             bool writeDependency = false;
             writeKeys.Clear();
-            multiVersionMemory.ForEachWriteSet(txIndex, (key, _) =>
+            multiVersionMemory.VisitFinalWriteSet(txIndex, (key, _) =>
             {
                 if (!writeDependency && previousWrites.Contains(key))
                 {

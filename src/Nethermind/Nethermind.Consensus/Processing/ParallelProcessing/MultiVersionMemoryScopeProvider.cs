@@ -19,7 +19,6 @@ public class MultiVersionMemoryScopeProvider(
     FeeAccumulator feeAccumulator)
     : IWorldStateScopeProvider
 {
-    private readonly FeeAccumulator _feeAccumulator = feeAccumulator;
     public HashSet<Read<ParallelStateKey>> ReadSet { get; private set; } = null!;
     public Dictionary<ParallelStateKey, object> WriteSet { get; private set; } = null!;
 
@@ -29,7 +28,7 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = new(); //TODO: object poolling?
         WriteSet = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, _feeAccumulator, ReadSet, WriteSet);
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet);
     }
 
     private static TResult Get<TStorage, TResult>(
@@ -66,7 +65,6 @@ public class MultiVersionMemoryScopeProvider(
         HashSet<Read<ParallelStateKey>> readSet,
         Dictionary<ParallelStateKey, object> writeSet) : IWorldStateScopeProvider.IScope
     {
-        private readonly FeeAccumulator _feeAccumulator = feeAccumulator;
         public void Dispose() => baseScope.Dispose();
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -89,8 +87,8 @@ public class MultiVersionMemoryScopeProvider(
 
             readSet.Add(new Read<ParallelStateKey>(location, readVersion));
 
-            FeeRecipientKind? feeKind = GetFeeKind(address);
-            if (feeKind is null)
+            FeeRecipientKind? feeKind = feeAccumulator.GetFeeKind(address);
+            if (feeKind == FeeRecipientKind.None)
             {
                 return result;
             }
@@ -98,18 +96,15 @@ public class MultiVersionMemoryScopeProvider(
             int startTxIndex = readVersion.IsEmpty ? 0 : readVersion.TxIndex;
             AddFeeReadDependencies(feeKind.Value, startTxIndex, txIndex);
 
-            UInt256 fees = _feeAccumulator.GetAccumulatedFees(address, txIndex);
+            UInt256 fees = feeAccumulator.GetAccumulatedFees(address, txIndex);
             if (startTxIndex > 0)
             {
-                fees -= _feeAccumulator.GetAccumulatedFees(address, startTxIndex);
+                fees -= feeAccumulator.GetAccumulatedFees(address, startTxIndex);
             }
 
-            if (fees.IsZero)
-            {
-                return result;
-            }
-
-            return result is null ? new Account(fees) : result.WithChangedBalance(result.Balance + fees);
+            return fees.IsZero ? result :
+                result is null ? new Account(fees) :
+                result.WithChangedBalance(result.Balance + fees);
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
@@ -178,26 +173,11 @@ public class MultiVersionMemoryScopeProvider(
                 static (scope, location) => scope.Get(location.StorageCell.Hash));
         }
 
-        private FeeRecipientKind? GetFeeKind(Address address)
-        {
-            if (_feeAccumulator.GasBeneficiary is not null && address == _feeAccumulator.GasBeneficiary)
-            {
-                return FeeRecipientKind.GasBeneficiary;
-            }
-
-            if (_feeAccumulator.FeeCollector is not null && address == _feeAccumulator.FeeCollector)
-            {
-                return FeeRecipientKind.FeeCollector;
-            }
-
-            return null;
-        }
-
         private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
         {
             for (int i = startTxIndex; i < txIndex; i++)
             {
-                if (!_feeAccumulator.IsCommitted(i))
+                if (!feeAccumulator.IsCommitted(i))
                 {
                     throw new AbortParallelExecutionException(new Version(i, 0));
                 }
