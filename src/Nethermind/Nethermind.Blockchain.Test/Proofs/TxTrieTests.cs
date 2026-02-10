@@ -79,6 +79,26 @@ public class TxTrieTests(bool useEip2718)
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Encoded_and_decoded_transaction_paths_have_same_root()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(useEip2718 ? TxType.EIP1559 : TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(useEip2718 ? TxType.AccessList : TxType.Legacy).Signed().TestObject,
+        ];
+
+        byte[][] encodedTransactions = transactions
+            .Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
+
+        Hash256 decodedRoot = TxTrie.CalculateRoot(transactions);
+        Hash256 encodedRoot = TxTrie.CalculateRoot(encodedTransactions);
+
+        Assert.That(encodedRoot, Is.EqualTo(decodedRoot));
+    }
+
     private static void VerifyProof(byte[][] proof, Hash256 txRoot)
     {
         for (int i = proof.Length; i > 0; i--)
