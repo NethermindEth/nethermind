@@ -3,8 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -13,7 +11,6 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder;
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
-    private readonly BlockAccessListDecoder _blockAccessListDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
@@ -95,14 +92,13 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
 
-        int remaining = ctx.PeekNumberOfItemsRemaining(lastPosition, 2);
-        if (remaining > 0)
+        if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
         }
@@ -143,10 +139,5 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
                 stream.Encode(withdrawal);
             }
         }
-
-        // if (body.BlockAccessList is not null)
-        // {
-        //     stream.Encode(body.BlockAccessList.Value);
-        // }
     }
 }

@@ -39,8 +39,8 @@ public class TransactionProcessorTests
     private readonly bool _isEip155Enabled;
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    protected ITransactionProcessor _transactionProcessor;
-    protected IWorldState _stateProvider;
+    private ITransactionProcessor _transactionProcessor;
+    private IWorldState _stateProvider;
     private BlockHeader _baseBlock = null!;
     private IDisposable _stateCloser;
 
@@ -50,7 +50,7 @@ public class TransactionProcessorTests
         _specProvider = MainnetSpecProvider.Instance;
     }
 
-    protected static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether();
 
     [SetUp]
     public void Setup()

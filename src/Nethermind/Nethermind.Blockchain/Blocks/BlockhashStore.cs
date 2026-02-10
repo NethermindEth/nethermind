@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -19,7 +18,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec, ITxTracer? tracer = null)
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
@@ -29,12 +28,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         Hash256 parentBlockHash = blockHeader.ParentHash;
         UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
-        byte[] newValue = parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray();
-        worldState.Set(blockHashStoreCell, newValue);
-        if (tracer is not null && tracer.IsTracingStorage)
-        {
-            tracer.ReportStorageChange(blockHashStoreCell, null, newValue);
-        }
+        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)

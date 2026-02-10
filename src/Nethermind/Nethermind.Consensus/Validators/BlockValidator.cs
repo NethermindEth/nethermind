@@ -74,8 +74,8 @@ public class BlockValidator(
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
-               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
                ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 

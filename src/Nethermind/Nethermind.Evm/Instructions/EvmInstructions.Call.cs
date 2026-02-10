@@ -164,7 +164,6 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
-        // todo: move into function
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;

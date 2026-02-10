@@ -1123,11 +1123,6 @@ namespace Nethermind.Serialization.Rlp
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
-
-                // static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
-                // {
-                //     throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
-                // }
             }
 
             public void DecodeAddressStructRef(out AddressStructRef address)
@@ -1750,19 +1745,6 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
-
-        // public static int LengthOf(ushort value)
-        // {
-        //     if (value < 128)
-        //     {
-        //         return 1;
-        //     }
-        //     else
-        //     {
-        //         // everything has a length prefix
-        //         return 1 + sizeof(ushort) - (BitOperations.LeadingZeroCount(value) / 2);
-        //     }
-        // }
 
         public static int LengthOf(ushort value) => LengthOf((long)value);
 

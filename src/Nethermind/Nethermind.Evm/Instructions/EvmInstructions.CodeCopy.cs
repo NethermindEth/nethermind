@@ -173,7 +173,7 @@ internal static partial class EvmInstructions
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
             // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = codeInfo.Code.Span;
+            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
             // If contract is large, charge for access
             if (spec.IsEip7907Enabled)
             {

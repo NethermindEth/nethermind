@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
@@ -51,7 +50,6 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
         }
 
-        // todo: trace state changes
         try
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
