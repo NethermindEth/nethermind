@@ -49,6 +49,7 @@ public class BlockProcessorTests
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 stateProvider,
+                new ExecuteTransactionProcessorAdapter(transactionProcessor),
                 new BlobBaseFeeCalculator(),
                 HoodiSpecProvider.Instance,
                 Substitute.For<IBlockhashProvider>(),
@@ -91,6 +92,7 @@ public class BlockProcessorTests
             new RewardCalculator(MainnetSpecProvider.Instance),
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 stateProvider,
+                new ExecuteTransactionProcessorAdapter(transactionProcessor),
                 new BlobBaseFeeCalculator(),
                 HoodiSpecProvider.Instance,
                 Substitute.For<IBlockhashProvider>(),

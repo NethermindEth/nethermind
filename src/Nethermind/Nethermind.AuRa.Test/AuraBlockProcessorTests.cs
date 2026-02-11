@@ -199,6 +199,7 @@ namespace Nethermind.AuRa.Test
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(
                     stateProvider,
+                    new ExecuteTransactionProcessorAdapter(transactionProcessor),
                     new BlobBaseFeeCalculator(),
                     HoodiSpecProvider.Instance,
                     Substitute.For<IBlockhashProvider>(),

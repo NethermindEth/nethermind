@@ -111,9 +111,10 @@ public class ReorgTests
             new RewardCalculator(specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 stateProvider,
+                new ExecuteTransactionProcessorAdapter(transactionProcessor),
                 new BlobBaseFeeCalculator(),
                 specProvider,
-                virtualMachine,
+                blockhashProvider,
                 codeInfoRepository,
                 LimboLogs.Instance),
             stateProvider,
