@@ -27,6 +27,8 @@ namespace Nethermind.Trie
 
         private class TrieNodeDecoder
         {
+            private const int MinDirtyChildrenForParallelRootRlpLength = 3;
+
             [SkipLocalsInit]
             public static SpanSource EncodeExtension(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool)
             {
@@ -137,7 +139,7 @@ namespace Nethermind.Trie
                 Metrics.TreeNodeRlpEncodings++;
 
                 const int valueRlpLength = 1;
-                int contentLength = valueRlpLength + (UseParallel(canBeParallel) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
+                int contentLength = valueRlpLength + (UseParallelRlpLengthForRootBranch(item, canBeParallel) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool));
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 SpanSource result = pool.SafeRentBuffer(sequenceLength);
                 Span<byte> resultSpan = result.Span;
@@ -147,8 +149,26 @@ namespace Nethermind.Trie
                 resultSpan[position] = 128;
 
                 return result;
+            }
 
-                static bool UseParallel(bool canBeParallel) => Environment.ProcessorCount > 1 && canBeParallel;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool UseParallelRlpLengthForRootBranch(TrieNode item, bool canBeParallel)
+            {
+                if (!canBeParallel || Environment.ProcessorCount <= 1)
+                {
+                    return false;
+                }
+
+                int dirtyChildren = 0;
+                for (int i = 0; i < BranchesCount; i++)
+                {
+                    if (item._nodeData[i] is TrieNode child && child.IsDirty && ++dirtyChildren >= MinDirtyChildrenForParallelRootRlpLength)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
