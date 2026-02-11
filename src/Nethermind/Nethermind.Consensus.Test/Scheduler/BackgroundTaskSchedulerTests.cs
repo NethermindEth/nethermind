@@ -142,4 +142,60 @@ public class BackgroundTaskSchedulerTests
 
         wasCancelled.Should().BeTrue();
     }
+
+    [Test]
+    public async Task Test_expired_tasks_are_drained_during_block_processing()
+    {
+        int capacity = 16;
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, capacity, LimboLogs.Instance);
+
+        // Start block processing — signal is reset, token cancelled
+        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+
+        int cancelledCount = 0;
+        for (int i = 0; i < capacity; i++)
+        {
+            scheduler.TryScheduleTask(1, (_, token) =>
+            {
+                if (token.IsCancellationRequested)
+                {
+                    Interlocked.Increment(ref cancelledCount);
+                }
+                return Task.CompletedTask;
+            }, TimeSpan.FromMilliseconds(1));
+        }
+
+        // Expired tasks should be drained even while block processing is in progress
+        Assert.That(() => cancelledCount, Is.EqualTo(capacity).After(2000, 10));
+
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+    }
+
+    [Test]
+    public async Task Test_queue_accepts_new_tasks_after_expired_tasks_drain_during_block_processing()
+    {
+        int capacity = 16;
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, capacity, LimboLogs.Instance);
+
+        // Start block processing — signal is reset, token cancelled
+        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+
+        // Fill the queue with short-lived tasks
+        for (int i = 0; i < capacity; i++)
+        {
+            scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)).Should().BeTrue();
+        }
+
+        // Wait for deadlines to pass and expired tasks to be drained
+        await Task.Delay(200);
+
+        // New tasks should be accepted because expired tasks freed up queue space
+        for (int i = 0; i < capacity; i++)
+        {
+            bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            accepted.Should().BeTrue($"Task {i} should be accepted after expired tasks were drained");
+        }
+
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+    }
 }
