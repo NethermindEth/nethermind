@@ -4,9 +4,10 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
 
 ## Features
 
-- **Dual Tracing Modes**:
+- **Three Tracing Modes**:
   - **RealTime**: Traces opcodes as blocks are processed at the chain tip AFTER sync completes
-  - **Retrospective**: Analyzes transaction bytecode from historical blocks in the database
+  - **Retrospective**: Analyzes transaction bytecode from historical blocks in the database (static analysis)
+  - **RetrospectiveExecution**: Replays historical transactions through the EVM to capture actual executed opcodes including internal calls
 
 - **Flexible Block Range Configuration**:
   - Explicit range: `--OpcodeTracing.StartBlock 100 --OpcodeTracing.EndBlock 200`
@@ -69,7 +70,50 @@ Retrospective mode analyzes transaction bytecode (input data) from historical bl
 
 - If need to analyze historical blocks during sync
 
-**Note**: This mode counts opcodes found in transaction data bytes, which may be different from actual executed opcodes. For true execution tracing of historical blocks, you would need to replay transactions (not currently implemented).
+**Note**: This mode counts opcodes found in transaction data bytes, which may be different from actual executed opcodes. For true execution tracing of historical blocks, use **RetrospectiveExecution** mode instead.
+
+### RetrospectiveExecution Mode
+
+RetrospectiveExecution mode replays historical transactions through the actual EVM to capture all executed opcodes, including those from internal contract calls (CALL, DELEGATECALL, STATICCALL, etc.). Unlike Retrospective mode which only analyzes bytecode statically, this mode provides accurate execution-based opcode counts.
+
+**How it works**:
+
+1. For each block in the specified range, creates an isolated read-only state based on the parent block
+2. Replays each transaction through the EVM with instruction-level tracing enabled
+3. Captures every opcode executed, including opcodes from internal calls, CREATE operations, and precompile interactions
+4. Accumulates counts into the final output without modifying any chain state
+
+**Requirements**:
+
+- **Archive node required**: Historical state must be available for the blocks being traced
+- **State availability**: Parent block state must exist; blocks with pruned state are skipped with warnings
+
+**Not suitable for**:
+
+- Nodes running with state pruning (use archive mode: `--Pruning.Mode None`)
+- Very old blocks where state has been pruned
+
+**Parallel Processing**:
+
+RetrospectiveExecution mode supports parallel block processing via `MaxDegreeOfParallelism`. Each block is processed in an isolated state scope, making it safe to execute multiple blocks concurrently:
+
+```bash
+--OpcodeTracing.Mode RetrospectiveExecution --OpcodeTracing.MaxDegreeOfParallelism 8
+```
+
+### Mode Comparison
+
+| Feature | RealTime | Retrospective | RetrospectiveExecution |
+|---------|----------|---------------|------------------------|
+| **Analysis Type** | Live EVM execution | Static bytecode analysis | Historical EVM replay |
+| **Captures Internal Calls** | Yes | No | Yes |
+| **Requires Sync Complete** | Yes | No | No |
+| **Requires Archive Node** | No | No | Yes |
+| **Parallel Processing** | No (per-block) | Yes | Yes |
+| **State Requirements** | None | None | Historical state |
+| **Accuracy** | Exact (live execution) | Approximate (bytecode only) | Exact (replayed execution) |
+| **Best Use Case** | Production monitoring | Quick research | Accurate historical analysis |
+| **Output Files** | Per-block + cumulative | Single file | Single file |
 
 ## Building the Plugin
 
@@ -114,7 +158,7 @@ dotnet run --project Nethermind.Runner -- \\
 | `StartBlock` | long? | null | First block number (inclusive) |
 | `EndBlock` | long? | null | Last block number (inclusive) |
 | `Blocks` | long? | null | Number of recent blocks to trace |
-| `Mode` | string | "RealTime" | Tracing mode: RealTime or Retrospective |
+| `Mode` | string | "RealTime" | Tracing mode: RealTime, Retrospective, or RetrospectiveExecution |
 | `MaxDegreeOfParallelism` | int | 0 | Parallel processing limit (0 = auto) |
 
 ### JSON Configuration
@@ -244,6 +288,23 @@ dotnet run --project Nethermind.Runner -- \\
   --OpcodeTracing.Mode Retrospective
 ```
 
+### Trace Historical Blocks with EVM Execution
+
+```bash
+# Replay historical transactions through the EVM (requires archive node)
+dotnet run --project Nethermind.Runner -- \\
+  --config mainnet \\
+  --Pruning.Mode None \\
+  --OpcodeTracing.Enabled true \\
+  --OpcodeTracing.StartBlock 17000000 \\
+  --OpcodeTracing.EndBlock 17001000 \\
+  --OpcodeTracing.Mode RetrospectiveExecution \\
+  --OpcodeTracing.MaxDegreeOfParallelism 4 \\
+  --OpcodeTracing.OutputDirectory ./traces
+```
+
+This mode captures actual executed opcodes including internal calls, providing accurate opcode counts.
+
 ## Validation and Error Handling
 
 ### Configuration Validation
@@ -323,6 +384,63 @@ RealTime mode only captures opcodes from NEW blocks processed at the chain tip A
 - The node is still syncing (see above)
 - The specified block range (StartBlock/EndBlock) hasn't been reached yet
 - The node is disconnected from the network
+
+### RetrospectiveExecution Mode: "State unavailable" Warnings
+
+When using RetrospectiveExecution mode, you may see warnings like:
+```
+State unavailable for block 12345678, skipping (parent state may be pruned)
+```
+
+**Causes**:
+
+1. **Node is not running in archive mode**: RetrospectiveExecution requires historical state to replay transactions. Standard nodes prune old state.
+2. **Block is older than pruning window**: Even with some state retention, very old blocks may have their state pruned.
+3. **State not yet downloaded**: During sync, historical state may not be available yet.
+
+**Solutions**:
+
+1. **Use an archive node**: Run Nethermind with pruning disabled:
+   ```bash
+   --Pruning.Mode None
+   ```
+   Note: Archive nodes require significantly more disk space (several TB for mainnet).
+
+2. **Check the skippedBlocks in output**: The JSON output includes a `skippedBlocks` array listing all blocks that couldn't be traced due to unavailable state.
+
+3. **Use a more recent block range**: If you don't have archive state, trace more recent blocks where state is still available.
+
+4. **Wait for sync to complete**: If syncing, historical state becomes available as sync progresses.
+
+### RetrospectiveExecution Mode: Blocks Being Skipped
+
+If many blocks are being skipped in RetrospectiveExecution mode:
+
+1. **Check skippedBlocks array**: Review the output JSON's `skippedBlocks` field
+2. **Verify state availability**: Ensure your node has state for the requested block range
+3. **Check logs**: Look for specific error messages about why blocks failed
+
+### RetrospectiveExecution Mode: Execution Tracing is Slow
+
+Execution tracing is slow because it requires replaying each transaction through the EVM. You can optimize it by using the `--OpcodeTracing.MaxDegreeOfParallelism` parameter to trace blocks in parallel.
+You may also need to wait for the node to sync to the block range you are tracing. Actual tracing happens after the logs like
+
+```
+2026-01-14 12:52:11.0234|INFO|OpcodeTracing.Plugin.OpcodeTracingPlugin|14|Opcode tracing plugin initialized (session=20260114125211).
+2026-01-14 12:58:51.1945|INFO|OpcodeTracing.Plugin.Tracing.OpcodeTraceRecorder|17|Starting RetrospectiveExecution tracing of 1980 blocks
+2026-01-14 12:58:51.1945|INFO|OpcodeTracing.Plugin.Tracing.RetrospectiveExecutionTracer|17|RetrospectiveExecution tracing with MaxDegreeOfParallelism=4
+```
+
+### Is it possible to see only plugin logs?
+
+The easiest way to check tracer progress is to add the following to the `nlog.config` file:
+```xml
+    <target name="opcode-tracing-file" xsi:type="File"
+            fileName="opcode-tracing.txt"
+    <logger name="OpcodeTracing.Plugin.*" minlevel="Debug" writeTo="opcode-tracing-file" />
+```
+
+And then use `--loggerConfigSource=/nethermind/data/customNLog.config` with the Nethermind CLI. The logs will appear in the `opcode-tracing.txt` file.
 
 ## Additional Resources
 
