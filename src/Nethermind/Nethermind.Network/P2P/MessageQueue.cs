@@ -56,7 +56,13 @@ namespace Nethermind.Network.P2P
                 }
 
                 _currentRequest.ResponseSize = size;
-                _currentRequest.CompletionSource.SetResult(data);
+                if (!_currentRequest.CompletionSource.TrySetResult(data))
+                {
+                    if (data is IDisposable d)
+                    {
+                        d.Dispose();
+                    }
+                }
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();
