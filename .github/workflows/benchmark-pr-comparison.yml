@@ -68,7 +68,7 @@ jobs:
       max-parallel: 5
       matrix:
         shard: [1, 2, 3, 4, 5]
-    runs-on: [self-hosted, benchmarks]
+    runs-on: [self-hosted, benchmark]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
