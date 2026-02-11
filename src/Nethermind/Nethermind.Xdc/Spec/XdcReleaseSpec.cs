@@ -27,8 +27,8 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
@@ -112,8 +112,8 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
     public double ObserverReward { get; set; }       // Block reward per observer - unit Ether
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public ulong RangeReturnSigner { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }

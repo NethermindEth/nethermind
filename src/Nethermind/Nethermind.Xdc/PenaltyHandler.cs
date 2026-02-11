@@ -131,21 +131,16 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
 
         if (!isTipUpgradePenalty)
         {
-            var comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * (ulong)currentSpec.EpochLength + (ulong)currentSpec.SwitchBlock;
+            var comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
             var penComebacks = new List<Address>();
 
-            if ((ulong)number > comebackHeight)
+            if (number > comebackHeight)
             {
-                var prevPenalies = GetPreviousPenalties(currentHash, currentSpec, currentSpec.LimitPenaltyEpochV2);
+                var prevPenalies = GetPreviousPenalties(currentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
                 penComebacks = prevPenalies.Intersect(candidates).ToList();
 
                 var mapBlockHash = new Dictionary<Hash256, bool>();
-                var startRange = (int)currentSpec.RangeReturnSigner - 1;
-
-                if (startRange >= listBlockHash.Count)
-                {
-                    startRange = listBlockHash.Count - 1;
-                }
+                var startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
                 {
@@ -186,15 +181,14 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
             }
         } else
         {
-            ulong limitPenaltyEpoch = currentSpec.LimitPenaltyEpoch > 0 ? currentSpec.LimitPenaltyEpoch : 1;
-            var comebackHeight = limitPenaltyEpoch * (ulong)currentSpec.EpochLength + (ulong)currentSpec.SwitchBlock;
-            if ((ulong)number > comebackHeight)
+            long limitPenaltyEpoch = currentSpec.LimitPenaltyEpoch > 0 ? currentSpec.LimitPenaltyEpoch : 1;
+            long comebackHeight = limitPenaltyEpoch * currentSpec.EpochLength + currentSpec.SwitchBlock;
+            if (number > comebackHeight)
             {
                 Dictionary<Address, ulong> penaltiesParole = new();
-
                 Address[] lastPenalty = [];
 
-                for (ulong i = 0; i < limitPenaltyEpoch; i++)
+                for (long i = 0; i < limitPenaltyEpoch; i++)
                 {
                     var previousPenalties = GetPreviousPenalties(currentHash, currentSpec, (ulong)i);
                     foreach (var previousPenalty in previousPenalties)
@@ -251,7 +245,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                 foreach (var penalty in lastPenalty)
                 {
                     penaltiesParole.TryGetValue(penalty, out var epochs);
-                    if (epochs == limitPenaltyEpoch)
+                    if (epochs == (ulong)limitPenaltyEpoch)
                     {
                         txSignerMap.TryGetValue(penalty, out var signedCount);
                         if (signedCount >= currentSpec.MinimumSigningTx)
