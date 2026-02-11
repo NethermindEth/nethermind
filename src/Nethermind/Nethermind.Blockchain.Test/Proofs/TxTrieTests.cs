@@ -17,14 +17,11 @@ namespace Nethermind.Blockchain.Test.Proofs;
 
 [TestFixture(true)]
 [TestFixture(false)]
-public class TxTrieTests
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class TxTrieTests(bool useEip2718)
 {
-    private readonly IReleaseSpec _releaseSpec;
-
-    public TxTrieTests(bool useEip2718)
-    {
-        _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
-    }
+    private readonly IReleaseSpec _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root()
@@ -80,6 +77,26 @@ public class TxTrieTests
             byte[][] proof = txTrie.BuildProof(i);
             VerifyProof(proof, txTrie.RootHash);
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Encoded_and_decoded_transaction_paths_have_same_root()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(useEip2718 ? TxType.EIP1559 : TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(useEip2718 ? TxType.AccessList : TxType.Legacy).Signed().TestObject,
+        ];
+
+        byte[][] encodedTransactions = transactions
+            .Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
+
+        Hash256 decodedRoot = TxTrie.CalculateRoot(transactions);
+        Hash256 encodedRoot = TxTrie.CalculateRoot(encodedTransactions);
+
+        Assert.That(encodedRoot, Is.EqualTo(decodedRoot));
     }
 
     private static void VerifyProof(byte[][] proof, Hash256 txRoot)

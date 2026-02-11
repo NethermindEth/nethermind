@@ -44,7 +44,7 @@ public partial class VirtualMachine<TGasPolicy>
             FromVersion = fromVersion;
         }
 
-        public CallResult(ICodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(CodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
             Output = (container, output);
@@ -64,7 +64,7 @@ public partial class VirtualMachine<TGasPolicy>
         }
 
         public VmState<TGasPolicy>? StateToExecute { get; }
-        public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
+        public (CodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }

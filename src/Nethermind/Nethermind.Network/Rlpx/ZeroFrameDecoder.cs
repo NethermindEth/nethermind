@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx
 
             // Note that ByteToMessageDecoder handles input.Release calls for us.
             // In fact, we receive here a potentially surviving _internalBuffer of the base class
-            // that is being built by its cumulator.
+            // that is being built by its accumulator.
 
             // Output buffers that we create will be released by the next handler in the pipeline.
             while (input.ReadableBytes >= Frame.BlockSize)

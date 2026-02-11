@@ -48,14 +48,14 @@ namespace Nethermind.JsonRpc
         public const int ResourceNotFound = -32000;
 
         /// <summary>
+        /// Transaction creation failed
+        /// </summary>
+        public const int TransactionRejected = -32000;
+
+        /// <summary>
         /// Requested resource not available
         /// </summary>
         public const int ResourceUnavailable = -32002;
-
-        /// <summary>
-        /// Transaction creation failed
-        /// </summary>
-        public const int TransactionRejected = -32010;
 
         /// <summary>
         /// Account locked
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc
         public const int ClientLimitExceededError = -38026;
 
         /// <summary>
-        /// Block is not available due to history expirty policy
+        /// Block is not available due to history expiry policy
         /// </summary>
         public const int PrunedHistoryUnavailable = 4444;
 
@@ -178,7 +178,7 @@ namespace Nethermind.JsonRpc
         public const int MaxInitCodeSizeExceeded = -38025;
 
         /// <summary>
-        /// Transaction reverted. Geth sets it to -32000 in simulate but suppose to 3. We kepp it as geth for now
+        /// Transaction reverted. Geth sets it to -32000 in simulate but supposed to be 3. We keep it as Geth for now
         /// </summary>
         public const int RevertedSimulate = -32000;
 

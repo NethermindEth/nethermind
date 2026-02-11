@@ -10,7 +10,7 @@ namespace Nethermind.Era1.Test;
 public class AdminEraServiceTests
 {
     [Test]
-    public void CanCallcExport()
+    public void CanCallImport()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
         AdminEraService adminEraService = new AdminEraService(

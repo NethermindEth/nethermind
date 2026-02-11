@@ -171,7 +171,7 @@ public class Eth68ProtocolHandler(ISession session,
             Hash256 hash = hashes[i];
             if (!_txPool.IsKnown(hash))
             {
-                if (_txPool.NoitifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
+                if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
                 {
                     discoveredTxHashesAndSizes.Add(i);
                 }

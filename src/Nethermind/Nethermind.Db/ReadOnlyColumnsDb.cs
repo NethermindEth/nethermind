@@ -10,9 +10,11 @@ namespace Nethermind.Db
     public class ReadOnlyColumnsDb<T> : IReadOnlyColumnDb<T>, IDisposable
     {
         private readonly IDictionary<T, IReadOnlyDb> _readOnlyColumns;
+        private readonly IColumnsDb<T> _baseColumnDb;
 
         public ReadOnlyColumnsDb(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore)
         {
+            _baseColumnDb = baseColumnDb;
             _readOnlyColumns = baseColumnDb.ColumnKeys
                 .Select(key => (key, db: baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
                 .ToDictionary(it => it.key, it => it.db);
@@ -27,6 +29,11 @@ namespace Nethermind.Db
         public IColumnsWriteBatch<T> StartWriteBatch()
         {
             return new InMemoryColumnWriteBatch<T>(this);
+        }
+
+        public IColumnDbSnapshot<T> CreateSnapshot()
+        {
+            return _baseColumnDb.CreateSnapshot();
         }
 
         public void ClearTempChanges()

@@ -3,20 +3,22 @@
 
 using System;
 
-namespace Nethermind.Config
+namespace Nethermind.Config;
+
+[AttributeUsage(AttributeTargets.Property)]
+public class ConfigItemAttribute : Attribute
 {
-    public class ConfigItemAttribute : Attribute
-    {
-        public string Description { get; set; }
+    public string Description { get; set; }
 
-        public string DefaultValue { get; set; }
+    public string DefaultValue { get; set; }
 
-        public bool HiddenFromDocs { get; set; }
+    public bool HiddenFromDocs { get; set; }
 
-        public bool DisabledForCli { get; set; }
+    public bool DisabledForCli { get; set; }
 
-        public string EnvironmentVariable { get; set; }
+    public string EnvironmentVariable { get; set; }
 
-        public bool IsPortOption { get; set; }
-    }
+    public bool IsPortOption { get; set; }
+
+    public string CliOptionAlias { get; set; }
 }
