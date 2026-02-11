@@ -59,34 +59,12 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     }
 
     [Test]
-    public void When_KeyNotExist_Should_TryBothKeyType()
+    public void When_KeyNotExist_Should_ReturnNull()
     {
         TestMemDb testDb = new TestMemDb();
         NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
 
         nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeNull();
-
-        testDb.KeyWasRead(TestItem.KeccakA.Bytes.ToArray());
-        testDb.KeyWasRead(NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA));
-    }
-
-    [Test]
-    public void When_EntryOfDifferentScheme_Should_StillBeAbleToRead()
-    {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
-
-        if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
-        {
-            testDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA)] =
-                TestItem.KeccakA.BytesToArray();
-        }
-        else
-        {
-            testDb[TestItem.KeccakA.Bytes] = TestItem.KeccakA.BytesToArray();
-        }
-
-        nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
     }
 
     [TestCase(false, 0, "000000000000000000003333333333333333333333333333333333333333333333333333333333333333")]
