@@ -55,6 +55,14 @@ namespace Nethermind.Benchmarks.Store
         private (Hash256, Account)[] _uniqueLargeSet;
         private (Hash256, Account)[] _presortedLargeSet;
 
+        private const int _branchChildrenCount = 16;
+        private const int _rootSchedulingEntriesPerPrefix = 64;
+        private (Hash256 Address, Account Account)[] _rootSchedulingBaseEntries;
+        private Hash256[] _rootSchedulingSparseUpdateKeys;
+        private Hash256[] _rootSchedulingWideUpdateKeys;
+        private TrieStore _rootSchedulingTrieStore;
+        private StateTree _rootSchedulingTree;
+
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
             ("set_3_via_address", tree =>
@@ -316,6 +324,42 @@ namespace Nethermind.Benchmarks.Store
             }
 
             Array.Sort(_presortedLargeSet, (it1, it2) => it1.CompareTo(it2));
+
+            InitializeRootSchedulingData();
+        }
+
+        private void InitializeRootSchedulingData()
+        {
+            _rootSchedulingBaseEntries = new (Hash256 Address, Account Account)[_branchChildrenCount * _rootSchedulingEntriesPerPrefix];
+            _rootSchedulingSparseUpdateKeys = new Hash256[1];
+            _rootSchedulingWideUpdateKeys = new Hash256[_branchChildrenCount];
+
+            int offset = 0;
+            for (int prefix = 0; prefix < _branchChildrenCount; prefix++)
+            {
+                for (int entryIndex = 0; entryIndex < _rootSchedulingEntriesPerPrefix; entryIndex++)
+                {
+                    Hash256 key = CreatePrefixedHash(prefix, entryIndex + 1);
+                    _rootSchedulingBaseEntries[offset++] = (key, new Account((UInt256)((prefix * _rootSchedulingEntriesPerPrefix) + entryIndex + 1)));
+
+                    if (entryIndex == 0)
+                    {
+                        _rootSchedulingWideUpdateKeys[prefix] = key;
+                    }
+                }
+            }
+
+            _rootSchedulingSparseUpdateKeys[0] = _rootSchedulingWideUpdateKeys[0];
+        }
+
+        private static Hash256 CreatePrefixedHash(int prefix, int entryIndex)
+        {
+            Span<byte> bytes = stackalloc byte[Hash256.Size];
+            bytes[0] = (byte)((prefix << 4) | (entryIndex & 0x0F));
+            bytes[1] = (byte)(entryIndex >> 4);
+            bytes[2] = (byte)((entryIndex * 31) & 0xFF);
+            bytes[31] = (byte)(prefix ^ entryIndex);
+            return new Hash256(bytes);
         }
 
         [Benchmark]
@@ -488,6 +532,83 @@ namespace Nethermind.Benchmarks.Store
         public void RepeatedBulkSet512()
         {
             DoBulkSetRepeatedly(512);
+        }
+
+        [IterationSetup(Targets = [
+            nameof(UpdateRootHashSparseDirty),
+            nameof(UpdateRootHashSparseDirtyNoParallel),
+        ])]
+        public void SetupRootHashSparseDirty()
+        {
+            SetupRootHashBenchmark(_rootSchedulingSparseUpdateKeys);
+        }
+
+        [IterationSetup(Targets = [
+            nameof(UpdateRootHashWideDirty),
+            nameof(UpdateRootHashWideDirtyNoParallel),
+        ])]
+        public void SetupRootHashWideDirty()
+        {
+            SetupRootHashBenchmark(_rootSchedulingWideUpdateKeys);
+        }
+
+        [IterationCleanup(Targets = [
+            nameof(UpdateRootHashSparseDirty),
+            nameof(UpdateRootHashSparseDirtyNoParallel),
+            nameof(UpdateRootHashWideDirty),
+            nameof(UpdateRootHashWideDirtyNoParallel),
+        ])]
+        public void CleanupRootHashScheduling()
+        {
+            _rootSchedulingTrieStore?.Dispose();
+        }
+
+        [Benchmark]
+        public void UpdateRootHashSparseDirty()
+        {
+            _rootSchedulingTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void UpdateRootHashSparseDirtyNoParallel()
+        {
+            _rootSchedulingTree.UpdateRootHash(canBeParallel: false);
+        }
+
+        [Benchmark]
+        public void UpdateRootHashWideDirty()
+        {
+            _rootSchedulingTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void UpdateRootHashWideDirtyNoParallel()
+        {
+            _rootSchedulingTree.UpdateRootHash(canBeParallel: false);
+        }
+
+        private void SetupRootHashBenchmark(Hash256[] updateKeys)
+        {
+            TrieStore trieStore = _rootSchedulingTrieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree stateTree = _rootSchedulingTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _rootSchedulingBaseEntries.Length; i++)
+            {
+                (Hash256 address, Account account) = _rootSchedulingBaseEntries[i];
+                stateTree.Set(address, account);
+            }
+
+            using (IBlockCommitter _ = trieStore.BeginBlockCommit(0))
+            {
+                stateTree.Commit();
+            }
+
+            for (int i = 0; i < updateKeys.Length; i++)
+            {
+                stateTree.Set(updateKeys[i], _account3);
+            }
         }
 
         private void DoSetOnlyRepeatedly(int repeatBatchSize)
