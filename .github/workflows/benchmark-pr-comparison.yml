@@ -39,8 +39,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p .benchmark-shards
-          list_file=".benchmark-shards/flat-list.txt"
+          mkdir -p benchmark-shards
+          list_file="benchmark-shards/flat-list.txt"
 
           dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
             --filter '*Nethermind.Benchmarks.Blockchain.BlockProcessingBenchmarks*' '*Nethermind.Benchmarks.Evm.*' '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' '*Nethermind.Evm.Benchmark.EvmBenchmarks*' \
@@ -48,14 +48,14 @@ jobs:
 
           python3 scripts/benchmarks/plan-benchmark-shards.py \
             --input "$list_file" \
-            --output-dir .benchmark-shards \
+            --output-dir benchmark-shards \
             --shard-count "$SHARD_COUNT"
 
       - name: Upload shard plan
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-shard-plan
-          path: .benchmark-shards/shard-*.txt
+          path: benchmark-shards/shard-*.txt
           retention-days: 7
 
   benchmark-shards:
@@ -80,7 +80,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: benchmark-shard-plan
-          path: .benchmark-shards
+          path: benchmark-shards
 
       - name: Run benchmark shard
         id: run-shard
@@ -93,7 +93,7 @@ jobs:
           set -euo pipefail
 
           artifact_root=".benchmark-artifacts/shard-${{ matrix.shard }}"
-          plan_file=".benchmark-shards/shard-${{ matrix.shard }}.txt"
+          plan_file="benchmark-shards/shard-${{ matrix.shard }}.txt"
           if [ ! -f "$plan_file" ]; then
             echo "Missing shard plan file: $plan_file"
             exit 1
@@ -137,6 +137,7 @@ jobs:
           name: benchmark-results-shard-${{ matrix.shard }}
           path: .benchmark-artifacts/shard-${{ matrix.shard }}/results/**
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 7
 
   aggregate-and-compare:
@@ -177,14 +178,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: benchmark-results-shard-*
-          path: .benchmark-shards
+          path: benchmark-shards
 
       - name: Combine benchmark shard reports
         shell: pwsh
         run: |
           New-Item -Path .benchmark-artifacts/results -ItemType Directory -Force | Out-Null
 
-          $csvFiles = @(Get-ChildItem -Path .benchmark-shards -Recurse -Filter "*-report.csv" -File)
+          $csvFiles = @(Get-ChildItem -Path benchmark-shards -Recurse -Filter "*-report.csv" -File)
           if ($csvFiles.Count -eq 0) {
             throw "No benchmark CSV files were downloaded from shards."
           }
@@ -264,6 +265,7 @@ jobs:
             .benchmark-results/benchmark-summary.json
             .benchmark-results/benchmark-comparison.json
             .benchmark-results/benchmark-comparison.md
+          include-hidden-files: true
           retention-days: 7
 
       - name: Comment benchmark comparison on PR
