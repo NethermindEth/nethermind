@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -49,7 +50,8 @@ namespace Nethermind.Consensus.Processing
                 int len = block.Transactions.Length;
                 if (_balBuilder.ParallelExecutionEnabled)
                 {
-                    var transactionProcessors = new ITransactionProcessorAdapter[len];
+                    ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
+                    BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
                     for (int i = 0; i < len; i++)
                     {
                         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -57,34 +59,34 @@ namespace Nethermind.Consensus.Processing
                         ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                         transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
                         transactionProcessors[i] = transactionProcessorAdapter;
-                        // single shared virtual machine?
+
+                        BlockReceiptsTracer tracer = new();
+                        tracer.StartNewBlockTrace(block);
+                        receiptsTracers[i] = tracer;
                     }
 
                     ParallelUnbalancedWork.For(
                         0,
                         block.Transactions.Length,
                         ParallelUnbalancedWork.DefaultOptions,
-                        (block, receiptsTracer, processingOptions, stateProvider, transactionProcessors, txs: block.Transactions),
+                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, txs: block.Transactions),
                         static (i, state) =>
-                    {
-                        Transaction tx = state.txs[i];
-                        ITransactionProcessorAdapter transactionProcessor = state.transactionProcessors[i];
-                        // TracedAccessWorldState worldState = (state.stateProvider as TracedAccessWorldState)!;
-                        ProcessTransactionParallel(
-                            transactionProcessor,
-                            state.stateProvider,
-                            state.block,
-                            tx,
-                            i,
-                            state.receiptsTracer,
-                            state.processingOptions);
-                        return state;
-                    });
+                        {
+                            Transaction tx = state.txs[i];
+                            ITransactionProcessorAdapter transactionProcessor = state.transactionProcessors[i];
+                            BlockReceiptsTracer txReceiptsTracer = state.receiptsTracers[i];
+                            ProcessTransactionParallel(
+                                transactionProcessor,
+                                state.stateProvider,
+                                state.block,
+                                tx,
+                                i,
+                                txReceiptsTracer,
+                                state.processingOptions);
+                            return state;
+                        });
 
-                    // for (int i = 0; i < len; i++)
-                    // {
-                    //     TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, block.Transactions[i], receiptsTracer.TxReceipts[i]));
-                    // }
+                    return CombineReceipts(receiptsTracers, len, block);
                 }
                 else
                 {
@@ -124,6 +126,33 @@ namespace Nethermind.Consensus.Processing
                 return [.. receiptsTracer.TxReceipts];
             }
 
+            private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
+            {
+                TxReceipt[] result = new TxReceipt[len];
+                for (int i = 0; i < len; i++)
+                {
+                    result[i] = receiptsTracers[i].TxReceipts[0];
+                    result[i].Index = i;
+                }
+
+                long cumulativeGas = 0;
+                for (int i = 0; i < len; i++)
+                {
+                    cumulativeGas += result[i].GasUsed;
+                    result[i].GasUsedTotal = cumulativeGas;
+                }
+
+                Bloom blockBloom = new();
+                for (int i = 0; i < len; i++)
+                {
+                    result[i].CalculateBloom();
+                    blockBloom.Accumulate(result[i].Bloom!);
+                }
+                block.Header.Bloom = blockBloom;
+
+                return result;
+            }
+
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = _transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
@@ -140,7 +169,6 @@ namespace Nethermind.Consensus.Processing
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions)
             {
-                // todo: parallelise tracers
                 currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
