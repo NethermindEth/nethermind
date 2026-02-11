@@ -98,7 +98,7 @@ namespace Nethermind.Facade.Eth
 
             if (!IsSyncing())
             {
-                _syncStopwatch.Stop();
+                _syncStopwatch.Reset();
                 return TimeSpan.Zero;
             }
 
