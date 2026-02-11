@@ -167,20 +167,7 @@ public class BitmapHelperTests
     }
 
     [Test]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(24)]
-    [TestCase(31)]
-    [TestCase(32)]
-    public void FlagMultipleBits_ShouldMatchNaive(int bitCount)
+    public void FlagMultipleBits_ShouldMatchNaive([Range(0, 32)] int bitCount)
     {
         // Test at various bit-alignment offsets (0..7)
         for (int startPc = 0; startPc < 8; startPc++)
