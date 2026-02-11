@@ -87,7 +87,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         dbProvider.CodeDb.Returns(new MemDb());
 
         // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
-        (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager, scheme);
+        (_, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager, scheme);
 
         BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
         if (scheme == INodeStorage.KeyScheme.Hash)
