@@ -42,6 +42,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
+    private volatile TaskCompletionSource? _blockProcessingDoneSignal;
     private bool _disposed = false;
 
     public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
@@ -85,6 +86,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // as there are potentially no gaps between blocks
         if (!_headInfo.IsSyncing)
         {
+            // Signal that block processing is in progress so the Throttle path in StartChannel
+            // can async-wait instead of busy-polling
+            _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             // On block processing, we cancel the block process cts, causing the current task to get canceled.
             _blockProcessorCancellationTokenSource.Cancel();
         }
@@ -96,6 +100,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         using CancellationTokenSource oldTokenSource = Interlocked.Exchange(
             ref _blockProcessorCancellationTokenSource,
             new CancellationTokenSource());
+
+        // Signal that block processing is done so the Throttle path can resume
+        Interlocked.Exchange(ref _blockProcessingDoneSignal, null)?.TrySetResult();
     }
 
     private async Task StartChannel()
@@ -149,7 +156,16 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             continue;
 
         Throttle:
-            await Task.Delay(millisecondsDelay: 1);
+            // Wait for block processing to complete, with periodic wake-ups to drain newly expired tasks
+            TaskCompletionSource? signal = _blockProcessingDoneSignal;
+            if (signal is not null)
+            {
+                await Task.WhenAny(signal.Task, Task.Delay(millisecondsDelay: 1));
+            }
+            else
+            {
+                await Task.Delay(millisecondsDelay: 1);
+            }
         }
     }
 
