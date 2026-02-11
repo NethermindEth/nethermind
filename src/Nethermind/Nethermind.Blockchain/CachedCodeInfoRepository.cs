@@ -22,11 +22,11 @@ public class CachedCodeInfoRepository(
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCache is null
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
-    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress, int? blockAccessIndex = null)
     {
         if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
@@ -52,10 +52,16 @@ public class CachedCodeInfoRepository(
         [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
         baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress, blockAccessIndex);
 
-    private static PrecompileInfo CreateCachedPrecompile(
-        in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) =>
-        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+    private static CodeInfo CreateCachedPrecompile(
+        in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
+    {
+        IPrecompile precompile = originalPrecompile.Value.Precompile!;
+
+        return !precompile.SupportsCaching
+            ? originalPrecompile.Value
+            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+    }
 
     private class CachedPrecompile(
         Address address,

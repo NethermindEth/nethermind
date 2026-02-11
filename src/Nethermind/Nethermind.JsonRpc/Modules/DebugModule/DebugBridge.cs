@@ -19,13 +19,10 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
 using System.Runtime.CompilerServices;
-using Nethermind.Blockchain.Headers;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -39,7 +36,6 @@ public class DebugBridge : IDebugBridge
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
-    private readonly IBlockAccessListStore _balStore;
     private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
 
@@ -52,8 +48,7 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore,
-        IBlockAccessListStore balStore)
+        IBadBlockStore badBlockStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -63,7 +58,6 @@ public class DebugBridge : IDebugBridge
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
-        _balStore = balStore;
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -193,9 +187,6 @@ public class DebugBridge : IDebugBridge
     public Block? GetBlock(BlockParameter param)
         => _blockTree.FindBlock(param);
 
-    public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
-        => _balStore.Get(blockHash);
-
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
     public SyncReportSummary GetCurrentSyncStage()
@@ -234,25 +225,28 @@ public class DebugBridge : IDebugBridge
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
-            Transaction tx = txForRpc.ToTransaction();
             GethLikeTxTrace? trace;
-
-            try
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
+            if (txResult.IsError)
             {
-                trace = await _tracer.Trace(
-                    blockParameter,
-                    tx,
-                    gethTraceOptions ?? GethTraceOptions.Default,
-                    cancellationToken);
+                trace = CreateFailTrace(txForRpc.Gas);
             }
-            catch (Exception)
+            else
             {
-                trace = new GethLikeTxTrace
+                Transaction tx = txResult.Data;
+
+                try
                 {
-                    Failed = true,
-                    Gas = tx.GasLimit,
-                    ReturnValue = []
-                };
+                    trace = await _tracer.Trace(
+                        blockParameter,
+                        tx,
+                        gethTraceOptions ?? GethTraceOptions.Default,
+                        cancellationToken);
+                }
+                catch (Exception)
+                {
+                    trace = CreateFailTrace(tx.GasLimit);
+                }
             }
 
             if (trace is not null)
@@ -260,5 +254,7 @@ public class DebugBridge : IDebugBridge
                 yield return trace;
             }
         }
+
+        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
     }
 }

@@ -24,7 +24,6 @@ using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -98,7 +97,12 @@ public class DebugRpcModule(
         // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-        Transaction tx = call.ToTransaction();
+        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction? tx, out string? error))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
@@ -450,9 +454,6 @@ public class DebugRpcModule(
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
-
-    public ResultWrapper<BlockAccessList?> debug_getBALByHash(Hash256 blockHash)
-        => ResultWrapper<BlockAccessList?>.Success(debugBridge.GetBlockAccessList(blockHash));
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         jsonRpcConfig.BuildTimeoutCancellationToken();

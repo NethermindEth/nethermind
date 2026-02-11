@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -22,8 +23,10 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <summary>
 /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
 /// </summary>
-public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager) : IChainSpecLoader
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<ChainSpecLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
@@ -196,9 +199,14 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7934TransitionTimestamp = chainSpecJson.Params.Eip7934TransitionTimestamp,
             Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
 
+            Eip7778TransitionTimestamp = chainSpecJson.Params.Eip7778TransitionTimestamp,
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
 
             Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
+            Eip7708TransitionTimestamp = chainSpecJson.Params.Eip7708TransitionTimestamp,
+
+            Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
+            Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -349,6 +357,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
         bool consolidationRequestsEnabled = chainSpecJson.Params.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7251TransitionTimestamp;
         bool blockAccessListsEnabled = chainSpecJson.Params.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7928TransitionTimestamp;
+        bool slotNumberEnabled = chainSpecJson.Params.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7843TransitionTimestamp;
 
         if (withdrawalsEnabled)
         {
@@ -382,6 +391,11 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (blockAccessListsEnabled)
         {
             genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+
+        if (slotNumberEnabled)
+        {
+            genesisHeader.SlotNumber = 0;
         }
 
         genesisHeader.AuRaStep = step;
@@ -448,18 +462,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
     }
 
-    private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
-    {
-        if (chainSpecJson.Nodes is null)
-        {
-            chainSpec.Bootnodes = [];
-            return;
-        }
-
-        chainSpec.Bootnodes = new NetworkNode[chainSpecJson.Nodes.Length];
-        for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
-        {
-            chainSpec.Bootnodes[i] = new NetworkNode(chainSpecJson.Nodes[i]);
-        }
-    }
+    private void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        => chainSpec.Bootnodes = NetworkNode.ParseNodes(chainSpecJson.Nodes, _logger);
 }

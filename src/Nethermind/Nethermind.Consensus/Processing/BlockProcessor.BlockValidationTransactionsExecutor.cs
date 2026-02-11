@@ -24,7 +24,8 @@ namespace Nethermind.Consensus.Processing
             IWorldState stateProvider,
             ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
             ISpecProvider specProvider,
-            IVirtualMachine virtualMachine,
+            // IVirtualMachine virtualMachine,
+            IBlockhashProvider blockHashProvider,
             ICodeInfoRepository codeInfoRepository,
             ILogManager logManager,
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
@@ -50,10 +51,12 @@ namespace Nethermind.Consensus.Processing
                     var transactionProcessors = new ITransactionProcessorAdapter[len];
                     for (int i = 0; i < len; i++)
                     {
+                        VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                         TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
                         ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                         transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
                         transactionProcessors[i] = transactionProcessorAdapter;
+                        // single shared virtual machine?
                     }
 
                     ParallelUnbalancedWork.For(
@@ -86,6 +89,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (_transactionProcessor is null)
                     {
+                        VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                         TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
                         _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
                     }
@@ -97,6 +101,23 @@ namespace Nethermind.Consensus.Processing
                         ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                     }
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                // long? gasRemaining = _balBuilder?.GasUsed();
+                // if (gasRemaining is not null)
+                // {
+                //     _balBuilder.ValidateBlockAccessList(0, gasRemaining!.Value);
+                // }
+
+                // for (int i = 0; i < block.Transactions.Length; i++)
+                // {
+                //     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                //     Transaction currentTx = block.Transactions[i];
+                //     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                //     if (gasRemaining is not null)
+                //     {
+                //         gasRemaining -= currentTx.SpentGas;
+                //         _balBuilder.ValidateBlockAccessList((ushort)(i + 1), gasRemaining!.Value);
+                //     }
                 }
 
                 return [.. receiptsTracer.TxReceipts];

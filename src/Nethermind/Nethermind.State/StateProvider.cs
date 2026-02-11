@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -483,12 +482,6 @@ namespace Nethermind.State
                 return true;
             }
         }
-
-        // public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
-        //     => AddToBalanceAndCreateIfNotExists(address, balance, spec, out _);
-
-        // public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
-        //     => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {

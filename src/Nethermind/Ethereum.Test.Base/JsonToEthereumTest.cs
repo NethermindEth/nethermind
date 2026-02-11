@@ -63,7 +63,8 @@ namespace Ethereum.Test.Base
                 headerJson.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(headerJson.BlobGasUsed).ToUnsignedBigInteger(),
                 headerJson.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(headerJson.ExcessBlobGas).ToUnsignedBigInteger(),
                 headerJson.ParentBeaconBlockRoot is null ? null : new Hash256(headerJson.ParentBeaconBlockRoot),
-                headerJson.RequestsHash is null ? null : new Hash256(headerJson.RequestsHash)
+                headerJson.RequestsHash is null ? null : new Hash256(headerJson.RequestsHash),
+                headerJson.SlotNumber is null ? null : (ulong)Bytes.FromHexString(headerJson.SlotNumber).ToUnsignedBigInteger()
             )
             {
                 Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
@@ -119,6 +120,7 @@ namespace Ethereum.Test.Base
                     ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
                     ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
                     Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
+                    SlotNumber = (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger(),
                     Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
                     ExecutionRequests = []
                 }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));

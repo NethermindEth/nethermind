@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -36,7 +35,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -332,8 +330,8 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
-                .AddSingleton<IAsyncHandler<Hash256[], IEnumerable<byte[]?>>, GetBALsByHashV1Handler>()
-                .AddSingleton<IAsyncHandler<(long, long), IEnumerable<byte[]>?>, GetBALsByRangeV1Handler>()
+                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
+                .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
                 .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()

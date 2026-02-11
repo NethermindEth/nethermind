@@ -19,10 +19,11 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader header, BlockBody body)
+    public Block(BlockHeader header, BlockBody body, BlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = body ?? throw new ArgumentNullException(nameof(body));
+        BlockAccessList = bal;
     }
 
     public Block(BlockHeader header,
@@ -45,11 +46,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
 
     public BlockHeader Header { get; }
 
@@ -111,6 +112,8 @@ public class Block
 
     public ulong? ExcessBlobGas => Header.ExcessBlobGas; // do not add setter here
 
+    public ulong? SlotNumber => Header.SlotNumber; // do not add setter here
+
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 
     public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
@@ -121,10 +124,10 @@ public class Block
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
     public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
 
+    // suggested BAL from network
     [JsonIgnore]
     public BlockAccessList? BlockAccessList { get; set; }
 
-    // for debugging by rpc
     [JsonIgnore]
     public BlockAccessList? GeneratedBlockAccessList { get; set; }
 
@@ -137,12 +140,15 @@ public class Block
     [JsonIgnore]
     public int? EncodedSize { get; set; }
 
-
-    // [JsonIgnore]
-    // public BlockAccessList? DecodedBlockAccessList { get; set; }
-
     [JsonIgnore]
     public byte[]? EncodedBlockAccessList { get; set; }
+
+    /// <summary>
+    /// Pre-encoded transaction bytes in SkipTypedWrapping format (as received from CL).
+    /// Used to avoid re-encoding transactions when storing blocks.
+    /// </summary>
+    [JsonIgnore]
+    public byte[][]? EncodedTransactions { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 

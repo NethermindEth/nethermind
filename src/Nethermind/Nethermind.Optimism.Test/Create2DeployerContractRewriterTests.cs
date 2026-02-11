@@ -8,7 +8,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;

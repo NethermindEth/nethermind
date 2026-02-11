@@ -1,5 +1,5 @@
 
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,39 +18,27 @@ namespace Nethermind.Core.BlockAccessLists;
 public class AccountChanges : IEquatable<AccountChanges>
 {
     [JsonConverter(typeof(AddressConverter))]
-    public Address Address { get; init; }
+    public Address Address { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<SlotChanges> StorageChanges => new(_storageChanges.Values, _storageChanges.Count);
+    public IList<SlotChanges> StorageChanges => _storageChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<StorageRead> StorageReads => new(_storageReads, _storageReads.Count);
+    public IReadOnlyCollection<StorageRead> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<BalanceChange> BalanceChanges =>
-        _balanceChanges.Keys.FirstOrDefault() == -1 ?
-            new(_balanceChanges.Values.Skip(1), _balanceChanges.Count - 1) :
-            new(_balanceChanges.Values, _balanceChanges.Count);
+    public IList<BalanceChange> BalanceChanges => _balanceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<NonceChange> NonceChanges =>
-        _nonceChanges.Keys.FirstOrDefault() == -1 ?
-            new(_nonceChanges.Values.Skip(1), _nonceChanges.Count - 1) :
-            new(_nonceChanges.Values, _nonceChanges.Count);
+    public IList<NonceChange> NonceChanges => _nonceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<CodeChange> CodeChanges =>
-        _codeChanges.Keys.FirstOrDefault() == -1 ?
-            new(_codeChanges.Values.Skip(1), _codeChanges.Count - 1) :
-            new(_codeChanges.Values, _codeChanges.Count);
-
-    // [JsonIgnore]
-    // public ValueHash256 CodeHash { get => _codeHash; set => _codeHash = value; }
+    public IList<CodeChange> CodeChanges => _codeChanges.Values;
 
     [JsonIgnore]
     public bool ExistedBeforeBlock { get; set; }
 
-    private readonly SortedDictionary<UInt256, SlotChanges> _storageChanges;
+    private readonly SortedList<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
     private readonly SortedList<int, BalanceChange> _balanceChanges;
     private readonly SortedList<int, NonceChange> _nonceChanges;
@@ -79,8 +67,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         _codeChanges = [];
     }
 
-    // public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
-    public AccountChanges(Address address, SortedDictionary<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;
@@ -146,6 +133,17 @@ public class AccountChanges : IEquatable<AccountChanges>
         return existing;
     }
 
+    public IEnumerable<SlotChanges> SlotChangesAtIndex(int index)
+    {
+        foreach (SlotChanges slotChanges in StorageChanges)
+        {
+            if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
+            {
+                yield return new(slotChanges.Slot, new SortedList<int, StorageChange>() { { index, storageChange } });
+            }
+        }
+    }
+
     public void AddStorageRead(UInt256 key)
         => _storageReads.Add(new(key));
 
@@ -171,7 +169,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     // }
 
     public void AddBalanceChange(BalanceChange balanceChange)
-        => _balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
+        => _balanceChanges[balanceChange.BlockAccessIndex] = balanceChange;
 
     public bool PopBalanceChange(int index, [NotNullWhen(true)] out BalanceChange? balanceChange)
     {
@@ -183,6 +181,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
         return false;
     }
+
+    public BalanceChange? BalanceChangeAtIndex(ushort index)
+        => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
 
     public void AddNonceChange(NonceChange nonceChange)
         => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
@@ -198,6 +199,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
+    public NonceChange? NonceChangeAtIndex(ushort index)
+        => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
+
     public void AddCodeChange(CodeChange codeChange)
         => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
 
@@ -211,6 +215,9 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
         return false;
     }
+
+    public CodeChange? CodeChangeAtIndex(int index)
+        => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
 
     private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {
@@ -279,7 +286,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         foreach (SlotChanges slotChange in _storageChanges.Values)
         {
             UInt256 lastValue = 0;
-            foreach (StorageChange storageChange in slotChange.Changes)
+            foreach (StorageChange storageChange in slotChange.Changes.Values)
             {
                 if (storageChange.BlockAccessIndex > blockAccessIndex)
                 {

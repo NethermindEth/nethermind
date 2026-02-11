@@ -5,8 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Withdrawals;
@@ -37,12 +35,10 @@ public class WithdrawalProcessor : IWithdrawalProcessor
             for (int i = 0; i < blockWithdrawals.Length; i++)
             {
                 Withdrawal withdrawal = blockWithdrawals[i];
-                Address address = withdrawal.Address;
-                UInt256 amount = withdrawal.AmountInWei;
                 if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
-                _stateProvider.AddToBalanceAndCreateIfNotExists(address, amount, spec, int.MaxValue);
+                _stateProvider.AddToBalanceAndCreateIfNotExists(withdrawal.Address, withdrawal.AmountInWei, spec, int.MaxValue);
             }
         }
 

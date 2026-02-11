@@ -135,7 +135,7 @@ namespace Nethermind.TxPool
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
-            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _transactions = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
             _transactions.Removed += OnRemovedTx;
 
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()

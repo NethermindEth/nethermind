@@ -8,7 +8,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
@@ -61,9 +60,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     if (txReceipt.BlockNumber != lastBlockNumber)
                     {
                         lastBlockNumber = txReceipt.BlockNumber;
-                        behaviors = _specProvider.GetReceiptSpec(lastBlockNumber).IsEip658Enabled
-                                    ? RlpBehaviors.Eip658Receipts
-                                    : RlpBehaviors.None;
+                        IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
+                        behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                     }
 
                     _decoder.Encode(stream, txReceipt, behaviors);
@@ -141,9 +139,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 if (lastBlockNumber != receipt.BlockNumber)
                 {
                     lastBlockNumber = receipt.BlockNumber;
-                    behaviors = _specProvider.GetSpec((ForkActivation)receipt.BlockNumber).IsEip658Enabled
-                                ? RlpBehaviors.Eip658Receipts
-                                : RlpBehaviors.None;
+                    IReceiptSpec receiptSpec = _specProvider.GetReceiptSpec(lastBlockNumber);
+                    behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 }
 
                 contentLength += _decoder.GetLength(receipt, behaviors);

@@ -65,6 +65,11 @@ public class BlockForRpc
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
 
+            if (spec.IsEip7843Enabled)
+            {
+                SlotNumber = block.SlotNumber;
+            }
+
             // Set TD only if network is not merged
             if (specProvider.MergeBlockNumber is null)
             {
@@ -156,6 +161,9 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BlockAccessList? BlockAccessList { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? SlotNumber { get; set; }
+
     private static object[] GetTransactionHashes(Transaction[] transactions)
     {
         if (transactions.Length == 0) return Array.Empty<Hash256>();
@@ -176,7 +184,15 @@ public class BlockForRpc
         TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
         for (var i = 0; i < transactions.Length; i++)
         {
-            txs[i] = TransactionForRpc.FromTransaction(transactions[i], block.Hash, block.Number, i, block.BaseFeePerGas, chainId);
+            TransactionForRpcContext extraData = new(
+                chainId: chainId,
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: i,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: null);
+            txs[i] = TransactionForRpc.FromTransaction(transactions[i], extraData);
         }
         return txs;
     }

@@ -5,10 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq.Expressions;
 using System.Numerics;
-using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -86,8 +83,7 @@ namespace Nethermind.Serialization.Rlp
         public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => _txDecoder.Encode(this, value, rlpBehaviors);
 
-        public void Encode(Withdrawal value)
-            => _withdrawalDecoder.Encode(this, value);
+        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
 
         public void Encode(LogEntry value) => _logEntryDecoder.Encode(this, value);
 
@@ -1109,6 +1105,18 @@ namespace Nethermind.Serialization.Rlp
             SkipBytes(length);
 
             return result;
+        }
+
+        /// <summary>
+        /// Decodes a non-negative long value. Throws if the decoded value is negative.
+        /// Use this for fields that should never be negative (e.g., gas values).
+        /// </summary>
+        public long DecodePositiveLong()
+        {
+            long value = DecodeLong();
+            if (value < 0)
+                RlpHelpers.ThrowNotPositiveLong();
+            return value;
         }
 
         public ulong DecodeULong()

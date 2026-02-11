@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -305,6 +305,24 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithBlockAccessListHash(Hash256? hash)
         {
             TestObjectInternal.Header.BlockAccessListHash = hash;
+            return this;
+        }
+
+        public BlockBuilder WithSlotNumber(ulong? slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
+        {
+            TestObjectInternal.BlockAccessList = bal;
+            return this;
+        }
+
+        public BlockBuilder WithEncodedBlockAccessList(byte[]? bal)
+        {
+            TestObjectInternal.EncodedBlockAccessList = bal;
             return this;
         }
     }

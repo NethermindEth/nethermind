@@ -48,14 +48,14 @@ namespace Nethermind.JsonRpc
         public const int ResourceNotFound = -32000;
 
         /// <summary>
+        /// Transaction creation failed
+        /// </summary>
+        public const int TransactionRejected = -32000;
+
+        /// <summary>
         /// Requested resource not available
         /// </summary>
         public const int ResourceUnavailable = -32002;
-
-        /// <summary>
-        /// Transaction creation failed
-        /// </summary>
-        public const int TransactionRejected = -32010;
 
         /// <summary>
         /// Account locked
@@ -126,6 +126,11 @@ namespace Nethermind.JsonRpc
         /// Block is not available due to history expiry policy
         /// </summary>
         public const int PrunedHistoryUnavailable = 4444;
+
+        /// <summary>
+        /// Data is not available due to eip not being enabled yet
+        /// </summary>
+        public const int UnavailableBeforeFork = 4445;
 
         /// <summary>
         /// Default error code

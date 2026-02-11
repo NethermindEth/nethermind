@@ -3,10 +3,15 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using Arm = System.Runtime.Intrinsics.Arm;
+using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -396,6 +401,156 @@ namespace Nethermind.Core.Extensions
                 x ^= x >> 16;
                 return x;
             }
+        }
+
+        public static long ToPositiveLong(this ReadOnlySpan<byte> bytes)
+        {
+            int length = bytes.Length;
+            if (length == 0)
+                return 0;
+
+            // 1-7 bytes can never exceed long.MaxValue (they are at most 56 bits).
+            if (length < 8)
+                return (long)ReadUInt64BigEndian1To7(bytes);
+
+            // 8 bytes - only overflow if the top bit is set.
+            if (length == 8)
+            {
+                ulong value = BinaryPrimitives.ReadUInt64BigEndian(bytes);
+                if (value > long.MaxValue)
+                    ThrowExceedsMaxValue(bytes);
+
+                return (long)value;
+            }
+
+            return ParseLargeSpan(bytes);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            static long ParseLargeSpan(ReadOnlySpan<byte> bytes)
+            {
+                // length > 8:
+                // Value fits in 64 bits iff the prefix (everything before the last 8 bytes) is all zeros.
+                int prefixLen = bytes.Length - 8;
+
+                // Vectorised in modern runtimes for byte spans.
+                if (bytes.Slice(0, prefixLen).IndexOfAnyExcept((byte)0) >= 0)
+                    ThrowExceedsMaxValue(bytes);
+
+                ReadOnlySpan<byte> tail = bytes.Slice(prefixLen); // exactly 8 bytes
+
+                ulong value = BinaryPrimitives.ReadUInt64BigEndian(tail);
+                if (value > long.MaxValue)
+                    ThrowExceedsMaxValue(bytes);
+
+                return (long)value;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static ulong ReadUInt64BigEndian1To7(ReadOnlySpan<byte> s)
+            {
+                Debug.Assert((uint)s.Length - 1u < 7u);
+
+                ref byte r0 = ref MemoryMarshal.GetReference(s);
+
+                return s.Length switch
+                {
+                    1 => r0,
+
+                    2 => ((ulong)r0 << 8)
+                       | Unsafe.Add(ref r0, 1),
+
+                    3 => ((ulong)r0 << 16)
+                       | ((ulong)Unsafe.Add(ref r0, 1) << 8)
+                       | Unsafe.Add(ref r0, 2),
+
+                    4 => BinaryPrimitives.ReadUInt32BigEndian(s),
+
+                    5 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 8)
+                       | Unsafe.Add(ref r0, 4),
+
+                    6 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 16)
+                       | ((ulong)Unsafe.Add(ref r0, 4) << 8)
+                       | Unsafe.Add(ref r0, 5),
+
+                    7 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 24)
+                       | ((ulong)Unsafe.Add(ref r0, 4) << 16)
+                       | ((ulong)Unsafe.Add(ref r0, 5) << 8)
+                       | Unsafe.Add(ref r0, 6),
+
+                    _ => 0 // unreachable
+                };
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes)
+            {
+                BigInteger value = new(bytes, isUnsigned: true, isBigEndian: true);
+                throw new OverflowException($"Value {value} exceeds maximum allowed value");
+            }
+        }
+
+        /// <summary>
+        /// Computes a very fast, non-cryptographic 64-bit hash of exactly 32 bytes.
+        /// </summary>
+        /// <param name="start">Reference to the first byte of the 32-byte input.</param>
+        /// <returns>A 64-bit hash value with good distribution across all bits.</returns>
+        /// <remarks>
+        /// Uses AES hardware acceleration when available, falls back to CRC32C otherwise.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long FastHash64For32Bytes(ref byte start)
+        {
+            uint seed = s_instanceRandom + 32;
+
+            if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
+            {
+                Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+                Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
+                key ^= Vector128.CreateScalar(seed).AsByte();
+                Vector128<byte> mixed = x64.Aes.IsSupported
+                    ? x64.Aes.Encrypt(data, key)
+                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
+            }
+
+            // Fallback: CRC32C-based 64-bit hash
+            ulong h0 = BitOperations.Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref start));
+            ulong h1 = BitOperations.Crc32C(seed ^ 0x9E3779B9u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)));
+            ulong h2 = BitOperations.Crc32C(seed ^ 0x85EBCA6Bu, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 16)));
+            ulong h3 = BitOperations.Crc32C(seed ^ 0xC2B2AE35u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 24)));
+            return (long)((h0 | (h1 << 32)) ^ (h2 | (h3 << 32)));
+        }
+
+        /// <summary>
+        /// Computes a very fast, non-cryptographic 64-bit hash of exactly 20 bytes (Address size).
+        /// </summary>
+        /// <param name="start">Reference to the first byte of the 20-byte input.</param>
+        /// <returns>A 64-bit hash value with good distribution across all bits.</returns>
+        /// <remarks>
+        /// Uses AES hardware acceleration when available, falls back to CRC32C otherwise.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long FastHash64For20Bytes(ref byte start)
+        {
+            uint seed = s_instanceRandom + 20;
+
+            if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
+            {
+                Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
+                uint last4 = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16));
+                Vector128<byte> data = Vector128.CreateScalar(last4).AsByte();
+                key ^= Vector128.CreateScalar(seed).AsByte();
+                Vector128<byte> mixed = x64.Aes.IsSupported
+                    ? x64.Aes.Encrypt(data, key)
+                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
+            }
+
+            // Fallback: CRC32C-based 64-bit hash
+            ulong h0 = BitOperations.Crc32C(seed, Unsafe.ReadUnaligned<ulong>(ref start));
+            ulong h1 = BitOperations.Crc32C(seed ^ 0x9E3779B9u, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, 8)));
+            uint h2 = BitOperations.Crc32C(seed ^ 0x85EBCA6Bu, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16)));
+            return (long)((h0 | (h1 << 32)) ^ ((ulong)h2 * 0x9E3779B97F4A7C15));
         }
     }
 }

@@ -232,6 +232,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            tx.BlockGasUsed = spentGas.EffectiveBlockGas;
 
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
@@ -639,7 +640,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!, VirtualMachine.TxExecutionContext.BlockAccessIndex) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
-            ICodeInfo? codeInfo;
+            CodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
             {
@@ -770,8 +771,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
-                        if (Logger.IsTrace)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
+                        if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                        if (spec.IsEip7708Enabled)
+                        {
+                            UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                            if (!balance.IsZero)
+                            {
+                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                            }
+                        }
 
                         WorldState.ClearStorage(toBeDestroyed);
                         WorldState.DeleteAccount(toBeDestroyed);
@@ -794,7 +803,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                header.GasUsed += gasConsumed.SpentGas;
+                header.GasUsed += gasConsumed.EffectiveBlockGas;
 
             return statusCode;
         }
@@ -941,7 +950,8 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, TGasPolicy floorGas)
         {
             long spentGas = tx.GasLimit;
-            var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+            long actualRefund = 0;
+            long codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
             if (!substate.IsError)
             {
@@ -950,28 +960,32 @@ namespace Nethermind.Evm.TransactionProcessing
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
                     totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
-                long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
+                actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
 
                 if (Logger.IsTrace)
                     Logger.Trace("Refunding unused gas of " + TGasPolicy.GetRemainingGas(unspentGas) + " and refund of " + actualRefund);
-                spentGas -= actualRefund;
             }
             else if (codeInsertRefund > 0)
             {
-                long refund = CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
+                actualRefund = CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
 
                 if (Logger.IsTrace)
-                    Logger.Trace("Refunding delegations only: " + refund);
-                spentGas -= refund;
+                    Logger.Trace("Refunding delegations only: " + actualRefund);
             }
 
+            // EIP-7778: Track pre-refund gas for block gas accounting
+            long preRefundGas = spentGas;
+            spentGas -= actualRefund;
+
             long operationGas = spentGas;
-            spentGas = Math.Max(spentGas, TGasPolicy.GetRemainingGas(floorGas));
+            long floorGasLong = TGasPolicy.GetRemainingGas(floorGas);
+            long blockGas = spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGasLong) : 0;
+            spentGas = Math.Max(spentGas, floorGasLong);
 
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
             PayRefund(tx, refundAmount, spec);
 
-            return new GasConsumed(spentGas, operationGas);
+            return new GasConsumed(spentGas, operationGas, blockGas);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)

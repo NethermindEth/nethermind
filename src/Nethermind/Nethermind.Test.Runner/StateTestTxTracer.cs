@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Test.Runner;
 
@@ -37,13 +38,13 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
     {
         _trace.Result.Error = _traceEntry?.Error ?? error;
         _trace.Result.Output = output ?? Bytes.Empty;
@@ -54,7 +55,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc + env.CodeInfo.PcOffset();
+        _traceEntry.Pc = pc + (env.CodeInfo is EofCodeInfo eofCodeInfo ? eofCodeInfo.PcOffset() : 0);
         _traceEntry.Section = codeSection;
         _traceEntry.Operation = (byte)opcode;
         _traceEntry.OperationName = opcode.GetName();

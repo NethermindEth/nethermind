@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -338,7 +337,9 @@ public class DataFeed
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
-        ReceiptForRpc[] receipts = _receiptFinder.Get(head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
+        ReceiptForRpc[] receipts = _receiptFinder.Get(head)
+            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
+            .ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
                 new ForkData

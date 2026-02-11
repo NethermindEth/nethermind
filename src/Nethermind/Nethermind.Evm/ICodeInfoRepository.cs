@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
-    ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null);
+    CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null);
     // ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null);
@@ -37,8 +37,8 @@ public interface ICodeInfoRepository
 
 public static class CodeInfoRepositoryExtensions
 {
-    public static ICodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex = null)
+    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex = null)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, vmSpec, out _, blockAccessIndex);
-    public static ICodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
+    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, true, vmSpec, out delegationAddress, blockAccessIndex);
 }

@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -16,7 +17,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId);
+    Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
@@ -25,14 +26,20 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
 
     [JsonRpcMethod(
-        Description = "Returns an array of block access lists for the list of provided block hashes.",
+        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<byte[]?>>> engine_getBALSByHashV1(Hash256[] blockHashes);
+    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
     [JsonRpcMethod(
-        Description = "Returns an array of block access lists for the provided number range.",
+        Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<byte[]>?>> engine_getBALSByRangeV1(long start, long count);
+    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of execution payload bodies for the provided number range",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
 }

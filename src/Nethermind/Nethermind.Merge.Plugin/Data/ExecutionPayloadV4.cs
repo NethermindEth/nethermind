@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -19,8 +19,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 {
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV4, new()
     {
-        TExecutionPayload executionPayload = ExecutionPayload.Create<TExecutionPayload>(block);
-        executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList!.Value).Bytes);
+        TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
+        executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList).Bytes);
+        executionPayload.SlotNumber = block.SlotNumber;
         return executionPayload;
     }
 
@@ -35,25 +36,21 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return baseResult;
         }
 
-        BlockAccessList? blockAccessList = null;
-
         if (BlockAccessList is not null)
         {
-            //tmp
-            // Console.WriteLine("Decoding BAL from execution payload:\n" + Bytes.ToHexString(BlockAccessList));
             try
             {
-                blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+                block.BlockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
             }
             catch (RlpException e)
             {
-                Console.Error.Write("Could not decode block access list from execution payload: " + e);
-                return new("Could not decode block access list.");
+                return new($"Error decoding block access list: {e}");
             }
         }
 
-        block.BlockAccessList = blockAccessList;
+        block.EncodedBlockAccessList = BlockAccessList;
         block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes);
+        block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
     }
@@ -68,4 +65,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// </summary>
     [JsonRequired]
     public sealed override byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ulong? SlotNumber { get; set; }
 }

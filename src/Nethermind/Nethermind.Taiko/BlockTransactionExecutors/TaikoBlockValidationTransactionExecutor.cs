@@ -6,7 +6,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -17,10 +16,10 @@ public class TaikoBlockValidationTransactionExecutor(
         IWorldState stateProvider,
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider specProvider,
-        IVirtualMachine virtualMachine,
+        IBlockhashProvider blockhashProvider,
         ICodeInfoRepository codeInfoRepository,
         ILogManager logManager)
-    : BlockProcessor.BlockValidationTransactionsExecutor(stateProvider, blobBaseFeeCalculator, specProvider, virtualMachine, codeInfoRepository, logManager)
+    : BlockProcessor.BlockValidationTransactionsExecutor(stateProvider, blobBaseFeeCalculator, specProvider, blockhashProvider, codeInfoRepository, logManager)
 {
     protected override void ProcessTransaction(Block block, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {

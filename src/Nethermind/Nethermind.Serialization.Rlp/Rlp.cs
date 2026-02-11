@@ -328,8 +328,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is Rlp rlp)
             {
-                RlpStream stream = new(LengthOfSequence(rlp.Length));
-                return new(stream.Data.ToArray());
+                return rlp;
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
@@ -1123,11 +1122,6 @@ namespace Nethermind.Serialization.Rlp
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
-
-                // static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
-                // {
-                //     throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
-                // }
             }
 
             public void DecodeAddressStructRef(out AddressStructRef address)
@@ -1504,6 +1498,18 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            /// <summary>
+            /// Decodes a non-negative long value. Throws if the decoded value is negative.
+            /// Use this for fields that should never be negative (e.g., gas values).
+            /// </summary>
+            public long DecodePositiveLong()
+            {
+                long value = DecodeLong();
+                if (value < 0)
+                    RlpHelpers.ThrowNotPositiveLong();
+                return value;
+            }
+
             public ulong DecodeULong()
             {
                 int prefix = ReadByte();
@@ -1750,19 +1756,6 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
-
-        // public static int LengthOf(ushort value)
-        // {
-        //     if (value < 128)
-        //     {
-        //         return 1;
-        //     }
-        //     else
-        //     {
-        //         // everything has a length prefix
-        //         return 1 + sizeof(ushort) - (BitOperations.LeadingZeroCount(value) / 2);
-        //     }
-        // }
 
         public static int LengthOf(ushort value) => LengthOf((long)value);
 

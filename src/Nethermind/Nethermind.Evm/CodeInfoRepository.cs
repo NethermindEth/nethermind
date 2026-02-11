@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 public class CodeInfoRepository : ICodeInfoRepository
 {
     private static readonly CodeLruCache _codeCache = new();
-    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
     private readonly IBlockAccessListBuilder? _balBuilder;
 
@@ -30,7 +30,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         _balBuilder = _worldState as IBlockAccessListBuilder;
     }
 
-    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
     {
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
@@ -42,7 +42,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _localPrecompiles[codeSource];
         }
 
-        ICodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec, blockAccessIndex);
+        CodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec, blockAccessIndex);
 
         if (!cachedCodeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
@@ -53,21 +53,21 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    private ICodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex)
+    private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(codeSource, blockAccessIndex);
         return InternalGetCachedCode(_worldState, in codeHash, vmSpec, blockAccessIndex);
     }
 
-    private static ICodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex)
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec, int? blockAccessIndex)
     {
         ValueHash256 codeHash = worldState.GetCodeHash(codeSource, blockAccessIndex);
         return InternalGetCachedCode(worldState, in codeHash, vmSpec, blockAccessIndex);
     }
 
-    private static ICodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex)
+    private static CodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec, int? blockAccessIndex)
     {
-        ICodeInfo? cachedCodeInfo = null;
+        CodeInfo? cachedCodeInfo = null;
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
@@ -107,7 +107,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (_worldState.InsertCode(codeOwner, in codeHash, code, spec, false, blockAccessIndex) &&
             _codeCache.Get(in codeHash) is null)
         {
-            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
+            CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
     }
@@ -144,7 +144,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     //         return Keccak.OfAnEmptyString.ValueHash256;
     //     }
 
-    //     ICodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec, null); //todo: is used?
+    //     CodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec, null); //todo: is used?
     //     return codeInfo.IsEmpty
     //         ? Keccak.OfAnEmptyString.ValueHash256
     //         : codeHash;
@@ -160,33 +160,33 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly ClockCache<ValueHash256, ICodeInfo>[] _caches;
+        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new ClockCache<ValueHash256, ICodeInfo>[CacheCount];
+            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
+                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
             }
         }
 
-        public ICodeInfo? Get(in ValueHash256 codeHash)
+        public CodeInfo? Get(in ValueHash256 codeHash)
         {
-            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Get(codeHash);
         }
 
-        public bool Set(in ValueHash256 codeHash, ICodeInfo codeInfo)
+        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
         {
-            ClockCache<ValueHash256, ICodeInfo> cache = _caches[GetCacheIndex(codeHash)];
+            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
             return cache.Set(codeHash, codeInfo);
         }
 
         private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
 
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out ICodeInfo? codeInfo)
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
         {
             codeInfo = Get(in codeHash);
             return codeInfo is not null;

@@ -71,11 +71,12 @@ public class BlockValidator(
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
-               ValidateEip4844Fields(block, spec, ref errorMessage) &&
-               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
+               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
-               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
+               ValidateEip4844Fields(block, spec, ref errorMessage) &&
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
+               ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
@@ -215,9 +216,15 @@ public class BlockValidator(
         if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
         {
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
-            error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
             if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
             suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        }
+
+        if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
+            error ??= BlockErrorMessages.SlotNumberMismatch(suggestedBlock.Header.SlotNumber, processedBlock.Header.SlotNumber);
         }
 
         if (receipts.Length != processedBlock.Transactions.Length)
@@ -389,16 +396,9 @@ public class BlockValidator(
         return true;
     }
 
-    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, out string? error)
+    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
-        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
-        {
-            error = BlockErrorMessages.MissingBlockLevelAccessList;
-
-            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
-
-            return false;
-        }
+        // n.b. block BAL could be null if it doesn't come from engine API eg. RLP tests
 
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
@@ -411,10 +411,10 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
-            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListRoot))
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
             {
-                error = BlockErrorMessages.InvalidBlockLevelAccessListRoot(block.Header.BlockAccessListHash, blockLevelAccessListRoot);
-                if (_logger.IsWarn) _logger.Warn($"Block level access list root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListRoot}");
+                error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");
 
                 return false;
             }

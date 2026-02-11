@@ -1,5 +1,5 @@
 
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -17,12 +17,7 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
 {
     [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Slot { get; init; } = slot;
-    public EnumerableWithCount<StorageChange> Changes =>
-        _changes.Keys.FirstOrDefault() == -1 ?
-            new(_changes.Values.Skip(1), _changes.Count - 1) :
-            new(_changes.Values, _changes.Count);
-
-    private readonly SortedList<int, StorageChange> _changes = changes;
+    public SortedList<int, StorageChange> Changes { get; init; } = changes;
 
     public SlotChanges(UInt256 slot) : this(slot, [])
     {
@@ -46,20 +41,20 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
         !(left == right);
 
     public void AddStorageChange(StorageChange storageChange)
-        => _changes.Add(storageChange.BlockAccessIndex, storageChange);
+        => Changes.Add(storageChange.BlockAccessIndex, storageChange);
 
     public bool PopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
-        if (_changes.Count == 0)
+        if (Changes.Count == 0)
             return false;
 
-        StorageChange lastChange = Changes.Last();
+        StorageChange lastChange = Changes.Values.Last();
 
         if (lastChange.BlockAccessIndex == index)
         {
-            _changes.RemoveAt(_changes.Count - 1);
+            Changes.RemoveAt(Changes.Count - 1);
             storageChange = lastChange;
             return true;
         }
@@ -70,7 +65,7 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
     public byte[] Get(int blockAccessIndex)
     {
         UInt256 lastValue = 0;
-        foreach (KeyValuePair<int, StorageChange> change in _changes)
+        foreach (KeyValuePair<int, StorageChange> change in Changes)
         {
             if (change.Key >= blockAccessIndex)
             {

@@ -18,6 +18,8 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -38,11 +40,11 @@ public class EthSimulateTestsBlocksAndTransactions
             [
                 new()
                 {
-                    BlockOverrides = new BlockOverride { Number = 10 },
-                    Calls = [TransactionForRpc.FromTransaction(txToFail), TransactionForRpc.FromTransaction(tx)],
+                    BlockOverrides = new BlockOverride { Number = 10, BaseFeePerGas = 0 },
+                    Calls = [ToRpcForInput(txToFail), ToRpcForInput(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 2100.Ether() } }
                     }
                 }
             ],
@@ -72,8 +74,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = [TransactionForRpc.FromTransaction(txAtoB1), TransactionForRpc.FromTransaction(txAtoB2)
-                    ]
+                    Calls = [ToRpcForInput(txAtoB1), ToRpcForInput(txAtoB2)]
                 },
                 new()
                 {
@@ -85,11 +86,20 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = [TransactionForRpc.FromTransaction(txAtoB3), TransactionForRpc.FromTransaction(txAtoB4)]
+                    Calls = [ToRpcForInput(txAtoB3), ToRpcForInput(txAtoB4)]
                 }
             },
             TraceTransfers = true
         };
+    }
+
+    // Helper to convert Transaction to RPC format suitable for input (clears GasPrice for EIP-1559+ to avoid ambiguity)
+    private static TransactionForRpc ToRpcForInput(Transaction tx)
+    {
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+        if (rpc is EIP1559TransactionForRpc eip1559Rpc)
+            eip1559Rpc.GasPrice = null;
+        return rpc;
     }
 
     public static SimulatePayload<TransactionForRpc> CreateTransactionsForcedFail(TestRpcBlockchain chain, UInt256 nonceA)
@@ -102,9 +112,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
 
-        LegacyTransactionForRpc transactionForRpc = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(txAtoB2);
+        LegacyTransactionForRpc transactionForRpc = (LegacyTransactionForRpc)ToRpcForInput(txAtoB2);
         transactionForRpc.Nonce = null;
-        LegacyTransactionForRpc transactionForRpc2 = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(txAtoB1);
+        LegacyTransactionForRpc transactionForRpc2 = (LegacyTransactionForRpc)ToRpcForInput(txAtoB1);
         transactionForRpc2.Nonce = null;
 
         return new()
@@ -151,7 +161,8 @@ public class EthSimulateTestsBlocksAndTransactions
             GasLimit = 50_000,
             SenderAddress = from.Address,
             To = to,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei(),
+            DecodedMaxFeePerGas = type >= TxType.EIP1559 ? 20.GWei() : 0
         };
 
         ethereumEcdsa.Sign(from, tx);
@@ -174,7 +185,8 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
-        Assert.That(data.Count, Is.EqualTo(7));
+        Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
+        Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
         blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
@@ -296,16 +308,18 @@ public class EthSimulateTestsBlocksAndTransactions
         return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
     }
 
-
     [Test]
-    public async Task TestTransferLogsAddress()
+    public async Task TestTransferLogsAddress([Values] bool eip7708)
     {
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        OverridableReleaseSpec spec = new(London.Instance);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        spec.IsEip7708Enabled = eip7708;
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = await chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         var logs = result.Data.First().Calls.First().Logs.ToArray();
-        Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
+        Assert.That(logs.Length, Is.EqualTo(1));
+        Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));
     }
 
     [Test]

@@ -164,7 +164,6 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
-        // todo: move into function
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
@@ -188,7 +187,7 @@ internal static partial class EvmInstructions
         }
 
         // Retrieve code information for the call and schedule background analysis if needed.
-        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec, vm.TxExecutionContext.BlockAccessIndex);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
@@ -263,6 +262,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            vm.AddTransferLog(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -14,7 +13,7 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = true)
     {
         PruningConfig pruningConfig = new PruningConfig();
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
@@ -28,7 +27,9 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        IWorldState innerWorldState = new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        // return parallel ? new ParallelWorldState(innerWorldState, true) : innerWorldState;
+        return innerWorldState;
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)

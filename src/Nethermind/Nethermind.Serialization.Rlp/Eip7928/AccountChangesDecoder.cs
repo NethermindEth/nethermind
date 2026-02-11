@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -28,16 +28,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;
-        SortedDictionary<UInt256, SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
+        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length);
+        foreach (SlotChanges slotChange in slotChanges)
         {
-            UInt256 slot = s.Slot;
+            UInt256 slot = slotChange.Slot;
             if (lastSlot is not null && slot <= lastSlot)
             {
                 throw new RlpException("Storage changes were in incorrect order.");
             }
             lastSlot = slot;
-            return slot;
-        }, s => s));
+            slotChangesList.Add(slot, slotChange);
+        }
 
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _slotsLimit);
         SortedSet<StorageRead> storageReadsList = [];
@@ -54,46 +55,49 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
         int? lastIndex = null;
-        SortedList<int, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
+        SortedList<int, BalanceChange> balanceChangesList = new(balanceChanges.Length);
+        foreach (BalanceChange balanceChange in balanceChanges)
         {
-            int index = s.BlockAccessIndex;
+            int index = balanceChange.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
                 throw new RlpException("Balance changes were in incorrect order.");
             }
             lastIndex = index;
-            return index;
-        }, s => s));
+            balanceChangesList.Add(index, balanceChange);
+        }
 
         lastIndex = null;
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
+        SortedList<int, NonceChange> nonceChangesList = new(nonceChanges.Length);
+        foreach (NonceChange nonceChange in nonceChanges)
         {
-            int index = s.BlockAccessIndex;
+            int index = nonceChange.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Nonce changes were in incorrect order.");
             }
             lastIndex = index;
-            return index;
-        }, s => s));
+            nonceChangesList.Add(index, nonceChange);
+        }
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
 
         lastIndex = null;
-        SortedList<int, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
+        SortedList<int, CodeChange> codeChangesList = new(codeChanges.Length);
+        foreach (CodeChange codeChange in codeChanges)
         {
-            int index = s.BlockAccessIndex;
+            int index = codeChange.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Code changes were in incorrect order.");
             }
             lastIndex = index;
-            return index;
-        }, s => s));
+            codeChangesList.Add(index, codeChange);
+        }
 
-        return new(address, slotChangesMap, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
+        return new(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)

@@ -161,9 +161,8 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         // Ensure the instruction is only valid for non-legacy (EOF) code.
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         // Deduct gas required for data loading.
@@ -193,8 +192,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataLoadN))
@@ -225,8 +223,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataSize))
@@ -251,8 +248,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         // Pop destination memory offset, data section offset, and size.
@@ -303,8 +299,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionRelativeJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.RJump))
@@ -330,8 +325,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionRelativeJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.RJumpi))
@@ -365,8 +359,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpTable<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.RJumpv))
@@ -406,7 +399,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCallFunction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo iCodeInfo = vm.VmState.Env.CodeInfo;
+        CodeInfo iCodeInfo = vm.VmState.Env.CodeInfo;
         if (iCodeInfo.Version == 0)
             goto BadInstruction;
 
@@ -462,7 +455,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionReturnFunction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
+        CodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
             goto BadInstruction;
 
@@ -490,7 +483,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpFunction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ICodeInfo iCodeInfo = vm.VmState.Env.CodeInfo;
+        CodeInfo iCodeInfo = vm.VmState.Env.CodeInfo;
         if (iCodeInfo.Version == 0)
             goto BadInstruction;
 
@@ -524,14 +517,14 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Duplicates a stack item based on an immediate operand.
     /// The immediate value (n) specifies that the (n+1)th element from the top is duplicated.
+    /// For EOF code only.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Dupn))
@@ -555,14 +548,14 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Swaps two stack items. The immediate operand specifies the swap distance.
     /// Swaps the top-of-stack with the (n+1)th element.
+    /// For EOF code only.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Swapn))
@@ -585,14 +578,14 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Exchanges two stack items using a combined immediate operand.
     /// The high nibble and low nibble of the operand specify the two swap distances.
+    /// For EOF code only.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEofExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
-        if (codeInfo.Version == 0)
+        if (vm.VmState.Env.CodeInfo is not EofCodeInfo codeInfo)
             goto BadInstruction;
 
         if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.Swapn))
@@ -742,7 +735,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Create new code info for the init code.
-        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer, spec, ValidationStrategy.ExtractHeader);
+        CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer, spec, ValidationStrategy.ExtractHeader);
 
         // 8. Prepare the callData from the caller’s memory slice.
         if (!vm.VmState.Memory.TryLoad(dataOffset, dataSize, out ReadOnlyMemory<byte> callData))
@@ -843,7 +836,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        ICodeInfo codeInfo = vm.VmState.Env.CodeInfo;
+        CodeInfo codeInfo = vm.VmState.Env.CodeInfo;
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             goto BadInstruction;
 
@@ -987,7 +980,7 @@ internal static partial class EvmInstructions
         }
 
         // 11. Retrieve and prepare the target code for execution.
-        ICodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        CodeInfo targetCodeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // For delegate calls, calling a non-EOF (legacy) target is disallowed.
         if (typeof(TOpEofCall) == typeof(OpEofDelegateCall)

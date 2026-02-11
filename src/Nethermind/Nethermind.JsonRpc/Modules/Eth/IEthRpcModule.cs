@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -295,5 +295,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
         ResultWrapper<JsonNode> eth_config();
+
+        [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
+        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+
+        [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
+        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long number);
     }
 }

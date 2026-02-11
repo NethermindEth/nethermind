@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -64,14 +64,14 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Slot);
-        stream.EncodeArray([.. item.Changes], rlpBehaviors);
+        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
     }
 
     public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
         int storageChangesLen = 0;
 
-        foreach (StorageChange slotChange in item.Changes)
+        foreach (StorageChange slotChange in item.Changes.Values)
         {
             storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
         }

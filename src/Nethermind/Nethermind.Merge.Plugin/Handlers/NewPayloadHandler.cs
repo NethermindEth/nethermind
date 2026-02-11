@@ -14,7 +14,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -121,9 +120,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
-
-        // Console.WriteLine("suggested block:");
-        // Console.WriteLine(block.BlockAccessList);
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)

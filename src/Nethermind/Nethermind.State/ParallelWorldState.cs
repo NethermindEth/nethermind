@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -31,7 +32,20 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
-    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches).IsWarmWorldState;
+    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
+    public class InvalidBlockLevelAccessListException(string message) : Exception(message);
+
+    private long _gasUsed;
+
+    public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed)
+    {
+        if (suggestedBal is not null)
+        {
+            LoadPreBlockState(suggestedBal);
+            _suggestedBlockAccessList = suggestedBal;
+        }
+        _gasUsed = gasUsed;
+    }
 
     public void SetupGeneratedAccessLists(ILogManager logManager, int txCount)
     {
@@ -47,12 +61,6 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             _intermediateBlockAccessLists[i] = bal;
             _transientStorageProviders[i] = new(logManager);
         }
-    }
-
-    public void LoadSuggestedBlockAccessList(BlockAccessList suggested)
-    {
-        LoadPreBlockState(suggested);
-        _suggestedBlockAccessList = suggested;
     }
 
     private void LoadPreBlockState(BlockAccessList blockAccessList)
@@ -121,7 +129,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 // could be empty since prestate loaded
                 if (slotChange.Changes.Count > 0)
                 {
-                    _innerWorldState.Set(storageCell, [.. slotChange.Changes.Last().NewValue.ToBigEndian().WithoutLeadingZeros()]);
+                    _innerWorldState.Set(storageCell, [.. slotChange.Changes.Last().Value.NewValue.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
@@ -196,10 +204,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     }
 
     public override IDisposable BeginScope(BlockHeader? baseBlock)
-    {
-        // GeneratedBlockAccessList = new();
-        return _innerWorldState.BeginScope(baseBlock);
-    }
+        => _innerWorldState.BeginScope(baseBlock);
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null)
     {
@@ -272,7 +277,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (TracingEnabled)
         {
             byte[] oldCode = GetCodeInternal(address, blockAccessIndex.Value) ?? [];
-            GetGeneratingBlockAccessList(blockAccessIndex).AddCodeChange(address, oldCode, code.ToArray());
+            GetGeneratingBlockAccessList(blockAccessIndex).AddCodeChange(address, oldCode, code);
         }
         return !ParallelExecutionEnabled && _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
@@ -565,7 +570,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
     public override ArrayPoolList<AddressAsKey> GetAccountChanges() =>
         ParallelExecutionEnabled ?
-            _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count) :
+            _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count()) :
             _innerWorldState.GetAccountChanges();
     
     public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null)
@@ -710,7 +715,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
             if (slotChanges is not null && slotChanges.Changes.Count == 1)
             {
-                return slotChanges.Changes.First().NewValue.ToBigEndian();
+                return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
             }
 
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
@@ -801,7 +806,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             HashSet<UInt256> zeroedSlots = [];
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                if (slotChanges.Changes.Last().NewValue != 0)
+                if (slotChanges.Changes.Last().Value.NewValue != 0)
                 {
                     return false;
                 }
@@ -831,4 +836,122 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 GetBalanceInternal(address, blockAccessIndex),
                 Keccak.EmptyTreeHash, // never used
                 GetCodeHashInternal(address, blockAccessIndex)) : null;
+
+    public long GasUsed()
+        => _gasUsed;
+
+    public void ValidateBlockAccessList(ushort index, long gasRemaining)
+    {
+        if (_suggestedBlockAccessList is null)
+        {
+            return;
+        }
+
+        var generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        var suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+
+        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? generatedHead;
+        (Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int Reads)? suggestedHead;
+
+        generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+        suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+        int generatedReads = 0;
+        int suggestedReads = 0;
+
+        if (generatedHead is not null)
+        {
+            generatedReads += generatedHead.Value.Reads;
+        }
+
+        if (suggestedHead is not null)
+        {
+            suggestedReads += suggestedHead.Value.Reads;
+        }
+
+        while (generatedHead is not null || suggestedHead is not null)
+        {
+            if (suggestedHead is null)
+            {
+                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+            }
+            else if (generatedHead is null)
+            {
+                if (HasNoChanges(suggestedHead.Value))
+                {
+                    // keep scanning rest of suggested
+                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+                    if (suggestedHead is not null)
+                    {
+                        suggestedReads += suggestedHead.Value.Reads;
+                    }
+                    continue;
+                }
+                else
+                {
+                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                }
+            }
+
+            int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
+
+            if (cmp == 0)
+            {
+                if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
+                    generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
+                    generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
+                    !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
+                {
+                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+                }
+            }
+            else if (cmp > 0)
+            {
+                if (HasNoChanges(suggestedHead.Value))
+                {
+                    // skip suggested with no changes
+                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+                    if (suggestedHead is not null)
+                    {
+                        suggestedReads += suggestedHead.Value.Reads;
+                    }
+                    continue;
+                }
+                else
+                {
+                    throw new InvalidBlockLevelAccessListException($"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                }
+            }
+            else
+            {
+                throw new InvalidBlockLevelAccessListException($"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+            }
+
+            generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+            suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+
+            if (generatedHead is not null)
+            {
+                generatedReads += generatedHead.Value.Reads;
+            }
+
+            if (suggestedHead is not null)
+            {
+                suggestedReads += suggestedHead.Value.Reads;
+            }
+        }
+
+        if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        {
+            throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
+        }
+    }
+
+    private static bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int) c)
+        => c.BalanceChange is null &&
+            c.NonceChange is null &&
+            c.CodeChange is null &&
+            !c.SlotChanges.GetEnumerator().MoveNext();
 }

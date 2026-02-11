@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
@@ -108,7 +109,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
-        _log.pc = pc + env.CodeInfo.PcOffset();
+        _log.pc = pc + (env.CodeInfo is EofCodeInfo eof ? eof.PcOffset() : 0);
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();
@@ -178,7 +179,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _depth--;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
@@ -186,7 +187,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _ctx.error = error;
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;

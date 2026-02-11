@@ -91,6 +91,14 @@ public partial class BlockProcessor
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            _balBuilder.TracingEnabled = true;
+            _balBuilder.GeneratedBlockAccessList.Clear();
+            // _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            SetupBlockAccessLists(spec, suggestedBlock);
+        }
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = await ProcessBlock(block, blockTracer, options, spec, token);
@@ -133,7 +141,6 @@ public partial class BlockProcessor
         // need one receipts / block tracer per thread & combine
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        SetupBlockAccessLists(spec, block);
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         Task stateApplication = _balBuilder.ParallelExecutionEnabled ? ApplyBlockAccessListToState(spec, shouldComputeStateRoot) : Task.CompletedTask;
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
@@ -142,7 +149,15 @@ public partial class BlockProcessor
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
+        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+        {
+            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+        }
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -265,7 +280,8 @@ public partial class BlockProcessor
             WithdrawalsRoot = bh.WithdrawalsRoot,
             RequestsHash = bh.RequestsHash,
             IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
+            SlotNumber = bh.SlotNumber
         };
 
         if (!ShouldComputeStateRoot(bh))
@@ -283,25 +299,29 @@ public partial class BlockProcessor
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
         BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
-        for (int i = 0; i < rewards.Length; i++)
+        if (tracer.IsTracingRewards)
         {
-            BlockReward reward = rewards[i];
-
-            using ITxTracer txTracer = tracer.IsTracingRewards
-                ? // we need this tracer to be able to track any potential miner account creation
-                tracer.StartNewTxTrace(null)
-                : NullTxTracer.Instance;
-
-            ApplyMinerReward(block, reward, spec);
-
-            if (tracer.IsTracingRewards)
+            for (int i = 0; i < rewards.Length; i++)
             {
+                BlockReward reward = rewards[i];
+                // we need this tracer to be able to track any potential miner account creation
+                using ITxTracer txTracer = tracer.StartNewTxTrace(null);
+
+                ApplyMinerReward(block, reward, spec);
+
                 tracer.EndTxTrace();
                 tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                 if (txTracer.IsTracingState)
                 {
                     _stateProvider.Commit(spec, txTracer);
                 }
+            }
+        }
+        else
+        {
+            for (var i = 0; i < rewards.Length; i++)
+            {
+                ApplyMinerReward(block, rewards[i], spec);
             }
         }
     }
@@ -348,14 +368,15 @@ public partial class BlockProcessor
             _balBuilder.TracingEnabled = true;
             _balBuilder.IsGenesis = suggested.IsGenesis;
 
+            if (_lastLoadedBal != suggested.Hash)
+            {
+                _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList, suggested.GasUsed);
+            }
+            _lastLoadedBal = suggested.Hash;
+
             if (_balBuilder.ParallelExecutionEnabled)
             {
                 _balBuilder.SetupGeneratedAccessLists(_logManager, suggested.Transactions.Length);
-                if (_lastLoadedBal != suggested.Hash)
-                {
-                    _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList.Value);
-                }
-                _lastLoadedBal = suggested.Hash;
             }
             else
             {

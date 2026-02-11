@@ -15,8 +15,10 @@ public interface IBlockAccessListBuilder
     public bool ParallelExecutionEnabled { get; }
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot);
-    public void LoadSuggestedBlockAccessList(BlockAccessList suggested);
     public void SetupGeneratedAccessLists(ILogManager logManager, int txCount);
     public void GenerateBlockAccessList();
     public void AddAccountRead(Address address, int? blockAccessIndex = null);
+    public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed);
+    public long GasUsed();
+    public void ValidateBlockAccessList(ushort index, long gasRemaining);
 }

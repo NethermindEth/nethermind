@@ -201,7 +201,7 @@ namespace Nethermind.AuRa.Test
                     stateProvider,
                     new BlobBaseFeeCalculator(),
                     HoodiSpecProvider.Instance,
-                    Substitute.For<IVirtualMachine>(),
+                    Substitute.For<IBlockhashProvider>(),
                     Substitute.For<ICodeInfoRepository>(),
                     LimboLogs.Instance),
                 stateProvider,

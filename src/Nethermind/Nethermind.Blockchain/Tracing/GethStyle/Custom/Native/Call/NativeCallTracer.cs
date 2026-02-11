@@ -57,16 +57,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-        NativeCallTracerCallFrame firstCallFrame = _callStack[0];
 
         Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
 
-        _callStack.RemoveAt(0);
-        _disposables.Add(firstCallFrame);
+        if (_callStack.Count is not 0)
+        {
+            NativeCallTracerCallFrame firstCallFrame = _callStack[0];
+            _callStack.RemoveAt(0);
+            _disposables.Add(firstCallFrame);
+
+            result.TxHash = _txHash;
+            result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+        }
 
         result.TxHash = _txHash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
-
         _resultBuilt = true;
 
         return result;
@@ -170,7 +174,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
@@ -178,7 +182,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];

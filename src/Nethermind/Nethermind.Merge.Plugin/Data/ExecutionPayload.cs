@@ -101,10 +101,17 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-4844</see>.
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public virtual byte[]? BlockAccessList { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual ulong? SlotNumber { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
@@ -117,7 +124,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
-        // Console.WriteLine("Created block access list:\n" +  (block.BlockAccessList is null ? "null" : block.BlockAccessList.ToString()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
@@ -147,6 +153,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
     public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
+        byte[][] encodedTransactions = Transactions;
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
@@ -174,12 +181,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
+            TxRoot = TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals);
-        return new(block);
+        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals)
+        {
+            EncodedTransactions = encodedTransactions
+        };
+        return new BlockDecodingResult(block);
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;

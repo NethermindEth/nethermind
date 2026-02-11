@@ -255,7 +255,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
-                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default);
+                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _currentBlockchainProcessor.Start();
         }
     }
