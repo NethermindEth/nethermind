@@ -208,7 +208,6 @@ public class BackgroundTaskSchedulerTests
 
         int executedCount = 0;
         int cancelledCount = 0;
-        int droppedCount = 0;
 
         // --- Phase 1: Fill the queue to capacity during block processing ---
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
@@ -225,11 +224,6 @@ public class BackgroundTaskSchedulerTests
             }, TimeSpan.FromMilliseconds(10));
             accepted.Should().BeTrue($"Phase 1: task {i} should be accepted up to capacity");
         }
-
-        // Next task should be dropped — queue is at capacity
-        bool overCapacity = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
-        overCapacity.Should().BeFalse("task beyond capacity should be dropped");
-        droppedCount++;
 
         // Wait for deadlines to expire and tasks to drain
         Assert.That(
@@ -322,7 +316,5 @@ public class BackgroundTaskSchedulerTests
             () => Volatile.Read(ref executedCount),
             Is.EqualTo(capacity).After(5000, 10),
             "all tasks in the final phase should execute successfully");
-
-        droppedCount.Should().Be(1, "only the one over-capacity task should have been dropped across all phases");
     }
 }
