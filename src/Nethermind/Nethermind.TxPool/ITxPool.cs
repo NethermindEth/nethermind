@@ -54,6 +54,8 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs);
         int GetBlobCounts(byte[][] blobVersionedHashes);
+        int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

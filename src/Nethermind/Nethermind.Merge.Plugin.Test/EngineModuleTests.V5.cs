@@ -12,7 +12,6 @@ using System.Threading.Tasks;
 using CkzgLib;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -264,11 +263,10 @@ public partial class EngineModuleTests
         byte[] proof2 = new byte[48];
         Random.Shared.NextBytes(proof2);
 
-        ArrayPoolList<BlobAndProofV2?> items = new(2);
-        items.Add(new BlobAndProofV2(blob, [proof1, proof2]));
-        items.Add(null);
+        byte[]?[] blobs = [blob, null];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
 
-        using BlobsV2DirectResponse response = new(items);
+        BlobsV2DirectResponse response = new(blobs, proofs, 2);
 
         // Write via streaming path
         Pipe pipe = new();
@@ -288,8 +286,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_empty_list()
     {
-        ArrayPoolList<BlobAndProofV2?> items = new(0);
-        using BlobsV2DirectResponse response = new(items);
+        BlobsV2DirectResponse response = new([], [], 0);
 
         Pipe pipe = new();
         await response.WriteToAsync(pipe.Writer, CancellationToken.None);
@@ -305,10 +302,10 @@ public partial class EngineModuleTests
     [Test]
     public void BlobsV2DirectResponse_WriteToAsync_throws_on_cancelled_token()
     {
-        ArrayPoolList<BlobAndProofV2?> items = new(1);
         byte[] blob = new byte[131072]; // 128KB
-        items.Add(new BlobAndProofV2(blob, [new byte[48]]));
-        using BlobsV2DirectResponse response = new(items);
+        byte[]?[] blobs = [blob];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([new byte[48]])];
+        BlobsV2DirectResponse response = new(blobs, proofs, 1);
 
         using CancellationTokenSource cts = new();
         cts.Cancel();

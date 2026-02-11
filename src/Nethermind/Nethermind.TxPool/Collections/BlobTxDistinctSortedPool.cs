@@ -91,6 +91,48 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return count;
     }
 
+    public int TryGetBlobsAndProofsV1(
+        byte[][] requestedBlobVersionedHashes,
+        byte[]?[] blobs,
+        ReadOnlyMemory<byte[]>[] proofs)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        int found = 0;
+
+        for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+        {
+            byte[] requestedBlobVersionedHash = requestedBlobVersionedHashes[i];
+            if (!BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
+                continue;
+
+            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
+            {
+                if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
+                    || blobTx.BlobVersionedHashes is not { Length: > 0 })
+                    continue;
+
+                bool matched = false;
+                for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+                {
+                    if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
+                        && blobTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
+                    {
+                        blobs[i] = wrapper.Blobs[indexOfBlob];
+                        proofs[i] = new ReadOnlyMemory<byte[]>(
+                            wrapper.Proofs,
+                            Ckzg.CellsPerExtBlob * indexOfBlob,
+                            Ckzg.CellsPerExtBlob);
+                        found++;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (matched) break;
+            }
+        }
+        return found;
+    }
+
     protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
     {
         if (base.InsertCore(key, value, groupKey))
