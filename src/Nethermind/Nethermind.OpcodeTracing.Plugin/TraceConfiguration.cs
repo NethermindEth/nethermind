@@ -134,7 +134,7 @@ public sealed record TraceConfiguration
         else if (config.Blocks.HasValue)
         {
             // For RealTime mode: trace NEXT N blocks from current tip (future blocks)
-            // For Retrospective mode: trace LAST N blocks (historical blocks)
+            // For Retrospective/RetrospectiveExecution mode: trace LAST N blocks (historical blocks)
             if (mode == TracingMode.RealTime)
             {
                 // RealTime: next N blocks starting from current chain tip + 1
@@ -143,7 +143,7 @@ public sealed record TraceConfiguration
             }
             else
             {
-                // Retrospective: recent N blocks from chain tip
+                // Retrospective and RetrospectiveExecution: recent N blocks from chain tip
                 effectiveEnd = currentChainTip;
                 effectiveStart = Math.Max(0, currentChainTip - config.Blocks.Value + 1);
 
