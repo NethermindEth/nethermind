@@ -206,6 +206,38 @@ namespace Nethermind.Evm.Test
             parentVmState.Refund.Should().Be(0);
         }
 
+        [TestCase(ExecutionType.CALL, ExpectedResult = true)]
+        [TestCase(ExecutionType.STATICCALL, ExpectedResult = true)]
+        [TestCase(ExecutionType.CALLCODE, ExpectedResult = true)]
+        [TestCase(ExecutionType.CREATE, ExpectedResult = true)]
+        [TestCase(ExecutionType.CREATE2, ExpectedResult = true)]
+        [TestCase(ExecutionType.TRANSACTION, ExpectedResult = true)]
+        [TestCase(ExecutionType.EOFCALL, ExpectedResult = true)]
+        [TestCase(ExecutionType.EOFSTATICCALL, ExpectedResult = true)]
+        [TestCase(ExecutionType.EOFCREATE, ExpectedResult = true)]
+        [TestCase(ExecutionType.TXCREATE, ExpectedResult = true)]
+        public bool From_returns_caller_for_non_delegate_execution_types(ExecutionType executionType)
+        {
+            Address caller = TestItem.AddressA;
+            Address executingAccount = TestItem.AddressB;
+            ExecutionEnvironment env = ExecutionEnvironment.Rent(null, executingAccount, caller, null, 0, default, default, default);
+            using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentFrame(
+                EthereumGasPolicy.FromLong(10000), 0, 0, executionType, false, false, env, new StackAccessTracker(), Snapshot.Empty);
+            return vmState.From == caller;
+        }
+
+        [TestCase(ExecutionType.DELEGATECALL, ExpectedResult = true)]
+        [TestCase(ExecutionType.EOFDELEGATECALL, ExpectedResult = true)]
+        public bool From_returns_executing_account_for_delegate_execution_types(ExecutionType executionType)
+        {
+            Address caller = TestItem.AddressA;
+            Address executingAccount = TestItem.AddressB;
+            ExecutionEnvironment env = ExecutionEnvironment.Rent(null, executingAccount, caller, null, 0, default, default, default);
+            using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentFrame(
+                EthereumGasPolicy.FromLong(10000), 0, 0, executionType, false, false, env, new StackAccessTracker(), Snapshot.Empty);
+            return vmState.From == executingAccount;
+        }
+
         [Test]
         public void Can_dispose_without_init()
         {
