@@ -39,7 +39,6 @@ namespace Nethermind.Evm.Benchmark
         {
             string configuredBytecode =
                 Environment.GetEnvironmentVariable("NETH_BENCHMARK_BYTECODE") ??
-                Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ??
                 "00";
             ByteCode = Bytes.FromHexString(configuredBytecode);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");

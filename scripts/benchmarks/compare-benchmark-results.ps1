@@ -3,7 +3,9 @@ param(
     [string]$BaselinePath = ".benchmark-baseline/benchmark-summary.json",
     [string]$OutputJsonPath = ".benchmark-results/benchmark-comparison.json",
     [string]$OutputMarkdownPath = ".benchmark-results/benchmark-comparison.md",
-    [double]$RegressionThresholdPercent = 5.0,
+    [double]$RegressionThresholdFastPercent = 5.0,
+    [double]$RegressionThresholdMediumPercent = 3.0,
+    [double]$RegressionThresholdSlowPercent = 2.0,
     [double]$MinAbsoluteDeltaNs = 0.0,
     [int]$TopCount = 15
 )
@@ -27,10 +29,31 @@ function Format-BenchmarkDisplayName {
         return $BenchmarkId
     }
 
-    return $BenchmarkId
-        .Replace("Nethermind.Evm.Benchmark.", "")
-        .Replace("Nethermind.Benchmarks.Blockchain.", "")
-        .Replace("Nethermind.Benchmarks.Evm.", "")
+    # Strip the id portion before the pipe (parameters) if present
+    $name = $BenchmarkId
+    $params = ""
+    $pipeIndex = $name.IndexOf("|")
+    if ($pipeIndex -ge 0) {
+        $params = $name.Substring($pipeIndex)
+        $name = $name.Substring(0, $pipeIndex)
+    }
+
+    # Keep only ClassName.MethodName (last two dot-separated segments)
+    $segments = $name.Split(".")
+    if ($segments.Length -gt 2) {
+        $name = "$($segments[$segments.Length - 2]).$($segments[$segments.Length - 1])"
+    }
+
+    return "$name$params"
+}
+
+function Get-RegressionThreshold {
+    param([double]$BaselineNs)
+
+    # Tiered thresholds: fast benchmarks have more variance, slow ones should be stable
+    if ($BaselineNs -lt 1e3) { return $RegressionThresholdFastPercent }   # < 1 us
+    if ($BaselineNs -lt 1e6) { return $RegressionThresholdMediumPercent } # < 1 ms
+    return $RegressionThresholdSlowPercent                                 # >= 1 ms
 }
 
 function Get-NullableDouble {
@@ -107,12 +130,13 @@ foreach ($row in $currentRows) {
         $confidenceOverlaps = -not ($currentLow -gt $baselineHigh -or $baselineLow -gt $currentHigh)
     }
 
+    $effectiveThreshold = Get-RegressionThreshold -BaselineNs $baselineNs
     $status = "neutral"
     $isSignificantByThreshold = $deltaNsAbs -ge $MinAbsoluteDeltaNs
     if ($isSignificantByThreshold -and -not ($hasConfidenceIntervals -and $confidenceOverlaps)) {
-        if ($deltaPercent -gt $RegressionThresholdPercent) {
+        if ($deltaPercent -gt $effectiveThreshold) {
             $status = "regression"
-        } elseif ($deltaPercent -lt -$RegressionThresholdPercent) {
+        } elseif ($deltaPercent -lt -$effectiveThreshold) {
             $status = "improvement"
         }
     }
@@ -153,7 +177,9 @@ $summary = [PSCustomObject]@{
     neutralCount = $neutrals.Count
     newCount = $newBenchmarks.Count
     missingCount = $missingBenchmarks.Count
-    regressionThresholdPercent = $RegressionThresholdPercent
+    regressionThresholdFastPercent = $RegressionThresholdFastPercent
+    regressionThresholdMediumPercent = $RegressionThresholdMediumPercent
+    regressionThresholdSlowPercent = $RegressionThresholdSlowPercent
     minAbsoluteDeltaNs = $MinAbsoluteDeltaNs
     confidenceOverlapNeutralCount = $overlapNeutralCount
 }
@@ -183,7 +209,7 @@ $lines += ""
 if (-not $hasBaseline) {
     $lines += "No cached master baseline was found. Current run has $($currentRows.Count) benchmark rows."
 } else {
-    $lines += "Threshold for regression/improvement: **$RegressionThresholdPercent%**."
+    $lines += "Tiered regression thresholds: **${RegressionThresholdFastPercent}%** (< 1 us), **${RegressionThresholdMediumPercent}%** (1 us - 1 ms), **${RegressionThresholdSlowPercent}%** (>= 1 ms)."
     if ($MinAbsoluteDeltaNs -gt 0) {
         $lines += "Minimum absolute delta to classify changes: **$(Format-Ns -Nanoseconds $MinAbsoluteDeltaNs)**."
     }

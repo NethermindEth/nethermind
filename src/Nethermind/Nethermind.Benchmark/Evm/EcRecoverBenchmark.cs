@@ -26,20 +26,20 @@ namespace Nethermind.Benchmarks.Evm
             _signature = _ethereumEcdsa.Sign(TestItem.PrivateKeyA, in _messageHash);
             _expectedAddress = TestItem.PrivateKeyA.Address;
 
-            if (!Current() || !Improved())
+            if (!RecoverAddress() || !RecoverPublicKey())
             {
                 throw new InvalidBenchmarkDeclarationException("ecRecover mismatch");
             }
         }
 
-        [Benchmark(Baseline = true)]
-        public bool Improved()
+        [Benchmark]
+        public bool RecoverAddress()
         {
             return _ethereumEcdsa.RecoverAddress(_signature, in _messageHash) == _expectedAddress;
         }
 
         [Benchmark]
-        public bool Current()
+        public bool RecoverPublicKey()
         {
             PublicKey recovered = _ethereumEcdsa.RecoverPublicKey(_signature, in _messageHash);
             return recovered is not null && recovered.Address == _expectedAddress;

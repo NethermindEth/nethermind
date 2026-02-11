@@ -304,8 +304,10 @@ jobs:
             -BaselinePath .benchmark-baseline/benchmark-summary.json `
             -OutputJsonPath .benchmark-results/benchmark-comparison.json `
             -OutputMarkdownPath .benchmark-results/benchmark-comparison.md `
-            -RegressionThresholdPercent 12 `
-            -MinAbsoluteDeltaNs 50000 `
+            -RegressionThresholdFastPercent 5 `
+            -RegressionThresholdMediumPercent 3 `
+            -RegressionThresholdSlowPercent 2 `
+            -MinAbsoluteDeltaNs 1000 `
             -TopCount 15
 
       - name: Upload benchmark artifacts
