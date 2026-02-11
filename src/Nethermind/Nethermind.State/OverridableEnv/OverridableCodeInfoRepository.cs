@@ -36,7 +36,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null) =>
-        codeInfoRepository.InsertCode(code, codeOwner, spec);
+        codeInfoRepository.InsertCode(code, codeOwner, spec, blockAccessIndex);
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -53,13 +53,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null) =>
-        codeInfoRepository.SetDelegation(codeSource, authority, spec);
+        codeInfoRepository.SetDelegation(codeSource, authority, spec, blockAccessIndex);
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
         _codeOverrides.TryGetValue(address, out var result)
             ? ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegatedAddress)
-            : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+            : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress, blockAccessIndex);
 
 
     // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
