@@ -25,17 +25,17 @@ namespace Nethermind.Benchmarks.Evm
         }
 
         [Benchmark(Baseline = true)]
-        public Span<byte> Current()
+        public byte[] Current()
         {
-            Span<byte> result = new byte[64];
+            byte[] result = new byte[64];
             _blake2Compression.Compress(input, result);
             return result;
         }
 
         [Benchmark]
-        public Span<byte> Improved()
+        public byte[] Improved()
         {
-            Span<byte> result = new byte[64];
+            byte[] result = new byte[64];
             _blake2Compression.Compress(input, result);
             return result;
         }

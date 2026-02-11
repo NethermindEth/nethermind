@@ -17,17 +17,124 @@ permissions:
   pull-requests: write
 
 jobs:
-  benchmark-and-compare:
+  benchmark-shards:
     if: >
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'performance is good')
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    runs-on: [self-hosted, benchmarks]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
+
+      - name: Run benchmark shard
+        shell: pwsh
+        env:
+          NETH_BENCHMARK_INCLUDE_PRECOMPILES: "false"
+          NETH_BENCHMARK_JOB: "medium"
+          NETH_BENCHMARK_INPROCESS: "false"
+        run: |
+          $artifactRoot = ".benchmark-artifacts/shard-${{ matrix.shard }}"
+          $filters = switch ("${{ matrix.shard }}")
+          {
+            "1" {
+              @(
+                "*Nethermind.Benchmarks.Blockchain.BlockProcessingBenchmarks*"
+                "*Nethermind.Evm.Benchmark.EvmBenchmarks*"
+              )
+            }
+            "2" {
+              @(
+                "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.PushPopUInt256Loop*"
+                "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.PushPopByteLoop*"
+              )
+            }
+            "3" {
+              @(
+                "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.DupDeep*"
+                "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.SwapDeep*"
+              )
+            }
+            "4" {
+              @(
+                "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.MixedStackPattern*"
+                "*Nethermind.Benchmarks.Evm.SignExtendBenchmark*"
+                "*Nethermind.Benchmarks.Evm.JumpDestinationsBenchmark*"
+              )
+            }
+            "5" {
+              @(
+                "*Nethermind.Benchmarks.Evm.BitwiseAndBenchmark*"
+                "*Nethermind.Benchmarks.Evm.BitwiseOrBenchmark*"
+                "*Nethermind.Benchmarks.Evm.BitwiseXorBenchmark*"
+                "*Nethermind.Benchmarks.Evm.BitwiseNotBenchmark*"
+                "*Nethermind.Benchmarks.Evm.Blake2Benchmark*"
+                "*Nethermind.Benchmarks.Evm.EcRecoverBenchmark*"
+                "*Nethermind.Benchmarks.Evm.MemoryCostBenchmark*"
+              )
+            }
+            default {
+              throw "Unsupported benchmark shard '${{ matrix.shard }}'."
+            }
+          }
+
+          Write-Host "Running benchmark shard ${{ matrix.shard }} with filters:"
+          foreach ($filter in $filters) {
+            Write-Host " - $filter"
+          }
+
+          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- --filter $filters --artifacts $artifactRoot
+
+      - name: Fail shard on benchmark execution issues
+        shell: pwsh
+        run: |
+          $failed = @()
+          $resultsDir = ".benchmark-artifacts/shard-${{ matrix.shard }}/results"
+          $csvFiles = @(Get-ChildItem -Path $resultsDir -Filter "*-report.csv" -File)
+          if ($csvFiles.Count -eq 0) {
+            throw "No benchmark report CSV files were produced for shard ${{ matrix.shard }}."
+          }
+
+          foreach ($csv in $csvFiles) {
+            $rows = @(Import-Csv -Path $csv.FullName)
+            foreach ($row in $rows) {
+              if ([string]::Equals(([string]$row.Mean).Trim(), "NA", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $failed += "$($csv.Name):$($row.Method)"
+              }
+            }
+          }
+
+          if ($failed.Count -gt 0) {
+            Write-Host "Benchmarks with non-numeric mean values detected:"
+            foreach ($entry in $failed) {
+              Write-Host $entry
+            }
+            throw "Benchmark execution issues detected (Mean=NA)."
+          }
+
+      - name: Upload shard benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-shard-${{ matrix.shard }}
+          path: .benchmark-artifacts/shard-${{ matrix.shard }}/results/**
+          retention-days: 7
+
+  aggregate-and-compare:
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'performance is good')
+    needs: benchmark-shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
       - name: Compute baseline cache key
         id: baseline-key
@@ -53,15 +160,54 @@ jobs:
           restore-keys: |
             ${{ steps.baseline-key.outputs.prefix }}
 
-      - name: Run broad benchmark subset
-        env:
-          NETH_BENCHMARK_INCLUDE_PRECOMPILES: "false"
-          NETH_BENCHMARK_JOB: "medium"
-          NETH_BENCHMARK_INPROCESS: "false"
+      - name: Download benchmark shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-results-shard-*
+          path: .benchmark-shards
+
+      - name: Combine benchmark shard reports
+        shell: pwsh
         run: |
-          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- \
-            --filter '*Nethermind.Benchmarks.Blockchain.BlockProcessingBenchmarks*' '*Nethermind.Benchmarks.Evm.*' '*Nethermind.Evm.Benchmark.EvmStackBenchmarks*' '*Nethermind.Evm.Benchmark.EvmBenchmarks*' \
-            --artifacts .benchmark-artifacts
+          New-Item -Path .benchmark-artifacts/results -ItemType Directory -Force | Out-Null
+
+          $csvFiles = @(Get-ChildItem -Path .benchmark-shards -Recurse -Filter "*-report.csv" -File)
+          if ($csvFiles.Count -eq 0) {
+            throw "No benchmark CSV files were downloaded from shards."
+          }
+
+          foreach ($csv in $csvFiles) {
+            $destination = Join-Path .benchmark-artifacts/results $csv.Name
+            if (Test-Path $destination) {
+              throw "Duplicate benchmark report '$($csv.Name)' detected across shard artifacts."
+            }
+
+            Copy-Item -Path $csv.FullName -Destination $destination
+          }
+
+          Write-Host "Combined $($csvFiles.Count) benchmark report files."
+
+      - name: Fail on benchmark execution issues
+        shell: pwsh
+        run: |
+          $failed = @()
+          $csvFiles = @(Get-ChildItem -Path .benchmark-artifacts/results -Filter "*-report.csv" -File)
+          foreach ($csv in $csvFiles) {
+            $rows = @(Import-Csv -Path $csv.FullName)
+            foreach ($row in $rows) {
+              if ([string]::Equals(([string]$row.Mean).Trim(), "NA", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $failed += "$($csv.Name):$($row.Method)"
+              }
+            }
+          }
+
+          if ($failed.Count -gt 0) {
+            Write-Host "Benchmarks with non-numeric mean values detected:"
+            foreach ($entry in $failed) {
+              Write-Host $entry
+            }
+            throw "Benchmark execution issues detected (Mean=NA)."
+          }
 
       - name: Aggregate benchmark results
         shell: pwsh
@@ -69,15 +215,6 @@ jobs:
           ./scripts/benchmarks/aggregate-benchmark-results.ps1 `
             -ResultsDir .benchmark-artifacts/results `
             -OutputPath .benchmark-results/benchmark-summary.json
-
-      - name: Upload benchmark artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results-${{ github.run_id }}
-          path: |
-            .benchmark-artifacts/results/**
-            .benchmark-results/benchmark-summary.json
-          retention-days: 7
 
       - name: Prepare and save master baseline cache
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -104,6 +241,17 @@ jobs:
             -RegressionThresholdPercent 12 `
             -MinAbsoluteDeltaNs 50000 `
             -TopCount 15
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: |
+            .benchmark-artifacts/results/**
+            .benchmark-results/benchmark-summary.json
+            .benchmark-results/benchmark-comparison.json
+            .benchmark-results/benchmark-comparison.md
+          retention-days: 7
 
       - name: Comment benchmark comparison on PR
         if: github.event_name == 'pull_request'

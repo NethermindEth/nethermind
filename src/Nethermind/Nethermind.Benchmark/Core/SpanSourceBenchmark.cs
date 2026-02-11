@@ -25,14 +25,16 @@ public class SpanSourceBenchmark
     }
 
     [Benchmark]
-    public Span<byte> Span_ByteArray()
+    public int Span_ByteArray()
     {
-        return Array.Span;
+        Span<byte> span = Array.Span;
+        return span[0] + span[1] + span[2];
     }
 
     [Benchmark]
-    public Span<byte> Span_CappedArray()
+    public int Span_CappedArray()
     {
-        return CappedArray.Span;
+        Span<byte> span = CappedArray.Span;
+        return span[0] + span[1] + span[2];
     }
 }

@@ -6,16 +6,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Convert-MeanToNs {
-    param([string]$Mean)
+function Convert-DurationToNs {
+    param([string]$ValueWithUnit)
 
-    if ([string]::IsNullOrWhiteSpace($Mean) -or $Mean.Trim().Equals("NA", [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ([string]::IsNullOrWhiteSpace($ValueWithUnit) -or $ValueWithUnit.Trim().Equals("NA", [System.StringComparison]::OrdinalIgnoreCase)) {
         return $null
     }
 
-    $tokens = $Mean.Trim().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+    $tokens = $ValueWithUnit.Trim().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
     if ($tokens.Length -lt 2) {
-        throw "Failed to parse mean value '$Mean'."
+        throw "Failed to parse duration value '$ValueWithUnit'."
     }
 
     $valueToken = $tokens[0].Replace(",", "")
@@ -27,7 +27,7 @@ function Convert-MeanToNs {
         [ref]$value)
 
     if (-not $parsed) {
-        throw "Failed to parse mean value '$Mean'."
+        throw "Failed to parse duration value '$ValueWithUnit'."
     }
 
     $unit = $tokens[$tokens.Length - 1].ToLowerInvariant()
@@ -42,7 +42,7 @@ function Convert-MeanToNs {
         return $value * 1e3
     }
 
-    throw "Unsupported mean unit '$unit' in value '$Mean'."
+    throw "Unsupported duration unit '$unit' in value '$ValueWithUnit'."
 }
 
 function Get-ParameterColumns {
@@ -84,10 +84,16 @@ foreach ($file in $files) {
 
     foreach ($row in $rows) {
         $mean = [string]$row.Mean
-        $meanNs = Convert-MeanToNs -Mean $mean
+        $meanNs = Convert-DurationToNs -ValueWithUnit $mean
         if ($null -eq $meanNs) {
             continue
         }
+
+        $error = [string]$row.Error
+        $errorNs = Convert-DurationToNs -ValueWithUnit $error
+
+        $stdDev = [string]$row.StdDev
+        $stdDevNs = Convert-DurationToNs -ValueWithUnit $stdDev
 
         $parameterPairs = @()
         foreach ($column in $parameterColumns) {
@@ -108,6 +114,10 @@ foreach ($file in $files) {
             parameters = $parameterPairs
             mean = $mean
             meanNs = [double]$meanNs
+            error = $error
+            errorNs = if ($null -eq $errorNs) { $null } else { [double]$errorNs }
+            stdDev = $stdDev
+            stdDevNs = if ($null -eq $stdDevNs) { $null } else { [double]$stdDevNs }
             allocated = [string]$row.Allocated
             source = $file.Name
         }

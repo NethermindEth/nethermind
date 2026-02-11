@@ -32,16 +32,22 @@ namespace Nethermind.Evm.Benchmark
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private VmState<EthereumGasPolicy> _evmState;
         private IWorldState _stateProvider;
+        private IDisposable _stateScope;
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ?? string.Empty);
+            string configuredBytecode =
+                Environment.GetEnvironmentVariable("NETH_BENCHMARK_BYTECODE") ??
+                Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ??
+                "00";
+            ByteCode = Bytes.FromHexString(configuredBytecode);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
             _stateProvider = TestWorldStateFactory.CreateForTest();
+            _stateScope = _stateProvider.BeginScope(baseBlock: null);
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
-            _stateProvider.Commit(_spec);
+            _stateProvider.Commit(_spec, commitRoots: false);
             EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
             _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
@@ -66,6 +72,7 @@ namespace Nethermind.Evm.Benchmark
         {
             _evmState.Dispose();
             _environment.Dispose();
+            _stateScope.Dispose();
         }
 
         [Benchmark]

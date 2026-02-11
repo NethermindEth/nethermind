@@ -33,6 +33,26 @@ function Format-BenchmarkDisplayName {
         .Replace("Nethermind.Benchmarks.Evm.", "")
 }
 
+function Get-NullableDouble {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    $stringValue = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($stringValue)) {
+        return $null
+    }
+
+    $parsed = 0.0
+    if (-not [double]::TryParse($stringValue, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+        return $null
+    }
+
+    return [double]$parsed
+}
+
 if (-not (Test-Path $CurrentPath)) {
     throw "Current benchmark summary '$CurrentPath' does not exist."
 }
@@ -68,15 +88,33 @@ foreach ($row in $currentRows) {
     $baselineRow = $baselineById[$row.id]
     $baselineNs = [double]$baselineRow.meanNs
     $currentNs = [double]$row.meanNs
+    $baselineErrorNs = Get-NullableDouble -Value $baselineRow.errorNs
+    $currentErrorNs = Get-NullableDouble -Value $row.errorNs
     $deltaNs = $currentNs - $baselineNs
     $deltaNsAbs = [Math]::Abs($deltaNs)
     $deltaPercent = if ($baselineNs -eq 0) { 0.0 } else { ($deltaNs / $baselineNs) * 100.0 }
+    $hasConfidenceIntervals =
+        $null -ne $baselineErrorNs -and
+        $null -ne $currentErrorNs -and
+        $baselineErrorNs -gt 0 -and
+        $currentErrorNs -gt 0
+    $confidenceOverlaps = $null
+    if ($hasConfidenceIntervals) {
+        $baselineLow = $baselineNs - $baselineErrorNs
+        $baselineHigh = $baselineNs + $baselineErrorNs
+        $currentLow = $currentNs - $currentErrorNs
+        $currentHigh = $currentNs + $currentErrorNs
+        $confidenceOverlaps = -not ($currentLow -gt $baselineHigh -or $baselineLow -gt $currentHigh)
+    }
 
     $status = "neutral"
-    if ($deltaPercent -gt $RegressionThresholdPercent -and $deltaNsAbs -ge $MinAbsoluteDeltaNs) {
-        $status = "regression"
-    } elseif ($deltaPercent -lt -$RegressionThresholdPercent -and $deltaNsAbs -ge $MinAbsoluteDeltaNs) {
-        $status = "improvement"
+    $isSignificantByThreshold = $deltaNsAbs -ge $MinAbsoluteDeltaNs
+    if ($isSignificantByThreshold -and -not ($hasConfidenceIntervals -and $confidenceOverlaps)) {
+        if ($deltaPercent -gt $RegressionThresholdPercent) {
+            $status = "regression"
+        } elseif ($deltaPercent -lt -$RegressionThresholdPercent) {
+            $status = "improvement"
+        }
     }
 
     $compared += [PSCustomObject]@{
@@ -86,8 +124,11 @@ foreach ($row in $currentRows) {
         currentMeanNs = $currentNs
         baselineMean = $baselineRow.mean
         currentMean = $row.mean
+        baselineErrorNs = $baselineErrorNs
+        currentErrorNs = $currentErrorNs
         deltaNs = $deltaNs
         deltaPercent = $deltaPercent
+        confidenceOverlaps = $confidenceOverlaps
         status = $status
     }
 }
@@ -102,6 +143,7 @@ foreach ($row in $baselineRows) {
 $regressions = @($compared | Where-Object status -eq "regression" | Sort-Object deltaPercent -Descending)
 $improvements = @($compared | Where-Object status -eq "improvement" | Sort-Object deltaPercent)
 $neutrals = @($compared | Where-Object status -eq "neutral")
+$overlapNeutralCount = @($compared | Where-Object { $_.confidenceOverlaps -eq $true }).Count
 
 $summary = [PSCustomObject]@{
     hasBaseline = $hasBaseline
@@ -113,6 +155,7 @@ $summary = [PSCustomObject]@{
     missingCount = $missingBenchmarks.Count
     regressionThresholdPercent = $RegressionThresholdPercent
     minAbsoluteDeltaNs = $MinAbsoluteDeltaNs
+    confidenceOverlapNeutralCount = $overlapNeutralCount
 }
 
 $output = [PSCustomObject]@{
@@ -151,6 +194,7 @@ if (-not $hasBaseline) {
     $lines += "- Neutral: **$($summary.neutralCount)**"
     $lines += "- New benchmarks in PR: **$($summary.newCount)**"
     $lines += "- Missing vs baseline: **$($summary.missingCount)**"
+    $lines += "- Neutral due to overlapping confidence intervals: **$($summary.confidenceOverlapNeutralCount)**"
     $lines += ""
 
     if ($regressions.Count -gt 0) {
