@@ -29,8 +29,8 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
 
-      - name: Compute baseline cache key
-        id: baseline-key
+      - name: Compute shard history cache key
+        id: shard-history-key
         shell: bash
         run: |
           set -euo pipefail
@@ -41,16 +41,16 @@ jobs:
             "src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj"
           )
           fingerprint="$(sha256sum "${files[@]}" | sha256sum | cut -d' ' -f1)"
-          echo "prefix=nethermind-benchmark-baseline-linux-${fingerprint}-" >> "$GITHUB_OUTPUT"
+          echo "prefix=nethermind-benchmark-plan-history-linux-${fingerprint}-" >> "$GITHUB_OUTPUT"
 
-      - name: Restore baseline summary for shard planning
+      - name: Restore benchmark history for shard planning
         id: restore-plan-history
         uses: actions/cache/restore@v4
         with:
-          path: .benchmark-baseline
-          key: ${{ steps.baseline-key.outputs.prefix }}current-run
+          path: .benchmark-history
+          key: ${{ steps.shard-history-key.outputs.prefix }}current-run
           restore-keys: |
-            ${{ steps.baseline-key.outputs.prefix }}
+            ${{ steps.shard-history-key.outputs.prefix }}
 
       - name: Build dynamic shard plan
         shell: bash
@@ -73,7 +73,7 @@ jobs:
             --input "$list_file" \
             --output-dir benchmark-shards \
             --shard-count "$SHARD_COUNT" \
-            --history-summary .benchmark-baseline/benchmark-summary.json \
+            --history-summary .benchmark-history/benchmark-summary.json \
             --plan-summary benchmark-shards/plan-summary.md
 
       - name: Upload shard plan
@@ -191,6 +191,20 @@ jobs:
           fingerprint="$(sha256sum "${files[@]}" | sha256sum | cut -d' ' -f1)"
           echo "prefix=nethermind-benchmark-baseline-linux-${fingerprint}-" >> "$GITHUB_OUTPUT"
 
+      - name: Compute shard history cache key
+        id: shard-history-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            "global.json"
+            "src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj"
+            "src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj"
+            "src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj"
+          )
+          fingerprint="$(sha256sum "${files[@]}" | sha256sum | cut -d' ' -f1)"
+          echo "prefix=nethermind-benchmark-plan-history-linux-${fingerprint}-" >> "$GITHUB_OUTPUT"
+
       - name: Restore master benchmark baseline
         if: github.event_name == 'pull_request'
         id: restore-baseline
@@ -269,6 +283,17 @@ jobs:
         with:
           path: .benchmark-baseline
           key: ${{ steps.baseline-key.outputs.prefix }}${{ github.sha }}
+
+      - name: Prepare benchmark history cache
+        run: |
+          mkdir -p .benchmark-history
+          cp .benchmark-results/benchmark-summary.json .benchmark-history/benchmark-summary.json
+
+      - name: Save benchmark history snapshot
+        uses: actions/cache/save@v4
+        with:
+          path: .benchmark-history
+          key: ${{ steps.shard-history-key.outputs.prefix }}${{ github.run_id }}
 
       - name: Compare PR benchmarks with master baseline
         if: github.event_name == 'pull_request'
