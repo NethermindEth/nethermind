@@ -157,33 +157,33 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
     private void InitWorldState(IWorldState worldState, byte[]? extraCode = null)
     {
-        worldState.CreateAccount(TestItem.AddressA, _accountBalance);
+        worldState.CreateAccount(TestItem.AddressA, _accountBalance, blockAccessIndex: -1);
 
-        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, SpecProvider.GenesisSpec);
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce, blockAccessIndex: -1);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, SpecProvider.GenesisSpec, blockAccessIndex: -1);
 
-        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
-        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, SpecProvider.GenesisSpec);
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce, blockAccessIndex: -1);
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, SpecProvider.GenesisSpec, blockAccessIndex: -1);
 
-        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
+        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce, blockAccessIndex: -1);
+        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec, blockAccessIndex: -1);
 
-        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
+        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce, blockAccessIndex: -1);
+        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec, blockAccessIndex: -1);
 
-        worldState.CreateAccount(_delegationTargetAddress, 0);
-        worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
+        worldState.CreateAccount(_delegationTargetAddress, 0, blockAccessIndex: -1);
+        worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec, blockAccessIndex: -1);
 
-        worldState.CreateAccount(_callTargetAddress, 0);
+        worldState.CreateAccount(_callTargetAddress, 0, blockAccessIndex: -1);
         if (extraCode is not null)
         {
             ValueHash256 codeHash = ValueKeccak.Compute(extraCode);
-            worldState.InsertCode(_callTargetAddress, codeHash, extraCode, SpecProvider.GenesisSpec);
+            worldState.InsertCode(_callTargetAddress, codeHash, extraCode, SpecProvider.GenesisSpec, blockAccessIndex: -1);
         }
         else
         {
             byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. _delegationTargetAddress.Bytes];
-            worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec);
+            worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec, blockAccessIndex: -1);
         }
 
         worldState.Commit(SpecProvider.GenesisSpec);

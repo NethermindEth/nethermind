@@ -28,8 +28,7 @@ public static class TestWorldStateFactory
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
         IWorldState innerWorldState = new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
-        // return parallel ? new ParallelWorldState(innerWorldState, true) : innerWorldState;
-        return innerWorldState;
+        return parallel ? new ParallelWorldState(innerWorldState, true) : innerWorldState;
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)

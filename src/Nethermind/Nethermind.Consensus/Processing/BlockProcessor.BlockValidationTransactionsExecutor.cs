@@ -22,6 +22,7 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockValidationTransactionsExecutor(
             IWorldState stateProvider,
+            ITransactionProcessorAdapter transactionProcessor,
             ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
             ISpecProvider specProvider,
             // IVirtualMachine virtualMachine,
@@ -32,12 +33,12 @@ namespace Nethermind.Consensus.Processing
             : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-            private ITransactionProcessorAdapter? _transactionProcessor;
+            private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor; // system tx exec
             private BlockExecutionContext _blockExecutionContext;
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
-                _transactionProcessor?.SetBlockExecutionContext(in blockExecutionContext);
+                _transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
                 _blockExecutionContext = blockExecutionContext;
             }
 
@@ -87,12 +88,12 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    if (_transactionProcessor is null)
-                    {
-                        VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                        TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
-                        _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
-                    }
+                    // if (_transactionProcessor is null)
+                    // {
+                    //     VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                    //     TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                    //     _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
+                    // }
 
                     for (int i = 0; i < block.Transactions.Length; i++)
                     {

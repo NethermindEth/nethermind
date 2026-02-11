@@ -168,7 +168,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
         bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated, vm.TxExecutionContext.BlockAccessIndex);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {

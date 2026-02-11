@@ -14,12 +14,13 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class TaikoBlockValidationTransactionExecutor(
         IWorldState stateProvider,
+        ITransactionProcessorAdapter transactionProcessor,
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider specProvider,
         IBlockhashProvider blockhashProvider,
         ICodeInfoRepository codeInfoRepository,
         ILogManager logManager)
-    : BlockProcessor.BlockValidationTransactionsExecutor(stateProvider, blobBaseFeeCalculator, specProvider, blockhashProvider, codeInfoRepository, logManager)
+    : BlockProcessor.BlockValidationTransactionsExecutor(stateProvider, transactionProcessor, blobBaseFeeCalculator, specProvider, blockhashProvider, codeInfoRepository, logManager)
 {
     protected override void ProcessTransaction(Block block, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {

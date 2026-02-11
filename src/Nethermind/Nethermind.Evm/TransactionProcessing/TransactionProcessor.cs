@@ -775,15 +775,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (spec.IsEip7708Enabled)
                         {
-                            UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                            UInt256 balance = WorldState.GetBalance(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                             if (!balance.IsZero)
                             {
                                 substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
                             }
                         }
 
-                        WorldState.ClearStorage(toBeDestroyed);
-                        WorldState.DeleteAccount(toBeDestroyed);
+                        WorldState.ClearStorage(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
+                        WorldState.DeleteAccount(toBeDestroyed, VirtualMachine.TxExecutionContext.BlockAccessIndex);
 
                         if (tracer.IsTracingRefunds)
                             tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
