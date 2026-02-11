@@ -59,7 +59,7 @@ namespace Nethermind.Serialization.Rlp
             int sum = 0;
             for (int i = 0; i < encodedTxs.Length; i++)
             {
-                sum += TxDecoder.GetBlockFormatLength(txs[i].Type, encodedTxs[i].Length);
+                sum += TxDecoder.GetWrappedTxLength(txs[i].Type, encodedTxs[i].Length);
             }
             return sum;
         }
@@ -126,7 +126,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {
-                    TxDecoder.WriteBlockFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
+                    TxDecoder.WriteWrappedFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
                 }
             }
             else

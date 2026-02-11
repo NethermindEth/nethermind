@@ -30,14 +30,14 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     /// Legacy txs use the same format; typed txs are wrapped in an RLP byte string.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetBlockFormatLength(TxType type, int clEncodedLength)
+    public static int GetWrappedTxLength(TxType type, int clEncodedLength)
         => type == TxType.Legacy ? clEncodedLength : Rlp.LengthOfSequence(clEncodedLength);
 
     /// <summary>
     /// Writes a pre-encoded CL-format transaction in block format.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteBlockFormat(RlpStream stream, TxType type, byte[] clEncoded)
+    public static void WriteWrappedFormat(RlpStream stream, TxType type, byte[] clEncoded)
     {
         if (type != TxType.Legacy)
             stream.StartByteArray(clEncoded.Length, false);
