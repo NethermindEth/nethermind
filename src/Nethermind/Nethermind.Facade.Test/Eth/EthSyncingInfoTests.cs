@@ -156,6 +156,47 @@ namespace Nethermind.Facade.Test.Eth
             ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
         }
 
+        [Test]
+        public void Should_reset_sync_time_on_restart()
+        {
+            SyncConfig syncConfig = new();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
+            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
+
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80).TestObject)
+                .TestObject);
+
+            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
+                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+
+            // Start syncing and accumulate time
+            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
+            Thread.Sleep(200);
+            double firstSessionTime = ethSyncingInfo.UpdateAndGetSyncTime().TotalMilliseconds;
+            firstSessionTime.Should().BeGreaterThan(0);
+
+            // Stop syncing
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100).TestObject)
+                .TestObject);
+            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
+
+            // Restart syncing
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80).TestObject)
+                .TestObject);
+            ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
+            Thread.Sleep(100);
+            double secondSessionTime = ethSyncingInfo.UpdateAndGetSyncTime().TotalMilliseconds;
+
+            // Second session time must be less than first, proving the timer was reset
+            secondSessionTime.Should().BeLessThan(firstSessionTime);
+        }
+
         [TestCase(6178001L, 6178000L)]
         [TestCase(8001L, 8000L)]
         public void IsSyncing_ReturnsFalseOnFastSyncWithoutPivot(long bestHeader, long currentHead)
