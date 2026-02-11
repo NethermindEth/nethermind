@@ -156,7 +156,7 @@ public class ParallelBlockValidationTransactionsExecutor(
             {
                 foreach (Address address in storageClears)
                 {
-                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? account) ?? false && account is null;
+                    bool accountDeleted = accountUpdates?.TryGetValue(address, out Account? _) ?? false;
                     // Avoid clearing when it's just an empty-base hint; keep prior tx writes intact.
                     if (accountDeleted || !storageTouched.Contains(address))
                     {
