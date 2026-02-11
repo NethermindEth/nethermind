@@ -31,4 +31,6 @@ public class SigningTxCache(IBlockTree blockTree) : ISigningTxCache
         _signingTxsCache.Set(blockHash, cached);
         return cached;
     }
+
+    public void SetSigningTransactions(Hash256 blockHash, Transaction[] transactions) => _signingTxsCache.Set(blockHash, transactions);
 }

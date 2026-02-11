@@ -19,6 +19,8 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
 {
     private readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
 
+    public Address[] GetPenalties(XdcBlockHeader header) => epochSwitchManager.GetEpochSwitchInfo(header)?.Penalties ?? [];
+
     private Address[] GetPreviousPenalties(Hash256 currentHash, IXdcReleaseSpec spec, ulong limit)
     {
         var currentEpochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHash);
@@ -38,10 +40,10 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
         var results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
         if (results is null) return [];
 
-        var header = (XdcBlockHeader)tree.FindHeader(results.Hash);
-        if(header  is null) return [];
+        var header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
+        if(header is null || header.PenaltiesAddress is null) return [];
 
-        return [..header.PenaltiesAddress.Value];
+        return [..header.PenaltiesAddress];
     }
 
     public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
@@ -72,7 +74,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
             }
         }
 
-        for (int i = 1; ; i++)
+        while(parentNumber >= 0)
         {
             var parentHeader = (XdcBlockHeader)tree.FindHeader(parentHash, parentNumber);
             var isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
@@ -174,7 +176,7 @@ internal class PenaltyHandler(IBlockTree tree, IEthereumEcdsa ethereumEcdsa, ISp
                     }
                 }
 
-                foreach (var comeback in penComebacks) 
+                foreach (var comeback in penComebacks)
                 {
                     if (!penalties.Contains(comeback))
                     {

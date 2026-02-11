@@ -36,6 +36,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -44,10 +45,12 @@ public class XdcTestBlockchain : TestBlockchain
 {
     private readonly Random _random = new();
     private readonly bool _useHotStuffModule;
+    private readonly bool _withPresetPenaltyHistory;
+    private readonly bool[]? _penaltyOrNotByEpoch;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false, bool[]? penaltyOrNotByEpoch = null)
     {
-        XdcTestBlockchain chain = new(useHotStuffModule);
+        XdcTestBlockchain chain = new(useHotStuffModule, withPenalty, penaltyOrNotByEpoch);
         await chain.Build(configurer);
 
         var fromXdcContainer = (FromContainer)chain.Container.Resolve<FromXdcContainer>();
@@ -80,13 +83,15 @@ public class XdcTestBlockchain : TestBlockchain
     internal TestRandomSigner RandomSigner { get; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
-    protected XdcTestBlockchain(bool useHotStuffModule)
+    protected XdcTestBlockchain(bool useHotStuffModule, bool withPresetPenaltyHistory = false, bool[]? penaltyOrNotByEpoch = null)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
         RandomKeys = keys.Skip(200).ToList();
         RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
+        _withPresetPenaltyHistory = withPresetPenaltyHistory;
+        _penaltyOrNotByEpoch = penaltyOrNotByEpoch;
     }
 
     public Signer Signer => (Signer)_fromXdcContainer.Signer;
@@ -211,6 +216,12 @@ public class XdcTestBlockchain : TestBlockchain
                 ctx.Resolve<ITxPool>(),
                 ctx.Resolve<Configuration>().SlotTime
             ));
+
+        if (_withPresetPenaltyHistory)
+        {
+            container.AddSingleton<IPenaltyHandler, ISpecProvider, IBlockTree, IEpochSwitchManager>((specProvider, blockTree, epochSwitchManager) =>
+                new PresetPenaltyHistoryHandler(specProvider, blockTree, epochSwitchManager, _penaltyOrNotByEpoch));
+        }
 
         return container;
     }
@@ -361,6 +372,56 @@ public class XdcTestBlockchain : TestBlockchain
     private class ZeroRewardCalculator : IRewardCalculator
     {
         public BlockReward[] CalculateRewards(Block block) => Array.Empty<BlockReward>();
+    }
+
+    private sealed class PresetPenaltyHistoryHandler(
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        IEpochSwitchManager epochSwitchManager,
+        bool[]? penaltyOrNotByEpoch) : IPenaltyHandler
+    {
+        private int _epochSwitchCount;
+
+        public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
+        {
+            if (candidates.Length == 0)
+            {
+                return [];
+            }
+
+            IXdcReleaseSpec spec = specProvider.GetXdcSpec(number);
+            if (number <= spec.SwitchBlock || number % spec.EpochLength != 0)
+            {
+                return [];
+            }
+
+            bool shouldPenalize = true;
+            if (penaltyOrNotByEpoch is not null && _epochSwitchCount < penaltyOrNotByEpoch.Length)
+            {
+                shouldPenalize = penaltyOrNotByEpoch[_epochSwitchCount];
+            }
+            _epochSwitchCount++;
+
+            if (!shouldPenalize)
+            {
+                return [];
+            }
+
+            Address[] epochMasternodes = epochSwitchManager.GetEpochSwitchInfo(currentHash)?.Masternodes ?? [];
+            if (epochMasternodes.Length == 0)
+            {
+                return [];
+            }
+
+            XdcBlockHeader? parentHeader = (XdcBlockHeader?)blockTree.FindHeader(currentHash, number - 1);
+            Address? signer = parentHeader?.Beneficiary;
+            if (signer is not null && epochMasternodes.Contains(signer))
+            {
+                return [signer];
+            }
+
+            return [epochMasternodes[0]];
+        }
     }
 
     public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)
