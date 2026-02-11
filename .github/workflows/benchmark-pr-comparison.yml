@@ -29,6 +29,29 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
 
+      - name: Compute baseline cache key
+        id: baseline-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            "global.json"
+            "src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj"
+            "src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj"
+            "src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj"
+          )
+          fingerprint="$(sha256sum "${files[@]}" | sha256sum | cut -d' ' -f1)"
+          echo "prefix=nethermind-benchmark-baseline-linux-${fingerprint}-" >> "$GITHUB_OUTPUT"
+
+      - name: Restore baseline summary for shard planning
+        id: restore-plan-history
+        uses: actions/cache/restore@v4
+        with:
+          path: .benchmark-baseline
+          key: ${{ steps.baseline-key.outputs.prefix }}current-run
+          restore-keys: |
+            ${{ steps.baseline-key.outputs.prefix }}
+
       - name: Build dynamic shard plan
         shell: bash
         env:
@@ -49,13 +72,17 @@ jobs:
           python3 scripts/benchmarks/plan-benchmark-shards.py \
             --input "$list_file" \
             --output-dir benchmark-shards \
-            --shard-count "$SHARD_COUNT"
+            --shard-count "$SHARD_COUNT" \
+            --history-summary .benchmark-baseline/benchmark-summary.json \
+            --plan-summary benchmark-shards/plan-summary.md
 
       - name: Upload shard plan
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-shard-plan
-          path: benchmark-shards/shard-*.txt
+          path: |
+            benchmark-shards/shard-*.txt
+            benchmark-shards/plan-summary.md
           retention-days: 7
 
   benchmark-shards:
