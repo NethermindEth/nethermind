@@ -263,10 +263,11 @@ public class Startup : IStartup
         app.UseRouting();
         app.UseCors();
 
-        // If request is local, don't use response compression,
-        // as it allocates a lot, but doesn't improve much for loopback
+        // Skip response compression for localhost (low benefit, high allocation cost)
+        // and for Engine API requests (latency-sensitive consensus path)
         app.UseWhen(ctx =>
-            !IsLocalhost(ctx.Connection.RemoteIpAddress!),
+            !IsLocalhost(ctx.Connection.RemoteIpAddress!) &&
+            !(jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsAuthenticated),
             builder => builder.UseResponseCompression());
 
         if (initConfig.WebSocketsEnabled)
