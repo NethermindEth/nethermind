@@ -53,7 +53,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 new WitnessGeneratingBlockProcessingEnv(
                     builder.Resolve<ISpecProvider>(),
                     builder.Resolve<IWorldState>() as WorldState,
-                    builder.Resolve<IStateReader>(),
                     trieStore,
                     builder.Resolve<IReadOnlyBlockTree>(),
                     builder.Resolve<ISealValidator>(),
