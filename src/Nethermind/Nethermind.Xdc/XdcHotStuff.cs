@@ -241,19 +241,23 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
+            if (spec.SwitchBlock < roundParent.Number)
+            {
+                await CommitCertificateAndVote(roundParent, epochInfo);
+            }
+
+            bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
 
             if (_writeRoundInfo)
                 _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
-            if (isMyTurn)
+            if (isMyTurn && IsItTimeToPropose(roundParent, currentRound, spec))
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
-
             }
 
-            if (_highestSignTxNumber < roundParent.Number 
+            if (_highestSignTxNumber < roundParent.Number
                 && IsMasternode(epochInfo, _signer.Address)
                 && ((roundParent.Number % spec.MergeSignRange == 0)))
             {
@@ -261,10 +265,6 @@ namespace Nethermind.Xdc
                 await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
             }
 
-            if (spec.SwitchBlock < roundParent.Number)
-            {
-                await CommitCertificateAndVote(roundParent, epochInfo);
-            }
             _writeRoundInfo = false;
         }
 
@@ -282,7 +282,8 @@ namespace Nethermind.Xdc
 
             try
             {
-                ulong parentTimestamp = parent.Timestamp;
+                XdcBlockHeader parentHeader = FindHeaderToBuildOn(_xdcContext.HighestQC) ?? parent;
+                ulong parentTimestamp = parentHeader.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
 
@@ -299,7 +300,7 @@ namespace Nethermind.Xdc
                 }
 
                 Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
+                    _blockBuilder.BuildBlock(parentHeader, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 Block? proposedBlock = await proposedBlockTask;
 
@@ -320,6 +321,11 @@ namespace Nethermind.Xdc
             {
                 _logger.Error($"Failed to build block in round {currentRound}", ex);
             }
+
+            XdcBlockHeader FindHeaderToBuildOn(QuorumCertificate highestQC) =>
+                _blockTree.FindHeader(
+                    highestQC.ProposedBlockInfo.Hash,
+                    highestQC.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         }
 
         /// <summary>
@@ -391,10 +397,9 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Check if the current node is the leader for the given round.
-        /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
+        /// Check if it's time to propose a block for the given round.
         /// </summary>
-        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
+        private bool IsItTimeToPropose(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
         {
             if (_highestSelfMinedRound >= round)
             {
@@ -413,7 +418,15 @@ namespace Nethermind.Xdc
                 //We have not reached QC vote threshold yet
                 return false;
             }
+            return true;
+        }
 
+        /// <summary>
+        /// Check if the current node is the leader for the given round.
+        /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
+        /// </summary>
+        private bool IsMyTurn(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
+        {
             Address leaderAddress = GetLeaderAddress(parent, round, spec);
             return leaderAddress == _signer.Address;
         }

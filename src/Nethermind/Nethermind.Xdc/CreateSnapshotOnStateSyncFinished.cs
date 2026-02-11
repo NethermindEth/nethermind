@@ -50,7 +50,7 @@ internal class CreateSnapshotOnStateSyncFinished
         Snapshot snapshot = new(gapBlockForPivotEpoch.Number, gapBlockForPivotEpoch.Hash, XdcExtensions.ExtractAddresses(pivot.Validators));
         _snapshotManager.StoreSnapshot(snapshot);
 
-        if (Math.Max(0, (number + spec.EpochLength) % spec.EpochLength - spec.Gap ) < number)
+        if (Math.Max(0, (number + spec.EpochLength) % spec.EpochLength - spec.Gap) < number)
         {
 
         }
