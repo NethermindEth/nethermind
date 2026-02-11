@@ -414,7 +414,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (!AccountExistsInternal(address, blockAccessIndex.Value))
         {
-            CreateAccount(address, balance, nonce);
+            CreateAccount(address, balance, nonce, blockAccessIndex);
         }
     }
 
