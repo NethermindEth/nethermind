@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -28,7 +30,8 @@ public class MultiVersionMemoryScopeProvider(
     {
         ReadSet = new(); //TODO: object poolling?
         WriteSet = new();
-        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet);
+        object writeSetLock = new();
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, feeAccumulator, ReadSet, WriteSet, writeSetLock);
     }
 
     private static TResult Get<TStorage, TResult>(
@@ -63,7 +66,8 @@ public class MultiVersionMemoryScopeProvider(
         MultiVersionMemory multiVersionMemory,
         FeeAccumulator feeAccumulator,
         HashSet<Read<ParallelStateKey>> readSet,
-        Dictionary<ParallelStateKey, object> writeSet) : IWorldStateScopeProvider.IScope
+        Dictionary<ParallelStateKey, object> writeSet,
+        object writeSetLock) : IWorldStateScopeProvider.IScope
     {
         public void Dispose() => baseScope.Dispose();
 
@@ -115,11 +119,11 @@ public class MultiVersionMemoryScopeProvider(
             new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-            new MultiVersionMemoryWriteBatch(writeSet);
+            new MultiVersionMemoryWriteBatch(writeSet, writeSetLock);
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
-        private class MultiVersionMemoryWriteBatch(Dictionary<ParallelStateKey, object> writeSet)
+        private class MultiVersionMemoryWriteBatch(Dictionary<ParallelStateKey, object> writeSet, object writeSetLock)
             : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
             public void Dispose() { }
@@ -128,19 +132,63 @@ public class MultiVersionMemoryScopeProvider(
 
             public void Set(Address key, Account? account)
             {
-                writeSet[ParallelStateKey.ForStorage(new StorageCell(key))] = account;
+                lock (writeSetLock)
+                {
+                    writeSet[ParallelStateKey.ForStorage(new StorageCell(key))] = account;
+                }
                 OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
             }
 
             public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-                new MultiVersionMemoryStorageWriteBatch(key, writeSet);
+                new MultiVersionMemoryStorageWriteBatch(key, estimatedEntries, writeSet, writeSetLock);
 
-            private class MultiVersionMemoryStorageWriteBatch(Address address, Dictionary<ParallelStateKey, object> writeSet)
+            private class MultiVersionMemoryStorageWriteBatch(
+                Address address,
+                int estimatedEntries,
+                Dictionary<ParallelStateKey, object> writeSet,
+                object writeSetLock)
                 : IWorldStateScopeProvider.IStorageWriteBatch
             {
-                public void Dispose() { }
-                public void Set(in UInt256 index, byte[] value) => writeSet[ParallelStateKey.ForStorage(new StorageCell(address, index))] = value;
-                public void Clear() => writeSet[ParallelStateKey.ForStorage(new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256))] = MultiVersionMemory.SelfDestructMonit;
+                private Dictionary<ParallelStateKey, object>? _localWrites;
+
+                private Dictionary<ParallelStateKey, object> GetLocalWrites()
+                {
+                    if (_localWrites is not null)
+                    {
+                        return _localWrites;
+                    }
+
+                    _localWrites = estimatedEntries > 0
+                        ? new Dictionary<ParallelStateKey, object>(estimatedEntries)
+                        : new Dictionary<ParallelStateKey, object>();
+
+                    return _localWrites;
+                }
+
+                public void Set(in UInt256 index, byte[] value) =>
+                    GetLocalWrites()[ParallelStateKey.ForStorage(new StorageCell(address, index))] = value;
+
+                public void Clear() =>
+                    GetLocalWrites()[ParallelStateKey.ForStorage(new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256))] = MultiVersionMemory.SelfDestructMonit;
+
+                public void Dispose()
+                {
+                    if (_localWrites is null)
+                    {
+                        return;
+                    }
+
+                    // Storage batches are processed in parallel; merge writes into the shared set under a lock.
+                    lock (writeSetLock)
+                    {
+                        foreach (KeyValuePair<ParallelStateKey, object> write in _localWrites)
+                        {
+                            writeSet[write.Key] = write.Value;
+                        }
+                    }
+
+                    _localWrites = null;
+                }
             }
         }
 
@@ -154,23 +202,83 @@ public class MultiVersionMemoryScopeProvider(
         {
             public Hash256 RootHash => baseStorageTree.RootHash;
 
-            public byte[] Get(in UInt256 index) => Get<IWorldStateScopeProvider.IStorageTree, byte[]>(
-                ParallelStateKey.ForStorage(new StorageCell(address, index)),
-                txIndex,
-                multiVersionMemory,
-                readSet,
-                baseStorageTree,
-                static (scope, location) => scope.Get(location.StorageCell.Index));
+            public byte[] Get(in UInt256 index) =>
+                GetStorageValue(
+                    ParallelStateKey.ForStorage(new StorageCell(address, index)),
+                    static (scope, location) => scope.Get(location.StorageCell.Index));
 
             public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
-            public byte[] Get(in ValueHash256 hash) => Get<IWorldStateScopeProvider.IStorageTree, byte[]>(
-                ParallelStateKey.ForStorage(new StorageCell(address, hash)),
-                txIndex,
-                multiVersionMemory,
-                readSet,
-                baseStorageTree,
-                static (scope, location) => scope.Get(location.StorageCell.Hash));
+            public byte[] Get(in ValueHash256 hash) =>
+                GetStorageValue(
+                    ParallelStateKey.ForStorage(new StorageCell(address, hash)),
+                    static (scope, location) => scope.Get(location.StorageCell.Hash));
+
+            private byte[] GetStorageValue(
+                ParallelStateKey location,
+                Func<IWorldStateScopeProvider.IStorageTree, ParallelStateKey, byte[]> getFromStorage)
+            {
+                ParallelStateKey clearKey = ParallelStateKey.ForStorage(new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256));
+
+                Status valueStatus = TryRead(location, out Version valueVersion, out object? value);
+                Status clearStatus = TryRead(clearKey, out Version clearVersion, out object? clearValue);
+
+                readSet.Add(new Read<ParallelStateKey>(location, valueVersion));
+
+                bool hasClear = clearStatus == Status.Ok && ReferenceEquals(clearValue, MultiVersionMemory.SelfDestructMonit);
+
+                if (valueStatus == Status.Ok)
+                {
+                    readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
+                    if (hasClear && IsLater(clearVersion, valueVersion))
+                    {
+                        return VirtualMachineStatics.BytesZero;
+                    }
+
+                    return (byte[])value;
+                }
+
+                byte[] baseValue = getFromStorage(baseStorageTree, location);
+                bool baseIsZero = baseValue.IsZero();
+
+                if (!baseIsZero)
+                {
+                    readSet.Add(new Read<ParallelStateKey>(clearKey, clearVersion));
+                }
+
+                return hasClear ? VirtualMachineStatics.BytesZero : baseValue;
+            }
+
+            private Status TryRead(ParallelStateKey key, out Version version, out object? value)
+            {
+                Status status = multiVersionMemory.TryRead(key, txIndex, out version, out value);
+                if (status == Status.ReadError)
+                {
+                    throw new AbortParallelExecutionException(in version);
+                }
+
+                return status;
+            }
+
+            private static bool IsLater(Version candidate, Version current)
+            {
+                if (candidate.IsEmpty)
+                {
+                    return false;
+                }
+
+                if (current.IsEmpty)
+                {
+                    return true;
+                }
+
+                if (candidate.TxIndex != current.TxIndex)
+                {
+                    return candidate.TxIndex > current.TxIndex;
+                }
+
+                return candidate.Incarnation > current.Incarnation;
+            }
         }
 
         private void AddFeeReadDependencies(FeeRecipientKind feeKind, int startTxIndex, int txIndex)
