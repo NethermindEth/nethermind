@@ -129,6 +129,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7934Enabled => spec.IsEip7934Enabled;
         public int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
 
+        public bool ValidateChainId => throw new NotImplementedException();
+
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
@@ -161,6 +163,84 @@ namespace Nethermind.Specs.Test
             }
         }
 
+        public bool ClearEmptyAccountWhenTouched => throw new NotImplementedException();
+
+        public bool LimitCodeSize => throw new NotImplementedException();
+
+        public bool UseHotAndColdStorage => throw new NotImplementedException();
+
+        public bool UseTxAccessLists => throw new NotImplementedException();
+
+        public bool AddCoinbaseToTxAccessList => throw new NotImplementedException();
+
+        public bool ModExpEnabled => throw new NotImplementedException();
+
+        public bool BN254Enabled => throw new NotImplementedException();
+
+        public bool BlakeEnabled => throw new NotImplementedException();
+
+        public bool Bls381Enabled => throw new NotImplementedException();
+
+        public bool ChargeForTopLevelCreate => throw new NotImplementedException();
+
+        public bool FailOnOutOfGasCodeDeposit => throw new NotImplementedException();
+
+        public bool UseShanghaiDDosProtection => throw new NotImplementedException();
+
+        public bool UseExpDDosProtection => throw new NotImplementedException();
+
+        public bool UseLargeStateDDosProtection => throw new NotImplementedException();
+
+        public bool ReturnDataOpcodesEnabled => throw new NotImplementedException();
+
+        public bool ChainIdOpcodeEnabled => throw new NotImplementedException();
+
+        public bool Create2OpcodeEnabled => throw new NotImplementedException();
+
+        public bool DelegateCallEnabled => throw new NotImplementedException();
+
+        public bool StaticCallEnabled => throw new NotImplementedException();
+
+        public bool ShiftOpcodesEnabled => throw new NotImplementedException();
+
+        public bool RevertOpcodeEnabled => throw new NotImplementedException();
+
+        public bool ExtCodeHashOpcodeEnabled => throw new NotImplementedException();
+
+        public bool SelfBalanceOpcodeEnabled => throw new NotImplementedException();
+
+        public bool UseConstantinopleNetGasMetering => throw new NotImplementedException();
+
+        public bool UseIstanbulNetGasMetering => throw new NotImplementedException();
+
+        public bool UseNetGasMetering => throw new NotImplementedException();
+
+        public bool UseNetGasMeteringWithAStipendFix => throw new NotImplementedException();
+
+        public bool Use63Over64Rule => throw new NotImplementedException();
+
+        public bool BaseFeeEnabled => throw new NotImplementedException();
+
+        public bool IncludePush0Instruction => throw new NotImplementedException();
+
+        public bool TransientStorageEnabled => throw new NotImplementedException();
+
+        public bool WithdrawalsEnabled => throw new NotImplementedException();
+
+        public bool SelfdestructOnlyOnSameTransaction => throw new NotImplementedException();
+
+        public bool IsBeaconBlockRootAvailable => throw new NotImplementedException();
+
+        public bool IsBlockHashInStateAvailable => throw new NotImplementedException();
+
+        public bool MCopyIncluded => throw new NotImplementedException();
+
+        public bool BlobBaseFeeEnabled => throw new NotImplementedException();
+
+        public bool IsAuthorizationListEnabled => throw new NotImplementedException();
+
+        public bool RequestsEnabled => throw new NotImplementedException();
+
         public ulong TargetBlobCount => spec.TargetBlobCount;
         public ulong MaxBlobCount => spec.MaxBlobCount;
         public ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
@@ -172,13 +252,22 @@ namespace Nethermind.Specs.Test
         public bool IsEip4895Enabled => spec.IsEip4895Enabled;
         public ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
         public bool IsEip5656Enabled => spec.IsEip5656Enabled;
+
+        public long Eip2935RingBufferSize => throw new NotImplementedException();
+
         public bool IsEip6780Enabled => spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
         public bool IsEip7002Enabled => spec.IsEip7002Enabled;
+
+        public bool WithdrawalRequestsEnabled => throw new NotImplementedException();
+
         public Address Eip7002ContractAddress => spec.Eip7002ContractAddress;
         public bool IsEip7251Enabled => spec.IsEip7251Enabled;
+
+        public bool ConsolidationRequestsEnabled => throw new NotImplementedException();
+
         public Address Eip7251ContractAddress => spec.Eip7251ContractAddress;
         public bool IsEip2935Enabled => spec.IsEip2935Enabled;
         public bool IsEip7709Enabled => spec.IsEip7709Enabled;
@@ -192,14 +281,28 @@ namespace Nethermind.Specs.Test
         public IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
         public bool IsEofEnabled => spec.IsEofEnabled;
         public bool IsEip6110Enabled => spec.IsEip6110Enabled;
+
+        public bool DepositsEnabled => throw new NotImplementedException();
+
         public Address DepositContractAddress => spec.DepositContractAddress;
         public bool IsEip7594Enabled => spec.IsEip7594Enabled;
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
+
+        public ProofVersion BlobProofVersion => throw new NotImplementedException();
+
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
+
+        public bool CLZEnabled => throw new NotImplementedException();
+
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
+        public bool IsPrecompile(Address address)
+        {
+            throw new NotImplementedException();
+        }
+
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }
