@@ -93,18 +93,6 @@ public class P2PProtocolHandler(
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
-
-                    // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
-                    // which should be constant for the whole session. Some protocols (like Eth) are sending messages
-                    // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
-                    // which are alphabetically before already initialized ones.
-                    foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
-                        SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
-                    }
-
                     break;
                 }
             case P2PMessageCode.Disconnect:
@@ -230,6 +218,24 @@ public class P2PProtocolHandler(
         };
 
         ProtocolInitialized?.Invoke(this, eventArgs);
+
+        if (Session.IsClosing)
+        {
+            return;
+        }
+
+        // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
+        // which should be constant for the whole session. Some protocols (like Eth) are sending messages
+        // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
+        // which are alphabetically before already initialized ones.
+        // This must happen after ProtocolInitialized so the session can enable snappy before
+        // any subprotocol message exchange starts.
+        foreach (Capability capability in
+            _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
+        {
+            if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
+            SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+        }
     }
 
     [SuppressMessage("ReSharper", "HeuristicUnreachableCode")]

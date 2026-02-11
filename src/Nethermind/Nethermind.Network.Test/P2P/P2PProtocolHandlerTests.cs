@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using FluentAssertions;
@@ -159,6 +160,37 @@ namespace Nethermind.Network.Test.P2P
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m =>
                     m.ClientId == $"{ProductInfo.Name}/v{ProductInfo.Version}"));
+        }
+
+        [Test]
+        public void Initializes_subprotocols_after_protocol_initialized()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            Capability capability = new(Protocol.Eth, 69);
+            p2PProtocolHandler.AddSupportedCapability(capability);
+
+            List<string> events = [];
+            p2PProtocolHandler.ProtocolInitialized += (_, _) => events.Add("initialized");
+            p2PProtocolHandler.SubprotocolRequested += (_, _) => events.Add("subprotocol");
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { capability },
+                NodeId = TestItem.PublicKeyA,
+            };
+
+            IByteBuffer data = _serializer.ZeroSerialize(message);
+            data.ReadByte(); // to account for adaptive packet type
+
+            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
+
+            events.Should().Equal("initialized", "subprotocol");
         }
     }
 }
