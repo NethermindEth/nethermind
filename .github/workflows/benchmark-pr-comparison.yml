@@ -35,42 +35,45 @@ jobs:
         uses: actions/setup-dotnet@v4
 
       - name: Run benchmark shard
-        shell: pwsh
+        shell: bash
         env:
           NETH_BENCHMARK_INCLUDE_PRECOMPILES: "false"
           NETH_BENCHMARK_JOB: "medium"
           NETH_BENCHMARK_INPROCESS: "false"
         run: |
-          $artifactRoot = ".benchmark-artifacts/shard-${{ matrix.shard }}"
-          $filters = switch ("${{ matrix.shard }}")
-          {
-            "1" {
-              @(
+          set -euo pipefail
+
+          artifact_root=".benchmark-artifacts/shard-${{ matrix.shard }}"
+          filters=()
+
+          case "${{ matrix.shard }}" in
+            1)
+              filters=(
                 "*Nethermind.Benchmarks.Blockchain.BlockProcessingBenchmarks*"
                 "*Nethermind.Evm.Benchmark.EvmBenchmarks*"
               )
-            }
-            "2" {
-              @(
+              ;;
+            2)
+              filters=(
                 "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.PushPopUInt256Loop*"
                 "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.PushPopByteLoop*"
               )
-            }
-            "3" {
-              @(
+              ;;
+            3)
+              filters=(
                 "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.DupDeep*"
                 "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.SwapDeep*"
               )
-            }
-            "4" {
-              @(
+              ;;
+            4)
+              filters=(
                 "*Nethermind.Evm.Benchmark.EvmStackBenchmarks.MixedStackPattern*"
                 "*Nethermind.Benchmarks.Evm.SignExtendBenchmark*"
                 "*Nethermind.Benchmarks.Evm.JumpDestinationsBenchmark*"
               )
-            }
-            "5" {
-              @(
+              ;;
+            5)
+              filters=(
                 "*Nethermind.Benchmarks.Evm.BitwiseAndBenchmark*"
                 "*Nethermind.Benchmarks.Evm.BitwiseOrBenchmark*"
                 "*Nethermind.Benchmarks.Evm.BitwiseXorBenchmark*"
@@ -79,45 +82,64 @@ jobs:
                 "*Nethermind.Benchmarks.Evm.EcRecoverBenchmark*"
                 "*Nethermind.Benchmarks.Evm.MemoryCostBenchmark*"
               )
-            }
-            default {
-              throw "Unsupported benchmark shard '${{ matrix.shard }}'."
-            }
-          }
+              ;;
+            *)
+              echo "Unsupported benchmark shard '${{ matrix.shard }}'."
+              exit 1
+              ;;
+          esac
 
-          Write-Host "Running benchmark shard ${{ matrix.shard }} with filters:"
-          foreach ($filter in $filters) {
-            Write-Host " - $filter"
-          }
+          echo "Running benchmark shard ${{ matrix.shard }} with filters:"
+          for filter in "${filters[@]}"; do
+            echo " - $filter"
+          done
 
-          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- --filter $filters --artifacts $artifactRoot
+          dotnet run --project src/Nethermind/Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj -c release -- --filter "${filters[@]}" --artifacts "$artifact_root"
 
       - name: Fail shard on benchmark execution issues
-        shell: pwsh
+        shell: bash
         run: |
-          $failed = @()
-          $resultsDir = ".benchmark-artifacts/shard-${{ matrix.shard }}/results"
-          $csvFiles = @(Get-ChildItem -Path $resultsDir -Filter "*-report.csv" -File)
-          if ($csvFiles.Count -eq 0) {
-            throw "No benchmark report CSV files were produced for shard ${{ matrix.shard }}."
-          }
+          set -euo pipefail
 
-          foreach ($csv in $csvFiles) {
-            $rows = @(Import-Csv -Path $csv.FullName)
-            foreach ($row in $rows) {
-              if ([string]::Equals(([string]$row.Mean).Trim(), "NA", [System.StringComparison]::OrdinalIgnoreCase)) {
-                $failed += "$($csv.Name):$($row.Method)"
-              }
-            }
-          }
+          results_dir=".benchmark-artifacts/shard-${{ matrix.shard }}/results"
+          if [ ! -d "$results_dir" ]; then
+            echo "Missing results directory: $results_dir"
+            exit 1
+          fi
 
-          if ($failed.Count -gt 0) {
-            Write-Host "Benchmarks with non-numeric mean values detected:"
-            foreach ($entry in $failed) {
-              Write-Host $entry
-            }
-            throw "Benchmark execution issues detected (Mean=NA)."
-          }
+          pybin=""
+          if command -v python3 >/dev/null 2>&1; then
+            pybin="python3"
+          elif command -v python >/dev/null 2>&1; then
+            pybin="python"
+          else
+            echo "Python is required to validate CSV benchmark results."
+            exit 1
+          fi
+
+          {
+            echo "import csv"
+            echo "import glob"
+            echo "import os"
+            echo "import sys"
+            echo "results_dir = sys.argv[1]"
+            echo "csv_files = sorted(glob.glob(os.path.join(results_dir, '*-report.csv')))"
+            echo "if not csv_files:"
+            echo "    raise SystemExit(f\"No benchmark report CSV files were produced for shard in '{results_dir}'.\")"
+            echo "failed = []"
+            echo "for path in csv_files:"
+            echo "    with open(path, newline='', encoding='utf-8') as f:"
+            echo "        reader = csv.DictReader(f)"
+            echo "        for row in reader:"
+            echo "            mean = (row.get('Mean') or '').strip()"
+            echo "            if mean.upper() == 'NA':"
+            echo "                failed.append(f\"{os.path.basename(path)}:{(row.get('Method') or '').strip()}\")"
+            echo "if failed:"
+            echo "    print('Benchmarks with non-numeric mean values detected:')"
+            echo "    for entry in failed:"
+            echo "        print(entry)"
+            echo "    raise SystemExit('Benchmark execution issues detected (Mean=NA).')"
+          } | "$pybin" - "$results_dir"
 
       - name: Upload shard benchmark artifacts
         uses: actions/upload-artifact@v4
