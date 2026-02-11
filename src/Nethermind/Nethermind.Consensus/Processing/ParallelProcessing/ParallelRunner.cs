@@ -20,6 +20,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     MultiVersionMemory<TLocation, TData, TLogger> memory,
     ParallelTrace<TLogger> parallelTrace,
     IParallelTransactionProcessor<TLocation, TData> parallelTransactionProcessor,
+    ParallelBlockMetricsCollector metrics,
     int? concurrencyLevel = null) : IDisposable where TLogger : struct, IFlag where TLocation : notnull
 {
     private int _threadIndex = -1;
@@ -105,9 +106,11 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// </remarks>
     private TxTask TryExecute(TxTask task)
     {
+        metrics.RecordExecutionAttempt(task.Version.TxIndex);
         Status status = parallelTransactionProcessor.TryExecute(task.Version, out int? blockingTx, out bool wroteNewLocation);
         if (status == Status.ReadError)
         {
+            metrics.RecordBlockedRead(task.Version.TxIndex);
             return !scheduler.AbortExecution(task.Version.TxIndex, blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null")) ? task : TxTask.Empty;
         }
 
@@ -129,6 +132,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         bool aborted = !memory.ValidateReadSet(version.TxIndex) && scheduler.TryValidationAbort(version);
         if (aborted)
         {
+            metrics.RecordValidationFailure(version.TxIndex);
             memory.ConvertWritesToEstimates(version.TxIndex);
         }
 
@@ -142,8 +146,9 @@ public sealed class ParallelRunner(
     ParallelScheduler<OffFlag> scheduler,
     MultiVersionMemory<ParallelStateKey, object, OffFlag> memory,
     ParallelTrace<OffFlag> parallelTrace, IParallelTransactionProcessor<ParallelStateKey, object> parallelTransactionProcessor,
-    int? concurrencyLevel = null)
-    : ParallelRunner<ParallelStateKey, object, OffFlag>(scheduler, memory, parallelTrace, parallelTransactionProcessor, concurrencyLevel);
+    int? concurrencyLevel = null,
+    ParallelBlockMetricsCollector? metrics = null)
+    : ParallelRunner<ParallelStateKey, object, OffFlag>(scheduler, memory, parallelTrace, parallelTransactionProcessor, metrics, concurrencyLevel);
 
 /// <summary>
 /// Abstraction of transaction execution.

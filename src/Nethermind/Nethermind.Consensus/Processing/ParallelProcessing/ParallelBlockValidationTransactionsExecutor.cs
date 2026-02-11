@@ -43,6 +43,7 @@ public class ParallelBlockValidationTransactionsExecutor(
         bool processedSuccessfully = false;
         OffParallelTrace trace = OffParallelTrace.Instance;
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
+        ParallelBlockMetricsCollector blockMetrics = new(txCount);
         FeeAccumulator feeAccumulator = new(txCount, block.Header.GasBeneficiary, _blockExecutionContext.Spec.FeeCollector);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
         ParallelUnbalancedWork.For(1, txCount, i => FindNonceDependencies(i, block, scheduler));
@@ -50,7 +51,7 @@ public class ParallelBlockValidationTransactionsExecutor(
         ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, feeAccumulator, preBlockCaches, receipts, results, in _blockExecutionContext);
         try
         {
-            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
+            using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4, blockMetrics);
             parallelRunner.Run().GetAwaiter().GetResult();
             ThrowIfInvalidResults(block, transactions, results);
             FinalizeGasUsed(block, receipts);
@@ -63,7 +64,7 @@ public class ParallelBlockValidationTransactionsExecutor(
         }
         finally
         {
-            ParallelBlockMetrics snapshot = ParallelBlockMetricsCalculator.Calculate(transactions, multiVersionMemory);
+            ParallelBlockMetrics snapshot = blockMetrics.Snapshot();
             Metrics.ReportBlock(snapshot);
             LogParallelBlockReport(block, snapshot, results, processedSuccessfully);
         }

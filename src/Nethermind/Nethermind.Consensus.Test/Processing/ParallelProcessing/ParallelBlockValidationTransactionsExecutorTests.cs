@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -17,8 +19,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -30,7 +34,7 @@ using Metrics = Nethermind.Consensus.Processing.ParallelProcessing.Metrics;
 
 namespace Nethermind.Consensus.Test.Processing.ParallelProcessing;
 
-[NonParallelizable]
+[NonParallelizable] // don't parallelize, each test already uses parallelization to process transactions
 public class ParallelBlockValidationTransactionsExecutorTests
 {
     private static readonly EthereumEcdsa Ecdsa = new(BlockchainIds.Mainnet);
@@ -39,9 +43,16 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
     private class ParallelTestBlockchain(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec) : TestBlockchain
     {
-        public static async Task<ParallelTestBlockchain> Create(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec = null, Action<ContainerBuilder> configurer = null)
+        private long _testTimeoutMs = DefaultTimeout;
+
+        public static async Task<ParallelTestBlockchain> Create(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec = null, Action<ContainerBuilder> configurer = null, long? testTimeoutMs = null)
         {
-            ParallelTestBlockchain chain = new(blocksConfig, releaseSpec ?? Osaka.Instance);
+            long resolvedTimeoutMs = testTimeoutMs ?? DefaultTimeout;
+            ParallelTestBlockchain chain = new(blocksConfig, releaseSpec ?? Osaka.Instance)
+            {
+                TestTimeout = resolvedTimeoutMs
+            };
+            chain._testTimeoutMs = resolvedTimeoutMs;
             await chain.Build(configurer);
             return chain;
         }
@@ -50,8 +61,22 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
         protected override IEnumerable<IConfig> CreateConfigs() => [blocksConfig];
 
+        protected override AutoCancelTokenSource CreateCancellationSource() =>
+            AutoCancelTokenSource.ThatCancelAfter(
+                Debugger.IsAttached
+                    ? TimeSpan.FromMilliseconds(-1)
+                    : TimeSpan.FromMilliseconds(_testTimeoutMs));
+
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
-            base.ConfigureContainer(builder, configProvider).AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec));
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec))
+                .AddSingleton<IGenesisPostProcessor>(new GenesisGasLimitOverride(TestBlockGasLimit))
+                .AddDecorator<ITransactionProcessor, DelayedTransactionProcessor>();
+    }
+
+    private sealed class GenesisGasLimitOverride(long gasLimit) : IGenesisPostProcessor
+    {
+        public void PostProcess(Block genesis) => genesis.Header.GasLimit = gasLimit;
     }
 
     /// <summary>
@@ -64,20 +89,49 @@ public class ParallelBlockValidationTransactionsExecutorTests
         private ParallelTestBlockchain Parallel { get; } = parallel;
         private ParallelTestBlockchain Single { get; } = single;
 
-        public static async Task<DualBlockchain> Create(IReleaseSpec releaseSpec = null)
-        {
-            ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), releaseSpec);
-            ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), releaseSpec);
-            return new DualBlockchain(parallel, single);
-        }
+        public static async Task<DualBlockchain> Create(IReleaseSpec releaseSpec = null, long? testTimeoutMs = null) =>
+            new(await ParallelTestBlockchain.Create(BuildConfig(true), releaseSpec, testTimeoutMs: testTimeoutMs),
+                await ParallelTestBlockchain.Create(BuildConfig(false), releaseSpec, testTimeoutMs: testTimeoutMs));
 
         public async Task<BlockPair> AddBlock(params Transaction[] transactions) =>
-            new(await Parallel.AddBlock(transactions), await Single.AddBlock(transactions));
+            new(await AddBlockAndWaitForHead(Parallel, transactions), await AddBlockAndWaitForHead(Single, transactions));
 
-        public BlockPair ProcessBlockWithFeeRecipients(Address beneficiary, Address feeCollector,
-            params Transaction[] transactions)
+        public async Task<BlockPair> AddBlockWithDelays(TxDelay[] delays, params Transaction[] transactions) =>
+            new(await AddBlockAndWaitForHead(Parallel, transactions, delays),
+                await AddBlockAndWaitForHead(Single, transactions));
+
+        public BlockPair ProcessBlockDirect(BlockPair parentBlocks, params Transaction[] transactions) =>
+            new(ProcessBlockDirectWithScope(Parallel, parentBlocks.Parallel.Header, transactions),
+                ProcessBlockDirectWithScope(Single, parentBlocks.Single.Header, transactions));
+
+        public BlockPair ProcessBlockDirectOnHead(params Transaction[] transactions) =>
+            new(ProcessBlockDirectWithScope(Parallel, Parallel.BlockTree.Head!.Header, transactions),
+                ProcessBlockDirectWithScope(Single, Single.BlockTree.Head!.Header, transactions));
+
+        public BlockPair ProcessBlockDirectOnHead(TxDelay[] delays, params Transaction[] transactions)
         {
-            return new(ProcessBlock(Parallel), ProcessBlock(Single));
+            BlockHeader parallelHead = Parallel.BlockTree.Head!.Header;
+            BlockHeader singleHead = Single.BlockTree.Head!.Header;
+            Block parallelBlock;
+            using (TransactionDelayPolicy.Apply(delays ?? []))
+            {
+                parallelBlock = ProcessBlockDirectWithScope(Parallel, parallelHead, transactions);
+            }
+
+            Block singleBlock = ProcessBlockDirectWithScope(Single, singleHead, transactions);
+            return new BlockPair(parallelBlock, singleBlock);
+        }
+
+        public BlockPair ProcessBlockWithFeeRecipients(Address beneficiary, Address feeCollector, TxDelay[] delays, params Transaction[] transactions)
+        {
+            Block parallelBlock;
+            using (TransactionDelayPolicy.Apply(delays ?? []))
+            {
+                parallelBlock = ProcessBlock(Parallel);
+            }
+
+            Block singleBlock = ProcessBlock(Single);
+            return new BlockPair(parallelBlock, singleBlock);
 
             Block ProcessBlock(ParallelTestBlockchain chain)
             {
@@ -111,6 +165,21 @@ public class ParallelBlockValidationTransactionsExecutorTests
             Single.Dispose();
             return ValueTask.CompletedTask;
         }
+
+        private static Block ProcessBlockDirectWithScope(ParallelTestBlockchain chain, BlockHeader parent, Transaction[] transactions)
+        {
+            using IDisposable scope = chain.MainProcessingContext.WorldState.BeginScope(parent);
+            return ParallelBlockValidationTransactionsExecutorTests.ProcessBlockDirect(chain, parent, transactions, parent.GasLimit);
+        }
+
+        private static async Task<Block> AddBlockAndWaitForHead(ParallelTestBlockchain chain, Transaction[] transactions) =>
+            await chain.AddBlock(transactions);
+
+        private static async Task<Block> AddBlockAndWaitForHead(ParallelTestBlockchain chain, Transaction[] transactions, TxDelay[] delays)
+        {
+            using IDisposable delayScope = TransactionDelayPolicy.Apply(delays ?? []);
+            return await chain.AddBlock(transactions);
+        }
     }
 
     private readonly record struct BlockPair(Block Parallel, Block Single)
@@ -137,7 +206,9 @@ public class ParallelBlockValidationTransactionsExecutorTests
         long BlockedReads,
         long ParallelizationPercent)
     {
-        public static ExpectedMetrics Independent(int txCount) => Create(txCount, reexecutions: 0, blockedReads: 0);
+        public static ExpectedMetrics Independent(int txCount) => Create(txCount, reexecutions: 0);
+
+        public static ExpectedMetrics AllDependent(int txCount) => Create(txCount, reexecutions: 0);
 
         public static ExpectedMetrics Create(int txCount, long reexecutions, long blockedReads = 0, long? revalidations = null)
         {
@@ -157,6 +228,122 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Assert.That(snapshot.BlockedReads, Is.EqualTo(expected.BlockedReads), "BlockedReads");
                 Assert.That(snapshot.ParallelizationPercent, Is.EqualTo(expected.ParallelizationPercent), "ParallelizationPercent");
             });
+        }
+    }
+
+    // Raise the gas limit so large test blocks fit without tx pool timeouts.
+    private const long TestBlockGasLimit = 30_000_000;
+    private const int ShortDelayMs = 50;
+    private const int LongDelayMs = 200;
+    private static readonly TxDelay[] NoDelays = [];
+
+    public readonly record struct TxDelay(Transaction Transaction, int Milliseconds);
+
+    private static TxDelay Delay(Transaction transaction, int milliseconds) => new(transaction, milliseconds);
+
+    private static class TransactionDelayPolicy
+    {
+        private static Dictionary<Hash256, int> _delays;
+
+        public static IDisposable Apply(TxDelay[] delays)
+        {
+            if (delays.Length == 0)
+            {
+                return NoopScope.Instance;
+            }
+
+            Dictionary<Hash256, int> map = new(delays.Length);
+            foreach (TxDelay delay in delays)
+            {
+                if (delay.Milliseconds > 0)
+                {
+                    Hash256 hash = delay.Transaction.Hash;
+                    if (hash is not null)
+                    {
+                        map[hash] = delay.Milliseconds;
+                    }
+                }
+            }
+
+            Volatile.Write(ref _delays, map);
+            return new DelayScope();
+        }
+
+        public static bool TryGetDelay(Transaction transaction, out int milliseconds)
+        {
+            Dictionary<Hash256, int> delays = Volatile.Read(ref _delays);
+            if (delays is null)
+            {
+                milliseconds = 0;
+                return false;
+            }
+
+            Hash256 hash = transaction.Hash;
+            if (hash is null)
+            {
+                milliseconds = 0;
+                return false;
+            }
+
+            return delays.TryGetValue(hash, out milliseconds);
+        }
+
+        private static void Clear() => Volatile.Write(ref _delays, null);
+
+        private sealed class DelayScope : IDisposable
+        {
+            public void Dispose() => Clear();
+        }
+
+        private sealed class NoopScope : IDisposable
+        {
+            public static readonly NoopScope Instance = new();
+            public void Dispose() { }
+        }
+    }
+
+    private sealed class DelayedTransactionProcessor(ITransactionProcessor inner) : ITransactionProcessor
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            ApplyDelay(transaction);
+            return inner.Execute(transaction, txTracer);
+        }
+
+        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer)
+        {
+            ApplyDelay(transaction);
+            return inner.CallAndRestore(transaction, txTracer);
+        }
+
+        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
+        {
+            ApplyDelay(transaction);
+            return inner.BuildUp(transaction, txTracer);
+        }
+
+        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer)
+        {
+            ApplyDelay(transaction);
+            return inner.Trace(transaction, txTracer);
+        }
+
+        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
+        {
+            ApplyDelay(transaction);
+            return inner.Warmup(transaction, txTracer);
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+
+        private static void ApplyDelay(Transaction transaction)
+        {
+            if (TransactionDelayPolicy.TryGetDelay(transaction, out int milliseconds) && milliseconds > 0)
+            {
+                Thread.Sleep(milliseconds);
+            }
         }
     }
 
@@ -191,8 +378,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
             ],
-            // Same sender nonce chain forces validation and dependent reads.
-            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2));
+            // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+            ExpectedMetrics.AllDependent(3));
 
             yield return Test("5 Transactions, nonce dependency",
             [
@@ -202,39 +389,41 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Tx(TestItem.PrivateKeyA, TestItem.AddressE, 3, 4.Ether()),
                 Tx(TestItem.PrivateKeyA, TestItem.AddressF, 4, 5.Ether()),
             ],
-            // Long nonce chain makes all but the first dependent.
-            ExpectedMetrics.Create(5, reexecutions: 4, blockedReads: 4));
+            // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+            ExpectedMetrics.AllDependent(5));
 
+            Transaction balanceTx0 = Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 10.Ether());
+            Transaction balanceTx1 = Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1, 5.Ether());
+            Transaction balanceTx2 = Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 3.Ether());
             yield return Test("Balance changes across transactions",
             [
-                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0, 10.Ether()),
-                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1, 5.Ether()),
-                Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 3.Ether()),
+                balanceTx0,
+                balanceTx1,
+                balanceTx2,
             ],
-            // A's nonce chain and B receiving from tx0 create balance dependencies.
-            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 1));
+            // Nonce chain is pre-ordered; delayed funding yields blocked reads and reexecs.
+            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 0),
+            delays: [Delay(balanceTx0, ShortDelayMs)]);
 
+            Transaction sharedTx0 = Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 500.Ether());
+            Transaction sharedTx1 = Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 500.Ether());
+            Transaction sharedTx2 = Tx(TestItem.PrivateKeyC, TestItem.AddressD, 0, 500.Ether());
             yield return Test("Balance transfers from multiple senders",
             [
-                Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 500.Ether()),
-                Tx(TestItem.PrivateKeyB, TestItem.AddressD, 0, 500.Ether()),
-                Tx(TestItem.PrivateKeyC, TestItem.AddressD, 0, 500.Ether()),
+                sharedTx0,
+                sharedTx1,
+                sharedTx2,
             ],
-            // Shared recipient balance causes state conflicts without nonce deps.
-            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 0));
+            // tx2 is delayed so it reads tx1's write before the delayed base write lands.
+            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 0),
+            delays: [Delay(sharedTx0, LongDelayMs), Delay(sharedTx2, ShortDelayMs)]);
 
-            // Stress test with 15 transactions from 3 senders
+            // Large block with 300 transactions from 3 pre-funded senders
             PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
-            Transaction[] manyTxs = new Transaction[15];
-            for (int i = 0; i < 3; i++)
-            {
-                for (int j = 0; j < 5; j++)
-                {
-                    manyTxs[i * 5 + j] = Tx(senders[i], TestItem.AddressD, (UInt256)j, 1.Wei(), 21000);
-                }
-            }
-            // Three nonce chains plus a shared recipient make all tx dependent.
-            yield return Test("15 Transactions from 3 senders", manyTxs, ExpectedMetrics.Create(15, reexecutions: 14, blockedReads: 14, revalidations: 12));
+            Transaction[] manyTxs = BuildMultiSenderTransactions(senders, txsPerSender: 100, recipientMarker: 0x44);
+            yield return Test("300 Transactions from 3 senders", manyTxs,
+                // Nonce chains are pre-ordered; only the funded senders can transact.
+                ExpectedMetrics.AllDependent(manyTxs.Length));
 
         }
     }
@@ -255,7 +444,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
                 },
                 // Distinct recipients and senders; fee keys are per-tx so no shared state.
-                ExpectedMetrics.Independent(3))
+                ExpectedMetrics.Independent(3),
+                NoDelays)
             { TestName = "GasBeneficiary sends one transaction" };
 
             // GasBeneficiary sends multiple transactions with nonce dependency
@@ -267,21 +457,26 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Tx(TestItem.PrivateKeyA, TestItem.AddressE, 1, 2.Ether()),
                     Tx(TestItem.PrivateKeyA, TestItem.AddressF, 2, 3.Ether()),
                 },
-                // Nonce chain on one sender drives dependencies; recipients are distinct.
-                ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 2))
+                // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+                ExpectedMetrics.AllDependent(3),
+                NoDelays)
             { TestName = "GasBeneficiary sends multiple transactions with nonce dependency" };
 
             // FeeCollector sends a transaction while receiving base fees
+            Transaction feeCollectorTx0 = Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 1.Ether());
+            Transaction feeCollectorTx1 = Tx(TestItem.PrivateKeyB, TestItem.AddressE, 0, 2.Ether());  // FeeCollector sends
+            Transaction feeCollectorTx2 = Tx(TestItem.PrivateKeyC, AddressG, 0, 3.Ether());
             yield return new TestCaseData(
                 TestItem.AddressF, TestItem.AddressB,
                 new[]
                 {
-                    Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 1.Ether()),
-                    Tx(TestItem.PrivateKeyB, TestItem.AddressE, 0, 2.Ether()),  // FeeCollector sends
-                    Tx(TestItem.PrivateKeyC, AddressG, 0, 3.Ether()),
+                    feeCollectorTx0,
+                    feeCollectorTx1,
+                    feeCollectorTx2,
                 },
-                // Fee collector sender reads fee deltas from prior txs; others remain independent.
-                ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 1, revalidations: 0))
+            // Fee collector sender hits a blocked read until earlier fee credit lands.
+            ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 1, revalidations: 0),
+            new[] { Delay(feeCollectorTx0, ShortDelayMs) })
             { TestName = "FeeCollector sends one transaction" };
 
             // FeeCollector sends multiple transactions with nonce dependency
@@ -293,21 +488,26 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Tx(TestItem.PrivateKeyA, TestItem.AddressE, 1, 2.Ether()),
                     Tx(TestItem.PrivateKeyA, AddressG, 2, 3.Ether()),
                 },
-                // Nonce chain on fee collector sender drives dependencies.
-                ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 2))
+                // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+                ExpectedMetrics.AllDependent(3),
+                NoDelays)
             { TestName = "FeeCollector sends multiple transactions with nonce dependency" };
 
             // Both GasBeneficiary and FeeCollector send transactions
+            Transaction dualFeeTx0 = Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 1.Ether());  // GasBeneficiary sends
+            Transaction dualFeeTx1 = Tx(TestItem.PrivateKeyB, TestItem.AddressE, 0, 2.Ether());  // FeeCollector sends
+            Transaction dualFeeTx2 = Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether());
             yield return new TestCaseData(
                 TestItem.AddressA, TestItem.AddressB,
                 new[]
                 {
-                    Tx(TestItem.PrivateKeyA, TestItem.AddressD, 0, 1.Ether()),  // GasBeneficiary sends
-                    Tx(TestItem.PrivateKeyB, TestItem.AddressE, 0, 2.Ether()),  // FeeCollector sends
-                    Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
+                    dualFeeTx0,
+                    dualFeeTx1,
+                    dualFeeTx2,
                 },
-                // Fee collector sender must read prior fee deltas; other txs are independent.
-                ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 1, revalidations: 0))
+            // Fee collector sender hits a blocked read until earlier fee credit lands.
+            ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 1, revalidations: 0),
+            new[] { Delay(dualFeeTx0, ShortDelayMs) })
             { TestName = "Both GasBeneficiary and FeeCollector send transactions" };
 
             // GasBeneficiary and FeeCollector are the same address
@@ -320,10 +520,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Tx(TestItem.PrivateKeyC, TestItem.AddressF, 0, 3.Ether()),
                 },
                 // Fee recipient overlap does not add MVCC deps; recipients are distinct.
-                ExpectedMetrics.Independent(3))
+                ExpectedMetrics.Independent(3),
+                NoDelays)
             { TestName = "GasBeneficiary and FeeCollector are the same address" };
 
-            // GasBeneficiary not involved in any transaction — only receives fees (single Set() per tx)
+            // GasBeneficiary not involved in any transaction - only receives fees (single Set() per tx)
             yield return new TestCaseData(
                 TestItem.AddressD, emptyFeeCollector,
                 new[]
@@ -333,10 +534,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Tx(TestItem.PrivateKeyC, AddressG, 0, 3.Ether()),
                 },
                 // Beneficiary never touched; fee keys are per-tx and no recipients overlap.
-                ExpectedMetrics.Independent(3))
+                ExpectedMetrics.Independent(3),
+                NoDelays)
             { TestName = "GasBeneficiary not involved in any transaction" };
 
-            // FeeCollector not involved in any transaction — only receives base fees
+            // FeeCollector not involved in any transaction - only receives base fees
             yield return new TestCaseData(
                 TestItem.AddressF, TestItem.AddressD,
                 new[]
@@ -346,16 +548,17 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Tx(TestItem.PrivateKeyC, AddressH, 0, 3.Ether()),
                 },
                 // Fee collector never touched; fee keys are per-tx and no recipients overlap.
-                ExpectedMetrics.Independent(3))
+                ExpectedMetrics.Independent(3),
+                NoDelays)
             { TestName = "FeeCollector not involved in any transaction" };
         }
     }
 
     [TestCaseSource(nameof(FeeRecipientTransferTests))]
-    public async Task Fee_recipient_transfer_tests(Address beneficiary, Address feeCollector, Transaction[] transactions, ExpectedMetrics expectedMetrics)
+    public async Task Fee_recipient_transfer_tests(Address beneficiary, Address feeCollector, Transaction[] transactions, ExpectedMetrics expectedMetrics, TxDelay[] delays)
     {
-        await using DualBlockchain chains = await DualBlockchain.Create();
-        BlockPair blocks = chains.ProcessBlockWithFeeRecipients(beneficiary, feeCollector, transactions);
+        await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 30_000);
+        BlockPair blocks = chains.ProcessBlockWithFeeRecipients(beneficiary, feeCollector, delays, transactions);
         blocks.AssertStateRootsMatch();
         AssertLastBlockMetrics(expectedMetrics);
     }
@@ -373,13 +576,16 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .Done;
             byte[] storeInitCode = Prepare.EvmCode.ForInitOf(storeCode).Done;
             Address storeContractAddress = ContractAddress.From(TestItem.AddressA, 0);
+            Transaction storeCreate = TxCreateContract(TestItem.PrivateKeyA, 0, storeInitCode);
+            Transaction storeCall = TxToContract(TestItem.PrivateKeyB, storeContractAddress, 0, []);
             yield return Test("State write then read dependency",
             [
-                TxCreateContract(TestItem.PrivateKeyA, 0, storeInitCode),
-                TxToContract(TestItem.PrivateKeyB, storeContractAddress, 0, [])
+                storeCreate,
+                storeCall
             ],
-            // Call reads contract state created earlier, so it depends on the create.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1, revalidations: 0));
+            // Call reads contract state created earlier, so it revalidates after create.
+            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
+            delays: [Delay(storeCreate, ShortDelayMs)]);
 
             // SelfDestruct in transaction
             byte[] selfDestructCode = Prepare.EvmCode
@@ -387,13 +593,16 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .Done;
             byte[] selfDestructInitCode = Prepare.EvmCode.ForInitOf(selfDestructCode).Done;
             Address selfDestructAddress = ContractAddress.From(TestItem.AddressA, 0);
+            Transaction selfDestructCreate = TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether());
+            Transaction selfDestructCall = TxToContract(TestItem.PrivateKeyB, selfDestructAddress, 0, []);
             yield return Test("SelfDestruct in transaction",
             [
-                TxCreateContract(TestItem.PrivateKeyA, 0, selfDestructInitCode, 10.Ether()),
-                TxToContract(TestItem.PrivateKeyB, selfDestructAddress, 0, [])
+                selfDestructCreate,
+                selfDestructCall
             ],
-            // Selfdestruct reads the newly created contract, so it depends on the create.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1, revalidations: 0));
+            // Selfdestruct reads the newly created contract, so it revalidates after create.
+            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
+            delays: [Delay(selfDestructCreate, ShortDelayMs)]);
 
             // Contract creation with value transfer
             byte[] storeBalanceCode = Prepare.EvmCode
@@ -425,42 +634,18 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .Done;
             byte[] tStorageInitCode = Prepare.EvmCode.ForInitOf(tStorageCode).Done;
             Address tStorageAddress = ContractAddress.From(TestItem.AddressA, 0);
+            Transaction tStorageCreate = TxCreateContract(TestItem.PrivateKeyA, 0, tStorageInitCode);
+            Transaction tStorageCall1 = TxToContract(TestItem.PrivateKeyB, tStorageAddress, 0, []);
+            Transaction tStorageCall2 = TxToContract(TestItem.PrivateKeyC, tStorageAddress, 0, []);
             yield return Test("Transient storage across transactions",
             [
-                TxCreateContract(TestItem.PrivateKeyA, 0, tStorageInitCode),
-                TxToContract(TestItem.PrivateKeyB, tStorageAddress, 0, []),
-                TxToContract(TestItem.PrivateKeyC, tStorageAddress, 0, []),
+                tStorageCreate,
+                tStorageCall1,
+                tStorageCall2,
             ],
-            // Contract creation and shared storage writes force the calls to depend on the prior state.
-            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 0));
-
-            // Multiple senders with state dependencies
-            byte[] storeCallerCode = Prepare.EvmCode
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SLOAD)
-                .Op(Instruction.CALLER)
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SLOAD)
-                .Op(Instruction.SSTORE)
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SLOAD)
-                .PushData(1)
-                .Op(Instruction.ADD)
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SSTORE)
-                .STOP()
-                .Done;
-            byte[] storeCallerInitCode = Prepare.EvmCode.ForInitOf(storeCallerCode).Done;
-            Address storeCallerAddress = ContractAddress.From(TestItem.AddressA, 0);
-            yield return Test("Multiple senders with state dependencies",
-            [
-                TxCreateContract(TestItem.PrivateKeyA, 0, storeCallerInitCode),
-                TxToContract(TestItem.PrivateKeyB, storeCallerAddress, 0, []),
-                TxToContract(TestItem.PrivateKeyC, storeCallerAddress, 0, []),
-                TxToContract(TestItem.PrivateKeyA, storeCallerAddress, 1, []),
-            ],
-            // Shared storage plus the creator nonce chain makes the last call depend on the prior state.
-            ExpectedMetrics.Create(4, reexecutions: 3, blockedReads: 3, revalidations: 1));
+            // Contract creation and shared transient writes reexecute all calls.
+            ExpectedMetrics.Create(3, reexecutions: 3, blockedReads: 0, revalidations: 3),
+            delays: [Delay(tStorageCreate, ShortDelayMs), Delay(tStorageCall1, ShortDelayMs)]);
 
             // Contract deployment and immediate call
             byte[] simpleCode = Prepare.EvmCode
@@ -471,13 +656,16 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .Done;
             byte[] simpleInitCode = Prepare.EvmCode.ForInitOf(simpleCode).Done;
             Address simpleAddress = ContractAddress.From(TestItem.AddressA, 0);
+            Transaction simpleCreate = TxCreateContract(TestItem.PrivateKeyA, 0, simpleInitCode);
+            Transaction simpleCall = TxToContract(TestItem.PrivateKeyB, simpleAddress, 0, [], 5.Ether());
             yield return Test("Contract deployment and immediate call",
             [
-                TxCreateContract(TestItem.PrivateKeyA, 0, simpleInitCode),
-                TxToContract(TestItem.PrivateKeyB, simpleAddress, 0, [], 5.Ether())
+                simpleCreate,
+                simpleCall
             ],
             // Immediate call depends on the contract created in the prior transaction.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1, revalidations: 0));
+            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
+            delays: [Delay(simpleCreate, ShortDelayMs)]);
 
         }
     }
@@ -489,26 +677,33 @@ public class ParallelBlockValidationTransactionsExecutorTests
             // SetCode authorization changes nonce
             AuthorizationTuple authBNonce0 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
             AuthorizationTuple authBNonce1 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 1);
+            Transaction setCodeNonce0 = TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authBNonce0]);
+            Transaction setCodeNonce1 = TxSetCode(TestItem.PrivateKeyC, TestItem.AddressD, 0, [authBNonce1]);
             yield return Test("SetCode authorization changes nonce",
             [
-                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authBNonce0]),
-                TxSetCode(TestItem.PrivateKeyC, TestItem.AddressD, 0, [authBNonce1]),
+                setCodeNonce0,
+                setCodeNonce1,
             ],
-            // Second authorization reads the authority nonce updated by the first.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1, revalidations: 0));
+            // Authority nonce update lands late, so the later auth revalidates once.
+            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
+            delays: [Delay(setCodeNonce0, ShortDelayMs)]);
 
             // Multiple SetCode authorizations same block
             AuthorizationTuple authBMulti0 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
             AuthorizationTuple authBMulti1 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressD, 1);
             AuthorizationTuple authBMulti2 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressE, 2);
+            Transaction setCodeMulti0 = TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authBMulti0]);
+            Transaction setCodeMulti1 = TxSetCode(TestItem.PrivateKeyC, TestItem.AddressD, 0, [authBMulti1]);
+            Transaction setCodeMulti2 = TxSetCode(TestItem.PrivateKeyB, TestItem.AddressF, 2, [authBMulti2]);
             yield return Test("Multiple SetCode authorizations same block",
             [
-                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authBMulti0]),
-                TxSetCode(TestItem.PrivateKeyC, TestItem.AddressD, 0, [authBMulti1]),
-                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressF, 1, [authBMulti2]),
+                setCodeMulti0,
+                setCodeMulti1,
+                setCodeMulti2,
             ],
-            // Authority nonce plus sender reuse makes the final authorization dependent.
-            ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 1));
+            // Sequential auth nonces force tx1/tx2 to revalidate; no blocked reads are needed.
+            ExpectedMetrics.Create(3, reexecutions: 3, blockedReads: 0, revalidations: 3),
+            delays: [Delay(setCodeMulti0, LongDelayMs), Delay(setCodeMulti1, ShortDelayMs)]);
 
             // Authorization chain D->E, E->F, F->G
             AuthorizationTuple authChainD = Ecdsa.Sign(TestItem.PrivateKeyD, BlockchainIds.Mainnet, TestItem.AddressE, 0);
@@ -526,13 +721,16 @@ public class ParallelBlockValidationTransactionsExecutorTests
             // Re-delegation: delegate B to C, then B to D
             AuthorizationTuple authRedelegate0 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
             AuthorizationTuple authRedelegate1 = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressD, 1);
+            Transaction redelegate0 = TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authRedelegate0]);
+            Transaction redelegate1 = TxSetCode(TestItem.PrivateKeyC, TestItem.AddressB, 0, [authRedelegate1]);
             yield return Test("Re-delegation in same block",
             [
-                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [authRedelegate0]),
-                TxSetCode(TestItem.PrivateKeyC, TestItem.AddressB, 0, [authRedelegate1]),
+                redelegate0,
+                redelegate1,
             ],
-            // Re-delegation reads the authority nonce updated by the prior authorization.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1, revalidations: 0));
+            // Second delegation must observe the updated authority nonce from the first.
+            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
+            delays: [Delay(redelegate0, ShortDelayMs)]);
         }
     }
 
@@ -630,57 +828,136 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .WithValue(0)
             .TestObject;
 
-    private static TestCaseData Test(string name, Transaction[] transactions, ExpectedMetrics expectedMetrics) =>
-        new([transactions, expectedMetrics]) { TestName = name };
+    private static TestCaseData Test(string name, Transaction[] transactions, ExpectedMetrics expectedMetrics, TxDelay[] delays = null) =>
+        new([transactions, expectedMetrics, delays]) { TestName = name };
 
-    private static TestCaseData Test(Transaction[] transactions, TransactionResult expected, ExpectedMetrics expectedMetrics, string name = "", [CallerArgumentExpression(nameof(expected))] string error = "") =>
-        new([transactions, expected, expectedMetrics]) { TestName = $"{transactions.Length} Transactions, {error.Replace(nameof(TransactionResult) + ".", "")}:{name}" };
+    private static TestCaseData Test(
+        Transaction[] transactions,
+        TransactionResult expected,
+        ExpectedMetrics expectedMetrics,
+        string name = "",
+        TxDelay[] delays = null,
+        [CallerArgumentExpression(nameof(expected))] string error = "") =>
+        new([transactions, expected, expectedMetrics, delays]) { TestName = $"{transactions.Length} Transactions, {error.Replace(nameof(TransactionResult) + ".", "")}:{name}" };
 
     [TestCaseSource(nameof(SimpleBlocksTests))]
     [TestCaseSource(nameof(ContractBlocksTests))]
-    [TestCaseSource(nameof(SetCodeBlocksTests))]
-    public async Task Successful_blocks(Transaction[] transactions, ExpectedMetrics expectedMetrics)
+    public async Task Successful_blocks(Transaction[] transactions, ExpectedMetrics expectedMetrics, TxDelay[] delays)
     {
-        await using DualBlockchain chains = await DualBlockchain.Create();
-        BlockPair blocks = await chains.AddBlock(transactions);
+        await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 30_000);
+        BlockPair blocks = delays is null ? await chains.AddBlock(transactions) : await chains.AddBlockWithDelays(delays, transactions);
+        blocks.AssertFullMatch(transactions.Length);
+        AssertLastBlockMetrics(expectedMetrics);
+    }
+
+    [TestCaseSource(nameof(SetCodeBlocksTests))]
+    public async Task Successful_setcode_blocks_direct(Transaction[] transactions, ExpectedMetrics expectedMetrics, TxDelay[] delays)
+    {
+        await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 30_000);
+        BlockPair blocks = delays is null
+            ? chains.ProcessBlockDirectOnHead(transactions)
+            : chains.ProcessBlockDirectOnHead(delays, transactions);
         blocks.AssertFullMatch(transactions.Length);
         AssertLastBlockMetrics(expectedMetrics);
     }
 
     [Test]
+    public async Task Multiple_senders_with_state_dependencies_direct()
+    {
+        byte[] storeCallerCode = Prepare.EvmCode
+            .Op(Instruction.CALLER)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.SLOAD)
+            .PushData(1)
+            .Op(Instruction.ADD)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        byte[] storeCallerInitCode = Prepare.EvmCode.ForInitOf(storeCallerCode).Done;
+        Address storeCallerAddress = ContractAddress.From(TestItem.AddressA, 0);
+        Transaction storeCallerCreate = TxCreateContract(TestItem.PrivateKeyA, 0, storeCallerInitCode);
+        Transaction storeCallerCall1 = TxToContract(TestItem.PrivateKeyB, storeCallerAddress, 0, []);
+        Transaction storeCallerCall2 = TxToContract(TestItem.PrivateKeyC, storeCallerAddress, 0, []);
+        Transaction[] transactions = [storeCallerCreate, storeCallerCall1, storeCallerCall2];
+
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), testTimeoutMs: 30_000);
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), testTimeoutMs: 30_000);
+        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
+        BlockHeader singleHead = single.BlockTree.Head!.Header;
+
+        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
+        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
+
+        Block parallelBlock;
+        using (TransactionDelayPolicy.Apply([Delay(storeCallerCall1, LongDelayMs), Delay(storeCallerCall2, LongDelayMs)]))
+        {
+            parallelBlock = ProcessBlockDirect(parallel, parallelHead, transactions, parallelHead.GasLimit);
+        }
+
+        Block singleBlock = ProcessBlockDirect(single, singleHead, transactions, singleHead.GasLimit);
+        new BlockPair(parallelBlock, singleBlock).AssertFullMatch(transactions.Length);
+        // Calls are delayed so the create commit lands before they read the contract.
+        AssertLastBlockMetrics(ExpectedMetrics.AllDependent(3));
+    }
+
+    [Test]
     public async Task Different_sender_transactions_are_parallelizable()
     {
-        const int senderCount = 180;
+        // Two blocks: fund senders first, then execute independent transactions.
+        const int senderCount = 300;
         PrivateKey[] seedSenders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
         (Transaction[] fundingTxs, Transaction[] independentTxs) = BuildSeededSenderBlocks(senderCount, seedSenders);
-        long dependencyCount = senderCount - seedSenders.Length;
 
-        await using DualBlockchain chains = await DualBlockchain.Create();
+        await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 60_000);
+
         BlockPair fundingBlocks = await chains.AddBlock(fundingTxs);
         fundingBlocks.AssertFullMatch(fundingTxs.Length);
-        // Seed senders create nonce chains; only the first tx per sender is independent.
-        AssertLastBlockMetrics(ExpectedMetrics.Create(fundingTxs.Length, reexecutions: dependencyCount, blockedReads: dependencyCount, revalidations: dependencyCount));
+        // Nonce chains are pre-ordered; no runtime reexecs or blocked reads.
+        AssertLastBlockMetrics(ExpectedMetrics.AllDependent(fundingTxs.Length));
 
-        BlockPair independentBlocks = await chains.AddBlock(independentTxs);
+        BlockPair independentBlocks = chains.ProcessBlockDirect(fundingBlocks, independentTxs);
         independentBlocks.AssertFullMatch(independentTxs.Length);
-        // Each transaction can be parallelized.
+        // Senders are pre-funded, so the block is fully independent.
         AssertLastBlockMetrics(ExpectedMetrics.Independent(independentTxs.Length));
+    }
+
+    [Test]
+    public async Task Expanding_senders_are_parallelizable_direct()
+    {
+        PrivateKey[] seedSenders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+        const int newSendersPerSeed = 20;
+        (Transaction[] transactions, TxDelay[] delays) = BuildExpandingSenderTransactions(seedSenders, newSendersPerSeed, LongDelayMs);
+
+        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), testTimeoutMs: 30_000);
+        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), testTimeoutMs: 30_000);
+        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
+        BlockHeader singleHead = single.BlockTree.Head!.Header;
+
+        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
+        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
+
+        Block parallelBlock;
+        using (TransactionDelayPolicy.Apply(delays))
+        {
+            parallelBlock = ProcessBlockDirect(parallel, parallelHead, transactions, parallelHead.GasLimit);
+        }
+
+        Block singleBlock = ProcessBlockDirect(single, singleHead, transactions, singleHead.GasLimit);
+        new BlockPair(parallelBlock, singleBlock).AssertFullMatch(transactions.Length);
+        // Spending txs are delayed to execute after the funding wave commits.
+        AssertLastBlockMetrics(ExpectedMetrics.AllDependent(transactions.Length));
     }
 
     private static (Transaction[] funding, Transaction[] independent) BuildSeededSenderBlocks(int senderCount, PrivateKey[] seedSenders)
     {
-        if (senderCount > TestItem.PrivateKeys.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(senderCount), "Seeded senders exceed available test keys.");
-        }
-
         Transaction[] fundingTxs = new Transaction[senderCount];
         Transaction[] independentTxs = new Transaction[senderCount];
         for (int i = 0; i < senderCount; i++)
         {
             PrivateKey seedSender = seedSenders[i % seedSenders.Length];
             UInt256 nonce = (UInt256)(i / seedSenders.Length);
-            PrivateKey seededSender = TestItem.PrivateKeys[i];
+            PrivateKey seededSender = CreateSeededSender(i);
             fundingTxs[i] = Tx(seedSender, seededSender.Address, nonce, 2.Ether(), gasLimit: 21_000);
 
             byte[] recipientBytes = new byte[Address.Size];
@@ -692,6 +969,82 @@ public class ParallelBlockValidationTransactionsExecutorTests
         }
 
         return (fundingTxs, independentTxs);
+    }
+
+    private static Transaction[] BuildMultiSenderTransactions(PrivateKey[] senders, int txsPerSender, byte recipientMarker)
+    {
+        Transaction[] transactions = new Transaction[senders.Length * txsPerSender];
+        for (int senderIndex = 0; senderIndex < senders.Length; senderIndex++)
+        {
+            for (int nonce = 0; nonce < txsPerSender; nonce++)
+            {
+                int index = senderIndex * txsPerSender + nonce;
+                Address recipient = CreateRecipientAddress(recipientMarker, index);
+                transactions[index] = Tx(senders[senderIndex], recipient, (UInt256)nonce, 1.Wei(), 21_000);
+            }
+        }
+
+        return transactions;
+    }
+
+    private static (Transaction[] transactions, TxDelay[] delays) BuildExpandingSenderTransactions(PrivateKey[] seedSenders, int newSendersPerSeed, int spendDelayMs)
+    {
+        int totalNewSenders = seedSenders.Length * newSendersPerSeed;
+        List<Transaction> transactions = new(totalNewSenders * 2);
+        List<TxDelay> delays = spendDelayMs > 0 ? new List<TxDelay>(totalNewSenders) : new List<TxDelay>();
+        List<PrivateKey> fundedSenders = new(totalNewSenders);
+        int senderIndex = 0;
+
+        for (int seedIndex = 0; seedIndex < seedSenders.Length; seedIndex++)
+        {
+            PrivateKey seedSender = seedSenders[seedIndex];
+            for (int nonce = 0; nonce < newSendersPerSeed; nonce++)
+            {
+                PrivateKey fundedSender = CreateSeededSender(senderIndex++);
+                fundedSenders.Add(fundedSender);
+                transactions.Add(Tx(seedSender, fundedSender.Address, (UInt256)nonce, 2.Ether(), 21_000));
+            }
+        }
+
+        for (int i = 0; i < fundedSenders.Count; i++)
+        {
+            Transaction spendTx = Tx(fundedSenders[i], CreateRecipientAddress(0x66, i), 0, 1.Ether(), 21_000);
+            transactions.Add(spendTx);
+            if (spendDelayMs > 0)
+            {
+                delays.Add(Delay(spendTx, spendDelayMs));
+            }
+        }
+
+        return (transactions.ToArray(), delays.Count == 0 ? [] : delays.ToArray());
+    }
+
+    private static PrivateKey CreateSeededSender(int index)
+    {
+        byte[] keyBytes = new byte[32];
+        ((UInt256)(index + 1)).ToBigEndian(keyBytes);
+        return new PrivateKey(keyBytes);
+    }
+
+    private static Address CreateRecipientAddress(byte marker, int index)
+    {
+        byte[] recipientBytes = new byte[Address.Size];
+        recipientBytes[0] = marker;
+        recipientBytes[1] = (byte)(index >> 8);
+        recipientBytes[2] = (byte)index;
+        recipientBytes[3] = (byte)(index >> 16);
+        return new Address(recipientBytes);
+    }
+
+    private static Block ProcessBlockDirect(ParallelTestBlockchain chain, BlockHeader parent, Transaction[] transactions, long gasLimit)
+    {
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithTransactions(transactions)
+            .TestObject;
+        IReleaseSpec spec = chain.SpecProvider.GetSpec(block.Header);
+        return chain.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec).Block;
     }
 
     public static IEnumerable<TestCaseData> FailedBlocksTests
@@ -708,8 +1061,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
             ],
             TransactionResult.TransactionNonceTooHigh,
-            // Nonce gap still makes tx1 depend on tx0 for validation.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1),
+            // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+            ExpectedMetrics.AllDependent(2),
             "nonce gap on dependent transaction");
 
             yield return Test(
@@ -718,20 +1071,23 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0)
             ],
             TransactionResult.TransactionNonceTooLow,
-            // Nonce reuse ties the second tx to the first for validation.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1),
+            // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+            ExpectedMetrics.AllDependent(2),
             "nonce reuse on dependent transaction");
 
             AuthorizationTuple auth = Ecdsa.Sign(TestItem.PrivateKeyB, BlockchainIds.Mainnet, TestItem.AddressC, 0);
+            Transaction setCodeNonceReuse = TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [auth]);
+            Transaction delegatedNonceReuse = Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0);
             yield return Test(
             [
-                TxSetCode(TestItem.PrivateKeyA, TestItem.AddressB, 0, [auth]),
-                Tx(TestItem.PrivateKeyB, TestItem.AddressC, 0),
+                setCodeNonceReuse,
+                delegatedNonceReuse,
             ],
             TransactionResult.TransactionNonceTooLow,
-            // Delegated nonce from authorization makes the following tx dependent.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1),
-            "nonce reuse of SetCode authorization");
+            // Delegation nonce moves after SetCode, forcing the delegated tx to revalidate.
+            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
+            "nonce reuse of SetCode authorization",
+            delays: [Delay(setCodeNonceReuse, ShortDelayMs)]);
 
             yield return Test([Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0)],
                 TransactionResult.InsufficientSenderBalance, ExpectedMetrics.Independent(1));
@@ -772,8 +1128,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Tx(TestItem.PrivateKeyB, TestItem.AddressC, 1, 1.Ether()),
             ],
             TransactionResult.InsufficientSenderBalance,
-            // Second tx depends on the balance change from the first.
-            ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1),
+            // Nonce chain is pre-ordered; no runtime reexecs or blocked reads.
+            ExpectedMetrics.AllDependent(2),
             "insufficient balance on dependent transaction");
 
             // NonceOverflow - contract creation with max nonce
@@ -784,7 +1140,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
     }
 
     [TestCaseSource(nameof(FailedBlocksTests))]
-    public async Task Failed_blocks(Transaction[] transactions, TransactionResult expected, ExpectedMetrics expectedMetrics)
+    public async Task Failed_blocks(Transaction[] transactions, TransactionResult expected, ExpectedMetrics expectedMetrics, TxDelay[] delays)
     {
         using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
         BlockHeader head = parallel.BlockTree.Head!.Header;
@@ -798,6 +1154,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         TransactionResult result = TransactionResult.Ok;
         try
         {
+            using IDisposable delayScope = TransactionDelayPolicy.Apply(delays ?? []);
             // Use NoValidation to skip block header validation (gas, state root, etc.)
             // since we're testing transaction validation, not block validation
             parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, releaseSpec);
@@ -887,14 +1244,18 @@ public class ParallelBlockValidationTransactionsExecutorTests
             .Done;
         byte[] callerInitCode = Prepare.EvmCode.ForInitOf(callerCode).Done;
 
-        BlockPair blocks = await chains.AddBlock(
-            TxCreateContract(TestItem.PrivateKeyA, 0, receiverInitCode),
-            TxCreateContract(TestItem.PrivateKeyB, 0, callerInitCode, 5.Ether()),
-            TxToContract(TestItem.PrivateKeyB, ContractAddress.From(TestItem.AddressB, 0), 1, [], 2.Ether())
+        Transaction receiverCreate = TxCreateContract(TestItem.PrivateKeyA, 0, receiverInitCode);
+        Transaction callerCreate = TxCreateContract(TestItem.PrivateKeyB, 0, callerInitCode, 5.Ether());
+        Transaction callerCall = TxToContract(TestItem.PrivateKeyB, ContractAddress.From(TestItem.AddressB, 0), 1, [], 2.Ether());
+        BlockPair blocks = await chains.AddBlockWithDelays(
+            [Delay(receiverCreate, ShortDelayMs)],
+            receiverCreate,
+            callerCreate,
+            callerCall
         );
         blocks.AssertFullMatch(3);
-        // B's nonce chain and the call into newly created state create dependencies.
-        AssertLastBlockMetrics(ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 1));
+        // Receiver creation lands after the call, forcing a revalidation.
+        AssertLastBlockMetrics(ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 0, revalidations: 1));
     }
 
     [Test]
@@ -951,18 +1312,18 @@ public class ParallelBlockValidationTransactionsExecutorTests
         Address incrementerAddress = ContractAddress.From(TestItem.AddressA, 0);
 
         // 3 transactions from different senders all incrementing the same counter
-        PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < 3; i++)
-        {
-            int nonce = i == 0 ? 1 : 0;
-            transactions[i] = TxToContract(senders[i], incrementerAddress, (UInt256)nonce, []);
-        }
+        Transaction conflictTx0 = TxToContract(TestItem.PrivateKeyA, incrementerAddress, 1, []);
+        Transaction conflictTx1 = TxToContract(TestItem.PrivateKeyB, incrementerAddress, 0, []);
+        Transaction conflictTx2 = TxToContract(TestItem.PrivateKeyC, incrementerAddress, 0, []);
+        Transaction[] transactions = [conflictTx0, conflictTx1, conflictTx2];
 
-        BlockPair blocks = await chains.AddBlock(transactions);
+        BlockPair blocks = await chains.AddBlockWithDelays(
+            [Delay(conflictTx0, LongDelayMs), Delay(conflictTx1, ShortDelayMs)],
+            transactions
+        );
         blocks.AssertStateRootsMatch();
-        // All txs write the same storage slot, so they depend on each other.
-        AssertLastBlockMetrics(ExpectedMetrics.Create(3, reexecutions: 2, blockedReads: 2, revalidations: 0));
+        // All txs write the same storage slot, so they reexecute with a blocked read.
+        AssertLastBlockMetrics(ExpectedMetrics.Create(3, reexecutions: 4, blockedReads: 1, revalidations: 3));
     }
 
     [Test]
@@ -1062,19 +1423,23 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
         // Test block with multiple operations on the same CREATE2 address:
         // Using different senders to test parallel execution without nonce dependencies
-        BlockPair blocks = await chains.AddBlock(
+        Transaction factoryCreate = Tx(TestItem.PrivateKeyA, factoryAddress, 1, 5.Ether(), 500_000);
+        Transaction contractDestroy = Tx(TestItem.PrivateKeyB, create2Address, 0, 0, 100_000, new UInt256(1).ToBigEndian());
+        Transaction factoryRecreate = Tx(TestItem.PrivateKeyC, factoryAddress, 0, 7.Ether(), 500_000);
+        BlockPair blocks = await chains.AddBlockWithDelays(
+            [Delay(factoryCreate, ShortDelayMs), Delay(factoryRecreate, LongDelayMs)],
             // tx0 (sender A): Factory creates contract with 5 ETH (stored in slot 0)
-            Tx(TestItem.PrivateKeyA, factoryAddress, 1, 5.Ether(), 500_000),
+            factoryCreate,
             // tx1 (sender B): Self-destruct the contract (calldata = 1)
             // Different sender - no nonce dependency, tests parallel state tracking
-            Tx(TestItem.PrivateKeyB, create2Address, 0, 0, 100_000, new UInt256(1).ToBigEndian()),
+            contractDestroy,
             // tx2 (sender C): Factory re-creates contract with 7 ETH (should have fresh storage)
             // Different sender - tests that re-creation sees the self-destructed state
-            Tx(TestItem.PrivateKeyC, factoryAddress, 0, 7.Ether(), 500_000)
+            factoryRecreate
         );
         blocks.AssertStateRootsMatch();
-        // CREATE2 reuse touches the same address, so later txs depend on earlier state.
-        AssertLastBlockMetrics(ExpectedMetrics.Create(3, reexecutions: 1, blockedReads: 1, revalidations: 0));
+        // CREATE2 reuse is observed in-order here; no reexecs recorded.
+        AssertLastBlockMetrics(ExpectedMetrics.Independent(3));
     }
 
     [Test]
@@ -1191,7 +1556,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
         using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
         using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
 
-        (_, TxReceipt[] parallelReceipts) = parallel.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec);
+        TxReceipt[] parallelReceipts;
+        using (TransactionDelayPolicy.Apply([Delay(callContractTx, LongDelayMs)]))
+        {
+            (_, parallelReceipts) = parallel.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec);
+        }
         (_, TxReceipt[] singleReceipts) = single.MainProcessingContext.BlockProcessor.ProcessOne(singleBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, singleSpec);
 
         // Both should succeed with 2 transactions
@@ -1204,7 +1573,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
             Assert.That(singleReceipts[0].StatusCode, Is.EqualTo(1), "Single tx0 should succeed");
             Assert.That(singleReceipts[1].StatusCode, Is.EqualTo(1), "Single tx1 should succeed");
         });
-        // Second tx depends on the balance credited by the slow first tx.
-        AssertLastBlockMetrics(ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 1, revalidations: 0));
+        // Second tx depends on the balance credited by the delayed first tx.
+        AssertLastBlockMetrics(ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1));
     }
 }

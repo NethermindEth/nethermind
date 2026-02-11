@@ -14,15 +14,15 @@ public static class Metrics
     private static long LastBlockSnapshotSequence;
 
     [CounterMetric]
-    [Description("Total number of transactions in parallel blocks that depend on prior transactions (state or validation dependencies).")]
+    [Description("Total number of re-execution attempts in parallel block processing.")]
     public static long Reexecutions;
 
     [CounterMetric]
-    [Description("Total number of transactions with validation dependencies (nonce or authorization) in parallel block processing.")]
+    [Description("Total number of validation aborts in parallel block processing.")]
     public static long Revalidations;
 
     [CounterMetric]
-    [Description("Total number of transactions that read state written by prior transactions in parallel block processing.")]
+    [Description("Total number of blocked read aborts in parallel block processing.")]
     public static long BlockedReads;
 
     [CounterMetric]
@@ -30,15 +30,15 @@ public static class Metrics
     public static long TxCount;
 
     [GaugeMetric]
-    [Description("Number of transactions that depend on prior transactions in the last parallel block.")]
+    [Description("Number of re-execution attempts in the last parallel block.")]
     public static long LastBlockReexecutions;
 
     [GaugeMetric]
-    [Description("Number of transactions with validation dependencies in the last parallel block.")]
+    [Description("Number of validation aborts in the last parallel block.")]
     public static long LastBlockRevalidations;
 
     [GaugeMetric]
-    [Description("Number of transactions that read state written by prior transactions in the last parallel block.")]
+    [Description("Number of blocked read aborts in the last parallel block.")]
     public static long LastBlockBlockedReads;
 
     [GaugeMetric]
@@ -46,7 +46,7 @@ public static class Metrics
     public static long LastBlockTxCount;
 
     [GaugeMetric]
-    [Description("Percent of transactions without dependencies in the last parallel block.")]
+    [Description("Percent of transactions executed without re-execution in the last parallel block.")]
     public static long LastBlockParallelizationPercent;
 
     internal static void ReportBlock(in ParallelBlockMetrics snapshot)
@@ -100,9 +100,9 @@ public static class Metrics
 /// Snapshot of parallel block metrics captured after processing.
 /// </summary>
 /// <param name="TxCount">Number of transactions in the block.</param>
-/// <param name="Reexecutions">Number of transactions re-executed at least once.</param>
-/// <param name="Revalidations">Number of transactions whose validation failed at least once.</param>
-/// <param name="BlockedReads">Number of transactions that observed blocked reads at least once.</param>
+/// <param name="Reexecutions">Number of re-execution attempts.</param>
+/// <param name="Revalidations">Number of validation aborts.</param>
+/// <param name="BlockedReads">Number of blocked read aborts.</param>
 /// <param name="ParallelizationPercent">Percent of transactions executed without re-execution.</param>
 public readonly record struct ParallelBlockMetrics(
     int TxCount,
