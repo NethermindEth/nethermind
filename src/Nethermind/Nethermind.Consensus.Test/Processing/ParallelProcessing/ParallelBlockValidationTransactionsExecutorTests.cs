@@ -43,16 +43,18 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
     private class ParallelTestBlockchain(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec) : TestBlockchain
     {
-        private long _testTimeoutMs = DefaultTimeout;
+        public TransactionDelayPolicy DelayPolicy { get; } = new();
 
-        public static async Task<ParallelTestBlockchain> Create(IBlocksConfig blocksConfig, IReleaseSpec releaseSpec = null, Action<ContainerBuilder> configurer = null, long? testTimeoutMs = null)
+        public static async Task<ParallelTestBlockchain> Create(
+            IBlocksConfig blocksConfig,
+            IReleaseSpec releaseSpec = null,
+            Action<ContainerBuilder> configurer = null,
+            long? testTimeoutMs = null)
         {
-            long resolvedTimeoutMs = testTimeoutMs ?? DefaultTimeout;
             ParallelTestBlockchain chain = new(blocksConfig, releaseSpec ?? Osaka.Instance)
             {
-                TestTimeout = resolvedTimeoutMs
+                TestTimeout = testTimeoutMs ?? DefaultTimeout
             };
-            chain._testTimeoutMs = resolvedTimeoutMs;
             await chain.Build(configurer);
             return chain;
         }
@@ -65,12 +67,13 @@ public class ParallelBlockValidationTransactionsExecutorTests
             AutoCancelTokenSource.ThatCancelAfter(
                 Debugger.IsAttached
                     ? TimeSpan.FromMilliseconds(-1)
-                    : TimeSpan.FromMilliseconds(_testTimeoutMs));
+                    : TimeSpan.FromMilliseconds(TestTimeout));
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec))
                 .AddSingleton<IGenesisPostProcessor>(new GenesisGasLimitOverride(TestBlockGasLimit))
+                .AddSingleton(DelayPolicy)
                 .AddDecorator<ITransactionProcessor, DelayedTransactionProcessor>();
     }
 
@@ -104,59 +107,44 @@ public class ParallelBlockValidationTransactionsExecutorTests
             new(ProcessBlockDirectWithScope(Parallel, parentBlocks.Parallel.Header, transactions),
                 ProcessBlockDirectWithScope(Single, parentBlocks.Single.Header, transactions));
 
-        public BlockPair ProcessBlockDirectOnHead(params Transaction[] transactions) =>
-            new(ProcessBlockDirectWithScope(Parallel, Parallel.BlockTree.Head!.Header, transactions),
-                ProcessBlockDirectWithScope(Single, Single.BlockTree.Head!.Header, transactions));
-
         public BlockPair ProcessBlockDirectOnHead(TxDelay[] delays, params Transaction[] transactions)
         {
-            BlockHeader parallelHead = Parallel.BlockTree.Head!.Header;
-            BlockHeader singleHead = Single.BlockTree.Head!.Header;
-            Block parallelBlock;
-            using (TransactionDelayPolicy.Apply(delays ?? []))
-            {
-                parallelBlock = ProcessBlockDirectWithScope(Parallel, parallelHead, transactions);
-            }
+            Parallel.DelayPolicy.SetDelays(delays);
+            return new(ProcessBlockDirectWithScope(Parallel, Parallel.BlockTree.Head!.Header, transactions),
+                ProcessBlockDirectWithScope(Single, Single.BlockTree.Head!.Header, transactions));
+        }
 
-            Block singleBlock = ProcessBlockDirectWithScope(Single, singleHead, transactions);
-            return new BlockPair(parallelBlock, singleBlock);
+        public (BlockPair Blocks, ReceiptPair Receipts) ProcessBlockDirectWithReceiptsOnHead(
+            TxDelay[] delays,
+            params Transaction[] transactions)
+        {
+            return ProcessBlockOnHead(
+                delays,
+                parent => Build.A.Block
+                    .WithTransactions(transactions)
+                    .WithParent(parent)
+                    .WithBaseFeePerGas(1.GWei())
+                    .TestObject,
+                (chain, header) => chain.SpecProvider.GetSpec(header));
         }
 
         public BlockPair ProcessBlockWithFeeRecipients(Address beneficiary, Address feeCollector, TxDelay[] delays, params Transaction[] transactions)
         {
-            Block parallelBlock;
-            using (TransactionDelayPolicy.Apply(delays ?? []))
-            {
-                parallelBlock = ProcessBlock(Parallel);
-            }
-
-            Block singleBlock = ProcessBlock(Single);
-            return new BlockPair(parallelBlock, singleBlock);
-
-            Block ProcessBlock(ParallelTestBlockchain chain)
-            {
-                BlockHeader parallelHead = chain.BlockTree.Head!.Header;
-                Block parallelBlock = BuildBlock(parallelHead);
-                OverridableReleaseSpec parallelSpec = GetSpec(parallelBlock.Header);
-                using IDisposable parallelScope = chain.MainProcessingContext.WorldState.BeginScope(parallelHead);
-                return chain.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock,
-                    ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec).Block;
-
-                Block BuildBlock(BlockHeader parent) =>
-                    Build.A.Block
-                        .WithTransactions(transactions)
-                        .WithParent(parent)
-                        .WithBeneficiary(beneficiary)
-                        .WithBaseFeePerGas(1.GWei())
-                        .TestObject;
-
-                OverridableReleaseSpec GetSpec(BlockHeader header)
+            (BlockPair blocks, _) = ProcessBlockOnHead(
+                delays,
+                parent => Build.A.Block
+                    .WithTransactions(transactions)
+                    .WithParent(parent)
+                    .WithBeneficiary(beneficiary)
+                    .WithBaseFeePerGas(1.GWei())
+                    .TestObject,
+                (chain, header) =>
                 {
-                    OverridableReleaseSpec overridableReleaseSpec = (OverridableReleaseSpec)Parallel.SpecProvider.GetSpec(header);
-                    overridableReleaseSpec.FeeCollector = feeCollector;
-                    return overridableReleaseSpec;
-                }
-            }
+                    OverridableReleaseSpec spec = (OverridableReleaseSpec)chain.SpecProvider.GetSpec(header);
+                    spec.FeeCollector = feeCollector;
+                    return spec;
+                });
+            return blocks;
         }
 
         public ValueTask DisposeAsync()
@@ -172,19 +160,45 @@ public class ParallelBlockValidationTransactionsExecutorTests
             return ParallelBlockValidationTransactionsExecutorTests.ProcessBlockDirect(chain, parent, transactions, parent.GasLimit);
         }
 
+        private (BlockPair Blocks, ReceiptPair Receipts) ProcessBlockOnHead(
+            TxDelay[] delays,
+            Func<BlockHeader, Block> buildBlock,
+            Func<ParallelTestBlockchain, BlockHeader, IReleaseSpec> buildSpec)
+        {
+            Parallel.DelayPolicy.SetDelays(delays);
+            (Block parallelBlock, TxReceipt[] parallelReceipts) = ProcessBlockOnChain(Parallel, buildBlock, buildSpec);
+            (Block singleBlock, TxReceipt[] singleReceipts) = ProcessBlockOnChain(Single, buildBlock, buildSpec);
+            return (new BlockPair(parallelBlock, singleBlock), new ReceiptPair(parallelReceipts, singleReceipts));
+        }
+
+        private static (Block Block, TxReceipt[] Receipts) ProcessBlockOnChain(
+            ParallelTestBlockchain chain,
+            Func<BlockHeader, Block> buildBlock,
+            Func<ParallelTestBlockchain, BlockHeader, IReleaseSpec> buildSpec)
+        {
+            BlockHeader head = chain.BlockTree.Head!.Header;
+            Block block = buildBlock(head);
+            IReleaseSpec spec = buildSpec(chain, block.Header);
+            using IDisposable scope = chain.MainProcessingContext.WorldState.BeginScope(head);
+            (_, TxReceipt[] receipts) = chain.MainProcessingContext.BlockProcessor.ProcessOne(
+                block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec);
+            return (block, receipts);
+        }
+
         private static async Task<Block> AddBlockAndWaitForHead(ParallelTestBlockchain chain, Transaction[] transactions) =>
             await chain.AddBlock(transactions);
 
         private static async Task<Block> AddBlockAndWaitForHead(ParallelTestBlockchain chain, Transaction[] transactions, TxDelay[] delays)
         {
-            using IDisposable delayScope = TransactionDelayPolicy.Apply(delays ?? []);
+            chain.DelayPolicy.SetDelays(delays);
             return await chain.AddBlock(transactions);
         }
     }
 
     private readonly record struct BlockPair(Block Parallel, Block Single)
     {
-        public void AssertStateRootsMatch() => Assert.That(Parallel.Header.StateRoot, Is.EqualTo(Single.Header.StateRoot));
+        public void AssertStateRootsMatch() =>
+            Assert.That(Parallel.Header.StateRoot, Is.EqualTo(Single.Header.StateRoot));
 
         public void AssertFullMatch(int expectedTxCount)
         {
@@ -195,6 +209,25 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 Assert.That(s.Transactions, Has.Length.EqualTo(expectedTxCount));
                 Assert.That(p.Header.GasUsed, Is.EqualTo(s.Header.GasUsed));
                 Assert.That(p.Header.StateRoot, Is.EqualTo(s.Header.StateRoot));
+            });
+        }
+    }
+
+    private readonly record struct ReceiptPair(TxReceipt[] Parallel, TxReceipt[] Single)
+    {
+        public void AssertSuccessful(int expectedCount)
+        {
+            TxReceipt[] parallel = Parallel;
+            TxReceipt[] single = Single;
+            Assert.Multiple(() =>
+            {
+                Assert.That(parallel, Has.Length.EqualTo(expectedCount), "Parallel should process all transactions");
+                Assert.That(single, Has.Length.EqualTo(expectedCount), "Single should process all transactions");
+                for (int i = 0; i < expectedCount; i++)
+                {
+                    Assert.That(parallel[i].StatusCode, Is.EqualTo(1), $"Parallel tx{i} should succeed");
+                    Assert.That(single[i].StatusCode, Is.EqualTo(1), $"Single tx{i} should succeed");
+                }
             });
         }
     }
@@ -241,18 +274,13 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
     private static TxDelay Delay(Transaction transaction, int milliseconds) => new(transaction, milliseconds);
 
-    private static class TransactionDelayPolicy
+    private sealed class TransactionDelayPolicy
     {
-        private static Dictionary<Hash256, int> _delays;
+        private readonly Dictionary<Hash256, int> _delays = new();
 
-        public static IDisposable Apply(TxDelay[] delays)
+        public void SetDelays(TxDelay[] delays)
         {
-            if (delays.Length == 0)
-            {
-                return NoopScope.Instance;
-            }
-
-            Dictionary<Hash256, int> map = new(delays.Length);
+            _delays.Clear();
             foreach (TxDelay delay in delays)
             {
                 if (delay.Milliseconds > 0)
@@ -260,49 +288,20 @@ public class ParallelBlockValidationTransactionsExecutorTests
                     Hash256 hash = delay.Transaction.Hash;
                     if (hash is not null)
                     {
-                        map[hash] = delay.Milliseconds;
+                        _delays[hash] = delay.Milliseconds;
                     }
                 }
             }
-
-            Volatile.Write(ref _delays, map);
-            return new DelayScope();
         }
 
-        public static bool TryGetDelay(Transaction transaction, out int milliseconds)
+        public bool TryGetDelay(Transaction transaction, out int milliseconds)
         {
-            Dictionary<Hash256, int> delays = Volatile.Read(ref _delays);
-            if (delays is null)
-            {
-                milliseconds = 0;
-                return false;
-            }
-
-            Hash256 hash = transaction.Hash;
-            if (hash is null)
-            {
-                milliseconds = 0;
-                return false;
-            }
-
-            return delays.TryGetValue(hash, out milliseconds);
-        }
-
-        private static void Clear() => Volatile.Write(ref _delays, null);
-
-        private sealed class DelayScope : IDisposable
-        {
-            public void Dispose() => Clear();
-        }
-
-        private sealed class NoopScope : IDisposable
-        {
-            public static readonly NoopScope Instance = new();
-            public void Dispose() { }
+            milliseconds = 0;
+            return transaction.Hash is not null && _delays.TryGetValue(transaction.Hash, out milliseconds);
         }
     }
 
-    private sealed class DelayedTransactionProcessor(ITransactionProcessor inner) : ITransactionProcessor
+    private sealed class DelayedTransactionProcessor(ITransactionProcessor inner, TransactionDelayPolicy delayPolicy) : ITransactionProcessor
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
         {
@@ -338,9 +337,9 @@ public class ParallelBlockValidationTransactionsExecutorTests
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
 
-        private static void ApplyDelay(Transaction transaction)
+        private void ApplyDelay(Transaction transaction)
         {
-            if (TransactionDelayPolicy.TryGetDelay(transaction, out int milliseconds) && milliseconds > 0)
+            if (delayPolicy.TryGetDelay(transaction, out int milliseconds) && milliseconds > 0)
             {
                 Thread.Sleep(milliseconds);
             }
@@ -422,9 +421,8 @@ public class ParallelBlockValidationTransactionsExecutorTests
             PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
             Transaction[] manyTxs = BuildMultiSenderTransactions(senders, txsPerSender: 100, recipientMarker: 0x44);
             yield return Test("300 Transactions from 3 senders", manyTxs,
-                // Nonce chains are pre-ordered; only the funded senders can transact.
-                ExpectedMetrics.AllDependent(manyTxs.Length));
-
+                // Per-sender nonce chains are pre-ordered; no runtime reexecs.
+                ExpectedMetrics.Create(manyTxs.Length, reexecutions: 0));
         }
     }
 
@@ -666,7 +664,6 @@ public class ParallelBlockValidationTransactionsExecutorTests
             // Immediate call depends on the contract created in the prior transaction.
             ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1),
             delays: [Delay(simpleCreate, ShortDelayMs)]);
-
         }
     }
 
@@ -838,7 +835,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         string name = "",
         TxDelay[] delays = null,
         [CallerArgumentExpression(nameof(expected))] string error = "") =>
-        new([transactions, expected, expectedMetrics, delays]) { TestName = $"{transactions.Length} Transactions, {error.Replace(nameof(TransactionResult) + ".", "")}:{name}" };
+        new(transactions, expected, expectedMetrics, delays ?? []) { TestName = $"{transactions.Length} Transactions, {error.Replace(nameof(TransactionResult) + ".", "")}:{name}" };
 
     [TestCaseSource(nameof(SimpleBlocksTests))]
     [TestCaseSource(nameof(ContractBlocksTests))]
@@ -854,9 +851,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
     public async Task Successful_setcode_blocks_direct(Transaction[] transactions, ExpectedMetrics expectedMetrics, TxDelay[] delays)
     {
         await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 30_000);
-        BlockPair blocks = delays is null
-            ? chains.ProcessBlockDirectOnHead(transactions)
-            : chains.ProcessBlockDirectOnHead(delays, transactions);
+        BlockPair blocks = chains.ProcessBlockDirectOnHead(delays ?? [], transactions);
         blocks.AssertFullMatch(transactions.Length);
         AssertLastBlockMetrics(expectedMetrics);
     }
@@ -881,24 +876,13 @@ public class ParallelBlockValidationTransactionsExecutorTests
         Transaction storeCallerCall2 = TxToContract(TestItem.PrivateKeyC, storeCallerAddress, 0, []);
         Transaction[] transactions = [storeCallerCreate, storeCallerCall1, storeCallerCall2];
 
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), testTimeoutMs: 30_000);
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), testTimeoutMs: 30_000);
-        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
-        BlockHeader singleHead = single.BlockTree.Head!.Header;
-
-        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
-        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
-
-        Block parallelBlock;
-        using (TransactionDelayPolicy.Apply([Delay(storeCallerCall1, LongDelayMs), Delay(storeCallerCall2, LongDelayMs)]))
-        {
-            parallelBlock = ProcessBlockDirect(parallel, parallelHead, transactions, parallelHead.GasLimit);
-        }
-
-        Block singleBlock = ProcessBlockDirect(single, singleHead, transactions, singleHead.GasLimit);
-        new BlockPair(parallelBlock, singleBlock).AssertFullMatch(transactions.Length);
+        await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 30_000);
+        BlockPair blocks = chains.ProcessBlockDirectOnHead(
+            [Delay(storeCallerCall1, LongDelayMs), Delay(storeCallerCall2, LongDelayMs)],
+            transactions);
+        blocks.AssertFullMatch(transactions.Length);
         // Calls are delayed so the create commit lands before they read the contract.
-        AssertLastBlockMetrics(ExpectedMetrics.AllDependent(3));
+        AssertLastBlockMetrics(ExpectedMetrics.Create(3, reexecutions: 0));
     }
 
     [Test]
@@ -914,7 +898,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         BlockPair fundingBlocks = await chains.AddBlock(fundingTxs);
         fundingBlocks.AssertFullMatch(fundingTxs.Length);
         // Nonce chains are pre-ordered; no runtime reexecs or blocked reads.
-        AssertLastBlockMetrics(ExpectedMetrics.AllDependent(fundingTxs.Length));
+        AssertLastBlockMetrics(ExpectedMetrics.Create(fundingTxs.Length, reexecutions: 0));
 
         BlockPair independentBlocks = chains.ProcessBlockDirect(fundingBlocks, independentTxs);
         independentBlocks.AssertFullMatch(independentTxs.Length);
@@ -929,24 +913,11 @@ public class ParallelBlockValidationTransactionsExecutorTests
         const int newSendersPerSeed = 20;
         (Transaction[] transactions, TxDelay[] delays) = BuildExpandingSenderTransactions(seedSenders, newSendersPerSeed, LongDelayMs);
 
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true), testTimeoutMs: 30_000);
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false), testTimeoutMs: 30_000);
-        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
-        BlockHeader singleHead = single.BlockTree.Head!.Header;
-
-        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
-        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
-
-        Block parallelBlock;
-        using (TransactionDelayPolicy.Apply(delays))
-        {
-            parallelBlock = ProcessBlockDirect(parallel, parallelHead, transactions, parallelHead.GasLimit);
-        }
-
-        Block singleBlock = ProcessBlockDirect(single, singleHead, transactions, singleHead.GasLimit);
-        new BlockPair(parallelBlock, singleBlock).AssertFullMatch(transactions.Length);
+        await using DualBlockchain chains = await DualBlockchain.Create(testTimeoutMs: 30_000);
+        BlockPair blocks = chains.ProcessBlockDirectOnHead(delays, transactions);
+        blocks.AssertFullMatch(transactions.Length);
         // Spending txs are delayed to execute after the funding wave commits.
-        AssertLastBlockMetrics(ExpectedMetrics.AllDependent(transactions.Length));
+        AssertLastBlockMetrics(ExpectedMetrics.Create(transactions.Length, reexecutions: 0));
     }
 
     private static (Transaction[] funding, Transaction[] independent) BuildSeededSenderBlocks(int senderCount, PrivateKey[] seedSenders)
@@ -1154,7 +1125,7 @@ public class ParallelBlockValidationTransactionsExecutorTests
         TransactionResult result = TransactionResult.Ok;
         try
         {
-            using IDisposable delayScope = TransactionDelayPolicy.Apply(delays ?? []);
+            parallel.DelayPolicy.SetDelays(delays);
             // Use NoValidation to skip block header validation (gas, state root, etc.)
             // since we're testing transaction validation, not block validation
             parallel.MainProcessingContext.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, releaseSpec);
@@ -1524,55 +1495,15 @@ public class ParallelBlockValidationTransactionsExecutorTests
         // tx1: Simple transfer from F (initially unfunded, gets balance from tx0)
         Transaction transferFromF = Tx(TestItem.PrivateKeyF, TestItem.AddressB, 0, 5.Ether());
 
-        // Test with parallel processing
-        using ParallelTestBlockchain parallel = await ParallelTestBlockchain.Create(BuildConfig(true));
-        // Test with single-threaded processing for comparison
-        using ParallelTestBlockchain single = await ParallelTestBlockchain.Create(BuildConfig(false));
+        await using DualBlockchain chains = await DualBlockchain.Create();
+        await chains.AddBlock(deployTx);
 
-        // Setup: Deploy contract in both chains
-        await parallel.AddBlock(deployTx);
-        await single.AddBlock(TxCreateContract(TestItem.PrivateKeyB, 0, transferInitCode));
-
-        // Build a test block with both transactions, bypassing tx pool
-        BlockHeader parallelHead = parallel.BlockTree.Head!.Header;
-        BlockHeader singleHead = single.BlockTree.Head!.Header;
-
-        Block parallelBlock = Build.A.Block
-            .WithTransactions(callContractTx, transferFromF)
-            .WithParent(parallelHead)
-            .WithBaseFeePerGas(1.GWei())
-            .TestObject;
-
-        Block singleBlock = Build.A.Block
-            .WithTransactions(callContractTx, transferFromF)
-            .WithParent(singleHead)
-            .WithBaseFeePerGas(1.GWei())
-            .TestObject;
-
-        IReleaseSpec parallelSpec = parallel.SpecProvider.GetSpec(parallelBlock.Header);
-        IReleaseSpec singleSpec = single.SpecProvider.GetSpec(singleBlock.Header);
-
-        // Process blocks directly
-        using IDisposable parallelScope = parallel.MainProcessingContext.WorldState.BeginScope(parallelHead);
-        using IDisposable singleScope = single.MainProcessingContext.WorldState.BeginScope(singleHead);
-
-        TxReceipt[] parallelReceipts;
-        using (TransactionDelayPolicy.Apply([Delay(callContractTx, LongDelayMs)]))
-        {
-            (_, parallelReceipts) = parallel.MainProcessingContext.BlockProcessor.ProcessOne(parallelBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, parallelSpec);
-        }
-        (_, TxReceipt[] singleReceipts) = single.MainProcessingContext.BlockProcessor.ProcessOne(singleBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, singleSpec);
+        (BlockPair blocks, ReceiptPair receipts) =
+            chains.ProcessBlockDirectWithReceiptsOnHead([Delay(callContractTx, LongDelayMs)], callContractTx, transferFromF);
+        blocks.AssertFullMatch(2);
 
         // Both should succeed with 2 transactions
-        Assert.Multiple(() =>
-        {
-            Assert.That(parallelReceipts, Has.Length.EqualTo(2), "Parallel should process 2 transactions");
-            Assert.That(singleReceipts, Has.Length.EqualTo(2), "Single should process 2 transactions");
-            Assert.That(parallelReceipts[0].StatusCode, Is.EqualTo(1), "Parallel tx0 should succeed");
-            Assert.That(parallelReceipts[1].StatusCode, Is.EqualTo(1), "Parallel tx1 should succeed");
-            Assert.That(singleReceipts[0].StatusCode, Is.EqualTo(1), "Single tx0 should succeed");
-            Assert.That(singleReceipts[1].StatusCode, Is.EqualTo(1), "Single tx1 should succeed");
-        });
+        receipts.AssertSuccessful(2);
         // Second tx depends on the balance credited by the delayed first tx.
         AssertLastBlockMetrics(ExpectedMetrics.Create(2, reexecutions: 1, blockedReads: 0, revalidations: 1));
     }
