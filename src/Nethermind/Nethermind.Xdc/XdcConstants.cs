@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -41,10 +42,11 @@ internal static class XdcConstants
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimunMinerBlockPerEpoch = 1;
 
-    public static byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
-	public static byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
-    public static byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
-    public static byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
-    public static byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
-
+    public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
+    public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
+    public static readonly byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
+    public static readonly byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
+    public static readonly byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
+    public static readonly byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
+    public static readonly byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
 }

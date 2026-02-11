@@ -144,7 +144,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        ICodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
+        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
         result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 

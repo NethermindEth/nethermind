@@ -6,11 +6,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Text.Json.Serialization;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -38,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(async () =>
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions
-                    ? TransactionForRpc.FromTransaction(e.Transaction, chainId: _specProvider.ChainId)
+                    ? TransactionForRpc.FromTransaction(e.Transaction, new(_specProvider.ChainId))
                     : e.Transaction.Hash!);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");

@@ -10,7 +10,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -34,13 +33,13 @@ public class SnapServerTest
         internal MemDb ClientStateDb { get; init; } = null!;
     }
 
-    private Context CreateContext(IStateReader? stateRootTracker = null, ILastNStateRootTracker? lastNStateRootTracker = null)
+    private Context CreateContext(ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
         TestRawTrieStore store = new TestRawTrieStore(stateDbServer);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance, lastNStateRootTracker);
 
         MemDb clientStateDb = new();
         using ProgressTracker progressTracker = new(clientStateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
@@ -133,7 +132,7 @@ public class SnapServerTest
             lastNStateTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(false);
         }
 
-        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(withLastNStateTracker), lastNStateRootTracker: lastNStateTracker);
+        Context context = CreateContext(lastNStateRootTracker: lastNStateTracker);
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> accountProofs) =
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
@@ -267,7 +266,7 @@ public class SnapServerTest
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
         IDb codeDb2 = new MemDb();
         IDb stateDb2 = new MemDb();
@@ -306,7 +305,7 @@ public class SnapServerTest
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
         ValueHash256 lastStorageHash = TestItem.Tree.SlotsWithPaths[^1].Path;
         var asInt = lastStorageHash.ToUInt256();
@@ -332,7 +331,7 @@ public class SnapServerTest
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
         IDb stateDb2 = new MemDb();
         IDb codeDb2 = new MemDb();
@@ -404,7 +403,7 @@ public class SnapServerTest
         }
         stateTree.Commit();
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
         // size of one PathWithAccount ranges from 39 -> 72
         (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> accountProofs)
@@ -483,10 +482,4 @@ public class SnapServerTest
         proofs?.Dispose();
     }
 
-    private IStateReader CreateConstantStateRootTracker(bool available)
-    {
-        IStateReader tracker = Substitute.For<IStateReader>();
-        tracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(available);
-        return tracker;
-    }
 }
