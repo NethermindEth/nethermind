@@ -8,15 +8,17 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(WorldState inner, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
+public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
@@ -34,6 +36,26 @@ public class WitnessGeneratingWorldState(WorldState inner, WitnessCapturingTrieS
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
+
+        // Build state nodes
+        //
+        // The purpose of adding this tree visitor over the captured keys is for capturing trie nodes that
+        // were modified but reset to their original value within a block processing. Otherwise, the
+        // WitnessCapturingTrie only would not capture these nodes and they would not be included in the witness.
+        // For example, these nodes are captured in geth. But this solution might capture additional nodes not
+        // necessarily needed for the witness. There might be a better solution, it is just not the priority now.
+        HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
+        stateNodes.UnionWith(trieStore.TouchedNodesRlp);
+        foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
+        {
+            AccountProofCollector accountProofCollector = new(account, slots.ToArray());
+            stateReader.RunTreeVisitor(accountProofCollector, parentHeader);
+            AccountProof accountProof = accountProofCollector.BuildResult();
+
+            stateNodes.AddRange(accountProof.Proof);
+            stateNodes.AddRange(accountProof.StorageProofs.SelectMany(storageProof => storageProof.Proof));
+        }
+
         // Build keys
         int totalKeysCount = 0;
         foreach (var kvp in _storageSlots)
@@ -56,7 +78,7 @@ public class WitnessGeneratingWorldState(WorldState inner, WitnessCapturingTrieS
         return new Witness()
         {
             Codes = _bytecodes.Values.ToArray(),
-            State = trieStore.TouchedNodesRlp,
+            State = stateNodes.ToArray(),
             Keys = keys,
             Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash)
         };
