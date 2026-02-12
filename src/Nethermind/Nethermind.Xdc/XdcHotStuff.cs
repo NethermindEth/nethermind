@@ -153,8 +153,7 @@ namespace Nethermind.Xdc
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            TimeSpan roundDuration = DateTime.UtcNow - _xdcContext.RoundStarted;
-            _logger.Info($"Round {args.NewRound} completed in {roundDuration.TotalSeconds:F2}s");
+            _logger.Info($"Round {args.PreviousRound} completed in {args.LastRoundDuration.TotalSeconds:F2}s");
             _writeRoundInfo = true;
         }
 
@@ -380,17 +379,10 @@ namespace Nethermind.Xdc
             if (e.Block.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidOperationException($"Expected an XDC header, but got {e.Block.Header.GetType().FullName}");
 
-            _logger.Debug($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}");
+            _logger.Info($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, our round={_xdcContext.CurrentRound}");
 
             if (xdcHead.ExtraConsensusData is null)
                 throw new InvalidOperationException("New head block missing ExtraConsensusData");
-
-            ulong headRound = xdcHead.ExtraConsensusData.BlockRound;
-            if (headRound > _xdcContext.CurrentRound)
-            {
-                _logger.Warn($"New head block round is ahead of us.");
-                //TODO This should probably trigger a sync
-            }
 
             // Signal new round
             _lastActivityTime = DateTime.UtcNow;
