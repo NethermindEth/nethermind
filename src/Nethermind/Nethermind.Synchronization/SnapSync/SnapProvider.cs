@@ -253,7 +253,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             catch (Exception e)
             {
-                _logger.Warn($"Error in storage {e}");
+                if (_logger.IsWarn) _logger.Warn($"Error in storage {e}");
                 throw;
             }
         }
