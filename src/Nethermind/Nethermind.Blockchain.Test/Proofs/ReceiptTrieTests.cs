@@ -58,6 +58,28 @@ public class ReceiptTrieTests
         VerifyProof(proof, trie.RootHash);
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Parallel_and_non_parallel_root_hashing_produce_same_root()
+    {
+        const int receiptCount = 100;
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null));
+        TxReceipt[] receipts = new TxReceipt[receiptCount];
+        for (int i = 0; i < receiptCount; i++)
+        {
+            receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal(1000 + i).TestObject;
+        }
+
+        using TrackingCappedArrayPool parallelPool = new(receiptCount * 4, canBeParallel: true);
+        ReceiptTrie parallelTrie = new(spec, receipts, _decoder, parallelPool, canBeParallel: true);
+        Hash256 parallelRoot = parallelTrie.RootHash;
+
+        using TrackingCappedArrayPool sequentialPool = new(receiptCount * 4, canBeParallel: false);
+        ReceiptTrie sequentialTrie = new(spec, receipts, _decoder, sequentialPool, canBeParallel: false);
+        Hash256 sequentialRoot = sequentialTrie.RootHash;
+
+        Assert.That(sequentialRoot, Is.EqualTo(parallelRoot));
+    }
+
     private void VerifyProof(byte[][] proof, Hash256 receiptRoot)
     {
         TrieNode node = new(NodeType.Unknown, proof.Last());

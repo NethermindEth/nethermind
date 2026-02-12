@@ -34,7 +34,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly CancellationTokenSource _mainCancellationTokenSource;
     private readonly Channel<IActivity> _taskQueue;
     private readonly BelowNormalPriorityTaskScheduler _scheduler;
-    private readonly ManualResetEventSlim _restartQueueSignal;
     private readonly Task[] _tasksExecutors;
     private readonly ILogger _logger;
     private readonly IBranchProcessor _branchProcessor;
@@ -43,6 +42,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _queueCount;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
+    private volatile TaskCompletionSource? _blockProcessingDoneSignal;
     private bool _disposed = false;
 
     public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
@@ -65,7 +65,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _logger = logManager.GetClassLogger();
         _branchProcessor = branchProcessor;
         _headInfo = headInfo;
-        _restartQueueSignal = new ManualResetEventSlim(initialState: true);
         _capacity = capacity;
 
         _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
@@ -74,7 +73,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // TaskScheduler to run tasks at BelowNormal priority
         _scheduler = new BelowNormalPriorityTaskScheduler(
             concurrency,
-            _restartQueueSignal,
             logManager,
             _mainCancellationTokenSource.Token);
 
@@ -88,8 +86,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // as there are potentially no gaps between blocks
         if (!_headInfo.IsSyncing)
         {
-            // Reset the background queue processing signal, causing it to wait
-            _restartQueueSignal.Reset();
+            // Signal that block processing is in progress so the Throttle path in StartChannel
+            // can async-wait instead of busy-polling
+            _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             // On block processing, we cancel the block process cts, causing the current task to get canceled.
             _blockProcessorCancellationTokenSource.Cancel();
         }
@@ -102,8 +101,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             ref _blockProcessorCancellationTokenSource,
             new CancellationTokenSource());
 
-        // We also set a queue signal causing it to continue processing the task.
-        _restartQueueSignal.Set();
+        // Signal that block processing is done so the Throttle path can resume
+        Interlocked.Exchange(ref _blockProcessingDoneSignal, null)?.TrySetResult();
     }
 
     private async Task StartChannel()
@@ -157,7 +156,16 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             continue;
 
         Throttle:
-            await Task.Delay(millisecondsDelay: 1);
+            // Wait for block processing to complete, with periodic wake-ups to drain newly expired tasks
+            TaskCompletionSource? signal = _blockProcessingDoneSignal;
+            if (signal is not null)
+            {
+                await Task.WhenAny(signal.Task, Task.Delay(millisecondsDelay: 1));
+            }
+            else
+            {
+                await Task.Delay(millisecondsDelay: 1);
+            }
         }
     }
 
@@ -250,17 +258,15 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         private readonly BlockingCollection<Task> _tasks = [];
         private readonly Thread[] workerThreads;
-        private readonly ManualResetEventSlim _restartQueueSignal;
         private readonly int _maxDegreeOfParallelism;
         private readonly ILogger _logger;
         private readonly CancellationToken _cancellationToken;
 
-        public BelowNormalPriorityTaskScheduler(int maxDegreeOfParallelism, ManualResetEventSlim restartQueueSignal, ILogManager logManager, CancellationToken cancellationToken)
+        public BelowNormalPriorityTaskScheduler(int maxDegreeOfParallelism, ILogManager logManager, CancellationToken cancellationToken)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
 
             _logger = logManager.GetClassLogger();
-            _restartQueueSignal = restartQueueSignal;
             _maxDegreeOfParallelism = maxDegreeOfParallelism;
             _cancellationToken = cancellationToken;
             workerThreads = [.. Enumerable.Range(0, maxDegreeOfParallelism)
@@ -283,8 +289,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             {
                 foreach (Task task in _tasks.GetConsumingEnumerable(_cancellationToken))
                 {
-                    // Wait if processing blocks
-                    _restartQueueSignal.Wait(_cancellationToken);
                     try
                     {
                         TryExecuteTask(task);
