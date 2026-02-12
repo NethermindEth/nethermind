@@ -135,7 +135,7 @@ public class LogIndexStorageCompactorTests
         const int compactionDistance = 10;
 
         ILogIndexStorage storage = MockStorage(min: 0, max: 0);
-        using Compactor compactor = CreateCompactor(storage, new NonCompactableDb(), compactionDistance);
+        using Compactor compactor = CreateCompactor(storage, new NonCompactibleDb(), compactionDistance);
 
         await compactor.StopAsync();
 
@@ -144,7 +144,7 @@ public class LogIndexStorageCompactorTests
     }
 
     // Fails on compaction attempt
-    private class NonCompactableDb : IDbMeta
+    private class NonCompactibleDb : IDbMeta
     {
         private class CompactionException : Exception;
 
