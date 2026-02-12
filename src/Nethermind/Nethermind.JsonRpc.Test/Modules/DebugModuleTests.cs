@@ -352,6 +352,10 @@ public class DebugModuleTests
         static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
 
+        var header = Build.A.BlockHeader.WithHash(blockHash).TestObject;
+        blockFinder.FindHeader(blockHash).Returns(header);
+        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
         debugBridge
             .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
@@ -370,6 +374,10 @@ public class DebugModuleTests
 
         static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+
+        var header = Build.A.BlockHeader.WithHash(blockHash).TestObject;
+        blockFinder.FindHeader(blockHash).Returns(header);
+        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         debugBridge
             .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
