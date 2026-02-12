@@ -162,6 +162,7 @@ public class ReleaseSpec : IReleaseSpec
 
         return cache.ToFrozenSet();
     }
+    public bool IsEip7928Enabled { get; set; }
 
     // used only in testing
     public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();

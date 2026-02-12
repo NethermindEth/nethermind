@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -23,6 +22,8 @@ namespace Nethermind.Consensus.Processing
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
+            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -32,12 +33,27 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
+                long? gasRemaining = _balBuilder?.GasUsed();
+                if (gasRemaining is not null)
+                {
+                    _balBuilder.ValidateBlockAccessList(0, gasRemaining!.Value);
+                }
+
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                    if (gasRemaining is not null)
+                    {
+                        gasRemaining -= currentTx.SpentGas;
+                        _balBuilder.ValidateBlockAccessList((ushort)(i + 1), gasRemaining!.Value);
+                    }
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+
+                return [.. receiptsTracer.TxReceipts];
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

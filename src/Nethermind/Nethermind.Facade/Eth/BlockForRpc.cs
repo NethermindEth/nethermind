@@ -12,6 +12,7 @@ using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Facade.Eth;
 
@@ -90,6 +91,8 @@ public class BlockForRpc
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         RequestsHash = block.Header.RequestsHash;
+        BlockAccessListHash = block.Header.BlockAccessListHash;
+        BlockAccessList = block.BlockAccessList;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -146,6 +149,12 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? RequestsHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? BlockAccessListHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BlockAccessList? BlockAccessList { get; set; }
 
     private static object[] GetTransactionHashes(Transaction[] transactions)
     {
