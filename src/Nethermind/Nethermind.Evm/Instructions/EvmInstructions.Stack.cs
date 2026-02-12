@@ -113,6 +113,74 @@ internal static partial class EvmInstructions
     public struct Op2 : IOpCount { public static int Count => 2; }
 
     /// <summary>
+    /// Push operation for one byte with JUMP/JUMPI fusion.
+    /// When the next instruction is JUMP or JUMPI, the destination is read directly
+    /// without pushing to or popping from the stack, saving a full push+pop round-trip.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionPush1<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        const int Size = sizeof(byte);
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+
+        ref byte bytes = ref MemoryMarshal.GetReference(code);
+        int remainingCode = code.Length - programCounter;
+        Instruction nextInstruction;
+        if (!TTracingInst.IsActive &&
+            remainingCode > Size &&
+            stack.Head < EvmStack.MaxStackSize - 1 &&
+            ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
+                is Instruction.JUMP or Instruction.JUMPI))
+        {
+            // Fuse PUSH1+JUMP/JUMPI: read destination directly, skip stack operations.
+            int destination = Add(ref bytes, programCounter);
+
+            if (nextInstruction == Instruction.JUMP)
+            {
+                TGasPolicy.Consume(ref gas, GasCostOf.Jump);
+                vm.OpCodeCount++;
+            }
+            else
+            {
+                TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
+                vm.OpCodeCount++;
+                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
+                if (isOverflow) goto StackUnderflow;
+                if (!shouldJump)
+                {
+                    programCounter += Size + 1;
+                    goto Success;
+                }
+            }
+
+            if (!Jump(destination, ref programCounter, vm.VmState.Env))
+                goto InvalidJumpDestination;
+
+            goto Success;
+        }
+        else if (remainingCode >= Size)
+        {
+            stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
+        }
+        else
+        {
+            stack.PushZero<TTracingInst>();
+        }
+
+        programCounter += Size;
+    Success:
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

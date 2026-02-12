@@ -177,7 +177,7 @@ internal static unsafe partial class EvmInstructions
         }
 
         // PUSH opcodes (PUSH1 to PUSH32).
-        lookup[(int)Instruction.PUSH1] = &InstructionPush<TGasPolicy, Op1, TTracingInst>;
+        lookup[(int)Instruction.PUSH1] = &InstructionPush1<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.PUSH2] = &InstructionPush2<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.PUSH3] = &InstructionPush<TGasPolicy, Op3, TTracingInst>;
         lookup[(int)Instruction.PUSH4] = &InstructionPush<TGasPolicy, Op4, TTracingInst>;
