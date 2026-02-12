@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -15,7 +16,6 @@ namespace Nethermind.Evm;
 
 internal static partial class EvmInstructions
 {
-    private static readonly Address s_identityPrecompileAddress = Address.FromNumber(4);
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
     /// Each implementation specifies whether the call is static and what its execution type is.
@@ -177,18 +177,18 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
-        // Fast-path for identity precompile: skip code lookup, frame creation, state snapshot.
-        if (codeSource.Equals(s_identityPrecompileAddress)
+        // Retrieve code information for the call (O(1) for precompiles, cached for contracts).
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+
+        // Fast-path for precompile calls: skip frame creation and state snapshot.
+        if (codeInfo.IsPrecompile
             && !TTracingInst.IsActive
             && !vm.TxTracer.IsTracingActions)
         {
-            return FastIdentityCall(vm, state, ref gas, ref stack, in gasLimit,
-                in transferValue, caller, target,
+            return FastPrecompileCall(vm, state, ref gas, ref stack, in gasLimit,
+                in transferValue, caller, target, codeInfo.Precompile!,
                 in dataOffset, in dataLength, in outputOffset, in outputLength, spec);
         }
-
-        // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
@@ -313,9 +313,9 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        // Identity precompile inline execution: avoids frame allocation, code lookup, and state snapshot.
+        // Precompile inline execution: avoids frame allocation and state snapshot.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static EvmExceptionType FastIdentityCall(
+        static EvmExceptionType FastPrecompileCall(
             VirtualMachine<TGasPolicy> vm,
             IWorldState state,
             ref TGasPolicy gas,
@@ -324,6 +324,7 @@ internal static partial class EvmInstructions
             in UInt256 transferValue,
             Address caller,
             Address target,
+            IPrecompile precompile,
             in UInt256 dataOffset,
             in UInt256 dataLength,
             in UInt256 outputOffset,
@@ -362,23 +363,57 @@ internal static partial class EvmInstructions
                 return EvmExceptionType.None;
             }
 
-            // Identity gas: 15 base + 3 per 32-byte word.
-            long identityGasCost = 15L + 3L * EvmCalculations.Div32Ceiling(in dataLength, out bool identityOog);
+            // Load input from caller's memory (not a state change — safe before snapshot decision).
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> inputData))
+                return EvmExceptionType.OutOfGas;
+
+            // Calculate precompile gas cost.
+            long baseGasCost = precompile.BaseGasCost(spec);
+            long dataGasCost = precompile.DataGasCost(inputData, spec);
+            bool gasOverflow = (ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue;
+            long precompileGasCost = baseGasCost + dataGasCost;
 
             if (transferValue.IsZero)
             {
                 // Zero-value: check gas before any state changes to avoid snapshot.
-                if (identityOog || identityGasCost > gasLimitUl)
+                // On OOG all forwarded gas is consumed (no refund), matching normal CALL semantics.
+                if (gasOverflow || precompileGasCost > gasLimitUl)
                 {
                     vm.ReturnDataBuffer = Array.Empty<byte>();
                     stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
                     vm.ReturnData = null;
                     return EvmExceptionType.None;
                 }
 
-                // Touch the account (EIP-161 semantics).
+                // Run precompile before touching account so failure needs no rollback.
+                Result<byte[]> output;
+                try
+                {
+                    output = precompile.Run(inputData, spec);
+                }
+                catch
+                {
+                    // Precompile threw: all forwarded gas consumed, call fails.
+                    vm.ReturnDataBuffer = Array.Empty<byte>();
+                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                    vm.ReturnData = null;
+                    return EvmExceptionType.None;
+                }
+
+                if (!output)
+                {
+                    // Precompile execution failed: all forwarded gas consumed.
+                    vm.ReturnDataBuffer = Array.Empty<byte>();
+                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                    vm.ReturnData = null;
+                    return EvmExceptionType.None;
+                }
+
+                // Touch the account only on success (EIP-161 semantics).
                 state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+
+                return HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
+                    in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
             }
             else
             {
@@ -387,26 +422,57 @@ internal static partial class EvmInstructions
                 state.SubtractFromBalance(caller, in transferValue, spec);
                 state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
 
-                if (identityOog || identityGasCost > gasLimitUl)
+                // On OOG all forwarded gas is consumed (no refund), matching normal CALL semantics.
+                if (gasOverflow || precompileGasCost > gasLimitUl)
                 {
                     state.Restore(snapshot);
                     vm.ReturnDataBuffer = Array.Empty<byte>();
                     stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
                     vm.ReturnData = null;
                     return EvmExceptionType.None;
                 }
+
+                Result<byte[]> output;
+                try
+                {
+                    output = precompile.Run(inputData, spec);
+                }
+                catch
+                {
+                    state.Restore(snapshot);
+                    vm.ReturnDataBuffer = Array.Empty<byte>();
+                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                    vm.ReturnData = null;
+                    return EvmExceptionType.None;
+                }
+
+                if (!output)
+                {
+                    state.Restore(snapshot);
+                    vm.ReturnDataBuffer = Array.Empty<byte>();
+                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+                    vm.ReturnData = null;
+                    return EvmExceptionType.None;
+                }
+
+                return HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
+                    in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
             }
+        }
 
-            // Load input from caller's memory.
-            if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> inputData))
-                return EvmExceptionType.OutOfGas;
-
-            // Independent copy for ReturnDataBuffer (required for RETURNDATACOPY correctness).
-            byte[] returnBytes = inputData.Length > 0 ? inputData.ToArray() : Array.Empty<byte>();
+        static EvmExceptionType HandlePrecompileSuccess(
+            VirtualMachine<TGasPolicy> vm,
+            ref TGasPolicy gas,
+            ref EvmStack stack,
+            byte[]? outputData,
+            in UInt256 outputOffset,
+            in UInt256 outputLength,
+            long gasLimitUl,
+            long precompileGasCost)
+        {
+            byte[] returnBytes = outputData ?? Array.Empty<byte>();
             vm.ReturnDataBuffer = returnBytes;
 
-            // Write output to caller's memory using the independent copy.
             if (!outputLength.IsZero)
             {
                 int outLen = (int)outputLength.u0;
@@ -416,9 +482,8 @@ internal static partial class EvmInstructions
                     return EvmExceptionType.OutOfGas;
             }
 
-            // Push success, refund unused forwarded gas.
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - identityGasCost);
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - precompileGasCost);
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }
