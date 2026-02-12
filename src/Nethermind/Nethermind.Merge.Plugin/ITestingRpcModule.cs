@@ -20,4 +20,11 @@ public interface ITestingRpcModule : IRpcModule
         IsImplemented = true)]
 
     public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData);
+
+    [JsonRpcMethod(
+        Description = "Creating a new payload on top of chain head, committing it as new head block, and saving to JSON file.",
+        IsSharable = true,
+        IsImplemented = true)]
+
+    public Task<ResultWrapper<Hash256?>> testing_commitBlockV1(PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData);
 }
