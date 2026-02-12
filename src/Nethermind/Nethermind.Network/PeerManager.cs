@@ -59,6 +59,7 @@ namespace Nethermind.Network
         private int _newActiveNodes;
         private int _failedInitialConnect;
         private int _connectionRounds;
+        private bool _hasPeerSlot;
 
         private Timer? _peerUpdateTimer;
 
@@ -295,7 +296,8 @@ namespace Nethermind.Network
                         continue;
                     }
 
-                    if (!await EnsureAvailableActivePeerSlotAsync(_cancellationTokenSource.Token))
+                    await EnsureAvailableActivePeerSlotAsync(_cancellationTokenSource.Token);
+                    if (!_hasPeerSlot)
                     {
                         continue;
                     }
@@ -323,7 +325,8 @@ namespace Nethermind.Network
 
                     foreach (Peer peer in remainingCandidates)
                     {
-                        if (!await EnsureAvailableActivePeerSlotAsync(_cancellationTokenSource.Token))
+                        await EnsureAvailableActivePeerSlotAsync(_cancellationTokenSource.Token);
+                        if (!_hasPeerSlot)
                         {
                             // Some new connection are in flight at this point, but statistically speaking, they
                             // are going to fail, so its fine.
@@ -400,11 +403,12 @@ namespace Nethermind.Network
             await Task.WhenAll(tasks.AsSpan());
         }
 
-        private async Task<bool> EnsureAvailableActivePeerSlotAsync(CancellationToken cancellationToken)
+        private async Task EnsureAvailableActivePeerSlotAsync(CancellationToken cancellationToken)
         {
             if (AvailableActivePeersCount - _pending > 0)
             {
-                return true;
+                _hasPeerSlot = true;
+                return;
             }
 
             // Once the connection was established, the active peer count will increase, but it might
@@ -427,7 +431,7 @@ namespace Nethermind.Network
                 _ = await _peerUpdateRequested.WaitAsync(waitFor, cancellationToken);
             }
 
-            return AvailableActivePeersCount - _pending > 0;
+            _hasPeerSlot = AvailableActivePeersCount - _pending > 0;
         }
 
         private void SelectAndRankCandidates()
