@@ -327,5 +327,8 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         => inner.BeginScope(baseBlock);
 
     public void CreateEmptyAccountIfDeleted(Address address)
-        => inner.CreateEmptyAccountIfDeleted(address);
+    {
+        _storageSlots.TryAdd(address, []);
+        inner.CreateEmptyAccountIfDeleted(address);
+    }
 }
