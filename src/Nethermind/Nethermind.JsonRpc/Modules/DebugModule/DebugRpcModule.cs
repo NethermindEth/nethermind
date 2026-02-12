@@ -427,6 +427,12 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
+        var header = TryGetHeader<IEnumerable<string>>(blockHash, out var headerError);
+        if (headerError is not null)
+        {
+            return headerError;
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
@@ -439,6 +445,12 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
+        var header = TryGetHeader<IEnumerable<string>>(blockHash, out var headerError);
+        if (headerError is not null)
+        {
+            return headerError;
+        }
+
         using CancellationTokenSource cancellationTokenSource = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
