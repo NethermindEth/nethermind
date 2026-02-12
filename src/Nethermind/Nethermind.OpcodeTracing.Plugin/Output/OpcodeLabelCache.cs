@@ -25,10 +25,10 @@ internal static class OpcodeLabelCache
         string[] labels = new string[256];
         for (int i = 0; i < labels.Length; i++)
         {
-            Instruction opcode = (Instruction)i;
-            labels[i] = FastEnum.IsDefined(opcode)
-                ? FastEnum.GetName(opcode)!
-                : $"0x{i:x2}";
+            byte opcode = (byte)i;
+            labels[i] = FastEnum.IsDefined<Instruction>((Instruction)opcode)
+                ? FastEnum.ToString((Instruction)opcode)
+                : $"0x{opcode:x2}";
         }
 
         return labels;
