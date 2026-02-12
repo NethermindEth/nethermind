@@ -11,7 +11,7 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
 
 - **Flexible Block Range Configuration**:
   - Explicit range: `--OpcodeTracing.StartBlock 100 --OpcodeTracing.EndBlock 200`
-  - Recent N blocks: `--OpcodeTracing.Blocks 100`
+  - Recent N blocks: `--OpcodeTracing.RecentBlocks 100`
 
 - **Comprehensive JSON Output**:
   - **Retrospective mode**: Single JSON file per trace with metadata and aggregated opcode counts
@@ -40,11 +40,11 @@ When `StartBlock` and `EndBlock` are configured:
 - After `EndBlock` is reached, tracing **stops** and the cumulative file is finalized with `completionStatus="complete"`
 - Blocks after `EndBlock` are **not** traced
 
-When `Blocks` is configured:
+When `RecentBlocks` is configured:
 
-- All blocks after the current chain tip **are traced** (i.e. the next `Blocks` blocks)
+- All blocks after the current chain tip **are traced** (i.e. the next `RecentBlocks` blocks)
 - Blocks before the current chain tip are **not** traced
-- The plugin calculates the effective start and end blocks based on the current chain tip and the `Blocks` parameter
+- The plugin calculates the effective start and end blocks based on the current chain tip and the `RecentBlocks` parameter
 - After the effective end block is reached, tracer starts to create per-block files and update the cumulative file with the aggregated counts from all traced blocks
 
 **Best for**:
@@ -91,7 +91,6 @@ RetrospectiveExecution mode replays historical transactions through the actual E
 **Not suitable for**:
 
 - Nodes running with state pruning (use archive mode: `--Pruning.Mode None`)
-- Very old blocks where state has been pruned
 
 **Parallel Processing**:
 
@@ -145,7 +144,7 @@ dotnet run --project Nethermind.Runner -- \\
 dotnet run --project Nethermind.Runner -- \\
   --config volta \\
   --OpcodeTracing.Enabled true \\
-  --OpcodeTracing.Blocks 100 \\
+  --OpcodeTracing.RecentBlocks 100 \\
   --OpcodeTracing.Mode Retrospective
 ```
 
@@ -157,7 +156,7 @@ dotnet run --project Nethermind.Runner -- \\
 | `OutputDirectory` | string | "traces/opcodes" | Output directory for JSON files |
 | `StartBlock` | long? | null | First block number (inclusive) |
 | `EndBlock` | long? | null | Last block number (inclusive) |
-| `Blocks` | long? | null | Number of recent blocks to trace |
+| `RecentBlocks` | long? | null | Number of recent blocks to trace |
 | `Mode` | string | "RealTime" | Tracing mode: RealTime, Retrospective, or RetrospectiveExecution |
 | `MaxDegreeOfParallelism` | int | 0 | Parallel processing limit (0 = auto) |
 
@@ -284,7 +283,7 @@ dotnet run --project Nethermind.Runner -- \\
 dotnet run --project Nethermind.Runner -- \\
   --config mainnet \\
   --OpcodeTracing.Enabled true \\
-  --OpcodeTracing.Blocks 100 \\
+  --OpcodeTracing.RecentBlocks 100 \\
   --OpcodeTracing.Mode Retrospective
 ```
 
@@ -312,7 +311,7 @@ This mode captures actual executed opcodes including internal calls, providing a
 The plugin validates configuration on startup:
 
 - StartBlock must be ≤ EndBlock
-- Warns when both explicit range and Blocks parameter specified
+- Warns when both explicit range and RecentBlocks parameter specified
 - At least one range specification required
 - EndBlock must not exceed current chain tip
 - Output directory must be writable
@@ -356,7 +355,7 @@ Progress is logged every 1000 blocks:
 ### Blocks Not Synced Error
 
 - Wait for Nethermind to sync to requested block range
-- Use `--OpcodeTracing.Blocks` for recent blocks
+- Use `--OpcodeTracing.RecentBlocks` for recent blocks
 
 ### Output Directory Not Writable
 
