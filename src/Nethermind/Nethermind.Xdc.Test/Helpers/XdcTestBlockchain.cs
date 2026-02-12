@@ -509,8 +509,8 @@ public class XdcTestBlockchain : TestBlockchain
 
         VoteDecoder voteDecoder = new VoteDecoder();
 
-        var newHeadWaitHandle = new TaskCompletionSource();
-        var newRoundWaitHandle = new TaskCompletionSource();
+        var newHeadWaitHandle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newRoundWaitHandle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         XdcContext.NewRoundSetEvent += OnNewRound;
         try
         {
@@ -560,7 +560,7 @@ public class XdcTestBlockchain : TestBlockchain
         var head = (XdcBlockHeader)BlockTree.Head!.Header;
         var spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
 
-        var newHeadWaitHandle = new TaskCompletionSource();
+        var newHeadWaitHandle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         BlockTree.NewHeadBlock += OnNewHead;
         try
