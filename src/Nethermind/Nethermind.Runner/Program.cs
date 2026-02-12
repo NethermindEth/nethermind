@@ -42,10 +42,6 @@ using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFac
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
 
-// Inline socket I/O completions to reduce thread-pool hops on the networking hot path.
-// Must be set before any socket usage so SocketAsyncEngine picks it up during static init.
-Environment.SetEnvironmentVariable("DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS", "1");
-
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
