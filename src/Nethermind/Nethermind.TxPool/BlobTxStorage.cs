@@ -49,14 +49,18 @@ public class BlobTxStorage : IBlobTxStorage
     {
         if (count == 0) return 0;
 
+        // Outer array and inner byte[64] keys must be exact-size for the IDb indexer,
+        // so ArrayPool is not usable here without changing the DB interface.
         byte[][] dbKeys = new byte[count][];
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < dbKeys.Length; i++)
         {
             byte[] key = new byte[64];
             GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
             dbKeys[i] = key;
         }
 
+        // Calling the MultiGet with IEnumarable calls .ToArray() twice internally,
+        // defeating the purpose of pooling.
         KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
 
         int found = 0;
