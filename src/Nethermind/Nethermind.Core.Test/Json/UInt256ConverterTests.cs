@@ -153,80 +153,21 @@ namespace Nethermind.Core.Test.Json
                 static () => JsonSerializer.Deserialize<UInt256>("null", options));
         }
 
-        [Test]
-        public void Writes_zero()
+        [TestCase(0ul, 0ul, 0ul, 0ul, "\"0x0\"")]
+        [TestCase(1ul, 0ul, 0ul, 0ul, "\"0x1\"")]
+        [TestCase(0xful, 0ul, 0ul, 0ul, "\"0xf\"")]
+        [TestCase(0xfful, 0ul, 0ul, 0ul, "\"0xff\"")]
+        [TestCase(0xabcdeful, 0ul, 0ul, 0ul, "\"0xabcdef\"")]
+        [TestCase(ulong.MaxValue, 0ul, 0ul, 0ul, "\"0xffffffffffffffff\"")]
+        [TestCase(ulong.MaxValue, 1ul, 0ul, 0ul, "\"0x1ffffffffffffffff\"")]
+        [TestCase(0ul, 0ul, 1ul, 0ul, "\"0x100000000000000000000000000000000\"")]
+        [TestCase(0ul, 0ul, 0ul, 1ul, "\"0x1000000000000000000000000000000000000000000000000\"")]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, "\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"")]
+        public void Writes_hex(ulong u0, ulong u1, ulong u2, ulong u3, string expected)
         {
-            string result = JsonSerializer.Serialize(UInt256.Zero, options);
-            Assert.That(result, Is.EqualTo("\"0x0\""));
-        }
-
-        [Test]
-        public void Writes_one()
-        {
-            string result = JsonSerializer.Serialize(UInt256.One, options);
-            Assert.That(result, Is.EqualTo("\"0x1\""));
-        }
-
-        [Test]
-        public void Writes_single_nibble()
-        {
-            string result = JsonSerializer.Serialize((UInt256)0xf, options);
-            Assert.That(result, Is.EqualTo("\"0xf\""));
-        }
-
-        [Test]
-        public void Writes_two_nibbles()
-        {
-            string result = JsonSerializer.Serialize((UInt256)0xff, options);
-            Assert.That(result, Is.EqualTo("\"0xff\""));
-        }
-
-        [Test]
-        public void Writes_multi_byte()
-        {
-            string result = JsonSerializer.Serialize((UInt256)0xabcdef, options);
-            Assert.That(result, Is.EqualTo("\"0xabcdef\""));
-        }
-
-        [Test]
-        public void Writes_u0_only()
-        {
-            string result = JsonSerializer.Serialize(new UInt256(ulong.MaxValue), options);
-            Assert.That(result, Is.EqualTo("\"0xffffffffffffffff\""));
-        }
-
-        [Test]
-        public void Writes_u1_boundary()
-        {
-            // Value that spans u0 and u1
-            UInt256 value = new(ulong.MaxValue, 1);
+            UInt256 value = new(u0, u1, u2, u3);
             string result = JsonSerializer.Serialize(value, options);
-            Assert.That(result, Is.EqualTo("\"0x1ffffffffffffffff\""));
-        }
-
-        [Test]
-        public void Writes_u2_boundary()
-        {
-            // Value in u2 only
-            UInt256 value = new(0, 0, 1, 0);
-            string result = JsonSerializer.Serialize(value, options);
-            Assert.That(result, Is.EqualTo("\"0x100000000000000000000000000000000\""));
-        }
-
-        [Test]
-        public void Writes_u3_boundary()
-        {
-            // Value in u3 only
-            UInt256 value = new(0, 0, 0, 1);
-            string result = JsonSerializer.Serialize(value, options);
-            Assert.That(result, Is.EqualTo("\"0x1000000000000000000000000000000000000000000000000\""));
-        }
-
-        [Test]
-        public void Writes_max_value()
-        {
-            string result = JsonSerializer.Serialize(UInt256.MaxValue, options);
-            Assert.That(result, Is.EqualTo("\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""));
+            Assert.That(result, Is.EqualTo(expected));
         }
 
         [Test]
