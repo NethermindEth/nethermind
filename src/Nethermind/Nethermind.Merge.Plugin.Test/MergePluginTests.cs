@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -205,6 +206,7 @@ public class MergePluginTests
             gasLimitCalculator,
             specProvider,
             blockFinder,
+            Substitute.For<IBlockTree>(),
             LimboLogs.Instance);
 
         PayloadAttributes payloadAttributes = new()
@@ -232,6 +234,224 @@ public class MergePluginTests
         result.Data!.ExecutionPayload.BlobGasUsed.Should().Be(0);
         result.Data!.ExecutionPayload.ExcessBlobGas.Should().Be(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance));
         suggestedWithdrawalsRoot.Should().Be(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash);
+    }
+
+        [Test]
+    public async Task Testing_commitBlockV1_commits_block_to_chain_head()
+    {
+        // Arrange
+        BlockHeader chainHeadHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = Keccak.Compute("chainHead"),
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+        };
+
+        Block chainHeadBlock = new(chainHeadHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(chainHeadBlock);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+            .Returns(AddBlockResult.Added);
+
+        Hash256? producedBlockHash = null;
+        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        blockchainProcessor
+            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                Block block = callInfo.Arg<Block>();
+                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                block.Header.Bloom ??= Bloom.Empty;
+                block.Header.GasUsed = 0;
+                block.Header.Hash ??= Keccak.Compute("produced");
+                producedBlockHash = block.Header.Hash;
+                return block;
+            });
+
+        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(chainHeadHeader.GasLimit);
+
+        TestingRpcModule module = new(
+            mainProcessingContext,
+            gasLimitCalculator,
+            specProvider,
+            blockFinder,
+            blockTree,
+            LimboLogs.Instance);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chainHeadHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals =
+            [
+                new Withdrawal
+                {
+                    Index = 0,
+                    ValidatorIndex = 0,
+                    Address = Address.Zero,
+                    AmountInGwei = 1
+                }
+            ],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
+        };
+
+        // Act
+        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+
+        // Assert
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().NotBeNull();
+        result.Data.Should().Be(producedBlockHash!);
+
+        // Verify that SuggestBlockAsync was called with the correct options
+        await blockTree.Received(1).SuggestBlockAsync(
+            Arg.Is<Block>(b => b.Header.Number == chainHeadHeader.Number + 1),
+            BlockTreeSuggestOptions.ShouldProcess);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_when_chain_head_not_found()
+    {
+        // Arrange
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns((Block?)null);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+
+        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+
+        TestingRpcModule module = new(
+            mainProcessingContext,
+            gasLimitCalculator,
+            specProvider,
+            blockFinder,
+            blockTree,
+            LimboLogs.Instance);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        // Act
+        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(payloadAttributes, Array.Empty<byte[]>(), null);
+
+        // Assert
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_when_block_commit_fails()
+    {
+        // Arrange
+        BlockHeader chainHeadHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = Keccak.Compute("chainHead"),
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty
+        };
+
+        Block chainHeadBlock = new(chainHeadHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(chainHeadBlock);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+            .Returns(AddBlockResult.InvalidBlock);
+
+        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        blockchainProcessor
+            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                Block block = callInfo.Arg<Block>();
+                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                block.Header.Bloom ??= Bloom.Empty;
+                block.Header.GasUsed = 0;
+                block.Header.Hash ??= Keccak.Compute("produced");
+                return block;
+            });
+
+        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(chainHeadHeader.GasLimit);
+
+        TestingRpcModule module = new(
+            mainProcessingContext,
+            gasLimitCalculator,
+            specProvider,
+            blockFinder,
+            blockTree,
+            LimboLogs.Instance);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chainHeadHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        // Act
+        ResultWrapper<Hash256?> result = await module.testing_commitBlockV1(payloadAttributes, Array.Empty<byte[]>(), null);
+
+        // Assert
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
     [TestCase(true, true)]
