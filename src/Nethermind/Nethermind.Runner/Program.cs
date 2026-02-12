@@ -52,6 +52,13 @@ ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 var unhandledError = "A critical error has occurred";
+Option<string>[] deprecatedOptions =
+[
+    BasicOptions.ConfigurationDirectory,
+    BasicOptions.DatabasePath,
+    BasicOptions.LoggerConfigurationSource,
+    BasicOptions.PluginsDirectory
+];
 
 AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
