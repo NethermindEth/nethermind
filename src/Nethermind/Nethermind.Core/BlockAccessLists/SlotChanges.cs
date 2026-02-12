@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -69,10 +70,10 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
         {
             if (change.Key >= blockAccessIndex)
             {
-                return lastValue.ToBigEndian();
+                return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
             }
             lastValue = change.Value.NewValue;
         }
-        return lastValue.ToBigEndian();
+        return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
     }
 }
