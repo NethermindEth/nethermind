@@ -58,7 +58,7 @@ public class MessageQueueTests
         Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request1 = CreateRequest();
         Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request2 = CreateRequest();
 
-        using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
+        IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
         _queue.Send(request1);
         _queue.Send(request2);
@@ -149,7 +149,7 @@ public class MessageQueueTests
     }
 
     [Test]
-    public void Send_disposes_message_when_closed()
+    public void Send_does_not_send_when_closed()
     {
         _queue.CompleteAdding();
 
