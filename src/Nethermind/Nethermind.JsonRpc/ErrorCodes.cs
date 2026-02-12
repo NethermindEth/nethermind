@@ -178,11 +178,6 @@ namespace Nethermind.JsonRpc
         public const int MaxInitCodeSizeExceeded = -38025;
 
         /// <summary>
-        /// Transaction reverted. Geth sets it to -32000 in simulate but supposed to be 3. We keep it as Geth for now
-        /// </summary>
-        public const int RevertedSimulate = -32000;
-
-        /// <summary>
         /// Error during EVM execution
         /// </summary>
         public const int VMError = -32015;
