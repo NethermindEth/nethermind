@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -17,7 +18,9 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : IBlobTxStorage
 {
+    private const int MaxPooledKeys = 128;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
@@ -49,18 +52,16 @@ public class BlobTxStorage : IBlobTxStorage
     {
         if (count == 0) return 0;
 
-        // Outer array and inner byte[64] keys must be exact-size for the IDb indexer,
-        // so ArrayPool is not usable here without changing the DB interface.
+        // Outer array must be exact-size for the IDb indexer (uses keys.Length).
+        // Inner byte[64] keys are pooled via ConcurrentQueue to avoid per-call allocations.
         byte[][] dbKeys = new byte[count][];
         for (int i = 0; i < dbKeys.Length; i++)
         {
-            byte[] key = new byte[64];
+            byte[] key = RentKey();
             GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
             dbKeys[i] = key;
         }
 
-        // Calling the MultiGet with IEnumerable calls .ToArray() twice internally,
-        // defeating the purpose of pooling.
         KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
 
         int found = 0;
@@ -69,6 +70,10 @@ public class BlobTxStorage : IBlobTxStorage
             if (TryDecodeFullTx(dbResults[i].Value, keys[i].Sender, out results[i]))
                 found++;
         }
+
+        for (int i = 0; i < count; i++)
+            ReturnKey(dbKeys[i]);
+
         return found;
     }
 
@@ -158,6 +163,14 @@ public class BlobTxStorage : IBlobTxStorage
 
         lightTx = default;
         return false;
+    }
+
+    private byte[] RentKey() => _keyPool.TryDequeue(out byte[]? key) ? key : new byte[64];
+
+    private void ReturnKey(byte[] key)
+    {
+        if (_keyPool.Count < MaxPooledKeys)
+            _keyPool.Enqueue(key);
     }
 
     private static void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)

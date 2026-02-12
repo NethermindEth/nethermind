@@ -74,8 +74,9 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobA
         writer.Write("]"u8);
     }
 
-    // Used only by tests and STJ fallback; production path is WriteToAsync
-    public IEnumerator<BlobAndProofV2?> GetEnumerator()
+    // Explicit interface implementation: only used by tests via IEnumerable<T> cast.
+    // Production serialization goes through IStreamableResult.WriteToAsync.
+    IEnumerator<BlobAndProofV2?> IEnumerable<BlobAndProofV2?>.GetEnumerator()
     {
         for (int i = 0; i < _count; i++)
         {
@@ -84,5 +85,5 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobA
         }
     }
 
-    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
 }
