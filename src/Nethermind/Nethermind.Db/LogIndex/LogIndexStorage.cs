@@ -236,10 +236,6 @@ namespace Nethermind.Db.LogIndex
                     ? new Compressor(this, config.CompressionDistance, config.MaxCompressionParallelism)
                     : new NoOpCompressor();
 
-                _compactor = config.CompactionDistance > 0
-                    ? new Compactor(this, _logger, config.CompactionDistance)
-                    : new NoOpCompactor();
-
                 for (int i = -1; i < MaxTopics; i++)
                     _mergeOperators[i + 1] = new MergeOperator(this, _compressor, topicIndex: i < 0 ? null : i);
 
@@ -247,6 +243,10 @@ namespace Nethermind.Db.LogIndex
                 _metaDb = GetMetaDb(_rootDb);
                 _addressDb = _rootDb.GetColumnDb(LogIndexColumns.Addresses);
                 _topicDbs = Enumerable.Range(0, MaxTopics).Select(topicIndex => _rootDb.GetColumnDb(GetColumn(topicIndex))).ToArray();
+
+                _compactor = config.CompactionDistance > 0
+                    ? new Compactor(this, _rootDb, _logger, config.CompactionDistance)
+                    : new NoOpCompactor();
 
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
@@ -390,7 +390,7 @@ namespace Nethermind.Db.LogIndex
 
             try
             {
-                // Disposing RocksDB during any write operation will cause 0xC0000005
+                // Disposing RocksDB during any write operation will cause 0xC0000005, so stop them all
                 await Task.WhenAll(
                     _compactor.StopAsync(),
                     _compressor.StopAsync()
@@ -449,9 +449,9 @@ namespace Nethermind.Db.LogIndex
             _forwardWriteSemaphore.Dispose();
             _backwardWriteSemaphore.Dispose();
             _compressor?.Dispose();
+            _compactor?.Dispose();
             DBColumns?.DisposeItems();
             _rootDb?.Dispose();
-            _compactor?.Dispose();
         }
 
         private int? LoadRangeBound(ReadOnlySpan<byte> key)
