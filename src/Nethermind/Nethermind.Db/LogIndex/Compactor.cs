@@ -3,11 +3,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
+[assembly: InternalsVisibleTo("Nethermind.Db.Test")]
 namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
@@ -15,24 +17,33 @@ partial class LogIndexStorage
     /// <summary>
     /// Periodically forces background log index compaction for every N added blocks.
     /// </summary>
-    private class Compactor : ICompactor
+    internal class Compactor : ICompactor
     {
         private int? _lastAtMin;
         private int? _lastAtMax;
 
         private CompactingStats _stats = new();
-        private readonly LogIndexStorage _storage;
+        private readonly ILogIndexStorage _storage;
+        private readonly IDbMeta _rootDb;
         private readonly ILogger _logger;
         private readonly int _compactionDistance;
 
         private readonly CancellationTokenSource _cts = new();
+
+        /// <summary>
+        /// Bounded(1) compaction work queue consumed by <see cref="DoCompactAsync"/>. <br/>
+        /// <c>null</c> — fire-and-forget compaction enqueued by <see cref="TryEnqueue"/>; <br/>
+        /// <c>not null</c> — caller-awaitable compaction enqueued by <see cref="ForceAsync"/>.
+        /// </summary>
         private readonly Channel<TaskCompletionSource?> _channel = Channel.CreateBounded<TaskCompletionSource?>(1);
+
         private volatile TaskCompletionSource? _pendingForcedCompaction;
         private readonly Task _compactionTask;
 
-        public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
+        public Compactor(ILogIndexStorage storage, IDbMeta rootDb, ILogger logger, int compactionDistance)
         {
             _storage = storage;
+            _rootDb = rootDb;
             _logger = logger;
 
             if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
@@ -84,6 +95,7 @@ partial class LogIndexStorage
             // Coalesce concurrent calls — all callers share a single compaction
             TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource? existing = Interlocked.CompareExchange(ref _pendingForcedCompaction, tcs, null);
+
             if (existing is not null)
             {
                 await existing.Task;
@@ -98,13 +110,10 @@ partial class LogIndexStorage
             {
                 Interlocked.CompareExchange(ref _pendingForcedCompaction, null, tcs);
                 if (ex is OperationCanceledException)
-                {
                     tcs.TrySetCanceled();
-                }
                 else
-                {
                     tcs.TrySetException(ex);
-                }
+
                 throw;
             }
 
@@ -124,7 +133,7 @@ partial class LogIndexStorage
                         if (_logger.IsInfo) _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
 
                         var timestamp = Stopwatch.GetTimestamp();
-                        _storage._rootDb.Compact();
+                        _rootDb.Compact();
 
                         TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);
                         _stats.Total.Include(elapsed);
@@ -140,9 +149,12 @@ partial class LogIndexStorage
                     catch (Exception ex)
                     {
                         tcs?.TrySetException(ex);
-                        _storage.OnBackgroundError<Compactor>(ex);
+                        (_storage as LogIndexStorage)?.OnBackgroundError<Compactor>(ex);
+
                         await _cts.CancelAsync();
                         _channel.Writer.TryComplete();
+
+                        break;
                     }
                     finally
                     {
@@ -153,7 +165,7 @@ partial class LogIndexStorage
             }
             catch (OperationCanceledException)
             {
-                if (_logger.IsDebug) _logger.Debug("Log index: compaction loop canceled.");
+                if (_logger.IsDebug) _logger.Debug("Log index: compaction loop canceled");
             }
             finally
             {
@@ -181,7 +193,7 @@ partial class LogIndexStorage
         public void Dispose() { }
     }
 
-    private interface ICompactor : IDisposable
+    internal interface ICompactor : IDisposable
     {
         CompactingStats GetAndResetStats();
         bool TryEnqueue();
