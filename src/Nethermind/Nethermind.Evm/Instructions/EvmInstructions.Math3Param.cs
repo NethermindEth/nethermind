@@ -25,16 +25,19 @@ internal static partial class EvmInstructions
     {
         TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        // Pop first two operands; peek third in-place (avoids extra pop+push round-trip).
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PeekUInt256(out UInt256 c)) goto StackUnderflow;
 
         if (c.IsZero)
         {
-            stack.PushZero<TTracingInst>();
+            // Zero is endianness-agnostic; write back directly.
+            UInt256 zero = default;
+            stack.WriteBackUInt256<TTracingInst>(in zero);
         }
         else
         {
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            stack.WriteBackUInt256<TTracingInst>(in result);
         }
 
         return EvmExceptionType.None;

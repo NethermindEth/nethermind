@@ -1261,12 +1261,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
-                // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                if (Instruction.POP == instruction)
-                {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
-                }
-                else
                 {
                     // Retrieve the opcode function pointer corresponding to the current instruction.
                     var opcodeMethod = opcodeMethods[(int)instruction];

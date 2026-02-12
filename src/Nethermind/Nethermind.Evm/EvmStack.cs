@@ -430,6 +430,114 @@ public ref struct EvmStack
         return true;
     }
 
+    /// <summary>
+    /// Peeks at the top UInt256 on the stack without popping it.
+    /// Performs the same big-endian to little-endian byte-swap as <see cref="PopUInt256"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PeekUInt256(out UInt256 result)
+    {
+        Unsafe.SkipInit(out result);
+        ref byte bytes = ref PeekBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes)) return false;
+
+        if (Avx2.IsSupported)
+        {
+            Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
+                result = Unsafe.As<Word, UInt256>(ref convert);
+            }
+            else
+            {
+                Word convert = Avx2.Shuffle(data, shuffle);
+                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
+            }
+        }
+        else
+        {
+            ulong u3, u2, u1, u0;
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
+                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
+                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
+                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
+            }
+            else
+            {
+                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
+                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
+                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
+            }
+
+            result = new UInt256(u0, u1, u2, u3);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Writes a UInt256 value back to the current top of the stack without changing the stack head.
+    /// Performs the same little-endian to big-endian byte-swap as <see cref="PushUInt256{TTracingInst}"/>.
+    /// </summary>
+    public void WriteBackUInt256<TTracingInst>(in UInt256 value)
+        where TTracingInst : struct, IFlag
+    {
+        ref Word slot = ref Unsafe.As<byte, Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (Head - 1) * WordSize));
+
+        if (Avx2.IsSupported)
+        {
+            Word shuffle = Vector256.Create(
+                0x18191a1b1c1d1e1ful,
+                0x1011121314151617ul,
+                0x08090a0b0c0d0e0ful,
+                0x0001020304050607ul).AsByte();
+            if (Avx512Vbmi.VL.IsSupported)
+            {
+                Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
+                slot = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
+            }
+            else
+            {
+                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
+                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
+                slot = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle);
+            }
+        }
+        else
+        {
+            ulong u3, u2, u1, u0;
+            if (BitConverter.IsLittleEndian)
+            {
+                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
+                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
+                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
+                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
+            }
+            else
+            {
+                u3 = value.u3;
+                u2 = value.u2;
+                u1 = value.u1;
+                u0 = value.u0;
+            }
+
+            slot = Vector256.Create(u3, u2, u1, u0).AsByte();
+        }
+
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Word, byte>(ref slot), WordSize));
+    }
+
     public readonly bool PeekUInt256IsZero()
     {
         int head = Head;
