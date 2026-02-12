@@ -59,7 +59,7 @@ public class BlobTxStorage : IBlobTxStorage
             dbKeys[i] = key;
         }
 
-        // Calling the MultiGet with IEnumarable calls .ToArray() twice internally,
+        // Calling the MultiGet with IEnumerable calls .ToArray() twice internally,
         // defeating the purpose of pooling.
         KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
 
