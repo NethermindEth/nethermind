@@ -23,10 +23,10 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 {
     public bool TracingEnabled { get; set; } = false;
     public bool IsGenesis { get; set; } = true;
-    public bool ParallelExecutionEnabled => TracingEnabled && enableParallelExecution && !IsGenesis;
+    public bool ParallelExecutionEnabled => TracingEnabled && enableParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
 
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-    private BlockAccessList _suggestedBlockAccessList;
+    private BlockAccessList? _suggestedBlockAccessList;
     private BlockAccessList[] _intermediateBlockAccessLists;
     private TransientStorageProvider[] _transientStorageProviders;
 
@@ -43,6 +43,10 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         {
             LoadPreBlockState(suggestedBal);
             _suggestedBlockAccessList = suggestedBal;
+        }
+        else
+        {
+            _suggestedBlockAccessList = null;
         }
         _gasUsed = gasUsed;
     }
@@ -142,13 +146,16 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
     public void GenerateBlockAccessList()
     {
-        // combine intermediate BALs and receipt tracers
-        BlockAccessList first = _intermediateBlockAccessLists[0];
-        foreach (BlockAccessList bal in _intermediateBlockAccessLists.Skip(1))
+        if (ParallelExecutionEnabled)
         {
-            first.Merge(bal);
+            // combine intermediate BALs and receipt tracers
+            BlockAccessList first = _intermediateBlockAccessLists[0];
+            foreach (BlockAccessList bal in _intermediateBlockAccessLists.Skip(1))
+            {
+                first.Merge(bal);
+            }
+            GeneratedBlockAccessList = first;
         }
-        GeneratedBlockAccessList = first;
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
