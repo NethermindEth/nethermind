@@ -44,6 +44,39 @@ public class IPResolver : IIPResolver
         {
             ExternalIp = IPAddress.None;
         }
+
+        if (Equals(ExternalIp, IPAddress.Any) || Equals(ExternalIp, IPAddress.None))
+        {
+            if (_logger.IsWarn) _logger.Warn("External IP could not be resolved. Peers will not be able to connect.");
+            _ = RetryExternalIpAsync();
+        }
+    }
+
+    private async Task RetryExternalIpAsync()
+    {
+        const int maxRetries = 5;
+        for (int i = 0; i < maxRetries; i++)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(60));
+            try
+            {
+                IPAddress ip = await InitializeExternalIp();
+                if (!Equals(ip, IPAddress.Any) && !Equals(ip, IPAddress.None))
+                {
+                    ExternalIp = ip;
+                    if (_logger.IsWarn) _logger.Warn($"External IP resolved: {ip}. Restart the node for peers to connect using the new IP.");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Debug($"External IP retry failed: {ex.Message}");
+            }
+
+            if (_logger.IsWarn) _logger.Warn($"External IP still unresolved (attempt {i + 1}/{maxRetries}). Retrying in 60s...");
+        }
+
+        if (_logger.IsError) _logger.Error("External IP could not be resolved after all retries. Node will not be reachable by peers.");
     }
 
     public IPAddress LocalIp { get; private set; }
