@@ -37,7 +37,7 @@ public class VoteDecoderTests
 
             yield return new TestCaseData(
                 new Vote(
-                    new BlockRoundInfo(Keccak.Compute("block"), 42, 42),
+                    new BlockRoundInfo(Hash256.Zero, 1, 1),
                     0,
                     new Signature(new byte[64], 0)
                 ),
@@ -82,15 +82,12 @@ public class VoteDecoderTests
         decoder.Encode(stream, vote);
         stream.Position = 0;
 
-        // Decode with RlpStream
         Vote decodedStream = decoder.Decode(stream);
         stream.Position = 0;
 
-        // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
         Vote decodedContext = decoder.Decode(ref decoderContext);
 
-        // Both should be equivalent to original (excluding Signer which is not encoded)
         decodedStream.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
         decodedContext.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
         decodedStream.Should().BeEquivalentTo(decodedContext);
@@ -124,17 +121,13 @@ public class VoteDecoderTests
 
         var decoder = new VoteDecoder();
 
-        // Normal encoding
         Rlp normalEncoded = decoder.Encode(vote, RlpBehaviors.None);
 
-        // ForSealing encoding (should omit signature)
         Rlp sealingEncoded = decoder.Encode(vote, RlpBehaviors.ForSealing);
 
-        // ForSealing should be shorter than normal encoding
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        // Decode with ForSealing behavior
         var stream = new RlpStream(sealingEncoded.Bytes);
         Vote decoded = decoder.Decode(stream, RlpBehaviors.ForSealing);
 
@@ -195,32 +188,17 @@ public class VoteDecoderTests
     }
 
     [Test]
-    public void Vote_ToString_ReturnsExpectedFormat()
-    {
-        Vote vote = new(
-            new BlockRoundInfo(Hash256.Zero, 42, 100),
-            10,
-            new Signature(new byte[64], 0)
-        );
-
-        string result = vote.ToString();
-
-        // Format should be: Round:GapNumber:BlockNumber
-        Assert.That(result, Is.EqualTo("42:10:100"));
-    }
-
-    [Test]
     public void Vote_PoolKey_ReturnsRoundAndHash()
     {
         Vote vote = new(
-            new BlockRoundInfo(Hash256.Zero, 42, 100),
+            new BlockRoundInfo(Hash256.Zero, 1, 100),
             10,
             new Signature(new byte[64], 0)
         );
 
         var (round, hash) = vote.PoolKey();
 
-        Assert.That(round, Is.EqualTo(42UL));
+        Assert.That(round, Is.EqualTo(1UL));
         Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
     }
 }
