@@ -441,3 +441,7 @@ keystore/
 
 # AI
 **/.claude/**
+
+/tools/StatelessExecution/nethermind/**
+/tools/StatelessExecution/entrypoint.sh
+/tools/StatelessExecution/Program
