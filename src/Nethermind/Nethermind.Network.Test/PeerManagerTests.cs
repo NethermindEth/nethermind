@@ -592,6 +592,7 @@ namespace Nethermind.Network.Test
 
         [TestCase(0, 0, TestName = "Stop completes cleanly while idle")]
         [TestCase(1, 5, TestName = "Stop completes when slots are saturated")]
+        [CancelAfter(10_000)]
         public async Task Stop_does_not_hang(int maxActivePeers, int persistedPeers)
         {
             await using Context ctx = maxActivePeers > 0 ? new(maxActivePeers: maxActivePeers) : new();

@@ -200,12 +200,13 @@ namespace Nethermind.Network
                 }
                 catch (OperationCanceledException)
                 {
+                    // Ignore cancellation of the peer update loop during shutdown.
                 }
             }
 
             StopTimers();
 
-            if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete. Please wait for all components to close");
         }
 
         string IStoppableService.Description => "peer manager";
