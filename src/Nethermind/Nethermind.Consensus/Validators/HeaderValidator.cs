@@ -94,7 +94,9 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
-                   && ValidateRequestsHash(header, spec, ref error);
+                   && ValidateRequestsHash(header, spec, ref error)
+                   && ValidateBlockAccessListHash(header, spec, ref error)
+                   && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -186,6 +188,10 @@ namespace Nethermind.Consensus.Validators
             else if (parent.Hash != header.ParentHash)
             {
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
+                Console.WriteLine($"parent: {parent}");
+                parent.SlotNumber = 0;
+                parent.Hash = parent.CalculateHash();
+                Console.WriteLine($"alt: {parent}");
                 return false;
             }
 
@@ -381,5 +387,60 @@ namespace Nethermind.Consensus.Validators
         {
             return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         }
+
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7928Enabled)
+            {
+                if (header.BlockAccessListHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlockAccessListHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected virtual bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7843Enabled)
+            {
+                if (header.SlotNumber is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
+                    error = BlockErrorMessages.MissingSlotNumber;
+                    return false;
+                }
+
+                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
+                {
+                    error = BlockErrorMessages.InvalidSlotNumber;
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.SlotNumber is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
+                    error = BlockErrorMessages.SlotNumberNotEnabled;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
     }
 }

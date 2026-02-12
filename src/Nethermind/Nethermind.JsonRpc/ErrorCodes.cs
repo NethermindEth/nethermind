@@ -128,6 +128,11 @@ namespace Nethermind.JsonRpc
         public const int PrunedHistoryUnavailable = 4444;
 
         /// <summary>
+        /// Data is not available due to eip not being enabled yet
+        /// </summary>
+        public const int UnavailableBeforeFork = 4445;
+
+        /// <summary>
         /// Default error code
         /// </summary>
         public const int Default = -32000;

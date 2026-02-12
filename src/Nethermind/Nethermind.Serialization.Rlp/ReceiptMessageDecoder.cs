@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -43,21 +45,22 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.TxType = (TxType)ctx.ReadByte();
             }
 
-            _ = ctx.ReadSequenceLength();
+            int sequenceLength = ctx.ReadSequenceLength();
+            int receiptEnd = ctx.Position + sequenceLength;
             byte[] firstItem = ctx.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+                txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
-                txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+                txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
             }
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+                txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
             }
 
             txReceipt.Bloom = ctx.DecodeBloom();
@@ -72,12 +75,25 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            // Handle any remaining extra bytes
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+            if (ctx.Position != receiptEnd)
             {
-                ctx.Check(lastCheck);
+                if (allowExtraBytes)
+                {
+                    ctx.Position = receiptEnd;
+                }
+                else
+                {
+                    ThrowUnexpectedReceiptField();
+                }
             }
 
             return txReceipt;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedReceiptField()
+                => throw new RlpException("Unexpected receipt field");
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)

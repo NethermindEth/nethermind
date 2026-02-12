@@ -212,4 +212,15 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.RequestsHash = requestsHash;
         return this;
     }
+    public BlockHeaderBuilder WithBlockAccessListHash(Hash256? balHash)
+    {
+        TestObjectInternal.BlockAccessListHash = balHash;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithSlotNumber(ulong? slotNumber)
+    {
+        TestObjectInternal.ExcessBlobGas = slotNumber;
+        return this;
+    }
 }

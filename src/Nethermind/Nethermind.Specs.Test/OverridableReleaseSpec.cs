@@ -111,6 +111,7 @@ namespace Nethermind.Specs.Test
         public long ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEofEnabled { get; set; } = spec.IsEofEnabled;
+        public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
@@ -119,6 +120,10 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
         public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;
+        public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
+        public bool IsEip7708Enabled { get; set; } = spec.IsEip7708Enabled;
+        public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
+        public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }

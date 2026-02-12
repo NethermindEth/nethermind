@@ -54,8 +54,8 @@ public class StatusMessageSerializer69 :
             NetworkId = rlpStream.DecodeUInt256(),
             GenesisHash = rlpStream.DecodeKeccak() ?? Hash256.Zero,
             ForkId = DecodeForkId(rlpStream),
-            EarliestBlock = rlpStream.DecodeLong(),
-            LatestBlock = rlpStream.DecodeLong(),
+            EarliestBlock = rlpStream.DecodePositiveLong(),
+            LatestBlock = rlpStream.DecodePositiveLong(),
             LatestBlockHash = rlpStream.DecodeKeccak() ?? Hash256.Zero
         };
 
