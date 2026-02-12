@@ -75,22 +75,6 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    public int GetBlobCounts(byte[][] requestedBlobVersionedHashes)
-    {
-        using var lockRelease = Lock.Acquire();
-        int count = 0;
-
-        foreach (byte[] requestedBlobVersionedHash in requestedBlobVersionedHashes)
-        {
-            if (BlobIndex.ContainsKey(requestedBlobVersionedHash))
-            {
-                count += 1;
-            }
-        }
-
-        return count;
-    }
-
     public virtual int TryGetBlobsAndProofsV1(
         byte[][] requestedBlobVersionedHashes,
         byte[]?[] blobs,

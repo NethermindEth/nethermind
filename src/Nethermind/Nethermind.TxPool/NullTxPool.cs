@@ -83,8 +83,6 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
-
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs) => 0;
 
