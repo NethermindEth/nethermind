@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+
 namespace Nethermind.Core;
 
 /// <summary>
@@ -37,4 +39,10 @@ public struct OnFlag : IFlag
 {
     /// <inheritdoc />
     public static bool IsActive => true;
+}
+
+public static partial class Flag
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static partial bool IsActive<TFlag>() where TFlag : struct, IFlag;
 }

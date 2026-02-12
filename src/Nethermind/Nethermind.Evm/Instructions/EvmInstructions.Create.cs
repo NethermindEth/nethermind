@@ -164,7 +164,7 @@ public static partial class EvmInstructions
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // End tracing if enabled, prior to switching to the new call frame.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             vm.EndInstructionTrace(gasAvailable);
 
         // Calculate gas available for the contract creation call.

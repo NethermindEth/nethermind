@@ -161,7 +161,7 @@ public static partial class EvmInstructions
         }
 
         // Report memory changes if tracing is active.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
         return EvmExceptionType.None;
@@ -208,7 +208,7 @@ public static partial class EvmInstructions
         }
 
         // Report the memory change if tracing is active.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             vm.TxTracer.ReportMemoryChange(result, data);
 
         return EvmExceptionType.None;
@@ -252,7 +252,7 @@ public static partial class EvmInstructions
         }
 
         // Report the memory load if tracing is active.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             vm.TxTracer.ReportMemoryChange(result, bytes);
 
         // Push the loaded bytes onto the stack.
@@ -304,14 +304,14 @@ public static partial class EvmInstructions
         }
 
         // Report the memory change at the source if tracing is active.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             vm.TxTracer.ReportMemoryChange(b, bytes);
 
         // Write the bytes into memory at the destination offset.
         if (!vmState.Memory.TrySave(in a, bytes)) goto OutOfGas;
 
         // Report the memory change at the destination if tracing is active.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             vm.TxTracer.ReportMemoryChange(a, bytes);
 
         return EvmExceptionType.None;
@@ -403,7 +403,7 @@ public static partial class EvmInstructions
         }
 
         // Report storage changes for tracing if enabled.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
         {
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
@@ -454,7 +454,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
-        if (TUseNetGasStipendFix.IsActive)
+        if (Flag.IsActive<TUseNetGasStipendFix>())
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
@@ -565,7 +565,7 @@ public static partial class EvmInstructions
         }
 
         // Report storage changes for tracing if enabled.
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
         {
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }

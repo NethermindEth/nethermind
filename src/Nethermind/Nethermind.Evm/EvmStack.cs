@@ -64,7 +64,7 @@ public ref struct EvmStack
     public void PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(value);
 
         if (value.Length != WordSize)
@@ -83,7 +83,7 @@ public ref struct EvmStack
     public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(value);
 
         ReadOnlySpan<byte> valueSpan = value.Span;
@@ -104,7 +104,7 @@ public ref struct EvmStack
     public void PushByte<TTracingInst>(byte value)
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(value);
 
         // Build a 256-bit vector: [ 0, 0, 0, (value << 56) ]
@@ -119,7 +119,7 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         // ushort size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in value, sizeof(ushort));
 
         ref Word head = ref PushedHead();
@@ -136,7 +136,7 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         // uint size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in value, sizeof(uint));
 
         ref Word head = ref PushedHead();
@@ -153,7 +153,7 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         // ulong size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in value, sizeof(ulong));
 
         ref Word head = ref PushedHead();
@@ -169,7 +169,7 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         // UInt128 size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in value, sizeof(HalfWord));
 
         ref Word head = ref PushedHead();
@@ -184,7 +184,7 @@ public ref struct EvmStack
         where TTracingInst : struct, IFlag
     {
         // Address size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in value, 20);
 
         ref Word head = ref PushedHead();
@@ -209,7 +209,7 @@ public ref struct EvmStack
     public void Push32Bytes<TTracingInst>(in Word value)
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceWord(in value);
 
         // Single 32-byte store
@@ -225,7 +225,7 @@ public ref struct EvmStack
     public void PushLeftPaddedBytes<TTracingInst>(ReadOnlySpan<byte> value, int paddingLength)
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(value);
 
         if (value.Length != WordSize)
@@ -245,7 +245,7 @@ public ref struct EvmStack
     public void PushOne<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(Bytes.OneByteSpan);
 
         // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
@@ -259,10 +259,10 @@ public ref struct EvmStack
     public void PushZero<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
-        // Single 32-byte store: Zero 
+        // Single 32-byte store: Zero
         PushedHead() = default;
     }
 
@@ -274,7 +274,7 @@ public ref struct EvmStack
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // uint size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
         // Single 32-byte store
@@ -289,7 +289,7 @@ public ref struct EvmStack
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // ulong size
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
         // Single 32-byte store
@@ -347,7 +347,7 @@ public ref struct EvmStack
             head = Vector256.Create(u3, u2, u1, u0).AsByte();
         }
 
-        if (TTracingInst.IsActive)
+       if (Flag.IsActive<TTracingInst>())
             _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Word, byte>(ref head), WordSize));
     }
 
@@ -532,7 +532,7 @@ public ref struct EvmStack
 
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
 
-        if (TTracingInst.IsActive) Trace(depth);
+       if (Flag.IsActive<TTracingInst>()) Trace(depth);
 
         if (++head >= MaxStackSize) goto StackOverflow;
 
@@ -565,7 +565,7 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
         Unsafe.WriteUnaligned(ref top, buffer);
 
-        if (TTracingInst.IsActive) Trace(depth);
+       if (Flag.IsActive<TTracingInst>()) Trace(depth);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -588,7 +588,7 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
         Unsafe.WriteUnaligned(ref second, buffer);
 
-        if (TTracingInst.IsActive) Trace(maxDepth);
+       if (Flag.IsActive<TTracingInst>()) Trace(maxDepth);
 
         return true;
     }

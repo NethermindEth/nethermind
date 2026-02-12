@@ -442,6 +442,7 @@ keystore/
 # AI
 **/.claude/**
 
+#ZKVM
 /tools/StatelessExecution/nethermind/**
-/tools/StatelessExecution/entrypoint.sh
+/tools/StatelessExecution/*.sh
 /tools/StatelessExecution/Program

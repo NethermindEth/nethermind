@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -17,23 +18,15 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPool
 
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
 
-    public bool ValidateJump(int destination)
-    {
-        return _analyzer.ValidateJump(destination);
-    }
+    public bool ValidateJump(int destination) => _analyzer.ValidateJump(destination);
 
-    void IThreadPoolWorkItem.Execute()
-    {
-        _analyzer.Execute();
-    }
+    void IThreadPoolWorkItem.Execute() => _analyzer.Execute();
 
     public void AnalyzeInBackgroundIfRequired()
     {
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
         {
 #if ZKVM
-            // ZKVM runtime does not support background threads / ThreadPool work items.
-            // Run analysis synchronously to preserve correctness (jump destinations) without blocking on worker startup.
             _analyzer.Execute();
 #else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
