@@ -48,14 +48,14 @@ namespace Nethermind.JsonRpc
         public const int ResourceNotFound = -32000;
 
         /// <summary>
+        /// Transaction creation failed
+        /// </summary>
+        public const int TransactionRejected = -32000;
+
+        /// <summary>
         /// Requested resource not available
         /// </summary>
         public const int ResourceUnavailable = -32002;
-
-        /// <summary>
-        /// Transaction creation failed
-        /// </summary>
-        public const int TransactionRejected = -32010;
 
         /// <summary>
         /// Account locked

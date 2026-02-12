@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using CkzgLib;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -1155,6 +1156,140 @@ namespace Nethermind.TxPool.Test
             ulong maxBlobsPerTx = provider.GetSpec(_blockTree.Head!.Header).MaxBlobsPerTx;
 
             Assert.That(maxBlobsPerTx, Is.EqualTo(regularMaxBlobCount));
+        }
+
+        [Test]
+        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage()
+        {
+            // BlobCacheSize = 1 forces cache eviction after the first insert,
+            // so the second tx must be fetched via TryGetMany (Phase 2 DB path).
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction tx1 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction tx2 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            _txPool.SubmitTx(tx1, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(tx2, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // tx1 was evicted from cache (size=1) when tx2 was inserted,
+            // so at least one must come from DB via TryGetMany
+            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
+            byte[][] blobs = new byte[2][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+
+            int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
+
+            found.Should().Be(2);
+            blobs[0].Should().NotBeNull();
+            blobs[1].Should().NotBeNull();
+            proofs[0].Length.Should().Be(Ckzg.CellsPerExtBlob);
+            proofs[1].Length.Should().Be(Ckzg.CellsPerExtBlob);
+        }
+
+        [Test]
+        public void should_batch_return_partial_blobs_when_some_missing()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx1 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(tx1, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            byte[] fakeBlobHash = new byte[32];
+            fakeBlobHash[0] = 0x01; // versioned hash prefix
+            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, fakeBlobHash];
+            byte[][] blobs = new byte[2][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+
+            int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
+
+            found.Should().Be(1);
+            blobs[0].Should().NotBeNull();
+            blobs[1].Should().BeNull();
+        }
+
+        [Test]
+        public void should_batch_return_blobs_from_cache_and_db()
+        {
+            // BlobCacheSize = 1: after inserting tx1 and tx2, only tx2 remains in cache.
+            // Accessing tx1 via single lookup re-populates it, evicting tx2.
+            // Batch lookup then exercises: tx1 from cache, tx2 from DB (TryGetMany).
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction tx1 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction tx2 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            _txPool.SubmitTx(tx1, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(tx2, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // Access tx1 via single lookup — this re-populates tx1 in cache, evicting tx2
+            _txPool.TryGetBlobAndProofV1(tx1.BlobVersionedHashes![0]!, out byte[] _, out byte[][] _).Should().BeTrue();
+
+            // Now batch lookup: tx1 from cache (just accessed), tx2 from DB
+            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
+            byte[][] blobs = new byte[2][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+
+            int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
+
+            found.Should().Be(2);
+            blobs[0].Should().NotBeNull();
+            blobs[1].Should().NotBeNull();
+            proofs[0].Length.Should().Be(Ckzg.CellsPerExtBlob);
+            proofs[1].Length.Should().Be(Ckzg.CellsPerExtBlob);
         }
     }
 }
