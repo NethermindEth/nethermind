@@ -180,13 +180,17 @@ internal static partial class EvmInstructions
         // Retrieve code information for the call (O(1) for precompiles, cached for contracts).
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
-        // Fast-path for precompile calls: skip frame creation and state snapshot.
+        // Fast-path for lightweight precompile calls: skip frame creation and state snapshot.
+        // Only precompiles with trivial computation (e.g. identity) benefit — for heavyweight
+        // precompiles (ecrecover, modexp, bn254, etc.) computation dominates and the
+        // frame overhead is negligible.
         if (codeInfo.IsPrecompile
+            && codeInfo.Precompile!.SupportsFastPath
             && !TTracingInst.IsActive
             && !vm.TxTracer.IsTracingActions)
         {
             return FastPrecompileCall(vm, state, ref gas, ref stack, in gasLimit,
-                in transferValue, caller, target, codeInfo.Precompile!,
+                in transferValue, caller, target, codeInfo.Precompile,
                 in dataOffset, in dataLength, in outputOffset, in outputLength, spec);
         }
 
