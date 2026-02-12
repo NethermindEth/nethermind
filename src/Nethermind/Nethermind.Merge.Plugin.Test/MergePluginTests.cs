@@ -38,15 +38,8 @@ public class MergePluginTests
 
     private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
     {
-        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
-        {
-            if (type == typeof(SourceGenProbe))
-            {
-                throw new InvalidOperationException("probe resolver was used");
-            }
-
-            return null;
-        }
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+            type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
     }
 
     private ChainSpec _chainSpec = null!;

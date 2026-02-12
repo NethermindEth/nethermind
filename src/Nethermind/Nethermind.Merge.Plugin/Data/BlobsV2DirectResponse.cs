@@ -80,14 +80,7 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobA
         for (int i = 0; i < _count; i++)
         {
             byte[]? blob = _blobs[i];
-            if (blob is null)
-            {
-                yield return null;
-            }
-            else
-            {
-                yield return new BlobAndProofV2(blob, _proofs[i].ToArray());
-            }
+            yield return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
         }
     }
 

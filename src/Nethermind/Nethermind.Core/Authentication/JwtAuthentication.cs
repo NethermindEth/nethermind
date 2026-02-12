@@ -24,6 +24,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
+    // Manual HS256 validation limits
+    private const int SHA256HashBytes = 32;
+    private const int HS256SignatureSegmentLength = 44; // 43 Base64Url chars + dot separator
+    private const int StackBufferSize = 256;
+    private const int MaxManualJwtLength = StackBufferSize + HS256SignatureSegmentLength; // 300
+
     private static readonly Task<bool> True = Task.FromResult(true);
     private static readonly Task<bool> False = Task.FromResult(false);
 
@@ -36,7 +42,6 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private const string HeaderAlgOnly = "eyJhbGciOiJIUzI1NiJ9";
 
     private readonly JsonWebTokenHandler _handler = new();
-    private readonly SecurityKey _securityKey;
     private readonly byte[] _secretBytes;
     private readonly TokenValidationParameters _tokenValidationParameters;
     private readonly ILogger _logger;
@@ -54,12 +59,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         ArgumentNullException.ThrowIfNull(timestamper);
 
         _secretBytes = secret;
-        _securityKey = new SymmetricSecurityKey(secret);
+        SecurityKey securityKey = new SymmetricSecurityKey(secret);
         _logger = logger;
         _timestamper = timestamper;
         _tokenValidationParameters = new TokenValidationParameters
         {
-            IssuerSigningKey = _securityKey,
+            IssuerSigningKey = securityKey,
             RequireExpirationTime = false,
             ValidateLifetime = true,
             ValidateAudience = false,
@@ -187,9 +192,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // Extract raw JWT (after "Bearer ")
         ReadOnlySpan<char> jwt = token.AsSpan(JwtMessagePrefix.Length);
 
-        // Stack buffers are 256 bytes. Max signed part (header.payload) = 256 chars,
-        // HS256 signature = 43 chars + dot = 44 chars. Bail early for oversized JWTs.
-        if (jwt.Length > 300)
+        // Bail early: signed part must fit in StackBufferSize, plus HS256SignatureSegmentLength for the signature.
+        if (jwt.Length > MaxManualJwtLength)
             return false;
 
         // Known HS256 header lengths: 36 (AlgTyp, TypAlg) or 20 (AlgOnly).
@@ -209,9 +213,9 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
         }
 
-        // HS256 sig = 43 Base64Url chars, so second dot is at jwt.Length - 44.
+        // HS256 sig = 43 Base64Url chars, so second dot is at jwt.Length - HS256SignatureSegmentLength.
         // Computed directly — eliminates IndexOf scan over payload+signature.
-        int secondDot = jwt.Length - 44;
+        int secondDot = jwt.Length - HS256SignatureSegmentLength;
         if (secondDot <= firstDot || jwt[secondDot] != '.')
             return false;
 
@@ -222,18 +226,18 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // secondDot == char count == byte count (JWT is pure ASCII).
         // Early length check guarantees secondDot <= 256.
         ReadOnlySpan<char> signedPart = jwt[..secondDot];
-        Span<byte> signedBytes = stackalloc byte[256];
+        Span<byte> signedBytes = stackalloc byte[StackBufferSize];
         signedBytes = signedBytes[..secondDot];
 
         if (Ascii.FromUtf16(signedPart, signedBytes, out _) != OperationStatus.Done)
             return false;
 
-        Span<byte> computedHash = stackalloc byte[32];
+        Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
         HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
 
-        Span<byte> sigBytes = stackalloc byte[32];
+        Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];
         if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done
-            || sigBytesWritten != 32)
+            || sigBytesWritten != SHA256HashBytes)
         {
             return true;
         }
@@ -253,7 +257,9 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return true;
         }
 
-        // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
+        // Overflow-safe absolute-difference check: casting to ulong maps negative values to
+        // large positives, so (ulong)(a - b + c) > (ulong)(2*c) is equivalent to |a - b| > c
+        // without needing Math.Abs (which can overflow on long.MinValue).
         if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
         {
             if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
@@ -291,8 +297,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
 
         // Decode payload from Base64Url into a fixed stack buffer.
         // Engine API payloads are tiny (~30 bytes). If decoded output exceeds
-        // 256 bytes, DecodeFromChars returns DestinationTooSmall → we reject.
-        Span<byte> decoded = stackalloc byte[256];
+        // StackBufferSize bytes, DecodeFromChars returns DestinationTooSmall → we reject.
+        Span<byte> decoded = stackalloc byte[StackBufferSize];
         if (Base64Url.DecodeFromChars(payloadBase64Url, decoded, out _, out int bytesWritten) != OperationStatus.Done)
             return false;
 
@@ -322,6 +328,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         return foundIat;
     }
 
+    /// <summary>
+    /// Parse an integer claim value starting at <paramref name="pos"/> (expects ":digits").
+    /// The <c>(uint)pos &lt; (uint)json.Length</c> pattern collapses a two-condition bounds check
+    /// (<c>pos &gt;= 0 &amp;&amp; pos &lt; Length</c>) into a single unsigned comparison, allowing the
+    /// JIT to eliminate the redundant range check on the subsequent indexer.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryParseClaimValue(ReadOnlySpan<byte> json, int pos, out long value)
     {
@@ -397,22 +409,13 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnInvalidResult(Exception? ex)
         {
-            if (ex is SecurityTokenDecryptionFailedException)
+            _logger.Warn(ex switch
             {
-                _logger.Warn("Message authentication error: The token cannot be decrypted.");
-            }
-            else if (ex is SecurityTokenReplayDetectedException)
-            {
-                _logger.Warn("Message authentication error: The token has been used multiple times.");
-            }
-            else if (ex is SecurityTokenInvalidSignatureException)
-            {
-                _logger.Warn("Message authentication error: Invalid token signature.");
-            }
-            else
-            {
-                _logger.Warn($"Message authentication error: {ex?.Message}");
-            }
+                SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
+                SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
+                SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
+                _ => $"Message authentication error: {ex?.Message}"
+            });
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
