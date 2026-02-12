@@ -15,7 +15,7 @@ public sealed record TraceConfiguration
     /// <param name="outputDirectory">The output directory path.</param>
     /// <param name="startBlock">The start block number (nullable).</param>
     /// <param name="endBlock">The end block number (nullable).</param>
-    /// <param name="blocks">The number of recent blocks to trace (nullable).</param>
+    /// <param name="recentBlocks">The number of recent blocks to trace (nullable).</param>
     /// <param name="mode">The tracing mode.</param>
     /// <param name="maxDegreeOfParallelism">The maximum degree of parallelism.</param>
     public TraceConfiguration(
@@ -23,7 +23,7 @@ public sealed record TraceConfiguration
         string outputDirectory,
         long? startBlock,
         long? endBlock,
-        long? blocks,
+        long? recentBlocks,
         TracingMode mode,
         int maxDegreeOfParallelism)
     {
@@ -31,7 +31,7 @@ public sealed record TraceConfiguration
         OutputDirectory = outputDirectory ?? throw new ArgumentNullException(nameof(outputDirectory));
         StartBlock = startBlock;
         EndBlock = endBlock;
-        Blocks = blocks;
+        RecentBlocks = recentBlocks;
         Mode = mode;
         MaxDegreeOfParallelism = maxDegreeOfParallelism;
     }
@@ -59,7 +59,7 @@ public sealed record TraceConfiguration
     /// <summary>
     /// Gets the number of recent blocks to trace (nullable).
     /// </summary>
-    public long? Blocks { get; }
+    public long? RecentBlocks { get; }
 
     /// <summary>
     /// Gets the tracing mode.
@@ -109,7 +109,7 @@ public sealed record TraceConfiguration
             config.OutputDirectory,
             config.StartBlock,
             config.EndBlock,
-            config.Blocks,
+            config.RecentBlocks,
             mode,
             config.MaxDegreeOfParallelism);
 
@@ -119,9 +119,9 @@ public sealed record TraceConfiguration
         var warnings = new List<string>();
 
         // Check for conflicting parameters
-        if (config.StartBlock.HasValue && config.EndBlock.HasValue && config.Blocks.HasValue)
+        if (config.StartBlock.HasValue && config.EndBlock.HasValue && config.RecentBlocks.HasValue)
         {
-            warnings.Add("Both explicit range (StartBlock/EndBlock) and Blocks specified. Using explicit range, ignoring Blocks.");
+            warnings.Add("Both explicit range (StartBlock/EndBlock) and RecentBlocks specified. Using explicit range, ignoring RecentBlocks.");
             effectiveStart = config.StartBlock.Value;
             effectiveEnd = config.EndBlock.Value;
         }
@@ -131,7 +131,7 @@ public sealed record TraceConfiguration
             effectiveStart = config.StartBlock.Value;
             effectiveEnd = config.EndBlock.Value;
         }
-        else if (config.Blocks.HasValue)
+        else if (config.RecentBlocks.HasValue)
         {
             // For RealTime mode: trace NEXT N blocks from current tip (future blocks)
             // For Retrospective/RetrospectiveExecution mode: trace LAST N blocks (historical blocks)
@@ -139,17 +139,17 @@ public sealed record TraceConfiguration
             {
                 // RealTime: next N blocks starting from current chain tip + 1
                 effectiveStart = currentChainTip + 1;
-                effectiveEnd = currentChainTip + config.Blocks.Value;
+                effectiveEnd = currentChainTip + config.RecentBlocks.Value;
             }
             else
             {
                 // Retrospective and RetrospectiveExecution: recent N blocks from chain tip
                 effectiveEnd = currentChainTip;
-                effectiveStart = Math.Max(0, currentChainTip - config.Blocks.Value + 1);
+                effectiveStart = Math.Max(0, currentChainTip - config.RecentBlocks.Value + 1);
 
-                if (effectiveStart == 0 && config.Blocks.Value > currentChainTip + 1)
+                if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1)
                 {
-                    warnings.Add($"Requested {config.Blocks.Value} blocks but only {currentChainTip + 1} available. Tracing all available blocks.");
+                    warnings.Add($"Requested {config.RecentBlocks.Value} blocks but only {currentChainTip + 1} available. Tracing all available blocks.");
                 }
             }
         }
@@ -168,7 +168,7 @@ public sealed record TraceConfiguration
         }
         else
         {
-            throw new InvalidOperationException("No block range specified. Provide StartBlock/EndBlock or Blocks parameter.");
+            throw new InvalidOperationException("No block range specified. Provide StartBlock/EndBlock or RecentBlocks parameter.");
         }
 
         return traceConfig with
