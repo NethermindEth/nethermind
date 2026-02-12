@@ -45,6 +45,29 @@ public class BlobTxStorage : IBlobTxStorage
         return TryDecodeFullTx(txBytes, sender, out transaction);
     }
 
+    public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
+    {
+        if (count == 0) return 0;
+
+        byte[][] dbKeys = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[64];
+            GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
+            dbKeys[i] = key;
+        }
+
+        KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
+
+        int found = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (TryDecodeFullTx(dbResults[i].Value, keys[i].Sender, out results[i]))
+                found++;
+        }
+        return found;
+    }
+
     public IEnumerable<LightTransaction> GetAll()
     {
         foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())

@@ -91,7 +91,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return count;
     }
 
-    public int TryGetBlobsAndProofsV1(
+    public virtual int TryGetBlobsAndProofsV1(
         byte[][] requestedBlobVersionedHashes,
         byte[]?[] blobs,
         ReadOnlyMemory<byte[]>[] proofs)
