@@ -28,10 +28,7 @@ public class LocalDbContext(
     private INodeStorage NodeStorage { get; } = nodeStorage;
     private StateTree StateTree { get; } = new(TestTrieStoreFactory.Build(nodeStorage, logManager), logManager);
 
-    public Hash256 RootHash
-    {
-        get => StateTree.RootHash;
-    }
+    public Hash256 RootHash => StateTree.RootHash;
 
     public void UpdateRootHash() => StateTree.UpdateRootHash();
 
