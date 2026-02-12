@@ -13,6 +13,6 @@ public class OpcodeTracingConfig : IOpcodeTracingConfig
     public int MaxDegreeOfParallelism { get; set; } = 0;
     public long? StartBlock { get; set; }
     public long? EndBlock { get; set; }
-    public long? Blocks { get; set; }
+    public long? RecentBlocks { get; set; }
     public string Mode { get; set; } = "RealTime";
 }
