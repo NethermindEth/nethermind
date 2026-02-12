@@ -42,7 +42,7 @@ internal class Xdpos2ProtocolHandler(
 
     public override string ProtocolCode => "eth";
 
-    public override int MessageIdSpaceSize => base.MessageIdSpaceSize;
+    public override int MessageIdSpaceSize => Xdpos2MessageCode.SyncInfoMsg;
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
