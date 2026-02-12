@@ -59,7 +59,7 @@ public static class Program
         collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>(_ =>
         {
-            // Disable proxy auto-detection to avoid WPAD timeout (~2s) on Windows.
+            // Disable proxy auto-detection to avoid timeout (~2s) on Windows.
             // Each Kute invocation is a separate process, so the proxy lookup
             // would otherwise be paid on every single measured request.
             var handler = new SocketsHttpHandler
