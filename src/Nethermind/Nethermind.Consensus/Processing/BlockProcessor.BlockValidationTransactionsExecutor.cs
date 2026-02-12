@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -52,6 +53,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
                     BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
+                    TaskCompletionSource<long>[] gasResults = new TaskCompletionSource<long>[len];
                     for (int i = 0; i < len; i++)
                     {
                         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -63,29 +65,44 @@ namespace Nethermind.Consensus.Processing
                         BlockReceiptsTracer tracer = new();
                         tracer.StartNewBlockTrace(block);
                         receiptsTracers[i] = tracer;
+                        gasResults[i] = new TaskCompletionSource<long>();
                     }
+
+                    const int GasValidationChunkSize = 8;
+                    Task validatorTask = Task.Run(() =>
+                    {
+                        long totalGas = 0;
+                        for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
+                        {
+                            int chunkEnd = System.Math.Min(chunkStart + GasValidationChunkSize, len);
+                            for (int j = chunkStart; j < chunkEnd; j++)
+                                totalGas += gasResults[j].Task.GetAwaiter().GetResult();
+                            if (totalGas > block.Header.GasLimit)
+                                throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
+                        }
+                        _blockExecutionContext.Header.GasUsed = totalGas;
+                    });
 
                     ParallelUnbalancedWork.For(
                         0,
-                        block.Transactions.Length,
+                        len,
                         ParallelUnbalancedWork.DefaultOptions,
-                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, txs: block.Transactions),
+                        (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, txs: block.Transactions),
                         static (i, state) =>
                         {
-                            Transaction tx = state.txs[i];
-                            ITransactionProcessorAdapter transactionProcessor = state.transactionProcessors[i];
-                            BlockReceiptsTracer txReceiptsTracer = state.receiptsTracers[i];
                             ProcessTransactionParallel(
-                                transactionProcessor,
+                                state.transactionProcessors[i],
                                 state.stateProvider,
                                 state.block,
-                                tx,
+                                state.txs[i],
                                 i,
-                                txReceiptsTracer,
+                                state.receiptsTracers[i],
                                 state.processingOptions);
+                            state.gasResults[i].SetResult(state.txs[i].BlockGasUsed);
                             return state;
                         });
 
+                    validatorTask.GetAwaiter().GetResult();
                     return CombineReceipts(receiptsTracers, len, block);
                 }
                 else

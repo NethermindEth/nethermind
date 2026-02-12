@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -643,9 +642,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return accountChanges.GetBalance(blockAccessIndex);
             }
 
-            // should never happen
-            Debug.Fail("Could not find balance during parallel execution");
-            return 0;
+            throw new InvalidBlockLevelAccessListException($"Balance access for {address} not in block access list.");
         }
         else
         {
@@ -671,8 +668,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return accountChanges.GetNonce(blockAccessIndex);
             }
 
-            Debug.Fail("Could not find nonce during parallel execution");
-            return 0;
+            throw new InvalidBlockLevelAccessListException($"Nonce access for {address} not in block access list.");
         }
         else
         {
@@ -698,8 +694,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return accountChanges.GetCode(blockAccessIndex);
             }
 
-            Debug.Fail("Could not find code during parallel execution");
-            return [];
+            throw new InvalidBlockLevelAccessListException($"Code access for {address} not in block access list.");
         }
         else
         {
@@ -733,8 +728,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return slotChanges.Get(blockAccessIndex);
             }
 
-            Debug.Fail("Could not find storage value during parallel execution");
-            return [];
+            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list.");
         }
         else
         {
@@ -754,8 +748,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return slotChanges.Get(blockAccessIndex);
             }
 
-            Debug.Fail("Could not find storage value during parallel execution");
-            return [];
+            throw new InvalidBlockLevelAccessListException($"Storage access for {storageCell.Address} not in block access list.");
         }
         else
         {
@@ -782,8 +775,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return accountChanges.AccountExists(blockAccessIndex);
             }
 
-            Debug.Fail("Could not check account existence during parallel execution");
-            return false;
+            throw new InvalidBlockLevelAccessListException($"Account existence check for {address} not in block access list.");
         }
         else
         {
@@ -827,9 +819,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 return allSlots.SetEquals(zeroedSlots);
             }
 
-            // todo fix error handling
-            Debug.Fail("Could not find nonce during parallel execution");
-            return false;
+            throw new InvalidBlockLevelAccessListException($"Storage empty check for {address} not in block access list.");
         }
         else
         {

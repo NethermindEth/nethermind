@@ -468,7 +468,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (tx.GasLimit > header.GasLimit - header.GasUsed)
+            if (_balBuilder is not { ParallelExecutionEnabled: true } &&
+                tx.GasLimit > header.GasLimit - header.GasUsed)
             {
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
                 return TransactionResult.BlockGasLimitExceeded;
@@ -802,7 +803,7 @@ namespace Nethermind.Evm.TransactionProcessing
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
 
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
 
             return statusCode;
