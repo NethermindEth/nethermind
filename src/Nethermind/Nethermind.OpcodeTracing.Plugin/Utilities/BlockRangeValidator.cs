@@ -22,10 +22,10 @@ public static class BlockRangeValidator
             return ValidationResult.Error("Configuration is null");
         }
 
-        // VR-003: At least one range specification required
-        if (config.StartBlock is null && config.EndBlock is null && config.Blocks is null)
+        // At least one range specification required
+        if (config.StartBlock is null && config.EndBlock is null && config.RecentBlocks is null)
         {
-            return ValidationResult.Error("No block range specified. Provide StartBlock/EndBlock or Blocks parameter.");
+            return ValidationResult.Error("No block range specified. Provide StartBlock/EndBlock or RecentBlocks parameter.");
         }
 
         // Explicit range validation
@@ -43,14 +43,14 @@ public static class BlockRangeValidator
         }
 
         // Conflicting configuration warning
-        if (config.StartBlock.HasValue && config.Blocks.HasValue)
+        if (config.StartBlock.HasValue && config.RecentBlocks.HasValue)
         {
-            return ValidationResult.Warning("Both StartBlock and Blocks specified. Using explicit range, ignoring Blocks parameter.");
+            return ValidationResult.Warning("Both StartBlock and RecentBlocks specified. Using explicit range, ignoring RecentBlocks parameter.");
         }
 
-        if (config.EndBlock.HasValue && config.Blocks.HasValue && !config.StartBlock.HasValue)
+        if (config.EndBlock.HasValue && config.RecentBlocks.HasValue && !config.StartBlock.HasValue)
         {
-            return ValidationResult.Warning("Both EndBlock and Blocks specified. This configuration is ambiguous.");
+            return ValidationResult.Warning("Both EndBlock and RecentBlocks specified. This configuration is ambiguous.");
         }
 
         // Blocks beyond chain tip
@@ -66,10 +66,10 @@ public static class BlockRangeValidator
             return ValidationResult.Success();
         }
 
-        // Validate Blocks parameter
-        if (config.Blocks.HasValue && config.Blocks.Value <= 0)
+        // Validate RecentBlocks parameter
+        if (config.RecentBlocks.HasValue && config.RecentBlocks.Value <= 0)
         {
-            return ValidationResult.Error("Blocks parameter must be positive");
+            return ValidationResult.Error("RecentBlocks parameter must be positive");
         }
 
         return ValidationResult.Success();

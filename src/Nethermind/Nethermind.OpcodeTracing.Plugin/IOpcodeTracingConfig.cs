@@ -46,7 +46,7 @@ public interface IOpcodeTracingConfig : IConfig
     /// Alternative to StartBlock/EndBlock for convenience. If both are specified, explicit range takes precedence.
     /// </summary>
     [ConfigItem(Description = "Number of recent blocks to trace from chain tip. Alternative to StartBlock/EndBlock.", DefaultValue = "null")]
-    long? Blocks { get; set; }
+    long? RecentBlocks { get; set; }
 
     /// <summary>
     /// Gets or sets the tracing mode: "RealTime" traces blocks as they are processed during sync/new blocks,
