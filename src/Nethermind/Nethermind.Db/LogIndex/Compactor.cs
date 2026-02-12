@@ -3,11 +3,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
+[assembly: InternalsVisibleTo("Nethermind.Db.Test")]
 namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
@@ -15,26 +17,33 @@ partial class LogIndexStorage
     /// <summary>
     /// Periodically forces background log index compaction for every N added blocks.
     /// </summary>
-    private class Compactor : ICompactor
+    internal class Compactor : ICompactor
     {
         private int? _lastAtMin;
         private int? _lastAtMax;
 
         private CompactingStats _stats = new();
-        private readonly LogIndexStorage _storage;
+        private readonly ILogIndexStorage _storage;
+        private readonly IDbMeta _rootDb;
         private readonly ILogger _logger;
         private readonly int _compactionDistance;
 
-        // TODO: simplify concurrency handling
-        private readonly AutoResetEvent _runOnceEvent = new(false);
         private readonly CancellationTokenSource _cts = new();
-        private readonly ManualResetEvent _compactionStartedEvent = new(false);
-        private readonly ManualResetEvent _compactionEndedEvent = new(true);
+
+        /// <summary>
+        /// Bounded(1) compaction work queue consumed by <see cref="DoCompactAsync"/>. <br/>
+        /// <c>null</c> — fire-and-forget compaction enqueued by <see cref="TryEnqueue"/>; <br/>
+        /// <c>not null</c> — caller-awaitable compaction enqueued by <see cref="ForceAsync"/>.
+        /// </summary>
+        private readonly Channel<TaskCompletionSource?> _channel = Channel.CreateBounded<TaskCompletionSource?>(1);
+
+        private volatile TaskCompletionSource? _pendingForcedCompaction;
         private readonly Task _compactionTask;
 
-        public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
+        public Compactor(ILogIndexStorage storage, IDbMeta rootDb, ILogger logger, int compactionDistance)
         {
             _storage = storage;
+            _rootDb = rootDb;
             _logger = logger;
 
             if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
@@ -66,7 +75,7 @@ partial class LogIndexStorage
             if (uncompacted < _compactionDistance)
                 return false;
 
-            if (!_runOnceEvent.Set())
+            if (!_channel.Writer.TryWrite(null))
                 return false;
 
             _lastAtMin = _storage.MinBlockNumber;
@@ -77,62 +86,101 @@ partial class LogIndexStorage
         public async Task StopAsync()
         {
             await _cts.CancelAsync();
-            await _compactionEndedEvent.WaitOneAsync(CancellationToken.None);
+            _channel.Writer.TryComplete();
+            await _compactionTask;
         }
 
         public async Task<CompactingStats> ForceAsync()
         {
-            // Wait for the previous one to finish
-            await _compactionEndedEvent.WaitOneAsync(_cts.Token);
+            // Coalesce concurrent calls — all callers share a single compaction
+            TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource? existing = Interlocked.CompareExchange(ref _pendingForcedCompaction, tcs, null);
 
-            _runOnceEvent.Set();
-            await _compactionStartedEvent.WaitOneAsync(100, _cts.Token);
-            await _compactionEndedEvent.WaitOneAsync(_cts.Token);
+            if (existing is not null)
+            {
+                await existing.Task;
+                return _stats;
+            }
+
+            try
+            {
+                await _channel.Writer.WriteAsync(tcs, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                Interlocked.CompareExchange(ref _pendingForcedCompaction, null, tcs);
+                if (ex is OperationCanceledException)
+                    tcs.TrySetCanceled();
+                else
+                    tcs.TrySetException(ex);
+
+                throw;
+            }
+
+            await tcs.Task;
             return _stats;
         }
 
         private async Task DoCompactAsync()
         {
             CancellationToken cancellation = _cts.Token;
-            while (!cancellation.IsCancellationRequested)
+            try
             {
-                try
+                await foreach (TaskCompletionSource? tcs in _channel.Reader.ReadAllAsync(cancellation))
                 {
-                    await _runOnceEvent.WaitOneAsync(cancellation);
+                    try
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
 
-                    _compactionEndedEvent.Reset();
-                    _compactionStartedEvent.Set();
+                        var timestamp = Stopwatch.GetTimestamp();
+                        _rootDb.Compact();
 
-                    if (cancellation.IsCancellationRequested)
-                        return;
+                        TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);
+                        _stats.Total.Include(elapsed);
 
-                    if (_logger.IsInfo)
-                        _logger.Info($"Log index: compaction started, DB size: {_storage.GetDbSize()}");
+                        if (_logger.IsInfo) _logger.Info($"Log index: compaction ended in {elapsed}, DB size: {_storage.GetDbSize()}");
 
-                    var timestamp = Stopwatch.GetTimestamp();
-                    _storage._rootDb.Compact();
+                        tcs?.TrySetResult();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        tcs?.TrySetCanceled();
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs?.TrySetException(ex);
+                        (_storage as LogIndexStorage)?.OnBackgroundError<Compactor>(ex);
 
-                    TimeSpan elapsed = Stopwatch.GetElapsedTime(timestamp);
-                    _stats.Total.Include(elapsed);
+                        await _cts.CancelAsync();
+                        _channel.Writer.TryComplete();
 
-                    if (_logger.IsInfo)
-                        _logger.Info($"Log index: compaction ended in {elapsed}, DB size: {_storage.GetDbSize()}");
-                }
-                catch (OperationCanceledException ex) when (ex.CancellationToken == cancellation)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _storage.OnBackgroundError<Compactor>(ex);
-                    await _cts.CancelAsync();
-                }
-                finally
-                {
-                    _compactionStartedEvent.Reset();
-                    _compactionEndedEvent.Set();
+                        break;
+                    }
+                    finally
+                    {
+                        if (tcs is not null)
+                            Interlocked.CompareExchange(ref _pendingForcedCompaction, null, tcs);
+                    }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Log index: compaction loop canceled");
+            }
+            finally
+            {
+                while (_channel.Reader.TryRead(out TaskCompletionSource? remaining) && remaining is not null)
+                {
+                    remaining.TrySetCanceled();
+                    Interlocked.CompareExchange(ref _pendingForcedCompaction, null, remaining);
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            _cts.Dispose();
+            _channel.Writer.TryComplete();
         }
     }
 
@@ -142,9 +190,10 @@ partial class LogIndexStorage
         public bool TryEnqueue() => false;
         public Task StopAsync() => Task.CompletedTask;
         public Task<CompactingStats> ForceAsync() => Task.FromResult(new CompactingStats());
+        public void Dispose() { }
     }
 
-    private interface ICompactor
+    internal interface ICompactor : IDisposable
     {
         CompactingStats GetAndResetStats();
         bool TryEnqueue();
