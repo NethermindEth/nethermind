@@ -34,12 +34,25 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;
-        private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
+        private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private readonly PeerComparer _peerComparer = new();
+        private Task? _peerUpdateLoopTask;
         private readonly IPeerPool _peerPool;
         private readonly Lock _lock = new();
+        private readonly Lock _signalLock = new();
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
+
+        private void SignalPeerUpdate()
+        {
+            lock (_signalLock)
+            {
+                if (_peerUpdateRequested.CurrentCount == 0)
+                {
+                    _peerUpdateRequested.Release();
+                }
+            }
+        }
 
         private int _pending;
         private int _tryCount;
@@ -140,7 +153,7 @@ namespace Nethermind.Network
 
             if (_isStarted)
             {
-                _peerUpdateRequested.Set();
+                SignalPeerUpdate();
             }
         }
 
@@ -169,42 +182,34 @@ namespace Nethermind.Network
 
             StartPeerUpdateLoop();
 
-            Task.Factory.StartNew(
-                RunPeerUpdateLoop,
-                _cancellationTokenSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Peer update loop encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Peer update loop stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Peer update loop complete.");
-                }
-            });
+            _peerUpdateLoopTask = RunPeerUpdateLoopAsync();
 
             _isStarted = true;
-            _peerUpdateRequested.Set();
+            SignalPeerUpdate();
         }
 
         public async Task StopAsync()
         {
             _cancellationTokenSource.Cancel();
+
+            if (_peerUpdateLoopTask is not null)
+            {
+                try
+                {
+                    await _peerUpdateLoopTask;
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
             StopTimers();
 
-            await Task.CompletedTask;
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
 
         string IStoppableService.Description => "peer manager";
 
-        #region Inactive peer loop handling. Peer may be discovered but inactive.
 
         private class CandidateSelection
         {
@@ -215,6 +220,24 @@ namespace Nethermind.Network
         }
 
         private readonly CandidateSelection _currentSelection = new();
+
+        private async Task RunPeerUpdateLoopAsync()
+        {
+            await Task.Yield();
+
+            try
+            {
+                await RunPeerUpdateLoop();
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                if (_logger.IsError) _logger.Error("Peer update loop encountered an exception.", e);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Peer update loop stopped.");
+            }
+        }
 
         private async Task RunPeerUpdateLoop()
         {
@@ -264,15 +287,14 @@ namespace Nethermind.Network
 
                     Metrics.PeerCandidateCount = _peerPool.PeerCount;
 
-                    _peerUpdateRequested.Wait(_cancellationTokenSource.Token);
-                    _peerUpdateRequested.Reset();
+                    await _peerUpdateRequested.WaitAsync(_cancellationTokenSource.Token);
 
                     if (!_isStarted)
                     {
                         continue;
                     }
 
-                    if (!EnsureAvailableActivePeerSlot())
+                    if (!await EnsureAvailableActivePeerSlotAsync(_cancellationTokenSource.Token))
                     {
                         continue;
                     }
@@ -300,7 +322,7 @@ namespace Nethermind.Network
 
                     foreach (Peer peer in remainingCandidates)
                     {
-                        if (!EnsureAvailableActivePeerSlot())
+                        if (!await EnsureAvailableActivePeerSlotAsync(_cancellationTokenSource.Token))
                         {
                             // Some new connection are in flight at this point, but statistically speaking, they
                             // are going to fail, so its fine.
@@ -338,9 +360,9 @@ namespace Nethermind.Network
                     }
                     _logCounter++;
 
-                    if (EnsureAvailableActivePeerSlot())
+                    if (AvailableActivePeersCount - _pending > 0)
                     {
-                        _peerUpdateRequested.Set();
+                        SignalPeerUpdate();
                     }
 
                     failCount = 0;
@@ -377,7 +399,7 @@ namespace Nethermind.Network
             await Task.WhenAll(tasks.AsSpan());
         }
 
-        private bool EnsureAvailableActivePeerSlot()
+        private async Task<bool> EnsureAvailableActivePeerSlotAsync(CancellationToken cancellationToken)
         {
             if (AvailableActivePeersCount - _pending > 0)
             {
@@ -391,9 +413,17 @@ namespace Nethermind.Network
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
             while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
             {
-                // The signal is not very reliable. So we just do like a simple pool.
-                _peerUpdateRequested.Reset();
-                _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(100));
+                TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
+                TimeSpan waitFor = remaining < TimeSpan.FromMilliseconds(100)
+                    ? remaining
+                    : TimeSpan.FromMilliseconds(100);
+
+                if (waitFor <= TimeSpan.Zero)
+                {
+                    break;
+                }
+
+                _ = await _peerUpdateRequested.WaitAsync(waitFor, cancellationToken);
             }
 
             return AvailableActivePeersCount - _pending > 0;
@@ -508,7 +538,7 @@ namespace Nethermind.Network
             _peerUpdateTimer.Elapsed += (sender, e) =>
             {
                 _peerUpdateTimer.Stop();
-                _peerUpdateRequested.Set();
+                SignalPeerUpdate();
             };
 
             _peerUpdateTimer.Start();
@@ -619,9 +649,6 @@ namespace Nethermind.Network
             }
         }
 
-        #endregion
-
-        #region Outgoing connection handling
 
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
@@ -644,7 +671,7 @@ namespace Nethermind.Network
             // for some time we will have a peer in active that has no session assigned - analyze this?
 
             Interlocked.Decrement(ref _pending);
-            _peerUpdateRequested.Set();
+            SignalPeerUpdate();
             if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
 
             if (!result)
@@ -712,9 +739,6 @@ namespace Nethermind.Network
             AddSession(session, peer);
         }
 
-        #endregion
-
-        #region Incoming connection handling
 
         private void ProcessIncomingConnection(ISession session)
         {
@@ -751,8 +775,6 @@ namespace Nethermind.Network
                 _nodesBeingAdded.TryRemove(session.RemoteNodeId, out _);
             }
         }
-
-        #endregion
 
         private bool CanConnectToPeer(Peer peer)
         {
@@ -951,7 +973,7 @@ namespace Nethermind.Network
                 }
 
                 DeactivatePeerIfDisconnected(activePeer, "session disconnected");
-                _peerUpdateRequested.Set();
+                SignalPeerUpdate();
             }
         }
 
