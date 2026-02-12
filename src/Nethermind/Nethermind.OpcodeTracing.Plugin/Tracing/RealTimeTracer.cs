@@ -107,13 +107,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
         }
 
         // Accumulate opcodes into global counter
-        long[] blockCounts = new long[256];
-        foreach ((byte opcodeValue, long count) in trace.Opcodes)
-        {
-            blockCounts[opcodeValue] = count;
-        }
-
-        _counter.AccumulateFrom(blockCounts);
+        _counter.AccumulateFrom(trace.Opcodes);
 
         // Update tracking state
         _totalBlocksProcessed++;
