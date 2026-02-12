@@ -36,14 +36,24 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
-
         // Build state nodes
         //
-        // The purpose of adding this tree visitor over the captured keys is for capturing trie nodes that
-        // were modified but reset to their original value within a block processing. Otherwise, the
-        // WitnessCapturingTrie only would not capture these nodes and they would not be included in the witness.
-        // For example, these nodes are captured in geth. But this solution might capture additional nodes not
-        // necessarily needed for the witness. There might be a better solution, it is just not the priority now.
+        // The purpose of adding this tree visitor over the captured keys is for capturing trie nodes
+        // for slots that were never read and yet written to (writes are cached) but transaction reverted.
+        // Transaction reverting implies that cached writes got discarded and trie never got traversed
+        // for those keys, hence the associated trie nodes never got captured.
+        //
+        // We could potentially enforce read-before-write for every function called within this file
+        // but this tree visitor solution is safer, more defensive and maintainable.
+        //
+        // Notes:
+        // - We wouldn't need to capture those trie nodes for nethermind stateless execution, but we need to
+        // if we want to be compatible with geth for example so that our witness can be used for other clients'
+        // stateless execution.
+        // - Trie nodes capture using this additional tree visitor pattern should not add unnecessary trie nodes
+        // as anyway all keys recorded in this file should either be read or written to. In both cases, we want trie
+        // traversal and trie nodes capture along the path to be compatible with other clients such as geth.
+        //
         HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
         stateNodes.UnionWith(trieStore.TouchedNodesRlp);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
@@ -188,31 +198,13 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         inner.Set(in storageCell, newValue);
     }
 
+    // Transient state do not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
     public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-    {
-        if (_storageSlots.ContainsKey(storageCell.Address))
-        {
-            _storageSlots[storageCell.Address].Add(storageCell.Index);
-        }
-        else
-        {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
-        }
-        return inner.GetTransientState(in storageCell);
-    }
+        => inner.GetTransientState(in storageCell);
 
+    // Transient state do not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)
-    {
-        if (_storageSlots.ContainsKey(storageCell.Address))
-        {
-            _storageSlots[storageCell.Address].Add(storageCell.Index);
-        }
-        else
-        {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
-        }
-        inner.SetTransientState(in storageCell, newValue);
-    }
+        => inner.SetTransientState(in storageCell, newValue);
 
     public void Reset(bool resetBlockChanges = true)
     {
