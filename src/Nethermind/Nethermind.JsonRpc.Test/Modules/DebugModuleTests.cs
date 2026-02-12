@@ -381,4 +381,68 @@ public class DebugModuleTests
 
         actual.Should().BeEquivalentTo(expected);
     }
+
+    [Test]
+    public void StandardTraceBlockToFile_returns_error_when_missing_block()
+    {
+        var blockHash = TestItem.KeccakA;
+
+        blockFinder.FindHeader(blockHash).ReturnsNull();
+
+        var rpcModule = CreateDebugRpcModule(debugBridge);
+        var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
+        actual.Result.Error.Should().Contain("Cannot find header");
+    }
+
+    [Test]
+    public void StandardTraceBlockToFile_returns_error_when_state_unavailable()
+    {
+        var blockHash = TestItem.KeccakA;
+        var header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
+
+        blockFinder.FindHeader(blockHash).Returns(header);
+        blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+
+        var rpcModule = CreateDebugRpcModule(debugBridge);
+        var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
+        actual.Result.Error.Should().Contain("No state available");
+    }
+
+    [Test]
+    public void StandardTraceBadBlockToFile_returns_error_when_missing_block()
+    {
+        var blockHash = TestItem.KeccakA;
+
+        blockFinder.FindHeader(blockHash).ReturnsNull();
+
+        var rpcModule = CreateDebugRpcModule(debugBridge);
+        var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
+        actual.Result.Error.Should().Contain("Cannot find header");
+    }
+
+    [Test]
+    public void StandardTraceBadBlockToFile_returns_error_when_state_unavailable()
+    {
+        var blockHash = TestItem.KeccakA;
+        var header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
+
+        blockFinder.FindHeader(blockHash).Returns(header);
+        blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+
+        var rpcModule = CreateDebugRpcModule(debugBridge);
+        var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
+        actual.Result.Error.Should().Contain("No state available");
+    }
 }
