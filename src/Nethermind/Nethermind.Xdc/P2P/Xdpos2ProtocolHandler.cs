@@ -90,11 +90,11 @@ internal class Xdpos2ProtocolHandler(
 
     private void Handle(VoteMsg voteMsg)
     {
-        _votesManager.HandleVote(voteMsg.Vote);
+        _votesManager.OnReceiveVote(voteMsg.Vote);
     }
     private void Handle(TimeoutMsg timeoutMsg)
     {
-        _timeoutCertificateManager.HandleTimeoutVote(timeoutMsg.Timeout);
+        _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     }
     private void Handle(SyncInfoMsg syncInfoMsg)
     {

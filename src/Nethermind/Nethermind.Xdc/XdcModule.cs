@@ -122,6 +122,8 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
 
             //Sync
             .AddSingleton<CreateSnapshotOnStateSyncFinished>()
