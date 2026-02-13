@@ -153,7 +153,7 @@ public partial class BlockProcessor
         
         if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
         {
-            Task.Run(() =>
+            txTask = Task.Run(() =>
             {
                 try
                 {
@@ -164,15 +164,12 @@ public partial class BlockProcessor
                     throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
                 }
             });
+
+            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
         }
         else
         {
             txTask = Task.FromResult(_blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token));
-        }
-
-        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
-        {
-            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
         }
 
         TxReceipt[] receipts = await txTask;
