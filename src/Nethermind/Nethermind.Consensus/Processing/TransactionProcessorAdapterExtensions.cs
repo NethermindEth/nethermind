@@ -19,7 +19,15 @@ internal static class TransactionProcessorAdapterExtensions
     {
         if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser)
         {
-            currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
+            // Use GetAccountDirect to read from block-level state (_blockChanges) without
+            // populating _intraTxCache. This prevents stale cache entries that would break
+            // the direct transfer path: if _intraTxCache is populated here and the direct
+            // path then writes updated state to _blockChanges (bypassing Commit which normally
+            // clears _intraTxCache), subsequent transactions would read stale state.
+            Account? directAccount = stateProvider.GetAccountDirect(currentTx.SenderAddress!);
+            currentTx.Nonce = directAccount is not null
+                ? directAccount.Nonce
+                : stateProvider.GetNonce(currentTx.SenderAddress!);
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
