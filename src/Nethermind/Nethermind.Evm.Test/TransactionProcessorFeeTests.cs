@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -305,6 +306,248 @@ public class TransactionProcessorFeeTests
 
         block.GasUsed.Should().Be(42000);
         tracer.BurntFees.Should().Be(21000);
+    }
+
+    // ── Direct transfer path tests ──────────────────────────────────────────
+
+    [Test]
+    public void Direct_path_plain_transfer_matches_slow_path_state()
+    {
+        // A plain ether transfer should produce identical state via the direct path
+        // as it would via the slow (EVM) path.
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(21000).WithValue(1.Wei()).To(TestItem.AddressB)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        _stateProvider.GetBalance(TestItem.AddressB).Should().Be(1);
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
+        tracer.Fees.Should().Be(9 * 21000); // premiumPerGas=9 * gas=21000
+        tracer.BurntFees.Should().Be(21000); // baseFee=1 * gas=21000
+    }
+
+    [Test]
+    public void Direct_path_multiple_transfers_in_block_cumulative_state()
+    {
+        // Multiple plain transfers in the same block must accumulate state correctly.
+        _stateProvider.CreateAccount(TestItem.AddressB, 1.Ether());
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+
+        Transaction tx1 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(21000).WithValue(100.Wei()).To(TestItem.AddressD)
+            .TestObject;
+        Transaction tx2 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithNonce(1).WithGasPrice(10).WithGasLimit(21000).WithValue(200.Wei()).To(TestItem.AddressD)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx1, tx2).WithGasLimit(42000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        _stateProvider.GetBalance(TestItem.AddressD).Should().Be(300);
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(2);
+    }
+
+    [Test]
+    public void Direct_path_transfer_to_new_account()
+    {
+        // Transferring to a non-existent account should create it.
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(21000).WithValue(500.Wei()).To(TestItem.AddressE)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        _stateProvider.GetBalance(TestItem.AddressE).Should().Be(500);
+    }
+
+    [Test]
+    public void Direct_path_self_transfer()
+    {
+        // Sender sends ETH to themselves – balance should only decrease by gas cost.
+        UInt256 initialBalance = _stateProvider.GetBalance(TestItem.AddressA);
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(21000).WithValue(100.Wei()).To(TestItem.AddressA)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        UInt256 gasCost = 10 * (UInt256)21000;
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(initialBalance - gasCost);
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
+    }
+
+    [Test]
+    public void Direct_path_zero_value_transfer()
+    {
+        // A zero-value transfer should still increment nonce and charge gas.
+        UInt256 initialBalance = _stateProvider.GetBalance(TestItem.AddressA);
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(21000).WithValue(0).To(TestItem.AddressB)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
+        UInt256 gasCost = 10 * (UInt256)21000;
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(initialBalance - gasCost);
+    }
+
+    [Test]
+    public void Direct_path_skips_precompile_recipient()
+    {
+        // Transaction to a precompile address must NOT use the direct path.
+        // Precompiles have no trie code, so HasCode returns false, but they
+        // execute via EVM CALL and charge different gas than a plain transfer.
+        Address ecrecoverPrecompile = new("0x0000000000000000000000000000000000000001");
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(100000).WithValue(1.Wei()).To(ecrecoverPrecompile)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(100000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        // Precompile goes through the slow path: ecrecover base cost = 3000, so gas > 21000
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
+        _stateProvider.GetBalance(ecrecoverPrecompile).Should().Be(1);
+        // Gas used should be more than a plain transfer (21000 + precompile gas)
+        tx.SpentGas.Should().BeGreaterThan(21000);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Direct_path_eip1559_fee_calculation(bool withFeeCollector)
+    {
+        // EIP-1559 fee split must match between direct and slow paths.
+        if (withFeeCollector) _spec.FeeCollector = TestItem.AddressD;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(5)
+            .WithType(TxType.EIP1559).WithGasLimit(21000).WithValue(1.Wei()).To(TestItem.AddressB)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(2).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        // effectiveGasPrice = min(maxFee=10, baseFee=2 + priority=5) = 7
+        // premiumPerGas = effectiveGasPrice - baseFee = 7 - 2 = 5
+        // beneficiaryFee = 5 * 21000 = 105000
+        // burntFees = baseFee * gas = 2 * 21000 = 42000
+        tracer.Fees.Should().Be(105000);
+        tracer.BurntFees.Should().Be(42000);
+
+        if (withFeeCollector)
+        {
+            _stateProvider.GetBalance(TestItem.AddressD).Should().Be(42000);
+        }
+    }
+
+    [Test]
+    public void Direct_path_mixed_with_contract_calls_in_block()
+    {
+        // A block with both plain transfers and contract calls.
+        // The direct path should fire for the plain transfer and the slow path
+        // for the contract call, with correct cumulative state.
+        byte[] code = Prepare.EvmCode.Op(Instruction.STOP).Done;
+        _stateProvider.CreateAccount(TestItem.AddressD, 0);
+        _stateProvider.InsertCode(TestItem.AddressD, Keccak.Compute(code), code, _specProvider.GenesisSpec);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+
+        // tx1: plain transfer (direct path)
+        Transaction tx1 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(10).WithGasLimit(21000).WithValue(100.Wei()).To(TestItem.AddressB)
+            .TestObject;
+
+        // tx2: call to contract (slow path)
+        Transaction tx2 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithNonce(1).WithGasPrice(10).WithGasLimit(30000).WithValue(0).To(TestItem.AddressD)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx1, tx2).WithGasLimit(51000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        _stateProvider.GetBalance(TestItem.AddressB).Should().Be(100);
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(2);
+    }
+
+    [Test]
+    public void Direct_path_insufficient_balance_returns_error()
+    {
+        // Transfer more than the sender has should fail with InsufficientSenderBalance.
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithGasPrice(1).WithGasLimit(21000).WithValue(2.Ether()).To(TestItem.AddressB)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.SetOtherTracer(NullBlockTracer.Instance);
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = tracer.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
+        tracer.EndTxTrace();
+
+        result.Should().Be(TransactionResult.InsufficientSenderBalance);
+        _stateProvider.GetNonce(TestItem.AddressA).Should().Be(0); // nonce unchanged
+    }
+
+    [Test]
+    public void Direct_path_wrong_nonce_returns_error()
+    {
+        // Transaction with wrong nonce should fail.
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithNonce(5).WithGasPrice(10).WithGasLimit(21000).WithValue(1.Wei()).To(TestItem.AddressB)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressC).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.SetOtherTracer(NullBlockTracer.Instance);
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = tracer.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
+        tracer.EndTxTrace();
+
+        result.Should().Be(TransactionResult.TransactionNonceTooHigh);
     }
 
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
