@@ -32,7 +32,7 @@ namespace Nethermind.Db
         private static readonly ZeroContentionCounter _stateTreeReads = new();
 
         [Description("Number of State Trie reads on thread.")]
-        internal static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
+        public static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
         public static void IncrementStateTreeReads() => _stateTreeReads.Increment();
 
         [CounterMetric]
