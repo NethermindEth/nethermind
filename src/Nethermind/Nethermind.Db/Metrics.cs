@@ -61,7 +61,7 @@ namespace Nethermind.Db
         [Description("Number of storage trie cache hits.")]
         public static long StorageTreeCache => _storageTreeCache.GetTotalValue();
         private static readonly ZeroContentionCounter _storageTreeCache = new();
-        internal static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
+        public static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
