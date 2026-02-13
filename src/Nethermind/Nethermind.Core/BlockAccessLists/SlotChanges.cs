@@ -41,6 +41,14 @@ public class SlotChanges(UInt256 slot, SortedList<int, StorageChange> changes) :
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
+    public void Merge(SlotChanges other)
+    {
+        foreach (KeyValuePair<int, StorageChange> kv in other.Changes)
+        {
+            Changes[kv.Key] = kv.Value;
+        }
+    }
+
     public void AddStorageChange(StorageChange storageChange)
         => Changes.Add(storageChange.BlockAccessIndex, storageChange);
 

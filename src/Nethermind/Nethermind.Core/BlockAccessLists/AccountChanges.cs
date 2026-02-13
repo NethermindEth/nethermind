@@ -99,7 +99,17 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public void Merge(AccountChanges other)
     {
-        _storageChanges.AddRange(other._storageChanges);
+        foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
+        {
+            if (_storageChanges.TryGetValue(kv.Key, out SlotChanges? existing))
+            {
+                existing.Merge(kv.Value);
+            }
+            else
+            {
+                _storageChanges.Add(kv.Key, kv.Value);
+            }
+        }
         _storageReads.AddRange(other._storageReads);
         _balanceChanges.AddRange(other._balanceChanges);
         _nonceChanges.AddRange(other._nonceChanges);
