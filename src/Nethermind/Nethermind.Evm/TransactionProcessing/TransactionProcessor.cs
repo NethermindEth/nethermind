@@ -203,7 +203,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // subsequent slow-path transactions reading the same sender.
             // Excluded: pre-EIP-658 (needs commitRoots), state-tracing (needs journal diffs),
             // blob txs (require blobBaseFee calculation).
-            if (commit && !restore
+            // Guard: only standard sealed processors (not Taiko/Xdc/Optimism subclasses
+            // that override PayFees/BuyGas/IncrementNonce with custom logic).
+            if (GetType().IsSealed
+                && commit && !restore
                 && tx.SenderAddress is not null
                 && spec.IsEip658Enabled
                 && !tracer.IsTracingState
@@ -383,7 +386,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 recipient, in tx.ValueRef,
                 header.GasBeneficiary!, in beneficiaryFee,
                 spec.FeeCollector, in collectedFees,
-                spec.IsEip158Enabled);
+                spec);
 
             // Gas tracking
             GasConsumed spent = new(spentGas, opGas);

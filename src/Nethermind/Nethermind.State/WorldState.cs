@@ -236,7 +236,7 @@ namespace Nethermind.State
             Address recipient, in UInt256 transferValue,
             Address beneficiary, in UInt256 beneficiaryFee,
             Address? feeCollector, in UInt256 collectedFees,
-            bool isEip158Enabled)
+            IReleaseSpec spec)
         {
             DebugGuardInScope();
             StateProvider sp = _stateProvider;
@@ -249,11 +249,11 @@ namespace Nethermind.State
             // Recipient: always process – the slow path (VM) always calls
             // AddToBalanceAndCreateIfNotExists(recipient, value) which touches the account.
             // EIP-158 deletes empty accounts that were touched.
-            ApplyBalanceChange(sp, recipient, in transferValue, isEip158Enabled);
+            ApplyBalanceChange(sp, recipient, in transferValue, spec);
 
             // Beneficiary: always process – the slow path always calls
             // AddToBalanceAndCreateIfNotExists(beneficiary, fee).
-            ApplyBalanceChange(sp, beneficiary, in beneficiaryFee, isEip158Enabled);
+            ApplyBalanceChange(sp, beneficiary, in beneficiaryFee, spec);
 
             // Fee collector (EIP-1559)
             if (feeCollector is not null && !collectedFees.IsZero)
@@ -268,8 +268,9 @@ namespace Nethermind.State
 
         /// <summary>
         /// Applies a balance change matching the behavior of AddToBalanceAndCreateIfNotExists + EIP-158 cleanup.
+        /// Respects IsEip158IgnoredAccount (e.g. AuRa's Address.SystemUser).
         /// </summary>
-        private static void ApplyBalanceChange(StateProvider sp, Address address, in UInt256 amount, bool isEip158Enabled)
+        private static void ApplyBalanceChange(StateProvider sp, Address address, in UInt256 amount, IReleaseSpec spec)
         {
             Account? account = sp.GetState(address);
             if (account is not null)
@@ -278,7 +279,7 @@ namespace Nethermind.State
                 {
                     sp.SetState(address, account.WithChangedBalance(account.Balance + amount));
                 }
-                else if (isEip158Enabled && account.IsEmpty)
+                else if (spec.IsEip158Enabled && account.IsEmpty && !spec.IsEip158IgnoredAccount(address))
                 {
                     // Slow path touches the account with 0 balance → Commit deletes it via EIP-158
                     sp.SetState(address, null);
@@ -291,7 +292,7 @@ namespace Nethermind.State
                 {
                     sp.SetState(address, new Account(amount));
                 }
-                else if (!isEip158Enabled)
+                else if (!spec.IsEip158Enabled)
                 {
                     // Pre-EIP-158: slow path creates empty account
                     sp.SetState(address, new Account(UInt256.Zero));

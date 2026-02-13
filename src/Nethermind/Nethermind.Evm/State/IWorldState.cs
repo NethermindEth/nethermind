@@ -160,7 +160,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
         Address recipient, in UInt256 transferValue,
         Address beneficiary, in UInt256 beneficiaryFee,
         Address? feeCollector, in UInt256 collectedFees,
-        bool isEip158Enabled)
+        IReleaseSpec spec)
     {
         // Default: not supported, caller should check GetAccountDirect != null first
         throw new NotSupportedException();
