@@ -302,19 +302,43 @@ public class BlockchainProcessorTests
                 }
 
                 ((IBlockProcessingQueue)_processor).BlockAdded += OnBlockAdded;
-                Task.Run(() =>
+                try
                 {
-                    AddBlockResult result = _blockTree.SuggestBlock(block, options);
-                    if (result != AddBlockResult.Added)
+                    Task.Run(() =>
                     {
-                        _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
-                        blockEnqueued.Set();
-                        _resetEvent.Set();
-                    }
-                });
-                SpinWait.SpinUntil(() => _blockTree.IsKnownBlock(block.Number, block.Hash!), ProcessingWait);
-                blockEnqueued.Wait(ProcessingWait);
-                ((IBlockProcessingQueue)_processor).BlockAdded -= OnBlockAdded;
+                        try
+                        {
+                            AddBlockResult result = _blockTree.SuggestBlock(block, options);
+                            if (result != AddBlockResult.Added)
+                            {
+                                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                                _resetEvent.Set();
+                            }
+                        }
+                        finally
+                        {
+                            // Signal completion after SuggestBlock returns. For new-best blocks,
+                            // BlockAdded fires during SuggestBlock (before this point) so the
+                            // event is already set. For non-best blocks (same/lower difficulty),
+                            // no enqueue occurs and BlockAdded never fires, so this is the only
+                            // signal. When AllowSynchronousContinuations causes inline processing,
+                            // SuggestBlock blocks indefinitely but BlockAdded already fired.
+                            blockEnqueued.Set();
+                        }
+                    });
+                    Assert.That(
+                        SpinWait.SpinUntil(() => _blockTree.IsKnownBlock(block.Number, block.Hash!), ProcessingWait),
+                        Is.True,
+                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to appear in the block tree");
+                    Assert.That(
+                        blockEnqueued.Wait(ProcessingWait),
+                        Is.True,
+                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
+                }
+                finally
+                {
+                    ((IBlockProcessingQueue)_processor).BlockAdded -= OnBlockAdded;
+                }
             }
             else
             {
