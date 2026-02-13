@@ -101,7 +101,8 @@ public partial class BlockProcessor(
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        // System call changes (beacon root, blockhash) accumulate in journal and are
+        // flushed together with transaction changes in the commit after ProcessTransactions.
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 

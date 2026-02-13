@@ -211,7 +211,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            // Commit pre-execution changes (nonce increment, gas reservation) when:
+            // - restore: CallAndRestore needs state in _blockChanges to survive Reset()
+            // - tracer.IsTracingState: tracers need to see nonce/gas changes separately
+            // In the normal block-processing path (commit && !restore && !IsTracingState), skip this commit —
+            // pre-execution changes stay in the journal and are flushed with execution changes, saving one Commit cycle.
+            if (commit && (restore || tracer.IsTracingState))
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: false);
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
