@@ -202,14 +202,17 @@ namespace Nethermind.Evm.TransactionProcessing
             // AccountExists→GetThroughCache, which would leave stale entries that break
             // subsequent slow-path transactions reading the same sender.
             // Excluded: pre-EIP-658 (needs commitRoots), state-tracing (needs journal diffs),
-            // blob txs (require blobBaseFee calculation).
+            // action-tracing (ParityLikeTxTracer needs ReportAction), blob txs (blobBaseFee),
+            // SkipValidation (system txs via SystemTransactionProcessor add phantom _blockChanges entries).
             // Guard: only standard sealed processors (not Taiko/Xdc/Optimism subclasses
             // that override PayFees/BuyGas/IncrementNonce with custom logic).
             if (GetType().IsSealed
                 && commit && !restore
+                && !opts.HasFlag(ExecutionOptions.SkipValidation)
                 && tx.SenderAddress is not null
                 && spec.IsEip658Enabled
                 && !tracer.IsTracingState
+                && !tracer.IsTracingActions
                 && !tx.IsContractCreation
                 && !tx.SupportsBlobs
                 && (!spec.IsEip7702Enabled || !tx.HasAuthorizationList))
