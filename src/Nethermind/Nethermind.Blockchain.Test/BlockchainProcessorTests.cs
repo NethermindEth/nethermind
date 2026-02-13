@@ -287,18 +287,34 @@ public class BlockchainProcessorTests
             if ((options & BlockTreeSuggestOptions.ShouldProcess) != 0)
             {
                 // Use Task.Run to avoid blocking when AllowSynchronousContinuations
-                // causes inline processing on the calling thread
+                // causes inline processing on the calling thread.
+                // Wait for BlockAdded to ensure the block's Enqueue (_queueCount increment)
+                // completes before the next Suggested call. This prevents a race where two
+                // concurrent Enqueue calls both see _queueCount > 1 and go to the recovery
+                // queue in non-deterministic order, causing the processor to batch blocks
+                // together and deadlock the test. We use a latching event rather than polling
+                // Count because _queueCount is transient and may drop back before being observed.
+                using ManualResetEventSlim blockEnqueued = new(false);
+                void OnBlockAdded(object? sender, BlockEventArgs args)
+                {
+                    if (args.Block.Hash == block.Hash)
+                        blockEnqueued.Set();
+                }
+
+                ((IBlockProcessingQueue)_processor).BlockAdded += OnBlockAdded;
                 Task.Run(() =>
                 {
                     AddBlockResult result = _blockTree.SuggestBlock(block, options);
                     if (result != AddBlockResult.Added)
                     {
                         _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                        blockEnqueued.Set();
                         _resetEvent.Set();
                     }
                 });
-                // Wait for block to be in the tree before returning
                 SpinWait.SpinUntil(() => _blockTree.IsKnownBlock(block.Number, block.Hash!), ProcessingWait);
+                blockEnqueued.Wait(ProcessingWait);
+                ((IBlockProcessingQueue)_processor).BlockAdded -= OnBlockAdded;
             }
             else
             {
