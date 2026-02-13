@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             ulong estimate = EstimateSize(block.Header);
-            var transactions = block.Transactions;
+            Transaction[] transactions = block.Transactions;
             for (int i = 0; i < transactions.Length; i++)
             {
                 estimate += EstimateSize(transactions[i]);
@@ -51,6 +51,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             for (int i = 0; i < receipt.Logs.Length; i++)
             {
                 estimate += (ulong)receipt.Logs[i].Data.Length + (ulong)receipt.Logs[i].Topics.Length * Hash256.Size;
+            }
+
+            return estimate;
+        }
+
+        public static ulong EstimateSize(TxReceipt[] receipts)
+        {
+            ulong estimate = 0;
+
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                estimate += EstimateSize(receipts[i]);
             }
 
             return estimate;

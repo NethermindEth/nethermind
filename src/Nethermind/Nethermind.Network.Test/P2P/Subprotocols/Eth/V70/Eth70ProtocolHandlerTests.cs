@@ -52,7 +52,7 @@ public class Eth70ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)2.MB();
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)9.MB();
         NetworkDiagTracer.IsEnabled = true;
 
         _session = Substitute.For<ISession>();
@@ -115,6 +115,8 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_mark_last_block_incomplete_when_truncated()
     {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)1.MB();
+
         const int receiptCount = 20000;
         using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
         TxReceipt[] hugeBlock = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, receiptCount).ToArray();
@@ -229,6 +231,7 @@ public class Eth70ProtocolHandlerTests
     public async Task Should_request_additional_pages_until_complete()
     {
         Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+
         TxReceipt[] receipts =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
@@ -259,6 +262,7 @@ public class Eth70ProtocolHandlerTests
     public async Task Should_merge_partial_first_block_and_continue_to_next_block()
     {
         Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+
         TxReceipt[] block1 =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
@@ -365,6 +369,219 @@ public class Eth70ProtocolHandlerTests
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
         act.Should().ThrowAsync<SubprotocolException>();
+    }
+
+    [Test]
+    public async Task Should_return_immediately_when_peer_returns_fewer_blocks_than_requested()
+    {
+        // Scenario: Handler requests N blocks, peer returns fewer with LastBlockIncomplete = false
+        // Expected: Handler should NOT loop and request more, but return immediately
+
+        const int totalBlocks = 10;
+
+        Hash256[] blockHashes = Enumerable.Range(0, totalBlocks)
+            .Select(i => new Hash256(Keccak.Compute(BitConverter.GetBytes(i)).Bytes))
+            .ToArray();
+
+        int requestCount = 0;
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+
+            // Return only 7 blocks when more were requested, with LastBlockIncomplete = false
+            // This simulates peer stopping early (e.g., doesn't have remaining blocks)
+            int actualRequested = sent.EthMessage.Hashes.Count;
+            int toReturn = Math.Min(7, actualRequested);
+
+            TxReceipt[][] payload = Enumerable.Range(0, toReturn)
+                .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] } })
+                .ToArray();
+
+            ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
+
+        // Handler should make only 1 request - not loop trying to get remaining 3 blocks
+        // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
+        requestCount.Should().Be(1, "handler should not loop requesting more when peer returned fewer with incomplete=false");
+        result.Should().HaveCount(7, "should return what peer gave us without looping");
+    }
+
+    [Test]
+    public void Should_return_multiple_blocks_with_empty_receipts_in_between()
+    {
+        TxReceipt[] block1Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        TxReceipt[] block3Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns(Array.Empty<TxReceipt>());
+        _syncManager.GetReceipts(TestItem.KeccakB).Returns(block3Receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 3 &&
+            m.EthMessage.TxReceipts[0].Length == 2 &&
+            m.EthMessage.TxReceipts[1].Length == 0 &&
+            m.EthMessage.TxReceipts[2].Length == 1 &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_handle_first_block_with_empty_receipts()
+    {
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(Array.Empty<TxReceipt>());
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 2 &&
+            m.EthMessage.TxReceipts[0].Length == 0 &&
+            m.EthMessage.TxReceipts[1].Length == 1 &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_disconnect_when_first_block_receipt_index_nonzero_for_empty_block()
+    {
+        using var request = new GetReceiptsMessage70(1111, 5, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+            Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
+    }
+
+    [Test]
+    public void Should_truncate_large_block_in_middle()
+    {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 300;
+
+        TxReceipt[] block1Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 1 &&
+            m.EthMessage.TxReceipts[0].Length == 1 &&
+            m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_truncate_second_block_when_cumulative_exceeds_limit()
+    {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 650;
+
+        TxReceipt[] block1Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction * 50, Logs = [new LogEntry(TestItem.AddressA, new byte[44], [])] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 100, Logs = [new LogEntry(TestItem.AddressA, new byte[44], [])] }
+        ];
+
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 2 &&
+            m.EthMessage.TxReceipts[0].Length == 2 &&
+            m.EthMessage.TxReceipts[1].Length == 1 &&
+            m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_split_large_block_when_exceeding_limit()
+    {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 1000;
+        TxReceipt[] largeBlockReceipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [new LogEntry(TestItem.AddressA, new byte[400], [])] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [new LogEntry(TestItem.AddressA, new byte[400], [])] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [new LogEntry(TestItem.AddressA, new byte[400], [])] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(largeBlockReceipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 1 &&
+            m.EthMessage.TxReceipts[0].Length < largeBlockReceipts.Length &&
+            m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_not_split_small_block_when_hitting_limit_single_block()
+    {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)10.MB();
+
+        TxReceipt[] smallBlockReceipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
+                new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+        ];
+
+        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(smallBlockReceipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        // Small block that doesn't exceed limits - all receipts returned
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.EthMessage.TxReceipts.Count == 1 &&
+            m.EthMessage.TxReceipts[0].Length == smallBlockReceipts.Length &&
+            !m.LastBlockIncomplete));
     }
 
     private void HandleIncomingStatusMessage()

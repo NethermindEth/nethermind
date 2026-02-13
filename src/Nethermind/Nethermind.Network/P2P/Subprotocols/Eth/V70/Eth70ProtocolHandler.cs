@@ -124,11 +124,17 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                 }
             }
 
+            if (lastBlockIncomplete && MessageSizeEstimator.EstimateSize(receipts) < SoftOutgoingMessageSizeLimit / 2)
+            {
+                lastBlockIncomplete = false;
+                break;
+            }
+
             TxReceipt[] truncated = new TxReceipt[taken];
             Array.Copy(receipts, startIndex, truncated, 0, taken);
             txReceipts.Add(truncated);
 
-            if (lastBlockIncomplete || sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+            if (lastBlockIncomplete || cancellationToken.IsCancellationRequested)
             {
                 break;
             }
@@ -253,6 +259,11 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
                             firstBlockReceiptIndex = 0;
                         }
                     }
+
+                    if (!response.LastBlockIncomplete && blockIndex < blockHashes.Count)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -299,9 +310,14 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
 
     private static void ValidateBlockReceipts(TxReceipt[] blockReceipts, long expectedGasUsed, int firstReceiptIndex, bool isCompleteSegment)
     {
-        if (blockReceipts.Length == 0)
+        if (blockReceipts is null or { Length: 0 })
         {
-            throw new SubprotocolException("Empty receipt block payload");
+            if (firstReceiptIndex != 0 || !isCompleteSegment)
+            {
+                throw new SubprotocolException("Unexpected empty receipt block payload");
+            }
+
+            return;
         }
 
         long prevCumulative = firstReceiptIndex == 0 ? 0 : blockReceipts[0].GasUsedTotal;
