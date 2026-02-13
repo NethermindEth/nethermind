@@ -196,18 +196,20 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UpdateMetrics(opts, effectiveGasPrice);
 
-            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
-
             // Direct path: plain ether transfer to EOA with commit mode – bypass journal entirely.
             // All reads/writes go directly to _blockChanges, skipping journal and Commit overhead.
+            // Must run BEFORE RecoverSenderIfNeeded to avoid polluting _intraTxCache via
+            // AccountExists→GetThroughCache, which would leave stale entries that break
+            // subsequent slow-path transactions reading the same sender.
             // Excluded: pre-EIP-658 (needs commitRoots), state-tracing (needs journal diffs).
-            if (commit && !restore && !deleteCallerAccount
+            if (commit && !restore
+                && tx.SenderAddress is not null
                 && spec.IsEip658Enabled
                 && !tracer.IsTracingState
                 && !tx.IsContractCreation
                 && (!spec.IsEip7702Enabled || !tx.HasAuthorizationList))
             {
-                Account? senderAccount = WorldState.GetAccountDirect(tx.SenderAddress!);
+                Account? senderAccount = WorldState.GetAccountDirect(tx.SenderAddress);
                 if (senderAccount is not null && !senderAccount.HasCode)
                 {
                     Account? recipientForCheck = tx.SenderAddress == tx.To ? senderAccount : WorldState.GetAccountDirect(tx.To!);
@@ -218,6 +220,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
             }
+
+            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||
                 !(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||
