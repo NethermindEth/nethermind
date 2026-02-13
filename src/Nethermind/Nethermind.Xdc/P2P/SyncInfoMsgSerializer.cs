@@ -27,8 +27,11 @@ internal class SyncinfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 
     public SyncInfoMsg Deserialize(IByteBuffer byteBuffer)
     {
-        Rlp.ValueDecoderContext ctx = new(byteBuffer.AsMemory(), true);
-        return new() { SyncInfo = _syncInfoDecoder.Decode(ref ctx, RlpBehaviors.None) };
+        Memory<byte> memory = byteBuffer.AsMemory();
+        Rlp.ValueDecoderContext ctx = new(memory, true);
+        Types.SyncInfo syncInfo = _syncInfoDecoder.Decode(ref ctx, RlpBehaviors.None);
+        byteBuffer.SkipBytes(memory.Length);
+        return new() { SyncInfo = syncInfo };
     }
 
     public int GetLength(SyncInfoMsg message, out int contentLength)

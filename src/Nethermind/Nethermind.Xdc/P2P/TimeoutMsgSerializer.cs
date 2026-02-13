@@ -29,8 +29,11 @@ internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
 
     public TimeoutMsg Deserialize(IByteBuffer byteBuffer)
     {
-        Rlp.ValueDecoderContext ctx = new(byteBuffer.AsMemory(), true);
-        return new() { Timeout = _timeDecoder.Decode(ref ctx, RlpBehaviors.None) };
+        Memory<byte> memory = byteBuffer.AsMemory();
+        Rlp.ValueDecoderContext ctx = new(memory, true);
+        Timeout timeout = _timeDecoder.Decode(ref ctx, RlpBehaviors.None);
+        byteBuffer.SkipBytes(memory.Length);
+        return new() { Timeout = timeout };
     }
 
     public int GetLength(TimeoutMsg message, out int contentLength)
