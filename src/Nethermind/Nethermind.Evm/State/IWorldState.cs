@@ -141,4 +141,26 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();
+
+    /// <summary>
+    /// Read account directly from block-level cache, bypassing the intra-tx journal.
+    /// Returns null if the account does not exist.
+    /// </summary>
+    Account? GetAccountDirect(Address address) => null;
+
+    /// <summary>
+    /// Apply a plain ether transfer directly to block-level state, bypassing the
+    /// intra-tx journal and Commit. Handles overlapping addresses (self-transfer,
+    /// sender==beneficiary, etc.) via sequential read-after-write.
+    /// </summary>
+    void ApplyPlainTransferDirect(
+        Address sender, UInt256 newSenderNonce,
+        in UInt256 senderGasReservation, in UInt256 senderRefund,
+        Address recipient, in UInt256 transferValue,
+        Address beneficiary, in UInt256 beneficiaryFee,
+        Address? feeCollector, in UInt256 collectedFees)
+    {
+        // Default: not supported, caller should check GetAccountDirect != null first
+        throw new NotSupportedException();
+    }
 }
