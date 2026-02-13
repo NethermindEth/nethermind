@@ -149,7 +149,7 @@ public partial class BlockProcessor
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        Task<TxReceipt[]> txTask
+        Task<TxReceipt[]> txTask;
         
         if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
         {
