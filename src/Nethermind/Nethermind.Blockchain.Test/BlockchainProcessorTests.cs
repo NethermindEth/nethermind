@@ -288,17 +288,22 @@ public class BlockchainProcessorTests
             {
                 // Use Task.Run to avoid blocking when AllowSynchronousContinuations
                 // causes inline processing on the calling thread.
-                // Wait for BlockAdded to ensure the block's Enqueue (_queueCount increment)
-                // completes before the next Suggested call. This prevents a race where two
-                // concurrent Enqueue calls both see _queueCount > 1 and go to the recovery
-                // queue in non-deterministic order, causing the processor to batch blocks
-                // together and deadlock the test. We use a latching event rather than polling
-                // Count because _queueCount is transient and may drop back before being observed.
-                using ManualResetEventSlim blockEnqueued = new(false);
+                //
+                // We wait for either BlockAdded (enqueued to processor) or SuggestBlock
+                // completion (non-best blocks that aren't enqueued) before returning. This
+                // prevents a race where two concurrent Enqueue calls both see _queueCount > 1
+                // and go to the recovery queue in non-deterministic order, causing the
+                // processor to batch blocks together and deadlock the test.
+                //
+                // TaskCompletionSource is used instead of ManualResetEventSlim because the
+                // background Task.Run may outlive this method (when AllowSynchronousContinuations
+                // causes SuggestBlock to block indefinitely) and TrySetResult is safe to call
+                // on a completed TCS without disposal concerns.
+                TaskCompletionSource suggestCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 void OnBlockAdded(object? sender, BlockEventArgs args)
                 {
                     if (args.Block.Hash == block.Hash)
-                        blockEnqueued.Set();
+                        suggestCompleted.TrySetResult();
                 }
 
                 ((IBlockProcessingQueue)_processor).BlockAdded += OnBlockAdded;
@@ -317,13 +322,12 @@ public class BlockchainProcessorTests
                         }
                         finally
                         {
-                            // Signal completion after SuggestBlock returns. For new-best blocks,
-                            // BlockAdded fires during SuggestBlock (before this point) so the
-                            // event is already set. For non-best blocks (same/lower difficulty),
-                            // no enqueue occurs and BlockAdded never fires, so this is the only
-                            // signal. When AllowSynchronousContinuations causes inline processing,
+                            // For new-best blocks, BlockAdded fires during SuggestBlock (before
+                            // this point) so the TCS is already completed. For non-best blocks
+                            // (same/lower difficulty), no enqueue occurs, so this is the signal.
+                            // When AllowSynchronousContinuations causes inline processing,
                             // SuggestBlock blocks indefinitely but BlockAdded already fired.
-                            blockEnqueued.Set();
+                            suggestCompleted.TrySetResult();
                         }
                     });
                     Assert.That(
@@ -331,7 +335,7 @@ public class BlockchainProcessorTests
                         Is.True,
                         $"Timed out waiting for {block.ToString(Block.Format.Short)} to appear in the block tree");
                     Assert.That(
-                        blockEnqueued.Wait(ProcessingWait),
+                        suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
                         $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
                 }
