@@ -100,7 +100,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     {
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0)
+            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
             {
                 _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = GetBalanceInternal(accountChanges.Address, 0);
@@ -115,13 +115,13 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0)
+            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges.Last().BlockAccessIndex != -1)
             {
                 _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 _innerWorldState.SetNonce(accountChanges.Address, accountChanges.NonceChanges.Last().NewNonce);
             }
 
-            if (accountChanges.CodeChanges.Count > 0)
+            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges.Last().BlockAccessIndex != -1)
             {
                 _innerWorldState.InsertCode(accountChanges.Address, accountChanges.CodeChanges.Last().NewCode, spec);
             }
@@ -130,7 +130,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             {
                 StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
                 // could be empty since prestate loaded
-                if (slotChange.Changes.Count > 0)
+                if (slotChange.Changes.Count > 0 && slotChange.Changes.Last().Key != -1)
                 {
                     _innerWorldState.Set(storageCell, [.. slotChange.Changes.Last().Value.NewValue.ToBigEndian().WithoutLeadingZeros()]);
                 }
@@ -945,6 +945,9 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             throw new InvalidBlockLevelAccessListException("Suggested block-level access list contained invalid storage reads.");
         }
     }
+
+    // for testing
+    internal IWorldState Inner => _innerWorldState;
 
     private static bool HasNoChanges((Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, int) c)
         => c.BalanceChange is null &&

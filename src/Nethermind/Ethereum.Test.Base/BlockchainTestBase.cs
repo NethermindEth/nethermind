@@ -36,6 +36,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
 using System.Reflection;
+using Nethermind.State;
 
 namespace Ethereum.Test.Base;
 
@@ -87,9 +88,9 @@ public abstract class BlockchainTestBase
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-        isEngineTest ?
-        [((ForkActivation)0, test.Network)] :
-        [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
+            isEngineTest ?
+            [((ForkActivation)0, test.Network)] :
+            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -98,7 +99,7 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        // Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
+        Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -143,7 +144,7 @@ public abstract class BlockchainTestBase
         await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
-        IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+        IWorldState stateProvider = (mainBlockProcessingContext.WorldState as ParallelWorldState).Inner; // directly access underlying state
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
@@ -161,7 +162,6 @@ public abstract class BlockchainTestBase
             // Genesis processing
             using (stateProvider.BeginScope(null))
             {
-                (stateProvider as IBlockAccessListBuilder).IsGenesis = true; // directly access underlying state
                 InitializeTestState(test, stateProvider, specProvider);
 
                 stopwatch?.Start();
@@ -236,7 +236,6 @@ public abstract class BlockchainTestBase
             List<string> differences;
             using (stateProvider.BeginScope(headBlock.Header))
             {
-                (stateProvider as IBlockAccessListBuilder).IsGenesis = true; // directly access underlying state
                 differences = RunAssertions(test, headBlock, stateProvider);
             }
 
@@ -445,9 +444,9 @@ public abstract class BlockchainTestBase
                 break;
             }
 
-            bool accountExists = stateProvider.AccountExists(accountAddress, int.MaxValue);
-            UInt256? balance = accountExists ? stateProvider.GetBalance(accountAddress, int.MaxValue) : null;
-            UInt256? nonce = accountExists ? stateProvider.GetNonce(accountAddress, int.MaxValue) : null;
+            bool accountExists = stateProvider.AccountExists(accountAddress);
+            UInt256? balance = accountExists ? stateProvider.GetBalance(accountAddress) : null;
+            UInt256? nonce = accountExists ? stateProvider.GetNonce(accountAddress) : null;
 
             if (accountState.Balance != balance)
             {
@@ -459,7 +458,7 @@ public abstract class BlockchainTestBase
                 differences.Add($"{accountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
             }
 
-            byte[] code = accountExists ? stateProvider.GetCode(accountAddress, int.MaxValue) : [];
+            byte[] code = accountExists ? stateProvider.GetCode(accountAddress) : [];
             if (!Bytes.AreEqual(accountState.Code, code))
             {
                 differences.Add($"{accountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
@@ -480,7 +479,7 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress, int.MaxValue) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key), int.MaxValue);
+                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
                 if (!value.IsZero())
                 {
                     differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
@@ -489,7 +488,7 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress, int.MaxValue) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key), int.MaxValue);
+                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
                 if (!Bytes.AreEqual(storageItem.Value, value))
                 {
                     differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
