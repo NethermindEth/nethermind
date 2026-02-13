@@ -201,12 +201,14 @@ namespace Nethermind.Evm.TransactionProcessing
             // Must run BEFORE RecoverSenderIfNeeded to avoid polluting _intraTxCache via
             // AccountExists→GetThroughCache, which would leave stale entries that break
             // subsequent slow-path transactions reading the same sender.
-            // Excluded: pre-EIP-658 (needs commitRoots), state-tracing (needs journal diffs).
+            // Excluded: pre-EIP-658 (needs commitRoots), state-tracing (needs journal diffs),
+            // blob txs (require blobBaseFee calculation).
             if (commit && !restore
                 && tx.SenderAddress is not null
                 && spec.IsEip658Enabled
                 && !tracer.IsTracingState
                 && !tx.IsContractCreation
+                && !tx.SupportsBlobs
                 && (!spec.IsEip7702Enabled || !tx.HasAuthorizationList))
             {
                 Account? senderAccount = WorldState.GetAccountDirect(tx.SenderAddress);
@@ -380,7 +382,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 sender, newNonce, in senderReservedGasPayment, in senderRefund,
                 recipient, in tx.ValueRef,
                 header.GasBeneficiary!, in beneficiaryFee,
-                spec.FeeCollector, in collectedFees);
+                spec.FeeCollector, in collectedFees,
+                spec.IsEip158Enabled);
 
             // Gas tracking
             GasConsumed spent = new(spentGas, opGas);

@@ -235,7 +235,8 @@ namespace Nethermind.State
             in UInt256 senderGasReservation, in UInt256 senderRefund,
             Address recipient, in UInt256 transferValue,
             Address beneficiary, in UInt256 beneficiaryFee,
-            Address? feeCollector, in UInt256 collectedFees)
+            Address? feeCollector, in UInt256 collectedFees,
+            bool isEip158Enabled)
         {
             DebugGuardInScope();
             StateProvider sp = _stateProvider;
@@ -245,25 +246,14 @@ namespace Nethermind.State
             UInt256 newBalance = senderAccount.Balance - senderGasReservation - transferValue + senderRefund;
             sp.SetState(sender, new Account(newSenderNonce, newBalance, senderAccount.StorageRoot, senderAccount.CodeHash));
 
-            // Recipient: add value (re-read handles sender==recipient overlap correctly)
-            if (!transferValue.IsZero)
-            {
-                Account? recipientAccount = sp.GetState(recipient);
-                if (recipientAccount is not null)
-                    sp.SetState(recipient, recipientAccount.WithChangedBalance(recipientAccount.Balance + transferValue));
-                else
-                    sp.SetState(recipient, new Account(transferValue));
-            }
+            // Recipient: always process – the slow path (VM) always calls
+            // AddToBalanceAndCreateIfNotExists(recipient, value) which touches the account.
+            // EIP-158 deletes empty accounts that were touched.
+            ApplyBalanceChange(sp, recipient, in transferValue, isEip158Enabled);
 
-            // Beneficiary: add fee (re-read handles overlap with sender/recipient)
-            if (!beneficiaryFee.IsZero)
-            {
-                Account? benefAccount = sp.GetState(beneficiary);
-                if (benefAccount is not null)
-                    sp.SetState(beneficiary, benefAccount.WithChangedBalance(benefAccount.Balance + beneficiaryFee));
-                else
-                    sp.SetState(beneficiary, new Account(beneficiaryFee));
-            }
+            // Beneficiary: always process – the slow path always calls
+            // AddToBalanceAndCreateIfNotExists(beneficiary, fee).
+            ApplyBalanceChange(sp, beneficiary, in beneficiaryFee, isEip158Enabled);
 
             // Fee collector (EIP-1559)
             if (feeCollector is not null && !collectedFees.IsZero)
@@ -273,6 +263,40 @@ namespace Nethermind.State
                     sp.SetState(feeCollector, fcAccount.WithChangedBalance(fcAccount.Balance + collectedFees));
                 else
                     sp.SetState(feeCollector, new Account(collectedFees));
+            }
+        }
+
+        /// <summary>
+        /// Applies a balance change matching the behavior of AddToBalanceAndCreateIfNotExists + EIP-158 cleanup.
+        /// </summary>
+        private static void ApplyBalanceChange(StateProvider sp, Address address, in UInt256 amount, bool isEip158Enabled)
+        {
+            Account? account = sp.GetState(address);
+            if (account is not null)
+            {
+                if (!amount.IsZero)
+                {
+                    sp.SetState(address, account.WithChangedBalance(account.Balance + amount));
+                }
+                else if (isEip158Enabled && account.IsEmpty)
+                {
+                    // Slow path touches the account with 0 balance → Commit deletes it via EIP-158
+                    sp.SetState(address, null);
+                }
+                // else: non-empty account + 0 amount → no state change
+            }
+            else
+            {
+                if (!amount.IsZero)
+                {
+                    sp.SetState(address, new Account(amount));
+                }
+                else if (!isEip158Enabled)
+                {
+                    // Pre-EIP-158: slow path creates empty account
+                    sp.SetState(address, new Account(UInt256.Zero));
+                }
+                // else: EIP-158 + 0 amount + non-existent → slow path creates then discards → no-op
             }
         }
 

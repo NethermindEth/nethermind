@@ -772,7 +772,7 @@ public class TransactionProcessorTests
         return result;
     }
 
-    #region Direct transfer path tests
+    // Direct transfer path tests
 
     private static readonly UInt256 HalfEther = 1.Ether() / 2;
     private static readonly UInt256 TenthEther = 1.Ether() / 10;
@@ -1337,5 +1337,72 @@ public class TransactionProcessorTests
         _stateProvider.GetNonce(TestItem.AddressA).Should().Be(2);
     }
 
-    #endregion
+    [Test]
+    public void Direct_transfer_eip158_deletes_empty_beneficiary_touched_with_zero_fee()
+    {
+        // Regression: slow path always calls AddToBalanceAndCreateIfNotExists(beneficiary, fee).
+        // When fee=0, this touches the beneficiary; EIP-158 then deletes it if empty.
+        // The direct path must do the same.
+        Address beneficiary = TestItem.AddressD;
+
+        // Create the beneficiary as an empty account (balance=0, nonce=0, no code).
+        // Commit with GenesisSpec (Frontier) to avoid EIP-158 cleanup during setup.
+        _stateProvider.CreateAccount(beneficiary, 0);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+
+        // gasPrice=0 → premiumPerGas=0 → beneficiaryFee=0
+        Block block = Build.A.Block
+            .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber)
+            .WithBeneficiary(beneficiary)
+            .TestObject;
+
+        Transaction tx = Build.A.Transaction
+            .WithValue(HundredthEther)
+            .WithGasPrice(0)
+            .WithGasLimit(21000)
+            .WithNonce(0)
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .TestObject;
+
+        TransactionResult result = Execute(tx, block);
+        result.Should().Be(TransactionResult.Ok);
+
+        // EIP-158: the beneficiary was empty, got touched with 0-fee → should be deleted
+        _stateProvider.AccountExists(beneficiary).Should().BeFalse(
+            "empty beneficiary should be deleted by EIP-158 after 0-fee transfer");
+    }
+
+    [Test]
+    public void Direct_transfer_eip158_deletes_empty_recipient_on_zero_value()
+    {
+        // Regression: the VM always calls AddToBalanceAndCreateIfNotExists(recipient, value)
+        // which touches the recipient even for 0-value transfers. EIP-158 deletes empty accounts.
+        Address recipient = TestItem.AddressD;
+
+        // Create the recipient as an empty account.
+        // Commit with GenesisSpec (Frontier) to avoid EIP-158 cleanup during setup.
+        _stateProvider.CreateAccount(recipient, 0);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+
+        Transaction tx = Build.A.Transaction
+            .WithValue(0)
+            .WithGasPrice(1)
+            .WithGasLimit(21000)
+            .WithNonce(0)
+            .WithTo(recipient)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber)
+            .TestObject;
+
+        TransactionResult result = Execute(tx, block);
+        result.Should().Be(TransactionResult.Ok);
+
+        // EIP-158: the recipient was empty and got touched by the 0-value transfer → should be deleted
+        _stateProvider.AccountExists(recipient).Should().BeFalse(
+            "empty recipient should be deleted by EIP-158 after 0-value transfer");
+    }
 }
