@@ -19,10 +19,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -30,7 +28,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
     private class ProcessingTestContext
@@ -197,7 +196,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -285,11 +284,30 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext Suggested(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            AddBlockResult result = _blockTree.SuggestBlock(block, options);
-            if (result != AddBlockResult.Added)
+            if ((options & BlockTreeSuggestOptions.ShouldProcess) != 0)
             {
-                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
-                _resetEvent.Set();
+                // Use Task.Run to avoid blocking when AllowSynchronousContinuations
+                // causes inline processing on the calling thread
+                Task.Run(() =>
+                {
+                    AddBlockResult result = _blockTree.SuggestBlock(block, options);
+                    if (result != AddBlockResult.Added)
+                    {
+                        _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                        _resetEvent.Set();
+                    }
+                });
+                // Wait for block to be in the tree before returning
+                SpinWait.SpinUntil(() => _blockTree.IsKnownBlock(block.Number, block.Hash!), ProcessingWait);
+            }
+            else
+            {
+                AddBlockResult result = _blockTree.SuggestBlock(block, options);
+                if (result != AddBlockResult.Added)
+                {
+                    _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                    _resetEvent.Set();
+                }
             }
 
             return this;
@@ -330,8 +348,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext CountIs(int expectedCount)
         {
-            var count = ((IBlockProcessingQueue)_processor).Count;
-            Assert.That(expectedCount, Is.EqualTo(count));
+            Assert.That(() => ((IBlockProcessingQueue)_processor).Count, Is.EqualTo(expectedCount).After(ProcessingWait, 10));
             return this;
         }
 

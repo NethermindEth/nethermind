@@ -18,6 +18,8 @@ using FluentAssertions;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockValidatorTests
 {
     private static BlockValidator _blockValidator = null!;

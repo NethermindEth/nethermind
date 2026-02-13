@@ -23,18 +23,15 @@ public class TestMemDb : MemDb, ITunableDb
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }
-    public Action<byte[]>? RemoveFunc { get; set; }
 
     public bool WasFlushed => FlushCount > 0;
-    public int FlushCount { get; set; } = 0;
+    public int FlushCount { get; private set; }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
     public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         _readKeys.Add((key.ToArray(), flags));
-
-        if (ReadFunc is not null) return ReadFunc(key.ToArray());
-        return base.Get(key, flags);
+        return ReadFunc is not null ? ReadFunc(key.ToArray()) : base.Get(key, flags);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -46,71 +43,32 @@ public class TestMemDb : MemDb, ITunableDb
         base.Set(key, value, flags);
     }
 
-    public override Span<byte> GetSpan(ReadOnlySpan<byte> key)
-    {
-        return Get(key);
-    }
-
     [MethodImpl(MethodImplOptions.Synchronized)]
     public override void Remove(ReadOnlySpan<byte> key)
     {
         _removedKeys.Add(key.ToArray());
-
-        if (RemoveFunc is not null)
-        {
-            RemoveFunc.Invoke(key.ToArray());
-            return;
-        }
         base.Remove(key);
     }
 
-    public void Tune(ITunableDb.TuneType type)
-    {
-        _tuneTypes.Add(type);
-    }
+    public void Tune(ITunableDb.TuneType type) => _tuneTypes.Add(type);
+    public bool WasTunedWith(ITunableDb.TuneType type) => _tuneTypes.Contains(type);
 
-    public bool WasTunedWith(ITunableDb.TuneType type)
-    {
-        return _tuneTypes.Contains(type);
-    }
-
-    public void KeyWasRead(byte[] key, int times = 1)
-    {
+    public void KeyWasRead(byte[] key, int times = 1) =>
         _readKeys.Count(it => Bytes.AreEqual(it.Item1, key)).Should().Be(times);
-    }
 
-    public void KeyWasReadWithFlags(byte[] key, ReadFlags flags, int times = 1)
-    {
+    public void KeyWasReadWithFlags(byte[] key, ReadFlags flags, int times = 1) =>
         _readKeys.Count(it => Bytes.AreEqual(it.Item1, key) && it.Item2 == flags).Should().Be(times);
-    }
 
-    public void KeyWasWritten(byte[] key, int times = 1)
-    {
+    public void KeyWasWritten(byte[] key, int times = 1) =>
         _writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key)).Should().Be(times);
-    }
 
-    public void KeyWasWritten(Func<(byte[], byte[]?), bool> cond, int times = 1)
-    {
+    public void KeyWasWritten(Func<(byte[], byte[]?), bool> cond, int times = 1) =>
         _writes.Count(it => cond.Invoke(it.Item1)).Should().Be(times);
-    }
 
-    public void KeyWasWrittenWithFlags(byte[] key, WriteFlags flags, int times = 1)
-    {
+    public void KeyWasWrittenWithFlags(byte[] key, WriteFlags flags, int times = 1) =>
         _writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key) && it.Item2 == flags).Should().Be(times);
-    }
 
-    public void KeyWasRemoved(Func<byte[], bool> cond, int times = 1)
-    {
-        _removedKeys.Count(cond).Should().Be(times);
-    }
-
-    public override IWriteBatch StartWriteBatch()
-    {
-        return new InMemoryWriteBatch(this);
-    }
-
-    public override void Flush(bool onlyWal)
-    {
-        FlushCount++;
-    }
+    public void KeyWasRemoved(Func<byte[], bool> cond, int times = 1) => _removedKeys.Count(cond).Should().Be(times);
+    public override IWriteBatch StartWriteBatch() => new InMemoryWriteBatch(this);
+    public override void Flush(bool onlyWal) => FlushCount++;
 }

@@ -359,7 +359,7 @@ public class ForkInfoTests
     [TestCase(null, null, 1ul, 1ul)]
     public void Chain_id_and_network_id_have_proper_default_values(ulong? specNetworkId, ulong? specChainId, ulong expectedNetworkId, ulong expectedChainId)
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        ChainSpecLoader loader = new(new EthereumJsonSerializer(), NullLogManager.Instance);
 
         string chainspec = $"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}";
         using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(chainspec));

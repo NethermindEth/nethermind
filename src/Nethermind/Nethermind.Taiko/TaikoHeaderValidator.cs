@@ -96,9 +96,12 @@ public class TaikoHeaderValidator(
             BlockHeader? grandParent = _blockTree?.FindHeader(parent.ParentHash!, BlockTreeLookupOptions.None, blockNumber: parent.Number - 1);
             if (grandParent is null)
             {
-                error = $"Ancestor block not found for parent {parent.ParentHash}";
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
-                return false;
+                // Skip EIP-4396 verification due to unknown ancestor
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Skipping EIP-4396 verification due to unknown ancestor, parent: {parent.Hash}, number: {parent.Number}");
+                }
+                return true;
             }
             parentBlockTime = parent.Timestamp - grandParent.Timestamp;
         }

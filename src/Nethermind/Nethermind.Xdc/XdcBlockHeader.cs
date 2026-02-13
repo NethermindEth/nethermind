@@ -86,7 +86,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         set { _extraFieldsV2 = value; }
     }
 
-    public ValueHash256 CalculateHash()
+    public virtual ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new KeccakRlpStream();
         _headerDecoder.Encode(rlpStream, this);

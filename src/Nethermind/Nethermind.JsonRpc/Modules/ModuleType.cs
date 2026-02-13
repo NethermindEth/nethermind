@@ -25,7 +25,6 @@ namespace Nethermind.JsonRpc.Modules
         public const string Trace = nameof(Trace);
         public const string TxPool = nameof(TxPool);
         public const string Web3 = nameof(Web3);
-        public const string Vault = nameof(Vault);
         public const string Deposit = nameof(Deposit);
         public const string Health = nameof(Health);
         public const string Rpc = nameof(Rpc);

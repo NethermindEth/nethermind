@@ -58,7 +58,11 @@ public class L2Api(
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()
         };
-        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t => t.ToTransaction()).ToArray();
+        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t =>
+        {
+            Result<Transaction> result = t.ToTransaction();
+            return result.IsError ? throw new InvalidOperationException($"Failed to convert transaction: {result.Error}") : result.Data;
+        }).ToArray();
 
         payloadAttributes.SetTransactions(txs);
 
@@ -158,7 +162,7 @@ public class L2Api(
     public async Task<OptimismGetPayloadV3Result> GetPayloadV3(string payloadId)
     {
         byte[] payloadIdBytes = Bytes.FromHexString(payloadId);
-        var getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
+        ResultWrapper<OptimismGetPayloadV3Result?> getPayloadResult = await l2EngineRpc.engine_getPayloadV3(payloadIdBytes);
         while (getPayloadResult.Result.ResultType != ResultType.Success)
         {
             if (_logger.IsWarn) _logger.Warn($"GetPayload request error: {getPayloadResult.Result.Error}");
