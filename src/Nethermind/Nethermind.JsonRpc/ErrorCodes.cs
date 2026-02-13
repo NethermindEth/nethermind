@@ -63,19 +63,9 @@ namespace Nethermind.JsonRpc
         public const int AccountLocked = -32020;
 
         /// <summary>
-        /// Method is not implemented
-        /// </summary>
-        public const int MethodNotSupported = -32004;
-
-        /// <summary>
         /// Request exceeds defined limit
         /// </summary>
         public const int LimitExceeded = -32005;
-
-        /// <summary>
-        ///
-        /// </summary>
-        public const int ExecutionError = -32015;
 
         /// <summary>
         /// Request exceeds defined timeout limit
@@ -108,16 +98,6 @@ namespace Nethermind.JsonRpc
         public const int InvalidInputTooManyBlocks = -38026;
 
         /// <summary>
-        /// Invalid RPC simulate call Not enough gas provided to pay for intrinsic gas for a transaction
-        /// </summary>
-        public const int InsufficientIntrinsicGas = -38013;
-
-        /// <summary>
-        /// Invalid RPC simulate call transaction
-        /// </summary>
-        public const int InvalidTransaction = -38014;
-
-        /// <summary>
         /// Too many blocks for simulation
         /// </summary>
         public const int ClientLimitExceededError = -38026;
@@ -131,16 +111,6 @@ namespace Nethermind.JsonRpc
         /// Default error code
         /// </summary>
         public const int Default = -32000;
-
-        /// <summary>
-        /// Transaction.Nonce is bigger than expected nonce
-        /// </summary>
-        public const int NonceTooHigh = -38011;
-
-        /// <summary>
-        /// Transaction.Nonce is smaller than expected nonce
-        /// </summary>
-        public const int NonceTooLow = -38010;
 
         /// <summary>
         /// Invalid intrinsic gas. Miner premium is negative
@@ -158,21 +128,6 @@ namespace Nethermind.JsonRpc
         public const int BlockGasLimitReached = -38015;
 
         /// <summary>
-        /// Invalid block number
-        /// </summary>
-        public const int BlockNumberInvalid = -38020;
-
-        /// <summary>
-        /// Invalid block timestamp
-        /// </summary>
-        public const int BlockTimestampInvalid = -38021;
-
-        /// <summary>
-        /// Transaction.Sender is not an EOA
-        /// </summary>
-        public const int SenderIsNotEOA = -38024;
-
-        /// <summary>
         /// EIP-3860. Code size is to big
         /// </summary>
         public const int MaxInitCodeSizeExceeded = -38025;
@@ -181,7 +136,5 @@ namespace Nethermind.JsonRpc
         /// Error during EVM execution
         /// </summary>
         public const int VMError = -32015;
-        public const int TxSyncTimeout = 4;
-        public const int ClientLimitExceeded = -38026;
     }
 }
