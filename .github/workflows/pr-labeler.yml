@@ -92,7 +92,7 @@ jobs:
             }
 
             // Evaluate title prefix: supports "fix:", "fix(scope):", "(fix)", "[fix]"
-            const prefixMatch = title.match(/^[(\[]?(\w+)[)\]]?[\s(:]/)
+            const prefixMatch = title.match(/^[(\[]?(\w+)[)\]]?[\s(:/]/)
             if (prefixMatch) {
               const prefix = prefixMatch[1].toLowerCase();
               if (prefixToLabel[prefix]) {
