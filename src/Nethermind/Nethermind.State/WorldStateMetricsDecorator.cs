@@ -118,12 +118,14 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         in UInt256 senderGasReservation, in UInt256 senderRefund,
         Address recipient, in UInt256 transferValue,
         Address beneficiary, in UInt256 beneficiaryFee,
-        Address? feeCollector, in UInt256 collectedFees)
+        Address? feeCollector, in UInt256 collectedFees,
+        bool isEip158Enabled)
         => innerState.ApplyPlainTransferDirect(sender, newSenderNonce,
             in senderGasReservation, in senderRefund,
             recipient, in transferValue,
             beneficiary, in beneficiaryFee,
-            feeCollector, in collectedFees);
+            feeCollector, in collectedFees,
+            isEip158Enabled);
 
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
 

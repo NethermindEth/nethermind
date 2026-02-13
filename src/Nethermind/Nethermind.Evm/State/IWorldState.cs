@@ -152,13 +152,15 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Apply a plain ether transfer directly to block-level state, bypassing the
     /// intra-tx journal and Commit. Handles overlapping addresses (self-transfer,
     /// sender==beneficiary, etc.) via sequential read-after-write.
+    /// EIP-158 empty account cleanup is handled for recipient and beneficiary.
     /// </summary>
     void ApplyPlainTransferDirect(
         Address sender, UInt256 newSenderNonce,
         in UInt256 senderGasReservation, in UInt256 senderRefund,
         Address recipient, in UInt256 transferValue,
         Address beneficiary, in UInt256 beneficiaryFee,
-        Address? feeCollector, in UInt256 collectedFees)
+        Address? feeCollector, in UInt256 collectedFees,
+        bool isEip158Enabled)
     {
         // Default: not supported, caller should check GetAccountDirect != null first
         throw new NotSupportedException();
