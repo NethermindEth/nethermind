@@ -57,7 +57,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
-            SingleReader = true
+            SingleReader = true,
+            // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
+            AllowSynchronousContinuations = true,
         });
 
     private bool _recoveryComplete = false;
