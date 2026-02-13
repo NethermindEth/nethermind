@@ -41,8 +41,9 @@ public static class IntrinsicGasCalculator
     public static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy standard = TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
-        long floorCost = CalculateFloorCost(transaction, releaseSpec);
+        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
+        TGasPolicy standard = TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, tokensInCallData);
+        long floorCost = CalculateFloorCost(releaseSpec, tokensInCallData);
         TGasPolicy floorGas = TGasPolicy.FromLong(floorCost);
         return new IntrinsicGas<TGasPolicy>(standard, floorGas);
     }
@@ -52,26 +53,25 @@ public static class IntrinsicGasCalculator
     /// </summary>
     public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
     {
+        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
         long intrinsicGas = GasCostOf.Transaction
-               + DataCost(transaction, releaseSpec)
+               + DataCost(transaction, releaseSpec, tokensInCallData)
                + CreateCost(transaction, releaseSpec)
                + AccessListCost(transaction, releaseSpec)
                + AuthorizationListCost(transaction, releaseSpec);
-        long floorGas = CalculateFloorCost(transaction, releaseSpec);
+        long floorGas = CalculateFloorCost(releaseSpec, tokensInCallData);
         return new EthereumIntrinsicGas(intrinsicGas, floorGas);
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
-    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
+    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec, long tokensInCallData)
     {
         long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
             ? EvmCalculations.Div32Ceiling((UInt256)transaction.Data.Length) *
               GasCostOf.InitCodeWord
             : 0;
-
-        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
 
         return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
     }
@@ -122,7 +122,7 @@ public static class IntrinsicGasCalculator
         }
     }
 
-    private static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec releaseSpec)
+    public static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
@@ -134,10 +134,9 @@ public static class IntrinsicGasCalculator
         return totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
     }
 
-    private static long CalculateFloorCost(Transaction transaction, IReleaseSpec releaseSpec)
+    private static long CalculateFloorCost(IReleaseSpec releaseSpec, long tokensInCallData)
     {
         if (!releaseSpec.IsEip7623Enabled) return 0;
-        long tokensInCallData = CalculateTokensInCallData(transaction, releaseSpec);
 
         return GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623;
     }
