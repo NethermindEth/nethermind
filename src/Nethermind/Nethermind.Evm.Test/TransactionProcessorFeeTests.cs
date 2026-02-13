@@ -378,8 +378,8 @@ public class TransactionProcessorFeeTests
     public void Direct_path_self_transfer()
     {
         // Sender sends ETH to themselves – balance should only decrease by gas cost.
-        UInt256 initialBalance = _stateProvider.GetBalance(TestItem.AddressA);
-
+        // Do not read balance before Execute; direct path writes to _blockChanges
+        // and a prior GetBalance would populate _intraTxCache with the stale value.
         Transaction tx = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .WithGasPrice(10).WithGasLimit(21000).WithValue(100.Wei()).To(TestItem.AddressA)
@@ -391,7 +391,7 @@ public class TransactionProcessorFeeTests
         ExecuteAndTrace(block, NullBlockTracer.Instance);
 
         UInt256 gasCost = 10 * (UInt256)21000;
-        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(initialBalance - gasCost);
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(1.Ether() - gasCost);
         _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
     }
 
@@ -399,8 +399,8 @@ public class TransactionProcessorFeeTests
     public void Direct_path_zero_value_transfer()
     {
         // A zero-value transfer should still increment nonce and charge gas.
-        UInt256 initialBalance = _stateProvider.GetBalance(TestItem.AddressA);
-
+        // Do not read balance before Execute; direct path writes to _blockChanges
+        // and a prior GetBalance would populate _intraTxCache with the stale value.
         Transaction tx = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .WithGasPrice(10).WithGasLimit(21000).WithValue(0).To(TestItem.AddressB)
@@ -413,7 +413,7 @@ public class TransactionProcessorFeeTests
 
         _stateProvider.GetNonce(TestItem.AddressA).Should().Be(1);
         UInt256 gasCost = 10 * (UInt256)21000;
-        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(initialBalance - gasCost);
+        _stateProvider.GetBalance(TestItem.AddressA).Should().Be(1.Ether() - gasCost);
     }
 
     [Test]
