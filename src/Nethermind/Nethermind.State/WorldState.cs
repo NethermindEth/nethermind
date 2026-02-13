@@ -224,6 +224,58 @@ namespace Nethermind.State
             _stateProvider.DecrementNonce(address, delta);
         }
 
+        public Account? GetAccountDirect(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetState(address);
+        }
+
+        public void ApplyPlainTransferDirect(
+            Address sender, UInt256 newSenderNonce,
+            in UInt256 senderGasReservation, in UInt256 senderRefund,
+            Address recipient, in UInt256 transferValue,
+            Address beneficiary, in UInt256 beneficiaryFee,
+            Address? feeCollector, in UInt256 collectedFees)
+        {
+            DebugGuardInScope();
+            StateProvider sp = _stateProvider;
+
+            // Sender: apply gas cost + value deduction + refund + nonce increment in one shot
+            Account senderAccount = sp.GetState(sender) ?? Account.TotallyEmpty;
+            UInt256 newBalance = senderAccount.Balance - senderGasReservation - transferValue + senderRefund;
+            sp.SetState(sender, new Account(newSenderNonce, newBalance, senderAccount.StorageRoot, senderAccount.CodeHash));
+
+            // Recipient: add value (re-read handles sender==recipient overlap correctly)
+            if (!transferValue.IsZero)
+            {
+                Account? recipientAccount = sp.GetState(recipient);
+                if (recipientAccount is not null)
+                    sp.SetState(recipient, recipientAccount.WithChangedBalance(recipientAccount.Balance + transferValue));
+                else
+                    sp.SetState(recipient, new Account(transferValue));
+            }
+
+            // Beneficiary: add fee (re-read handles overlap with sender/recipient)
+            if (!beneficiaryFee.IsZero)
+            {
+                Account? benefAccount = sp.GetState(beneficiary);
+                if (benefAccount is not null)
+                    sp.SetState(beneficiary, benefAccount.WithChangedBalance(benefAccount.Balance + beneficiaryFee));
+                else
+                    sp.SetState(beneficiary, new Account(beneficiaryFee));
+            }
+
+            // Fee collector (EIP-1559)
+            if (feeCollector is not null && !collectedFees.IsZero)
+            {
+                Account? fcAccount = sp.GetState(feeCollector);
+                if (fcAccount is not null)
+                    sp.SetState(feeCollector, fcAccount.WithChangedBalance(fcAccount.Balance + collectedFees));
+                else
+                    sp.SetState(feeCollector, new Account(collectedFees));
+            }
+        }
+
         public void CommitTree(long blockNumber)
         {
             DebugGuardInScope();
