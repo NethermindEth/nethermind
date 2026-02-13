@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 public class RWithdrawal
 {

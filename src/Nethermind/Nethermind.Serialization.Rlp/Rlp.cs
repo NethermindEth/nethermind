@@ -35,9 +35,9 @@ namespace Nethermind.Serialization.Rlp
 
         internal const int DebugMessageContentLength = 2048;
 
-        public const byte EmptyArrayByte = 128;
+        public const byte NullObjectByte = 128;
 
-        public const byte NullObjectByte = 192; // use bytes to avoid stack overflow
+        public const byte EmptyArrayByte = 192;
 
         internal const int LengthOfNull = 1;
 
@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-        private static Lock _decoderLock = new();
+        private static readonly Lock _decoderLock = new();
         public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
         {
             get
@@ -328,8 +328,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is Rlp rlp)
             {
-                RlpStream stream = new(LengthOfSequence(rlp.Length));
-                return new(stream.Data.ToArray());
+                return rlp;
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();

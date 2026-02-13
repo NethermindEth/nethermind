@@ -9,7 +9,7 @@ namespace Nethermind.Xdc.Types;
 
 public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null) : IXdcPoolItem
 {
-    private readonly VoteDecoder _decoder = new();
+    private static readonly VoteDecoder _decoder = new();
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
     public ulong GapNumber { get; set; } = gapNumber;
     public Signature? Signature { get; set; } = signature;

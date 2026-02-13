@@ -4,7 +4,6 @@
 using System;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
@@ -14,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;

@@ -310,13 +310,17 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
 
     private static void ValidateBlockReceipts(TxReceipt[] blockReceipts, long expectedGasUsed, int firstReceiptIndex, bool isCompleteSegment)
     {
-        if (blockReceipts is null or { Length: 0 })
+        if (blockReceipts is null)
+        {
+            throw new SubprotocolException("Unexpected null receipt block payload");
+        }
+
+        if (blockReceipts is { Length: 0 })
         {
             if (firstReceiptIndex != 0 || !isCompleteSegment)
             {
                 throw new SubprotocolException("Unexpected empty receipt block payload");
             }
-
             return;
         }
 
