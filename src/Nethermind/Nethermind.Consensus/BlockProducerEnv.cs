@@ -23,6 +23,7 @@ namespace Nethermind.Consensus
         public IBlockchainProcessor ChainProcessor { get; }
         public IWorldState ReadOnlyStateProvider { get; }
         public ITxSource TxSource { get; }
+        public IPrefetchManager? PrefetchManager { get; }
     }
 
     public interface IPrefetchManager
