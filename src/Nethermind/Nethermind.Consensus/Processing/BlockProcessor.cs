@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -142,7 +143,6 @@ public partial class BlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
-        Task stateApplication = _balBuilder.ParallelExecutionEnabled ? ApplyBlockAccessListToState(spec, shouldComputeStateRoot) : Task.CompletedTask;
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
@@ -189,7 +189,12 @@ public partial class BlockProcessor
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        await stateApplication;
+        // Apply state from block access list on the main thread; the scope was opened here and state is not thread-safe.
+        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
+        {
+            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
+        }
+
         if (shouldComputeStateRoot)
         {
             _stateProvider.RecalculateStateRoot();
@@ -209,6 +214,10 @@ public partial class BlockProcessor
                 block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+
+
+                string y = $"Generated block access list:\n{block.GeneratedBlockAccessList}";
+                Console.WriteLine(y);
             }
         }
 
@@ -383,14 +392,5 @@ public partial class BlockProcessor
                 _balBuilder.GeneratedBlockAccessList = new();
             }
         }
-    }
-
-    private Task ApplyBlockAccessListToState(IReleaseSpec spec, bool shouldComputeStateRoot)
-    {
-        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
-        {
-            return Task.Run(() => _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot));
-        }
-        return Task.CompletedTask;
     }
 }
