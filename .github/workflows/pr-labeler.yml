@@ -48,6 +48,7 @@ jobs:
               { pattern: 'src/Nethermind/Nethermind.Evm', label: 'evm' },
               { pattern: 'src/Nethermind/Nethermind.Db.Rocks', label: 'rocksdb' },
               { pattern: 'src/Nethermind/Nethermind.Db', label: 'database' },
+              { pattern: 'src/Nethermind/Nethermind.Init/Modules/DbModule.cs', label: 'database' },
               { pattern: 'src/Nethermind/Nethermind.Runner/configs', label: 'configuration' },
               { pattern: 'src/Nethermind/Nethermind.Config', label: 'configuration' },
               { pattern: 'README.md', label: 'docs' },
