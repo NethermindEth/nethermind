@@ -142,7 +142,7 @@ internal class BlobSender
                 }
 
                 ulong excessBlobs = (ulong)blobCount / 2;
-                (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(null, maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult, excessBlobs, spec);
+                (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult, excessBlobs, spec);
 
                 maxPriorityFeePerGas *= feeMultiplier;
                 maxGasPrice *= feeMultiplier;
@@ -254,7 +254,7 @@ internal class BlobSender
     }
 
     private async Task<(UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas)> GetGasPrices
-        (UInt256? defaultGasPrice, UInt256? defaultMaxPriorityFeePerGas, UInt256? defaultMaxFeePerBlobGas, BlockModel<Hash256> block, ulong excessBlobs, IReleaseSpec spec)
+        (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) = await GetGasPrices(maxPriorityFeeGasArgs, maxFeePerBlobGasArgs, blockResult!, 1, spec);
     {
         (UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas) result = new();
 
@@ -267,15 +267,8 @@ internal class BlobSender
             result.maxPriorityFeePerGas = defaultMaxPriorityFeePerGas.Value;
         }
 
-        if (defaultGasPrice is null)
-        {
-            const int minGasPrice = 7;
-            result.maxGasPrice = UInt256.Max(minGasPrice, block.BaseFeePerGas) + result.maxPriorityFeePerGas;
-        }
-        else
-        {
-            result.maxGasPrice = defaultGasPrice.Value + result.maxPriorityFeePerGas;
-        }
+        const int minGasPrice = 7;
+        result.maxGasPrice = UInt256.Max(minGasPrice, block.BaseFeePerGas) + result.maxPriorityFeePerGas;
 
         if (defaultMaxFeePerBlobGas is null)
         {
