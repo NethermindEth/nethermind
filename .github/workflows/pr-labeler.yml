@@ -48,6 +48,7 @@ jobs:
               { pattern: 'src/Nethermind/Nethermind.Evm', label: 'evm' },
               { pattern: 'src/Nethermind/Nethermind.Trie', label: 'trie' },
               { pattern: 'src/Nethermind/Nethermind.State', label: 'state+storage' },
+              { pattern: 'src/Nethermind/Nethermind.Synchronization', label: 'sync' },
               { pattern: 'src/Nethermind/Nethermind.Db.Rocks', label: 'rocksdb' },
               { pattern: 'src/Nethermind/Nethermind.Db', label: 'database' },
               { pattern: 'src/Nethermind/Nethermind.Init/Modules/DbModule.cs', label: 'database' },
@@ -66,7 +67,7 @@ jobs:
             const checkboxLabels = new Set(Object.values(checkboxToLabel));
             const prefixLabels = new Set(Object.values(prefixToLabel));
             const pathLabels = new Set(pathToLabel.map(r => r.label));
-            const managedLabels = new Set([...checkboxLabels, ...prefixLabels, ...pathLabels, testOnlyLabel, 'cleanup']);
+            const managedLabels = new Set([...checkboxLabels, ...prefixLabels, ...pathLabels, testOnlyLabel, 'cleanup', 'snap sync']);
 
             const body = context.payload.pull_request.body || '';
             const title = context.payload.pull_request.title || '';
@@ -122,6 +123,11 @@ jobs:
               if (files.some(f => f.filename.startsWith(pattern))) {
                 desiredLabels.add(label);
               }
+            }
+
+            // SnapSync in path
+            if (files.some(f => /SnapSync/i.test(f.filename))) {
+              desiredLabels.add('snap sync');
             }
 
             // Dockerfile changes
