@@ -12,7 +12,7 @@ using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.State;
 
-public class PreBlockCaches
+public class PreBlockCaches : IPreBlockCachesInner
 {
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
@@ -50,6 +50,9 @@ public class PreBlockCaches
         return isDirty;
     }
 
+    public SeqlockCache<StorageCell, byte[]> GetStorageCache(bool forWriting = true) => _storageCache;
+    public SeqlockCache<AddressAsKey, Account> GetStateCache(bool forWriting = true) => _stateCache;
+
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
     {
         private Address Address { get; } = address;
@@ -58,6 +61,13 @@ public class PreBlockCaches
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
+}
+
+public interface IPreBlockCachesInner
+{
+    SeqlockCache<StorageCell, byte[]> GetStorageCache(bool forWriting = true);
+    SeqlockCache<AddressAsKey, Account> GetStateCache(bool forWriting = true);
+    public CacheType ClearCaches();
 }
 
 [Flags]

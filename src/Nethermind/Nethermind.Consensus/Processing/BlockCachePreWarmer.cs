@@ -421,7 +421,7 @@ public sealed class BlockCachePreWarmer(
         private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, IPreBlockCachesInner preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
