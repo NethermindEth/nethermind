@@ -16,7 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManager logManager) : IChainSpecLoader
 {
     private readonly ILogger _logger = logManager.GetClassLogger<AutoDetectingChainSpecLoader>();
-    private readonly ChainSpecLoader _parityLoader = new(serializer);
+    private readonly ChainSpecLoader _parityLoader = new(serializer, logManager);
     private readonly GethGenesisLoader _gethLoader = new(serializer);
 
     public ChainSpec Load(Stream streamData)
@@ -62,9 +62,9 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
             if (_logger.IsError) _logger.Error("Error parsing specification", e);
         }
 
-        if (result is GenesisFormat.Unknown)
+        if (result is GenesisFormat.Unknown && _logger.IsWarn)
         {
-            if (_logger.IsWarn) _logger.Warn("Failed to parse genesis file for format detection, assuming Parity-like style.");
+            _logger.Warn("Failed to parse genesis file for format detection, assuming Parity-like style.");
         }
 
         return result;

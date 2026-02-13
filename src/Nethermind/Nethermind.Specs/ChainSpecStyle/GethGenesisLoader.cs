@@ -150,14 +150,23 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip1153TransitionTimestamp = config.CancunTime,
             Eip4844TransitionTimestamp = config.CancunTime,
             Eip4788TransitionTimestamp = config.CancunTime,
+            Eip4788ContractAddress = config.CancunTime is null ? null : Eip4788Constants.BeaconRootsAddress,
             Eip5656TransitionTimestamp = config.CancunTime,
             Eip6780TransitionTimestamp = config.CancunTime,
 
             Eip2537TransitionTimestamp = config.PragueTime,
             Eip2935TransitionTimestamp = config.PragueTime,
+            Eip2935ContractAddress = config.PragueTime is null ? null : Eip2935Constants.BlockHashHistoryAddress,
+
             Eip6110TransitionTimestamp = config.PragueTime,
+            DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
+
             Eip7002TransitionTimestamp = config.PragueTime,
+            Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
+
             Eip7251TransitionTimestamp = config.PragueTime,
+            Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
+
             Eip7623TransitionTimestamp = config.PragueTime,
             Eip7702TransitionTimestamp = config.PragueTime,
 
@@ -172,13 +181,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7951TransitionTimestamp = config.OsakaTime,
 
             //EipXXXXTransitionTimestamp = config.AmsterdamTime,
-
-            DepositContractAddress = config.DepositContractAddress,
-            // Standard EIP contract addresses
-            Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress,
-            Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress,
-            Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress,
-            Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress,
 
             BlobSchedule = blobSchedule
         };
@@ -196,7 +198,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             "bpo3" => config.Bpo3Time,
             "bpo4" => config.Bpo4Time,
             "bpo5" => config.Bpo5Time,
-            _ => 0
+            _ => null,
         };
     }
 
