@@ -203,7 +203,8 @@ namespace Nethermind.Evm.TransactionProcessing
             // subsequent slow-path transactions reading the same sender.
             // Excluded: pre-EIP-658 (needs commitRoots), state-tracing (needs journal diffs),
             // action-tracing (ParityLikeTxTracer needs ReportAction), blob txs (blobBaseFee),
-            // SkipValidation (system txs via SystemTransactionProcessor add phantom _blockChanges entries).
+            // SkipValidation (system txs via SystemTransactionProcessor add phantom _blockChanges entries),
+            // precompile recipients (have no trie code but execute via EVM CALL).
             // Guard: only standard sealed processors (not Taiko/Xdc/Optimism subclasses
             // that override PayFees/BuyGas/IncrementNonce with custom logic).
             if (GetType().IsSealed
@@ -220,11 +221,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 Account? senderAccount = WorldState.GetAccountDirect(tx.SenderAddress);
                 if (senderAccount is not null && !senderAccount.HasCode)
                 {
-                    Account? recipientForCheck = tx.SenderAddress == tx.To ? senderAccount : WorldState.GetAccountDirect(tx.To!);
-                    if (recipientForCheck is null || !recipientForCheck.HasCode)
+                    if (!spec.IsPrecompile(tx.To!))
                     {
-                        return ExecutePlainTransferDirect(tx, tracer, opts, spec, header, senderAccount,
-                            in intrinsicGas, in effectiveGasPrice, in opcodeGasPrice);
+                        Account? recipientForCheck = tx.SenderAddress == tx.To ? senderAccount : WorldState.GetAccountDirect(tx.To!);
+                        if (recipientForCheck is null || !recipientForCheck.HasCode)
+                        {
+                            return ExecutePlainTransferDirect(tx, tracer, opts, spec, header, senderAccount,
+                                in intrinsicGas, in effectiveGasPrice, in opcodeGasPrice);
+                        }
                     }
                 }
             }
