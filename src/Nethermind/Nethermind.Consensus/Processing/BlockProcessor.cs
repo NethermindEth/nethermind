@@ -149,15 +149,24 @@ public partial class BlockProcessor
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts;
-        try
+        Task<TxReceipt[]> txTask = Task.Run(() =>
         {
-            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-        }
-        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+            try
+            {
+                return _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+            }
+            catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+            {
+                throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+            }
+        });
+
+        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
         {
-            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
         }
+
+        TxReceipt[] receipts = await txTask;
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -187,12 +196,6 @@ public partial class BlockProcessor
         {
             // Get the accounts that have been changed
             block.AccountChanges = _stateProvider.GetAccountChanges();
-        }
-
-        // Apply state from block access list on the main thread; the scope was opened here and state is not thread-safe.
-        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
-        {
-            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
         }
 
         if (shouldComputeStateRoot)
