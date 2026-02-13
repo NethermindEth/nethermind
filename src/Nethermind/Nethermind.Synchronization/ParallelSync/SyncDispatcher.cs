@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             catch (OperationCanceledException)
             {
-                if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
+                if (Logger.IsTrace) Logger.Trace($"{request} - Operation was canceled");
             }
             catch (Exception e)
             {
