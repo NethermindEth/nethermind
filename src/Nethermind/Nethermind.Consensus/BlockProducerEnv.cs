@@ -4,6 +4,8 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus
@@ -12,7 +14,8 @@ namespace Nethermind.Consensus
         IBlockTree BlockTree,
         IBlockchainProcessor ChainProcessor,
         IWorldState ReadOnlyStateProvider,
-        ITxSource TxSource) : IBlockProducerEnv;
+        ITxSource TxSource,
+        IPrefetchManager? PrefetchManager = null) : IBlockProducerEnv;
 
     public interface IBlockProducerEnv
     {
@@ -20,5 +23,10 @@ namespace Nethermind.Consensus
         public IBlockchainProcessor ChainProcessor { get; }
         public IWorldState ReadOnlyStateProvider { get; }
         public ITxSource TxSource { get; }
+    }
+
+    public interface IPrefetchManager
+    {
+        void PrefetchBlock(Block preWarmBlock, BlockHeader parentHeader, IReleaseSpec releaseSpec);
     }
 }
