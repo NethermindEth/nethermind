@@ -211,11 +211,13 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
                     {
+                        TreePath childPath = path.Append(node.Key);
+
+                        moreChildrenToRight |= childPath.Path > limitHash;
+
                         if (dict.TryGetValue(childKeccak, out TrieNode child))
                         {
                             node.SetChild(0, child);
-
-                            TreePath childPath = path.Append(node.Key);
 
                             proofNodesToProcess.Push((child, childPath));
                             sortedBoundaryList.Add((child, childPath));
