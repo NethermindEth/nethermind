@@ -28,9 +28,9 @@ internal static partial class XdcExtensions
     public static bool IsSigningTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
         var targetIsSignContract = currentTx.To is not null && (currentTx.To == spec.BlockSignerContract);
-        if(!targetIsSignContract) return false;
+        if (!targetIsSignContract) return false;
 
-        if(currentTx.Data.Length != 68) return false;
+        if (currentTx.Data.Length != 68) return false;
 
 
         return currentTx.Data.Span.Slice(0, 4).SequenceEqual(XdcConstants.SignMethod);

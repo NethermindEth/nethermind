@@ -311,7 +311,7 @@ public class RewardTests
         xdcSpec.BlockSignerContract.Returns(blockSignerContract);
         xdcSpec.Reward.Returns(totalRewardInEther);
         xdcSpec.SwitchBlock.Returns(0);
-        xdcSpec.MergeSignRange = mergeSignRange;
+        xdcSpec.MergeSignRange.Returns(mergeSignRange);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);

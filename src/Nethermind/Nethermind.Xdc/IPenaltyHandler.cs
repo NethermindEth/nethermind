@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 

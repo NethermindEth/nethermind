@@ -6,9 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
@@ -29,7 +27,6 @@ internal class MasternodesCalculator(ISnapshotManager snapshotManager, IPenaltyH
             if (candidates.Length > maxMasternodes)
             {
                 Array.Resize(ref candidates, maxMasternodes);
-                return (candidates, []);
             }
 
             return (candidates, []);

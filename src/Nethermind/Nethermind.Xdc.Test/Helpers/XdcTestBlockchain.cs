@@ -47,11 +47,10 @@ public class XdcTestBlockchain : TestBlockchain
     private readonly Random _random = new();
     private readonly bool _useHotStuffModule;
     private readonly bool _withPresetPenaltyHistory;
-    private readonly bool[]? _penaltyOrNotByEpoch;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false, bool[]? penaltyOrNotByEpoch = null)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false)
     {
-        XdcTestBlockchain chain = new(useHotStuffModule, withPenalty, penaltyOrNotByEpoch);
+        XdcTestBlockchain chain = new(useHotStuffModule, withPenalty);
         await chain.Build(configurer);
 
         var fromXdcContainer = (FromContainer)chain.Container.Resolve<FromXdcContainer>();
@@ -84,7 +83,7 @@ public class XdcTestBlockchain : TestBlockchain
     internal TestRandomSigner RandomSigner { get; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
-    protected XdcTestBlockchain(bool useHotStuffModule, bool withPresetPenaltyHistory = false, bool[]? penaltyOrNotByEpoch = null)
+    protected XdcTestBlockchain(bool useHotStuffModule, bool withPresetPenaltyHistory = false)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
@@ -92,7 +91,6 @@ public class XdcTestBlockchain : TestBlockchain
         RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
         _withPresetPenaltyHistory = withPresetPenaltyHistory;
-        _penaltyOrNotByEpoch = penaltyOrNotByEpoch;
     }
 
     public Signer Signer => (Signer)_fromXdcContainer.Signer;
@@ -249,7 +247,7 @@ public class XdcTestBlockchain : TestBlockchain
         if (_withPresetPenaltyHistory)
         {
             container.AddSingleton<IPenaltyHandler, ISpecProvider, IBlockTree, IEpochSwitchManager>((specProvider, blockTree, epochSwitchManager) =>
-                new PresetPenaltyHistoryHandler(specProvider, blockTree, epochSwitchManager, _penaltyOrNotByEpoch));
+                new PresetPenaltyHistoryHandler(specProvider, blockTree, epochSwitchManager));
         }
 
         return container;
@@ -433,11 +431,8 @@ public class XdcTestBlockchain : TestBlockchain
     private sealed class PresetPenaltyHistoryHandler(
         ISpecProvider specProvider,
         IBlockTree blockTree,
-        IEpochSwitchManager epochSwitchManager,
-        bool[]? penaltyOrNotByEpoch) : IPenaltyHandler
+        IEpochSwitchManager epochSwitchManager) : IPenaltyHandler
     {
-        private int _epochSwitchCount;
-
         public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
         {
             if (candidates.Length == 0)
@@ -447,18 +442,6 @@ public class XdcTestBlockchain : TestBlockchain
 
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(number);
             if (number <= spec.SwitchBlock || number % spec.EpochLength != 0)
-            {
-                return [];
-            }
-
-            bool shouldPenalize = true;
-            if (penaltyOrNotByEpoch is not null && _epochSwitchCount < penaltyOrNotByEpoch.Length)
-            {
-                shouldPenalize = penaltyOrNotByEpoch[_epochSwitchCount];
-            }
-            _epochSwitchCount++;
-
-            if (!shouldPenalize)
             {
                 return [];
             }

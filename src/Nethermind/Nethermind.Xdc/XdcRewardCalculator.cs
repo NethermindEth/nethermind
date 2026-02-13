@@ -10,7 +10,6 @@ using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
 
@@ -31,9 +30,6 @@ namespace Nethermind.Xdc
         IMasternodeVotingContract masternodeVotingContract,
         ISigningTxCache signingTxCache) : IRewardCalculator
     {
-        private const long BlocksPerYear = 15768000;
-        // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
-        // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
         private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
 
         /// <summary>

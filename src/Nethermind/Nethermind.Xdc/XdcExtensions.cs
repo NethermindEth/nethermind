@@ -65,7 +65,7 @@ internal static partial class XdcExtensions
 
     public static ulong GetRoundNumber(this XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        if(header.Number <= spec.SwitchBlock)
+        if (header.Number <= spec.SwitchBlock)
         {
             return 0;
         }
