@@ -7,8 +7,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -111,6 +113,48 @@ public class TraceSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
+    }
+
+    [Test]
+    public async Task Test_trace_simulate_caps_gas_to_gas_cap()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        long gasCap = 50_000;
+        chain.RpcConfig.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns gasleft
+        Address contractAddress = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractAddress,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var result = chain.TraceRpcModule.trace_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        ParityLikeTxTrace trace = result.Data.First().Traces.First();
+        UInt256 gasAvailable = new(trace.Output!, isBigEndian: true);
+        Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
     }
 
     [Test]
