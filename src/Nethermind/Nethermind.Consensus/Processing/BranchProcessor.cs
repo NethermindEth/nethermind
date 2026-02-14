@@ -138,6 +138,10 @@ public class BranchProcessor(
 
                 // Block is processed, we can cancel background tasks
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                // Wait for the prewarmer to finish BEFORE updating PreBlockCaches.
+                // The prewarmer's GetOrAdd can overwrite committed values via SetCore's CAS
+                // if it races with UpdatePreBlockCaches' Set calls.
+                WaitAndClear(ref preWarmTask);
 
                 processedBlocks[i] = processedBlock;
 
@@ -169,8 +173,6 @@ public class BranchProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
