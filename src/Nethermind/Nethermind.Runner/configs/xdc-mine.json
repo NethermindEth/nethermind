@@ -21,6 +21,9 @@
   "JsonRpc": {
     "Enabled": false
   },
+  "Blocks": {
+    "TargetBlockGasLimit": 50000000
+  },
   "Merge": {
     "Enabled": false
   },

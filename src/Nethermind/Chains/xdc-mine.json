@@ -32,6 +32,7 @@
 
         "mergeSignRange": 15,
         "tip2019Block": 1,
+        "DynamicGasLimitBlock": 0,
         "blackListHFNumber": 0,
         "blackListedAddresses": [
           "0x0000000000000000000000000000000000000011"
@@ -87,7 +88,9 @@
     "eip6780Transition": 0,
     "eip7516Transition": 0,
 
-    "byzantiumBlock": 0
+    "byzantiumBlock": 0,
+
+    "eip1559ElasticityMultiplier": "0x1"
   },
   "genesis": {
     "nonce": "0x0",
