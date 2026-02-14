@@ -49,6 +49,7 @@ jobs:
               { pattern: 'src/Nethermind/Nethermind.Trie', label: 'trie' },
               { pattern: 'src/Nethermind/Nethermind.State', label: 'state+storage' },
               { pattern: 'src/Nethermind/Nethermind.Synchronization', label: 'sync' },
+              { pattern: 'src/Nethermind/Nethermind.JsonRpc', label: 'rpc' },
               { pattern: 'src/Nethermind/Nethermind.Db.Rocks', label: 'rocksdb' },
               { pattern: 'src/Nethermind/Nethermind.Db', label: 'database' },
               { pattern: 'src/Nethermind/Nethermind.Init/Modules/DbModule.cs', label: 'database' },
