@@ -34,11 +34,17 @@ using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -458,6 +464,51 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x01");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_balance_missing_trie_node_returns_resource_unavailable()
+    {
+        // Arrange: Create a mock state reader that throws MissingTrieNodeException
+        // when accessed, simulating pruned state
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        
+        stateReader.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>())
+            .Returns(x =>
+            {
+                x[2] = default(AccountStruct);
+                throw new MissingTrieNodeException("Test state pruned", null, new TreePath(), Keccak.Zero);
+            });
+
+        // Create a new test instance with the mock state reader
+        TestRpcBlockchain testBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0 })
+            .WithEthRpcModule(test => new EthRpcModule(
+                test.RpcConfig,
+                test.Bridge,
+                test.BlockFinder,
+                test.ReceiptFinder,
+                stateReader,  // Use mocked state reader that throws MissingTrieNodeException
+                test.TxPool,
+                test.TxSender,
+                test.TestWallet,
+                LimboLogs.Instance,
+                test.SpecProvider,
+                test.GasPriceOracle,
+                new EthSyncingInfo(test.BlockTree, Substitute.For<ISyncPointers>(), test.Container.Resolve<ISyncConfig>(),
+                    new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), test.LogManager),
+                test.FeeHistoryOracle ?? new FeeHistoryOracle(test.BlockTree, test.ReceiptStorage, test.SpecProvider),
+                test.ProtocolsManager,
+                test.ForkInfo,
+                12))  // Use default seconds per slot
+            .Build();
+        
+        string serialized = await testBlockchain.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "latest");
+
+        // Assert: Should return error code -32002 (ResourceUnavailable) instead of crashing
+        Assert.That(serialized, Does.Contain("\"code\":-32002"));
+        
+        testBlockchain.Dispose();
     }
 
     [Test]
