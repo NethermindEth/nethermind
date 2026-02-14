@@ -73,16 +73,13 @@ namespace Nethermind.Blockchain.Receipts
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
+            EnsureCanonical(e.Block);
             NewCanonicalReceipts?.Invoke(this, e);
 
-            // Defer tx index writes to background — EnsureCanonical iterates all
-            // transactions and writes to RocksDB which is expensive for large blocks.
-            // The tx index is only needed for eth_getTransactionByHash queries, not
-            // for the CL-EL interface, so deferring doesn't affect consensus.
-            Block newMain = e.Block;
+            // Don't block the main loop
             Task.Run(() =>
             {
-                EnsureCanonical(newMain);
+                Block newMain = e.Block;
 
                 // Delete old tx index
                 if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
