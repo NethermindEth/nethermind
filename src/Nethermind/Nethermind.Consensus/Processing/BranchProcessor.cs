@@ -145,9 +145,8 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
-                // Capture committed state/storage values for cross-block cache reuse
-                // BEFORE CommitTree which clears _storages via ClearStorageMap.
-                _stateProvider.UpdatePreBlockCaches(processedBlock.Hash);
+                // Cross-block cache reuse disabled while investigating stale-value bugs.
+                // _stateProvider.UpdatePreBlockCaches(processedBlock.Hash);
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
