@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -95,6 +96,7 @@ public partial class BlockProcessor(
         CancellationToken token)
     {
         BlockHeader header = block.Header;
+        long t0 = Stopwatch.GetTimestamp();
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
@@ -107,6 +109,7 @@ public partial class BlockProcessor(
         // flushed together with transaction changes in the commit after ProcessTransactions.
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        long t1 = Stopwatch.GetTimestamp();
         // Transaction changes remain in the journal and are flushed together with
         // miner rewards / withdrawals in the single commit after ProcessWithdrawals.
         // This avoids a full journal iteration + cache clear + storage commit cycle.
@@ -139,6 +142,7 @@ public partial class BlockProcessor(
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitRoots: true);
+        long t2 = Stopwatch.GetTimestamp();
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
@@ -151,9 +155,19 @@ public partial class BlockProcessor(
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
+        long t3 = Stopwatch.GetTimestamp();
 
         header.ReceiptsRoot = receiptRootTask.GetAwaiter().GetResult();
         header.Hash = header.CalculateHash();
+
+        if (_logger.IsInfo)
+        {
+            double execMs = Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds;
+            double commitMs = Stopwatch.GetElapsedTime(t1, t2).TotalMilliseconds;
+            double stateRootMs = Stopwatch.GetElapsedTime(t2, t3).TotalMilliseconds;
+            double totalMs = Stopwatch.GetElapsedTime(t0, t3).TotalMilliseconds;
+            _logger.Info($" PERF blk {block.Number} txs={block.Transactions.Length} gas={block.GasUsed / 1_000_000.0:F1}M | exec={execMs:F1}ms commit={commitMs:F1}ms stateRoot={stateRootMs:F1}ms total={totalMs:F1}ms");
+        }
 
         return receipts;
     }
