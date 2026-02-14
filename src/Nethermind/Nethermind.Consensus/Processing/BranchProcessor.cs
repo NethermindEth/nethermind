@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -121,6 +122,7 @@ public class BranchProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
+                long tBlockStart = Stopwatch.GetTimestamp();
                 if (preWarmTask is not null)
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -135,6 +137,7 @@ public class BranchProcessor(
                     }
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
+                long tAfterProcess = Stopwatch.GetTimestamp();
 
                 // Block is processed, we can cancel background tasks
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -143,6 +146,7 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
+                long tAfterCommitTree = Stopwatch.GetTimestamp();
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
@@ -168,9 +172,21 @@ public class BranchProcessor(
                 preBlockBaseBlock = processedBlock.Header;
                 // Make sure the prewarm task is finished before we reset the state
                 WaitAndClear(ref preWarmTask);
+                long tAfterPrewarmWait = Stopwatch.GetTimestamp();
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
+                long tAfterReset = Stopwatch.GetTimestamp();
+
+                if (_logger.IsInfo)
+                {
+                    double processMs = Stopwatch.GetElapsedTime(tBlockStart, tAfterProcess).TotalMilliseconds;
+                    double commitTreeMs = Stopwatch.GetElapsedTime(tAfterProcess, tAfterCommitTree).TotalMilliseconds;
+                    double prewarmWaitMs = Stopwatch.GetElapsedTime(tAfterCommitTree, tAfterPrewarmWait).TotalMilliseconds;
+                    double resetMs = Stopwatch.GetElapsedTime(tAfterPrewarmWait, tAfterReset).TotalMilliseconds;
+                    double totalMs = Stopwatch.GetElapsedTime(tBlockStart, tAfterReset).TotalMilliseconds;
+                    _logger.Info($" BRANCH blk {suggestedBlock.Number} | processOne={processMs:F1}ms commitTree={commitTreeMs:F1}ms prewarmWait={prewarmWaitMs:F1}ms reset={resetMs:F1}ms total={totalMs:F1}ms");
+                }
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
