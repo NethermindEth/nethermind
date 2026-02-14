@@ -830,6 +830,22 @@ namespace Nethermind.State
             }
         }
 
+        /// <summary>
+        /// Collects committed account values from _blockChanges for updating PreBlockCaches.
+        /// </summary>
+        internal KeyValuePair<AddressAsKey, Account?>[] CaptureCommittedStateChanges()
+        {
+            if (_blockChanges.Count == 0) return [];
+
+            KeyValuePair<AddressAsKey, Account?>[] result = new KeyValuePair<AddressAsKey, Account?>[_blockChanges.Count];
+            int i = 0;
+            foreach (KeyValuePair<AddressAsKey, ChangeTrace> change in _blockChanges)
+            {
+                result[i++] = new(change.Key, change.Value.After);
+            }
+            return result;
+        }
+
         public void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) Trace();

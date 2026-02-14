@@ -347,6 +347,30 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
+    /// <summary>
+    /// Collects committed storage values from all contracts for updating PreBlockCaches.
+    /// Must be called after FlushToTree has processed all storage changes.
+    /// </summary>
+    internal KeyValuePair<StorageCell, byte[]>[] CaptureCommittedStorageChanges()
+    {
+        int totalCount = 0;
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        {
+            totalCount += kvp.Value.EstimatedChanges;
+        }
+
+        if (totalCount == 0) return [];
+
+        KeyValuePair<StorageCell, byte[]>[] result = new KeyValuePair<StorageCell, byte[]>[totalCount];
+        int i = 0;
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        {
+            kvp.Value.CaptureCommittedChanges(result, ref i, kvp.Key);
+        }
+
+        return result.AsSpan(0, i).ToArray();
+    }
+
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
@@ -603,6 +627,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
 
             return (writes, skipped);
+        }
+
+        internal void CaptureCommittedChanges(KeyValuePair<StorageCell, byte[]>[] result, ref int index, Address address)
+        {
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            {
+                if (index < result.Length)
+                {
+                    result[index++] = new(new StorageCell(address, kvp.Key), kvp.Value.After);
+                }
+            }
         }
 
         public void RemoveStorageTree()
