@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -113,7 +114,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        long tStart = Stopwatch.GetTimestamp();
         BlockDecodingResult decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        long tAfterDecode = Stopwatch.GetTimestamp();
         Block? block = decodingResult.Block;
         if (block is null)
         {
@@ -240,8 +243,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _mergeSyncController.StopSyncing();
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
+        long tBeforeProcess = Stopwatch.GetTimestamp();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
+        long tAfterProcess = Stopwatch.GetTimestamp();
+
+        if (_logger.IsInfo)
+        {
+            double decodeMs = Stopwatch.GetElapsedTime(tStart, tAfterDecode).TotalMilliseconds;
+            double validateMs = Stopwatch.GetElapsedTime(tAfterDecode, tBeforeProcess).TotalMilliseconds;
+            double processMs = Stopwatch.GetElapsedTime(tBeforeProcess, tAfterProcess).TotalMilliseconds;
+            double totalMs = Stopwatch.GetElapsedTime(tStart, tAfterProcess).TotalMilliseconds;
+            _logger.Info($" HANDLER blk {block.Number} txs={block.Transactions.Length} | decode={decodeMs:F1}ms validate={validateMs:F1}ms process={processMs:F1}ms total={totalMs:F1}ms");
+        }
 
         if (result == ValidationResult.Invalid)
         {

@@ -462,12 +462,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         if (!readonlyChain) _stats.CaptureStartStats();
 
+        long tPrepareStart = Stopwatch.GetTimestamp();
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+        long tPrepareEnd = Stopwatch.GetTimestamp();
 
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
+        long tProcessEnd = Stopwatch.GetTimestamp();
         if (processedBlocks is null)
         {
             return null;
@@ -493,6 +496,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
+        }
+
+        if (_logger.IsInfo && lastProcessed is not null)
+        {
+            double prepareMs = Stopwatch.GetElapsedTime(tPrepareStart, tPrepareEnd).TotalMilliseconds;
+            double processMs = Stopwatch.GetElapsedTime(tPrepareEnd, tProcessEnd).TotalMilliseconds;
+            _logger.Info($" PROCESSOR blk {suggestedBlock.Number} | prepare+recovery={prepareMs:F1}ms processBranch={processMs:F1}ms");
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
