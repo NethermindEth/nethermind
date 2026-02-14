@@ -15,7 +15,9 @@ public class ArgsConfigSourceTests
     {
         Dictionary<string, string> args = new();
         ArgsConfigSource configSource = new(args);
-        Assert.That(configSource.GetValue(typeof(int), "a", "a").IsSet, Is.False);
+        (bool isSet, object value) = configSource.GetValue(typeof(int), "a", "a");
+        Assert.That(isSet, Is.False);
+        Assert.That(value, Is.EqualTo(0));
     }
 
     [Test]
