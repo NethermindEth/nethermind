@@ -147,8 +147,14 @@ namespace Nethermind.State
         /// <param name="stateTracer">State tracer</param>
         public void Commit(IStorageTracer tracer)
         {
-            if (_changes.Count == 0 && _logger.IsTrace) _logger.Trace("No storage changes to commit");
-            CommitCore(tracer);
+            if (_changes.Count == 0)
+            {
+                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
+            }
+            else
+            {
+                CommitCore(tracer);
+            }
         }
 
         /// <summary>
