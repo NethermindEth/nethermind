@@ -255,34 +255,34 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         void UpdateRootHashesSingleThread()
         {
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+            // Iterate the smaller _toUpdateRoots collection instead of the full _storages dictionary
+            foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
             {
-                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+                if (!kvp.Value || !_storages.TryGetValue(kvp.Key, out PerContractState? contractState))
                 {
-                    // Wasn't updated don't recalculate
                     continue;
                 }
 
-                PerContractState contractState = kvp.Value;
-                (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+                (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
                 ReportMetrics(writes, skipped);
             }
         }
 
         void UpdateRootHashesMultiThread()
         {
-            // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
+            // Collect entries from the smaller _toUpdateRoots into a flat list, avoiding LINQ allocations
+            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = new(_toUpdateRoots.Count);
+
+            foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
+            {
+                if (kvp.Value && _storages.TryGetValue(kvp.Key, out PerContractState? contractState))
+                {
+                    storages.Add((kvp.Key, contractState, writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges)));
+                }
+            }
+
+            // Schedule larger changes first to help balance parallel work (unstable sort - no need for stable ordering)
+            storages.Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
             ParallelUnbalancedWork.For(
                 0,

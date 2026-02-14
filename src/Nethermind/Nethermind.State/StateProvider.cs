@@ -622,8 +622,15 @@ namespace Nethermind.State
                 {
                     using (var batch = codeDb.BeginCodeWrite())
                     {
-                        // Insert ordered for improved performance
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        // Sort entries for sequential key insertion (better DB write performance)
+                        using ArrayPoolList<KeyValuePair<Hash256AsKey, byte[]>> sorted = new(dict.Count);
+                        foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict)
+                        {
+                            sorted.Add(kvp);
+                        }
+                        sorted.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+
+                        foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in sorted)
                         {
                             batch.Set(kvp.Key.Value, kvp.Value);
                         }

@@ -225,4 +225,27 @@ public class WorldStateBenchmarks
         worldState.CommitTree(1);
         worldState.Reset();
     }
+
+    [Benchmark]
+    public void MultiContractStorageFlush()
+    {
+        Random rand = new Random(2);
+        IWorldState worldState = _globalWorldState;
+        using var _ = worldState.BeginScope(_baseBlock);
+        byte[] randomBuffer = new byte[20];
+
+        // Write to all contracts to trigger the multi-thread UpdateRootHashes path
+        for (int i = 0; i < _contracts.Length; i++)
+        {
+            for (int j = 0; j < 8; j++)
+            {
+                rand.NextBytes(randomBuffer);
+                worldState.Set(new StorageCell(_contracts[i], (UInt256)rand.NextLong()), randomBuffer.ToArray());
+            }
+        }
+
+        worldState.Commit(_releaseSpec);
+        worldState.CommitTree(1);
+        worldState.Reset();
+    }
 }
