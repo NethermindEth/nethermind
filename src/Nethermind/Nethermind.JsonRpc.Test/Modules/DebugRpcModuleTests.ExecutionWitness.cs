@@ -66,7 +66,7 @@ public partial class DebugRpcModuleTests
         CheckStatelessProcessing(blockchain, witness, block);
     }
 
-        /// <summary>
+    /// <summary>
     /// Tests that when a storage slot is written to (via WorldState.Set, not through SSTORE opcode
     /// which reads the slot beforehand via GetOriginal for gas computation) without being read first,
     /// and the write is then reverted, the associated trie nodes to the slot are still captured in the
