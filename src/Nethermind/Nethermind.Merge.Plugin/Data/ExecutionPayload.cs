@@ -3,9 +3,11 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
@@ -138,6 +140,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
+
+        // Overlap TxTrie root computation with RLP transaction decoding — they both
+        // only read the raw byte arrays and are fully independent of each other.
+        Task<Hash256> txRootTask = Task.Run(() => TxTrie.CalculateRoot(encodedTransactions));
+
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)
         {
@@ -165,7 +172,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = txRootTask.GetAwaiter().GetResult(),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -194,26 +201,41 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
-        int i = 0;
         try
         {
             byte[][] txData = Transactions;
             Transaction[] transactions = new Transaction[txData.Length];
 
-            for (i = 0; i < transactions.Length; i++)
+            if (txData.Length > 64)
             {
-                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+                ParallelUnbalancedWork.For(
+                    0,
+                    txData.Length,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (rlpDecoder, txData, transactions),
+                    static (i, state) =>
+                    {
+                        state.transactions[i] = Rlp.Decode(state.txData[i].AsRlpStream(), state.rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+                        return state;
+                    });
+            }
+            else
+            {
+                for (int i = 0; i < transactions.Length; i++)
+                {
+                    transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+                }
             }
 
             return new TransactionDecodingResult(_transactions = transactions);
         }
         catch (RlpException e)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+            return new TransactionDecodingResult($"Transaction decoding error: {e.Message}");
         }
-        catch (ArgumentException)
+        catch (ArgumentException e)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid");
+            return new TransactionDecodingResult($"Transaction decoding error: {e.Message}");
         }
     }
 
