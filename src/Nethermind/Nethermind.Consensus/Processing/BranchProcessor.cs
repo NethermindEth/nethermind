@@ -141,6 +141,10 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
+                // Capture committed state/storage values for cross-block cache reuse
+                // BEFORE CommitTree which clears _storages via ClearStorageMap.
+                _stateProvider.UpdatePreBlockCaches(processedBlock.Hash);
+
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
 
@@ -169,9 +173,6 @@ public class BranchProcessor(
                 WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
-                // Update PreBlockCaches with committed state/storage values for
-                // cross-block cache reuse before resetting state providers.
-                _stateProvider.UpdatePreBlockCaches(processedBlock.Hash);
                 _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
