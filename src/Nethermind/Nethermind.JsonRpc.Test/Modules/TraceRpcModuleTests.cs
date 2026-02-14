@@ -1073,6 +1073,8 @@ public class TraceRpcModuleTests
         config.GasCap = gasCap;
 
         PrivateKey senderKey = Build.A.PrivateKey.TestObject;
+        await context.Blockchain.AddFunds(senderKey.Address, 1.Ether());
+
         Transaction transaction = Build.A.Transaction
             .WithTo(TestItem.AddressC)
             .WithGasLimit(100_000)
