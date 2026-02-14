@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -120,9 +121,9 @@ public class TraceSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         long gasCap = 50_000;
-        chain.RpcConfig.GasCap = gasCap;
+        chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns gasleft
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
         Address contractAddress = new("0xc200000000000000000000000000000000000000");
         SimulatePayload<TransactionForRpc> payload = new()
         {

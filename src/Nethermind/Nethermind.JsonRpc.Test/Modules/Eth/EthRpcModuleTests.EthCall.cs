@@ -492,7 +492,7 @@ public partial class EthRpcModuleTests
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gasleft at start of execution as a 32-byte uint256
+        // Returns gas available at start of execution as a 32-byte uint256
         var stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
@@ -505,8 +505,8 @@ public partial class EthRpcModuleTests
         string result = JToken.Parse(serialized).Value<string>("result")!;
         long gasAvailable = Convert.ToInt64(result, 16);
 
-        // gasleft = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gasleft < 50K
-        // Without gas cap, gasleft would be ~79K (100K - 21K intrinsic)
+        // gas available = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gas available < 50K
+        // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
     }

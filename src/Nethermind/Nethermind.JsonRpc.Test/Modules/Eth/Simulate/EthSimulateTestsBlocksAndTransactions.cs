@@ -314,7 +314,7 @@ public class EthSimulateTestsBlocksAndTransactions
         long gasCap = 50_000;
         chain.RpcConfig.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns gasleft
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
         Address contractAddress = new("0xc200000000000000000000000000000000000000");
         SimulatePayload<TransactionForRpc> payload = new()
         {
