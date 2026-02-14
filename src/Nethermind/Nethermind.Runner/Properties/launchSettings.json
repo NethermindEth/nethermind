@@ -135,7 +135,7 @@
     },
     "Xdc-mine": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdc-mine --data-dir .data -l info --Network.DiagTracerEnabled true --Network.StaticPeers enode://336e9ba7806441dfd8d95d9a8848db2c4ace271676eec6ad83d6c0691ece6a401b40b3ca99e986103919094563a769339515562bf15600c6b21f92bfdf226d33@localhost:20304,enode://ace12457b111136ba630afffcc049fcadb591725e6ba07c2359602fbfb52c3b175419f41ef4d12ebff1c430dd4d5729fb7e78ffafb11aa23bc62362d42cf433a@localhost:20305,enode://6f15138e1a16654a9bc96c7423c222400cb4f54939d6a15c61ef333fef36c881b9a1f7841365d8f7cbc8dd73c20dfd76811c0a21b8a02ba0751589783552a2f0@localhost:20306,enode://9496bfe07d52a1f393d09accd226a96cec07852a965eb4d58dc1ef8326d110e883b75b5720649b0a3f6eedd01402c16566d092b564bb3232300117583a797b59@localhost:20307 --Network.OnlyStaticPeers true --Init.DiscoveryEnabled false",
+      "commandLineArgs": "-c xdc-mine --data-dir .data -l info --Network.DiagTracerEnabled true --Network.StaticPeers enode://c00f429a141bc81542c21cce2690b2b0b6fd027461ba1bb8f477deb72a8ad12025a38d1ec1671c6211c8f2a3ef9ad595938e9e838a310fa4d1249c37432d7da5@localhost:20304,enode://7a8f862c69221f2d804dbdf8029ca2237a4dae4f8695a418011f047b5aa7aaf8bd31981356aa20ad76e357b7ab2cc81262df1c3151ecb3bfbdcc1861e5745756@localhost:20305,enode://9a830717bc1dd92ddd23d17c3045ebca8489753a7838675073b5e01c5abb85bf7a02dcd53b6b09adc48aac8af07c06f3d5b749c870627551975f2b86932b33e2@localhost:20306,enode://76e7d16c5d8ab7c39c07fad0c1268129ec11c6a4a9ad418fde5af001f4ef44e7e3ce62a2940d115051bc0c9f48609703262d233f52dc878aa735bd2af7714586@localhost:20307 --Network.OnlyStaticPeers true --Init.DiscoveryEnabled false",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
