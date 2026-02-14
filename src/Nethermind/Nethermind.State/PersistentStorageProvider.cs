@@ -352,14 +352,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 
-    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
-    {
-        StackList<int> stack = SetupRegistry(cell);
-        _originalValues[cell] = value;
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(in cell, value, ChangeType.JustCache));
-    }
-
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
         foreach ((StorageCell address, StorageChangeTrace change) in trace)
@@ -554,7 +546,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            // Populate _originalValues for EIP-2200 gas metering directly,
+            // without creating journal entries in _intraBlockCache/_changes.
+            // BlockChange serves as the persistent read cache across transactions.
+            if (!storageCell.IsHash) _provider._originalValues.TryAdd(storageCell, valueChange.After);
             return valueChange.After;
         }
 
