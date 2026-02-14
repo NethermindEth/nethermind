@@ -741,7 +741,7 @@ namespace Nethermind.State
         public bool WarmUp(Address address)
             => GetState(address) is not null;
 
-        private Account? GetState(Address address)
+        internal Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
