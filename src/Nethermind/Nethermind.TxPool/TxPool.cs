@@ -135,7 +135,7 @@ namespace Nethermind.TxPool
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
-            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _transactions = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
             _transactions.Removed += OnRemovedTx;
 
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
@@ -225,8 +225,9 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[][]? cellProofs)
             => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes)
-            => _blobTransactions.GetBlobCounts(blobVersionedHashes);
+        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
+            => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
@@ -903,18 +904,15 @@ namespace Nethermind.TxPool
                 return false;
             }
 
-            if (hasBeenRemoved)
-            {
-                RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+            RemovedPending?.Invoke(this, new TxEventArgs(transaction));
 
-                RemovePendingDelegations(transaction);
-            }
+            RemovePendingDelegations(transaction);
 
             _broadcaster.StopBroadcast(hash);
 
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
-            return hasBeenRemoved;
+            return true;
         }
 
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob

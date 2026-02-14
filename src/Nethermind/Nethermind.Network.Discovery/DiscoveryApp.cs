@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.NetworkInformation;
@@ -267,7 +267,8 @@ public class DiscoveryApp : IDiscoveryApp
 
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
     {
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+        NetworkNode[] bootnodes = _networkConfig.Bootnodes;
+
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -278,6 +279,13 @@ public class DiscoveryApp : IDiscoveryApp
         for (int i = 0; i < bootnodes.Length; i++)
         {
             NetworkNode bootnode = bootnodes[i];
+
+            if (!bootnode.IsEnode)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
+                continue;
+            }
+
             if (bootnode.NodeId is null)
             {
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");

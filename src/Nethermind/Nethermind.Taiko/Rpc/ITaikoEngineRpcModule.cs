@@ -103,4 +103,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<bool> taikoDebug_clearTxPoolForReorg();
+
+    [JsonRpcMethod(
+        Description = "Returns the L1 origin of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<L1Origin?>> taikoAuth_lastL1OriginByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the ID of the last block for the given batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId);
 }

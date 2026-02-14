@@ -38,7 +38,9 @@ using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+#if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
+#endif
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
@@ -50,6 +52,13 @@ ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 var unhandledError = "A critical error has occurred";
+Option<string>[] deprecatedOptions =
+[
+    BasicOptions.ConfigurationDirectory,
+    BasicOptions.DatabasePath,
+    BasicOptions.LoggerConfigurationSource,
+    BasicOptions.PluginsDirectory
+];
 
 AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
@@ -228,9 +237,6 @@ void AddConfigurationOptions(Command command)
     foreach (Type configType in
         configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
     {
-        if (configType is null)
-            continue;
-
         ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
         if (typeLevel is not null && typeLevel.DisabledForCli)
@@ -275,14 +281,6 @@ void AddConfigurationOptions(Command command)
 
 void CheckForDeprecatedOptions(ParseResult parseResult)
 {
-    Option<string>[] deprecatedOptions =
-    [
-        BasicOptions.ConfigurationDirectory,
-        BasicOptions.DatabasePath,
-        BasicOptions.LoggerConfigurationSource,
-        BasicOptions.PluginsDirectory
-    ];
-
     foreach (Token token in parseResult.Tokens)
     {
         foreach (Option option in deprecatedOptions)

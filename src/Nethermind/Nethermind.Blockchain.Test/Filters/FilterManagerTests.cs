@@ -21,11 +21,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.None)]
 public class FilterManagerTests
 {
     private FilterStore _filterStore = null!;
-    private IBranchProcessor _branchProcessor = null!;
-    private IMainProcessingContext _mainProcessingContext = null!;
+    private TestMainProcessingContext _mainProcessingContext = null!;
     private ITxPool _txPool = null!;
     private ILogManager _logManager = null!;
     private FilterManager _filterManager = null!;
@@ -36,10 +36,8 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = new FilterStore(new TimerFactory(), 20, 10);
-        _branchProcessor = Substitute.For<IBranchProcessor>();
-        _mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        _mainProcessingContext.BranchProcessor.Returns(_branchProcessor);
+        _filterStore = new FilterStore(new TimerFactory(), 400, 100);
+        _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
         _logManager = LimboLogs.Instance;
     }
@@ -55,7 +53,7 @@ public class FilterManagerTests
     {
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
         _filterManager.GetLogs(0).Should().NotBeEmpty();
-        await Task.Delay(60);
+        await Task.Delay(600);
         _filterManager.GetLogs(0).Should().BeEmpty();
     }
 
@@ -257,6 +255,7 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     [TestCase(1, 1)]
     [TestCase(5, 3)]
+    [NonParallelizable]
     public void logs_should_have_correct_log_indexes(int filtersCount, int logsPerTx)
     {
         const int txCount = 10;
@@ -330,12 +329,12 @@ public class FilterManagerTests
         _filterStore.SaveFilters(filters.OfType<BlockFilter>());
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
 
-        _branchProcessor.BlockProcessed += Raise.EventWith(_branchProcessor, new BlockProcessedEventArgs(block, []));
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
 
         int index = 1;
         foreach (TxReceipt receipt in receipts)
         {
-            _mainProcessingContext.TransactionProcessed += Raise.EventWith(_branchProcessor,
+            _mainProcessingContext.RaiseTransactionProcessed(
                 new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, block.Header, receipt));
             index++;
         }
