@@ -712,6 +712,16 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
         }
 
+        /// <summary>
+        /// Clears only the read-only cache between transactions without iterating the journal.
+        /// This prevents stale _readCache entries from hiding updates made by fast-path
+        /// (ApplyPlainTransferDirect) transactions that write directly to _blockChanges.
+        /// </summary>
+        internal void ClearReadCaches()
+        {
+            _readCache.Clear();
+        }
+
         internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
             int writes = 0;
@@ -741,6 +751,38 @@ namespace Nethermind.State
         public bool WarmUp(Address address)
             => GetState(address) is not null;
 
+        /// <summary>
+        /// Updates both _blockChanges (for immediate reads) and the journal (for block-level Commit).
+        /// Used by the fast path (ApplyPlainTransferDirect) so that deferred-commit correctly
+        /// captures fast-path changes alongside slow-path journal entries.
+        /// </summary>
+        internal void SetStateAndJournal(Address address, Account? account)
+        {
+            SetState(address, account);
+            if (account is not null)
+            {
+                Push(address, account, ChangeType.Update);
+            }
+            else
+            {
+                Push(address, null, ChangeType.Delete);
+            }
+        }
+
+        /// <summary>
+        /// Reads from journal first (for deferred-commit entries from slow-path txs),
+        /// then falls back to _blockChanges and tree. Used by GetAccountDirect.
+        /// </summary>
+        internal Account? GetAccountFromJournalOrBlockChanges(Address address)
+        {
+            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+            {
+                return _changes[value.Peek()].Account;
+            }
+
+            return GetState(address);
+        }
+
         internal Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
@@ -761,8 +803,21 @@ namespace Nethermind.State
 
         internal void SetState(Address address, Account? account)
         {
-            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
-            accountChanges.After = account;
+            ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out bool exists);
+            if (!exists)
+            {
+                // Populate .Before from tree so FlushToTree can detect actual state changes.
+                // This is the normal path when GetState was called first (which also populates
+                // _blockChanges), but with deferred commit the fast path may call SetState
+                // without a prior GetState.
+                Metrics.IncrementStateTreeReads();
+                Account? before = _tree.Get(address);
+                accountChanges = new(before, account);
+            }
+            else
+            {
+                accountChanges.After = account;
+            }
             _needsStateRootUpdate = true;
         }
 

@@ -143,6 +143,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ResetTransient();
 
     /// <summary>
+    /// Lightweight per-transaction boundary: clears read-only caches and transient storage
+    /// without iterating the journal. Journal entries accumulate across transactions and are
+    /// processed once at block-level Commit, saving ~12000 Commit cycles per mega-block.
+    /// Also marks a transaction boundary snapshot for EIP-2200 net gas metering.
+    /// </summary>
+    void PrepareNextTransaction() => ResetTransient();
+
+    /// <summary>
     /// Read account directly from block-level cache, bypassing the intra-tx journal.
     /// Returns null if the account does not exist.
     /// </summary>

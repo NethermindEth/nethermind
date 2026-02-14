@@ -274,6 +274,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
+    /// <summary>
+    /// Clears only the read-only storage cache between transactions without iterating the journal.
+    /// This prevents stale _storageReadCache entries from hiding values that were updated
+    /// by prior transactions' journal entries still visible in _intraBlockCache.
+    /// </summary>
+    internal void ClearReadCaches()
+    {
+        _storageReadCache.Clear();
+    }
+
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count == 0)

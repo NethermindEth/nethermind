@@ -227,7 +227,9 @@ namespace Nethermind.State
         public Account? GetAccountDirect(Address address)
         {
             DebugGuardInScope();
-            return _stateProvider.GetState(address);
+            // Check journal first: with deferred per-tx commit, slow-path changes
+            // remain in the journal and are not yet flushed to _blockChanges.
+            return _stateProvider.GetAccountFromJournalOrBlockChanges(address);
         }
 
         public void ApplyPlainTransferDirect(
@@ -241,10 +243,13 @@ namespace Nethermind.State
             DebugGuardInScope();
             StateProvider sp = _stateProvider;
 
+            // Use journal-aware reads so we see slow-path changes (e.g. accumulated beneficiary fees).
+            // Use SetStateAndJournal so deferred block-level Commit captures fast-path changes.
+
             // Sender: apply gas cost + value deduction + refund + nonce increment in one shot
-            Account senderAccount = sp.GetState(sender) ?? Account.TotallyEmpty;
+            Account senderAccount = sp.GetAccountFromJournalOrBlockChanges(sender) ?? Account.TotallyEmpty;
             UInt256 newBalance = senderAccount.Balance - senderGasReservation - transferValue + senderRefund;
-            sp.SetState(sender, new Account(newSenderNonce, newBalance, senderAccount.StorageRoot, senderAccount.CodeHash));
+            sp.SetStateAndJournal(sender, new Account(newSenderNonce, newBalance, senderAccount.StorageRoot, senderAccount.CodeHash));
 
             // Recipient: always process – the slow path (VM) always calls
             // AddToBalanceAndCreateIfNotExists(recipient, value) which touches the account.
@@ -258,31 +263,32 @@ namespace Nethermind.State
             // Fee collector (EIP-1559)
             if (feeCollector is not null && !collectedFees.IsZero)
             {
-                Account? fcAccount = sp.GetState(feeCollector);
+                Account? fcAccount = sp.GetAccountFromJournalOrBlockChanges(feeCollector);
                 if (fcAccount is not null)
-                    sp.SetState(feeCollector, fcAccount.WithChangedBalance(fcAccount.Balance + collectedFees));
+                    sp.SetStateAndJournal(feeCollector, fcAccount.WithChangedBalance(fcAccount.Balance + collectedFees));
                 else
-                    sp.SetState(feeCollector, new Account(collectedFees));
+                    sp.SetStateAndJournal(feeCollector, new Account(collectedFees));
             }
         }
 
         /// <summary>
         /// Applies a balance change matching the behavior of AddToBalanceAndCreateIfNotExists + EIP-158 cleanup.
+        /// Uses journal-aware reads and writes for compatibility with deferred per-tx commit.
         /// Respects IsEip158IgnoredAccount (e.g. AuRa's Address.SystemUser).
         /// </summary>
         private static void ApplyBalanceChange(StateProvider sp, Address address, in UInt256 amount, IReleaseSpec spec)
         {
-            Account? account = sp.GetState(address);
+            Account? account = sp.GetAccountFromJournalOrBlockChanges(address);
             if (account is not null)
             {
                 if (!amount.IsZero)
                 {
-                    sp.SetState(address, account.WithChangedBalance(account.Balance + amount));
+                    sp.SetStateAndJournal(address, account.WithChangedBalance(account.Balance + amount));
                 }
                 else if (spec.IsEip158Enabled && account.IsEmpty && !spec.IsEip158IgnoredAccount(address))
                 {
                     // Slow path touches the account with 0 balance → Commit deletes it via EIP-158
-                    sp.SetState(address, null);
+                    sp.SetStateAndJournal(address, null);
                 }
                 // else: non-empty account + 0 amount → no state change
             }
@@ -290,12 +296,12 @@ namespace Nethermind.State
             {
                 if (!amount.IsZero)
                 {
-                    sp.SetState(address, new Account(amount));
+                    sp.SetStateAndJournal(address, new Account(amount));
                 }
                 else if (!spec.IsEip158Enabled)
                 {
                     // Pre-EIP-158: slow path creates empty account
-                    sp.SetState(address, new Account(UInt256.Zero));
+                    sp.SetStateAndJournal(address, new Account(UInt256.Zero));
                 }
                 // else: EIP-158 + 0 amount + non-existent → slow path creates then discards → no-op
             }
@@ -457,6 +463,21 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
+        }
+
+        public void PrepareNextTransaction()
+        {
+            DebugGuardInScope();
+            // Clear read-only caches so next tx doesn't see stale values from before
+            // fast-path (ApplyPlainTransferDirect) updates to _blockChanges.
+            _stateProvider.ClearReadCaches();
+            _persistentStorageProvider.ClearReadCaches();
+            // Clear transient storage per EIP-1153
+            _transientStorageProvider.Reset();
+            // Mark transaction boundary for EIP-2200 net gas metering (GetOriginal).
+            // The storage provider uses these boundaries to determine the storage value
+            // at the start of each transaction when journal entries span multiple txs.
+            _persistentStorageProvider.TakeSnapshot(newTransactionStart: true);
         }
     }
 }
