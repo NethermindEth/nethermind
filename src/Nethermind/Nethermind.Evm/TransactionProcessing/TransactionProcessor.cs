@@ -233,12 +233,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            // Mark transaction boundary for EIP-2200 net gas metering (GetOriginal).
-            // When deferring per-tx commit to block level, the storage provider uses these
-            // boundaries to determine the storage value at the start of each transaction.
-            if (commit)
-                WorldState.TakeSnapshot(true);
-
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||
@@ -301,19 +295,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
-                // Full per-tx commit is only needed for tracing or pre-Byzantium (commitRoots).
-                // In the normal path, defer state/storage commit to the block-level commit —
-                // the journal accumulates across txs and is processed once at block end.
-                // This eliminates 12000+ per-tx Commit cycles (journal iteration + dictionary
-                // clears) for large blocks, saving significant overhead.
-                if (tracer.IsTracingState || !spec.IsEip658Enabled)
-                {
-                    WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
-                }
-                else
-                {
-                    WorldState.ResetTransient();
-                }
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
             }
             else
             {
