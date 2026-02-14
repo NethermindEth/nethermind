@@ -65,6 +65,18 @@ public abstract class TransactionForRpc
     public abstract void EnsureDefaults(long? gasCap);
     public abstract bool ShouldSetBaseFee();
 
+    /// <summary>
+    /// Applies default constraints to an already-decoded <see cref="Transaction"/>.
+    /// Use this for transactions that bypass <see cref="TransactionForRpc"/> (e.g. RLP-decoded raw transactions).
+    /// </summary>
+    public static void EnsureDefaults(Transaction tx, long? gasCap)
+    {
+        if (gasCap is not null and not 0)
+        {
+            tx.GasLimit = long.Min(tx.GasLimit, gasCap.Value);
+        }
+    }
+
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];

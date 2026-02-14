@@ -1072,15 +1072,13 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        PrivateKey senderKey = Build.A.PrivateKey.TestObject;
-        await context.Blockchain.AddFunds(senderKey.Address, 1.Ether());
-
         Transaction transaction = Build.A.Transaction
             .WithTo(TestItem.AddressC)
             .WithGasLimit(100_000)
+            .WithValue(0)
             .WithMaxFeePerGas(0)
             .WithMaxPriorityFeePerGas(0)
-            .SignedAndResolved(senderKey)
+            .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
         byte[] rlp = TxDecoder.Instance.Encode(transaction).Bytes;
