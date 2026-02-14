@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -102,14 +101,10 @@ public partial class BlockProcessor(
 
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        long tsTxStart = Stopwatch.GetTimestamp();
-
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-
-        long tsTxEnd = Stopwatch.GetTimestamp();
 
         CalculateBlooms(receipts);
 
@@ -128,40 +123,27 @@ public partial class BlockProcessor(
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        long tsCommit1Start = Stopwatch.GetTimestamp();
         _stateProvider.Commit(spec, commitRoots: false);
-        long tsCommit1End = Stopwatch.GetTimestamp();
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
-        long tsCommit2Start = Stopwatch.GetTimestamp();
         _stateProvider.Commit(spec, commitRoots: true);
-        long tsCommit2End = Stopwatch.GetTimestamp();
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        long tsStateRootStart = Stopwatch.GetTimestamp();
         if (ShouldComputeStateRoot(header))
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
-        long tsStateRootEnd = Stopwatch.GetTimestamp();
 
         header.ReceiptsRoot = receiptRootTask.GetAwaiter().GetResult();
         header.Hash = header.CalculateHash();
-
-        double txMs = Stopwatch.GetElapsedTime(tsTxStart, tsTxEnd).TotalMilliseconds;
-        double commit1Ms = Stopwatch.GetElapsedTime(tsCommit1Start, tsCommit1End).TotalMilliseconds;
-        double commit2Ms = Stopwatch.GetElapsedTime(tsCommit2Start, tsCommit2End).TotalMilliseconds;
-        double stateRootMs = Stopwatch.GetElapsedTime(tsStateRootStart, tsStateRootEnd).TotalMilliseconds;
-        double totalMs = Stopwatch.GetElapsedTime(tsTxStart, tsStateRootEnd).TotalMilliseconds;
-        if (_logger.IsInfo) _logger.Info($"PERF block {block.Number} txExec={txMs:F1}ms commit1={commit1Ms:F1}ms commit2={commit2Ms:F1}ms stateRoot={stateRootMs:F1}ms total={totalMs:F1}ms txCount={block.Transactions.Length}");
 
         return receipts;
     }

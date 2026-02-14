@@ -140,6 +140,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
+    /// <summary>
+    /// Updates PreBlockCaches with committed state and storage values for cross-block cache reuse.
+    /// </summary>
+    void UpdatePreBlockCaches() { }
+
     void ResetTransient();
 
     /// <summary>

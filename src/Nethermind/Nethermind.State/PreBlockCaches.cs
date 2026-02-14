@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
@@ -48,6 +49,43 @@ public class PreBlockCaches
         }
 
         return isDirty;
+    }
+
+    /// <summary>
+    /// Clears only the precompile cache, keeping state and storage caches warm
+    /// for cross-block reuse. State and storage caches should be updated with
+    /// committed values after each block via <see cref="UpdateStateCache"/> and
+    /// <see cref="UpdateStorageCache"/>.
+    /// </summary>
+    public void ClearPrecompileOnly()
+    {
+        _precompileCache.NoResizeClear();
+    }
+
+    /// <summary>
+    /// Updates state cache entries with committed account values, keeping
+    /// unmodified entries warm for the next block.
+    /// </summary>
+    public void UpdateStateCache(ReadOnlySpan<KeyValuePair<AddressAsKey, Account?>> committedChanges)
+    {
+        SeqlockCache<AddressAsKey, Account> cache = _stateCache;
+        foreach (KeyValuePair<AddressAsKey, Account?> change in committedChanges)
+        {
+            cache.Set(change.Key, change.Value);
+        }
+    }
+
+    /// <summary>
+    /// Updates storage cache entries with committed storage values, keeping
+    /// unmodified entries warm for the next block.
+    /// </summary>
+    public void UpdateStorageCache(ReadOnlySpan<KeyValuePair<StorageCell, byte[]>> committedChanges)
+    {
+        SeqlockCache<StorageCell, byte[]> cache = _storageCache;
+        foreach (KeyValuePair<StorageCell, byte[]> change in committedChanges)
+        {
+            cache.Set(change.Key, change.Value);
+        }
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>

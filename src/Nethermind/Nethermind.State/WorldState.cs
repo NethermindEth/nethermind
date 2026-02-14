@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -457,6 +458,23 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
+        }
+
+        public void UpdatePreBlockCaches()
+        {
+            if (ScopeProvider is not IPreBlockCaches { Caches: { } preBlockCaches }) return;
+
+            KeyValuePair<AddressAsKey, Account?>[] stateChanges = _stateProvider.CaptureCommittedStateChanges();
+            if (stateChanges.Length > 0)
+            {
+                preBlockCaches.UpdateStateCache(stateChanges);
+            }
+
+            KeyValuePair<StorageCell, byte[]>[] storageChanges = _persistentStorageProvider.CaptureCommittedStorageChanges();
+            if (storageChanges.Length > 0)
+            {
+                preBlockCaches.UpdateStorageCache(storageChanges);
+            }
         }
     }
 }
