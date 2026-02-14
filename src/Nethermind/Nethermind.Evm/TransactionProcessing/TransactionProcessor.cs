@@ -153,8 +153,16 @@ namespace Nethermind.Evm.TransactionProcessing
             return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
         }
 
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            // Record transaction boundary for EIP-2200 net gas metering.
+            // BuildUp() already does this; Execute() needs it too because
+            // deferred storage commit keeps the journal alive across txs,
+            // and GetOriginal() uses _transactionChangesSnapshots to find
+            // the correct value at the start of the current transaction.
+            WorldState.TakeSnapshot(true);
+            return ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
+        }
 
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);

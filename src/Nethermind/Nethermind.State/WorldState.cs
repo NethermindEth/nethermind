@@ -399,7 +399,18 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Commit(tracer);
-            _persistentStorageProvider.Commit(tracer);
+
+            // Defer persistent storage commit until block-level (commitRoots=true).
+            // The storage journal (_intraBlockCache, _changes, _transactionChangesSnapshots)
+            // stays alive across transactions so subsequent txs find previous txs' SSTOREs
+            // directly. GetOriginal() uses _transactionChangesSnapshots for correct EIP-2200
+            // net gas metering. Commit eagerly only when tracing storage (needs per-tx events)
+            // or when flushing to the trie (commitRoots=true).
+            if (commitRoots || tracer.IsTracingStorage)
+            {
+                _persistentStorageProvider.Commit(tracer);
+            }
+
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
 
             if (commitRoots)
