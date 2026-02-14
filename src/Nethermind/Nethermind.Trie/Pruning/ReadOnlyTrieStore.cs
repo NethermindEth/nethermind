@@ -12,6 +12,7 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore
     {
+        private static readonly NoopDisposable s_noopScope = new();
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
 
@@ -32,7 +33,7 @@ namespace Nethermind.Trie.Pruning
             return NullCommitter.Instance;
         }
 
-        public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(() => { }); // Noop
+        public IDisposable BeginScope(BlockHeader? baseBlock) => s_noopScope;
 
         public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
 
@@ -59,6 +60,11 @@ namespace Nethermind.Trie.Pruning
 
             public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
                 fullTrieStore.IsPersisted(address, path, in keccak);
+        }
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public void Dispose() { }
         }
     }
 }

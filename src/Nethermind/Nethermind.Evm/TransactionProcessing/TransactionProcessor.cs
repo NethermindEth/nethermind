@@ -226,11 +226,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-
-            //only main thread updates transaction
+            // Skip fee payment during warmup — it only modifies beneficiary/fee-collector
+            // balances which are never committed and don't affect subsequent tx execution.
             if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
                 tx.SpentGas = spentGas.SpentGas;
+            }
 
             // Finalize
             if (restore)
@@ -725,7 +727,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (tx.IsContractCreation)
+                    if (tx.IsContractCreation && !opts.HasFlag(ExecutionOptions.Warmup))
                     {
                         if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
                         {
@@ -743,29 +745,38 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
-                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    if (!opts.HasFlag(ExecutionOptions.Warmup))
                     {
-                        if (Logger.IsTrace)
-                            Logger.Trace($"Destroying account {toBeDestroyed}");
+                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        {
+                            if (Logger.IsTrace)
+                                Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        WorldState.ClearStorage(toBeDestroyed);
-                        WorldState.DeleteAccount(toBeDestroyed);
+                            WorldState.ClearStorage(toBeDestroyed);
+                            WorldState.DeleteAccount(toBeDestroyed);
 
-                        if (tracer.IsTracingRefunds)
-                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                            if (tracer.IsTracingRefunds)
+                                tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                        }
                     }
 
                     statusCode = StatusCode.Success;
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
-                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
+                    VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+            }
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
-            gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
+            }
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
