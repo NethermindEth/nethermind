@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -184,6 +185,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
