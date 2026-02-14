@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
@@ -239,6 +240,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
         }
 
+        long tFcuStart = Stopwatch.GetTimestamp();
+
         Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
         if (setHeadErrorMsg is not null)
         {
@@ -253,10 +256,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
+        long tBeforeUpdateMain = Stopwatch.GetTimestamp();
         if (shouldUpdateHead)
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
+        long tAfterUpdateMain = Stopwatch.GetTimestamp();
 
         if (IsInconsistent(finalizedBlockHash))
         {
@@ -277,6 +282,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
         }
+        long tAfterFinalize = Stopwatch.GetTimestamp();
 
         if (shouldUpdateHead)
         {
@@ -285,6 +291,18 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         }
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
+        long tEnd = Stopwatch.GetTimestamp();
+
+        if (_logger.IsInfo && shouldUpdateHead)
+        {
+            double ensureMs = Stopwatch.GetElapsedTime(tFcuStart, tBeforeUpdateMain).TotalMilliseconds;
+            double updateMainMs = Stopwatch.GetElapsedTime(tBeforeUpdateMain, tAfterUpdateMain).TotalMilliseconds;
+            double finalizeMs = Stopwatch.GetElapsedTime(tAfterUpdateMain, tAfterFinalize).TotalMilliseconds;
+            double forkChoiceMs = Stopwatch.GetElapsedTime(tAfterFinalize, tEnd).TotalMilliseconds;
+            double totalMs = Stopwatch.GetElapsedTime(tFcuStart, tEnd).TotalMilliseconds;
+            _logger.Info($" FCU blk {newHeadBlock.Number} | ensureHead={ensureMs:F1}ms updateMain={updateMainMs:F1}ms finalize={finalizeMs:F1}ms forkChoice={forkChoiceMs:F1}ms total={totalMs:F1}ms");
+        }
+
         return null;
     }
 
