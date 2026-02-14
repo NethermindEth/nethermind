@@ -80,19 +80,34 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     }
 
     /// <summary>
-    /// Get the current value at the specified location
+    /// Non-virtual Get that bypasses abstract GetCurrentValue dispatch.
+    /// Since WorldState holds PersistentStorageProvider by concrete type, this
+    /// method is resolved statically, enabling JIT inlining of the full SLOAD path.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public new ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    {
+        // Inline TryGetCachedValue: check journal for written values (SSTORE)
+        if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+        {
+            return _changes[stack.Peek()].Value;
+        }
+
+        // Check read cache for previously loaded values (SLOAD)
+        if (_storageReadCache.TryGetValue(storageCell, out byte[]? cached))
+            return cached;
+
+        return LoadFromTree(storageCell);
+    }
+
+    /// <summary>
+    /// Get the current value at the specified location (virtual path for base class callers)
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
     {
-        if (TryGetCachedValue(storageCell, out byte[]? bytes))
-            return bytes!;
-
-        if (_storageReadCache.TryGetValue(storageCell, out byte[]? cached))
-            return cached;
-
-        return LoadFromTree(storageCell);
+        return Get(in storageCell);
     }
 
     /// <summary>

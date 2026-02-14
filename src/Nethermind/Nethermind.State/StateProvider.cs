@@ -111,6 +111,7 @@ namespace Nethermind.State
             return account is not null;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
         public bool IsDeadAccount(Address address)
@@ -829,6 +830,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private Account? GetThroughCache(Address address)
         {
             if (_intraTxCache.TryGetValue(address, out StackList<int> value))
