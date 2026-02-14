@@ -7,12 +7,14 @@ using Nethermind.Config;
 namespace Nethermind.Db.LogIndex;
 
 [ConfigCategory(Description = "Configuration of the log index behaviour.")]
-public class LogIndexConfig : ILogIndexConfig
+public class LogIndexConfig(IPruningConfig pruningConfig) : ILogIndexConfig
 {
+    internal LogIndexConfig() : this(new PruningConfig()) { }
+
     public bool Enabled { get; set; } = false;
     public bool Reset { get; set; } = false;
 
-    public int MaxReorgDepth { get; set; } = 64;
+    public int MaxReorgDepth { get; set; } = pruningConfig.PruningBoundary;
 
     public int MaxBatchSize { get; set; } = 256;
     public int MaxAggregationQueueSize { get; set; } = 16;
