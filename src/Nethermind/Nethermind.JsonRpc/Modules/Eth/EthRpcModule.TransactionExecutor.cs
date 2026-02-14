@@ -27,11 +27,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override Result<Transaction> Prepare(TransactionForRpc call)
             {
-                if (_rpcConfig.GasCap is not null)
-                {
-                    call.EnsureDefaults(_rpcConfig.GasCap);
-                }
-
                 Result<Transaction> result = call.ToTransaction(validateUserInput: true);
                 if (result.IsError) return result;
 
