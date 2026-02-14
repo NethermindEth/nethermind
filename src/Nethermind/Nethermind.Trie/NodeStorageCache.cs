@@ -7,9 +7,10 @@ namespace Nethermind.Trie;
 
 public sealed class NodeStorageCache
 {
-    // 128K entries (setsLog2=16) — trie nodes are content-addressed and immutable,
-    // so a larger persistent cache across blocks avoids repeated trie reads.
-    private readonly SeqlockCache<NodeKey, byte[]> _cache = new(16);
+    // 512K entries (setsLog2=18) — trie nodes are content-addressed and immutable,
+    // so a large persistent cache across blocks avoids repeated trie reads.
+    // Heavy blocks need millions of trie node reads; 128K evicts too aggressively.
+    private readonly SeqlockCache<NodeKey, byte[]> _cache = new(18);
 
     private volatile bool _enabled = true;
 

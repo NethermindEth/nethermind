@@ -19,10 +19,10 @@ public class PreBlockCaches
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    // 128K entries for storage (setsLog2=16): heavy DeFi blocks touch 100K+ unique
-    // storage slots per block; the default 32K evicts too aggressively.
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new(16);
-    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    // 512K entries (setsLog2=18): heavy DeFi blocks touch 300K+ unique storage slots;
+    // smaller caches evict prewarmer results before the main thread reads them.
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new(18);
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new(16);
     private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
