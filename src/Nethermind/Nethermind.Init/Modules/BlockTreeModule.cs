@@ -47,7 +47,14 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
 
-        builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>();
+        builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
+            .AddDecorator<ILogIndexConfig>((ctx, config) =>
+            {
+                IPruningConfig pruningConfig = ctx.Resolve<IPruningConfig>();
+                config.MaxReorgDepth ??= pruningConfig.PruningBoundary;
+                return config;
+            });
+
         if (logIndexConfig.Enabled)
         {
             builder

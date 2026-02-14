@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
@@ -595,9 +594,7 @@ internal static class TestRpcBlockchainExt
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
-            sequencerRpcClient, ecdsa, sealer,
-            new LogIndexConfig(new PruningConfig()),
-            opSpecHelper
+            sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper
         ));
     }
 }

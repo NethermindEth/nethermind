@@ -14,7 +14,6 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
@@ -120,7 +119,7 @@ public class LogIndexBuilderTests
     [SetUp]
     public void SetUp()
     {
-        _config = new LogIndexConfig(Substitute.For<IPruningConfig>()) { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = BatchSize };
+        _config = new LogIndexConfig { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = BatchSize };
         _blockTree = Build.A.BlockTree().OfChainLength(MaxBlock + 1).BlockTree;
         _syncConfig = new SyncConfig { FastSync = true, SnapSync = true };
         _receiptStorage = Substitute.For<IReceiptStorage>();

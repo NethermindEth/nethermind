@@ -51,7 +51,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly CancellationTokenSource _cancellationSource = new();
     private CancellationToken CancellationToken => _cancellationSource.Token;
 
-    private int MaxReorgDepth => _config.MaxReorgDepth;
+    private int MaxReorgDepth => _config.MaxReorgDepth!.Value;
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogIndexStorage _logIndexStorage;

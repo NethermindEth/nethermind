@@ -22,10 +22,10 @@ public interface ILogIndexConfig : IConfig
 
     [ConfigItem(
         Description = "Max allowed reorg depth for the index.",
-        DefaultValue = "Pruning.PruningBoundary",
+        DefaultValue = "64",
         HiddenFromDocs = true
     )]
-    public int MaxReorgDepth { get; set; }
+    public int? MaxReorgDepth { get; set; }
 
     [ConfigItem(
         Description = "Maximum number of blocks with receipts to add to index per iteration.",
