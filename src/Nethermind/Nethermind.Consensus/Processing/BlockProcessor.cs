@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -115,7 +117,14 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        // Overlap receipt root computation with state root: the receipt trie is fully
+        // self-contained (creates its own PatriciaTrie + buffer pool) and only reads
+        // the already-computed blooms, so it is safe to run on the thread pool while
+        // we finish miner rewards, withdrawals, commits, and state root hashing.
+        IReceiptsRootCalculator rootCalc = _receiptsRootCalculator;
+        Hash256? suggestedReceiptsRoot = block.ReceiptsRoot;
+        Task<Hash256> receiptRootTask = Task.Run(() => rootCalc.GetReceiptsRoot(receipts, spec, suggestedReceiptsRoot));
+
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -142,6 +151,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        header.ReceiptsRoot = receiptRootTask.GetAwaiter().GetResult();
         header.Hash = header.CalculateHash();
 
         return receipts;
