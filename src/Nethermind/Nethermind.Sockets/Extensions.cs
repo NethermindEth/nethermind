@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Net.WebSockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,8 +32,9 @@ public static class Extensions
                 string moduleName = string.Empty;
                 if (context.Request.Path.HasValue)
                 {
-                    var path = context.Request.Path.Value;
-                    moduleName = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
+                    string path = context.Request.Path.Value;
+                    string[] pathParts = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    moduleName = pathParts.Length > 0 ? pathParts[0] : string.Empty;
                 }
 
                 module = webSocketsManager?.GetModule(moduleName);
@@ -45,7 +45,7 @@ public static class Extensions
                 }
 
                 clientName = context.Request.Query.TryGetValue("client", out StringValues clientValues)
-                    ? clientValues.FirstOrDefault() ?? string.Empty
+                    ? clientValues.Count > 0 ? clientValues[0] ?? string.Empty : string.Empty
                     : string.Empty;
 
                 if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
