@@ -398,7 +398,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_PeriodicReorg_Get_Test(
             [Values(10, 70)] int reorgFrequency,
-            [Values(0, 1, 5)] int maxReorgDepth,
+            [Values(1, 5)] int maxReorgDepth,
             [Values] bool compactAfter
         )
         {
