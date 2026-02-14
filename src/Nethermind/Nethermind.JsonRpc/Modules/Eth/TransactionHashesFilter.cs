@@ -17,7 +17,7 @@ public class TransactionHashesFilter : IJsonRpcParam
         {
             var hashes = new Hash256[hashesElement.GetArrayLength()];
             int index = 0;
-            
+
             foreach (JsonElement hashElement in hashesElement.EnumerateArray())
             {
                 if (hashElement.ValueKind == JsonValueKind.String)
@@ -29,7 +29,7 @@ public class TransactionHashesFilter : IJsonRpcParam
                     }
                 }
             }
-            
+
             TransactionHashes = hashes;
         }
     }

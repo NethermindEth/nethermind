@@ -82,7 +82,7 @@ public class TransactionReceiptsSubscription : Subscription
         for (int i = 0; i < e.TxReceipts.Length; i++)
         {
             TxReceipt receipt = e.TxReceipts[i];
-            
+
             // Apply filter if set
             if (_filterHashes is not null && !_filterHashes.Contains(receipt.TxHash!))
             {
@@ -105,7 +105,7 @@ public class TransactionReceiptsSubscription : Subscription
             // Send the receipt
             using JsonRpcResult result = CreateSubscriptionMessage(receiptForRpc);
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
-            
+
             if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} sent receipt for tx {receipt.TxHash}.");
 
             // Update cumulative log index

@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
             results.Count.Should().Be(2);
-            
+
             string serialized1 = _jsonSerializer.Serialize(results[0].Response);
             serialized1.Should().Contain(subscriptionId);
             serialized1.Should().Contain(TestItem.KeccakA.ToString());
@@ -309,7 +309,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             result.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(result.Response);
-            
+
             serialized.Should().Contain("transactionHash");
             serialized.Should().Contain(TestItem.KeccakA.ToString());
             serialized.Should().Contain("blockHash");
