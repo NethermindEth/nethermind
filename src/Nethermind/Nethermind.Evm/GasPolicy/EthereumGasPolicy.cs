@@ -129,11 +129,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool UpdateGas(ref EthereumGasPolicy gas,
         long gasCost)
     {
-        if (GetRemainingGas(gas) < gasCost)
-            return false;
-
-        Consume(ref gas, gasCost);
-        return true;
+        // Branchless gas deduction: always subtract, return whether sufficient.
+        // On failure the gas value is negative; the main loop catches this via GetRemainingGas < 0.
+        // Callers halt immediately on false, so the wrapped value is never observed.
+        long remaining = gas.Value;
+        gas.Value = remaining - gasCost;
+        return remaining >= gasCost;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
