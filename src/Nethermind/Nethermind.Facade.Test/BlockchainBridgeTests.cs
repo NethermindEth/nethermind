@@ -26,6 +26,8 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -37,6 +39,7 @@ public class BlockchainBridgeTests
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
     private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
     private IContainer _container;
 
     [SetUp]
@@ -46,6 +49,9 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateReader = Substitute.For<IStateReader>();
+
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -55,6 +61,7 @@ public class BlockchainBridgeTests
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
             .Build();
 
         _specProvider = _container.Resolve<ISpecProvider>();
@@ -679,5 +686,68 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_block_older_than_BestPersistedState()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+        _blockTree.BestPersistedState.Returns(300L);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_block_within_BestPersistedState_range()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(280).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _blockTree.BestPersistedState.Returns(300L);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_BestPersistedState_is_null()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _blockTree.BestPersistedState.Returns((long?)null);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_root_does_not_exist()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(false);
+        _blockTree.BestPersistedState.Returns(300L);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_for_old_block_on_archive_node()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+        _blockTree.BestPersistedState.Returns(300L);
+
+        IContainer archiveContainer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(_blockTree)
+            .AddSingleton<IReceiptFinder>(_receiptStorage)
+            .AddSingleton(_timestamper)
+            .AddSingleton(Substitute.For<ILogFinder>())
+            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None })
+            .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
+            .Build();
+
+        IBlockchainBridge archiveBridge = archiveContainer.Resolve<IBlockchainBridge>();
+        archiveBridge.HasStateForBlock(header).Should().BeTrue();
+        archiveContainer.Dispose();
     }
 }
