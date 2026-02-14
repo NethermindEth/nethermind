@@ -211,7 +211,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 return result;
             }
 
-            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            // Pre-execution Commit only needed when tracing state (to report nonce/balance
+            // changes separately). Otherwise, the snapshot mechanism preserves pre-execution
+            // changes (BuyGas, IncrementNonce) across EVM reverts, and the final Commit at
+            // end-of-tx flushes everything.
+            if (commit && tracer.IsTracingState)
+                WorldState.Commit(spec, tracer, commitRoots: false);
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();

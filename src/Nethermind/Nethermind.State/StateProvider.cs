@@ -31,6 +31,7 @@ namespace Nethermind.State
         private static readonly UInt256 _zero = UInt256.Zero;
 
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
+        private readonly Dictionary<AddressAsKey, Account?> _readCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
@@ -93,7 +94,7 @@ namespace Nethermind.State
         public bool AccountExists(Address address) =>
             _intraTxCache.TryGetValue(address, out StackList<int> value)
                 ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
-                : GetAndAddToCache(address) is not null;
+                : GetFromReadCacheOrState(address) is not null;
 
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
@@ -609,6 +610,7 @@ namespace Nethermind.State
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _intraTxCache.ResetAndClear();
+            _readCache.Clear();
 
             codeFlushTask.GetAwaiter().GetResult();
 
@@ -756,8 +758,22 @@ namespace Nethermind.State
                 return _changes[value.Peek()].Account;
             }
 
-            Account account = GetAndAddToCache(address);
-            return account;
+            return GetFromReadCacheOrState(address);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Account? GetFromReadCacheOrState(Address address)
+        {
+            ref Account? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_readCache, address, out bool exists);
+            if (!exists)
+            {
+                cached = GetState(address);
+                if (cached is null)
+                {
+                    _nullAccountReads.Add(address);
+                }
+            }
+            return cached;
         }
 
         private void PushJustCache(Address address, Account account)
@@ -779,6 +795,7 @@ namespace Nethermind.State
         {
             StackList<int> stack = SetupCache(address);
             if (changeType == ChangeType.Touch
+                && stack.Count > 0
                 && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
             {
                 return;
@@ -840,6 +857,7 @@ namespace Nethermind.State
                 _codeBatch?.Clear();
             }
             _intraTxCache.ResetAndClear();
+            _readCache.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _changes.Clear();
