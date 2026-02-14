@@ -103,11 +103,12 @@ public partial class BlockProcessor(
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        // System call changes (beacon root, blockhash) accumulate in the journal
+        // and are flushed together with transaction changes in the commit below.
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-
-        _stateProvider.Commit(spec, commitRoots: false);
+        // Transaction changes remain in the journal and are flushed together with
+        // miner rewards / withdrawals in the single commit below.
 
         CalculateBlooms(receipts);
 
@@ -127,9 +128,9 @@ public partial class BlockProcessor(
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-        // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
-        // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        // Flush all accumulated changes (beacon root, blockhash, transactions, miner rewards,
+        // withdrawals) with the correct EIP-158 spec before executionRequestsProcessor runs its
+        // own commit with SystemTransactionReleaseSpec (Eip158Enabled=false).
         _stateProvider.Commit(spec, commitRoots: false);
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
