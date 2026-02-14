@@ -41,6 +41,11 @@ namespace Nethermind.State
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
+        // Read-only cache: accounts that were read (but not written) bypass the _changes journal entirely.
+        // This avoids JustCache entries in _changes and _intraTxCache, reducing Commit iteration overhead.
+        // Cleared on Commit and Reset. Survives Restore (reads reflect _blockChanges which isn't rolled back).
+        private readonly Dictionary<AddressAsKey, Account?> _readCache = new();
+
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
@@ -90,10 +95,16 @@ namespace Nethermind.State
             return account is not null && account.IsContract;
         }
 
-        public bool AccountExists(Address address) =>
-            _intraTxCache.TryGetValue(address, out StackList<int> value)
-                ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
-                : GetAndAddToCache(address) is not null;
+        public bool AccountExists(Address address)
+        {
+            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+                return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
+            if (_readCache.TryGetValue(address, out Account? cached))
+                return cached is not null;
+            Account? account = GetState(address);
+            _readCache[address] = account;
+            return account is not null;
+        }
 
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
@@ -487,6 +498,19 @@ namespace Nethermind.State
             {
                 if (isTracing) TraceNoChanges();
 
+                // Report read-only accounts from _readCache when tracing
+                if (stateTracer.IsTracingState && _readCache.Count > 0)
+                {
+                    Dictionary<AddressAsKey, ChangeTrace> earlyTrace = [];
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _readCache)
+                    {
+                        _nullAccountReads.Add(kv.Key);
+                    }
+                    earlyTrace.ReportStateTrace(stateTracer, _nullAccountReads, this);
+                    _nullAccountReads.Clear();
+                }
+                _readCache.Clear();
+
                 codeFlushTask.GetAwaiter().GetResult();
                 return;
             }
@@ -603,12 +627,31 @@ namespace Nethermind.State
                 }
             }
 
+            // For tracing: populate account reads and trace Before values from _readCache
+            if (trace is not null)
+            {
+                foreach (KeyValuePair<AddressAsKey, Account?> kv in _readCache)
+                {
+                    if (!trace.ContainsKey(kv.Key))
+                    {
+                        // Read-only account (not written in this round): report as account read
+                        _nullAccountReads.Add(kv.Key);
+                    }
+                    else if (kv.Value is not null && trace.TryGetValue(kv.Key, out ChangeTrace existing) && existing.Before is null)
+                    {
+                        // Account was read then written: set the Before value from read cache
+                        trace[kv.Key] = new ChangeTrace(kv.Value, existing.After);
+                    }
+                }
+            }
+
             trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
             _changes.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _intraTxCache.ResetAndClear();
+            _readCache.Clear();
 
             codeFlushTask.GetAwaiter().GetResult();
 
@@ -756,7 +799,13 @@ namespace Nethermind.State
                 return _changes[value.Peek()].Account;
             }
 
-            Account account = GetAndAddToCache(address);
+            if (_readCache.TryGetValue(address, out Account? cached))
+            {
+                return cached;
+            }
+
+            Account? account = GetState(address);
+            _readCache[address] = account;
             return account;
         }
 
@@ -779,6 +828,7 @@ namespace Nethermind.State
         {
             StackList<int> stack = SetupCache(address);
             if (changeType == ChangeType.Touch
+                && stack.Count > 0
                 && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
             {
                 return;
@@ -858,6 +908,7 @@ namespace Nethermind.State
             _intraTxCache.ResetAndClear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
+            _readCache.Clear();
             _changes.Clear();
             _needsStateRootUpdate = false;
 
