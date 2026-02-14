@@ -497,153 +497,23 @@ namespace Nethermind.State
                 ? Task.CompletedTask
                 : CommitCodeAsync(_codeDb);
 
-            bool isTracing = _logger.IsTrace;
             int stepsBack = _changes.Count - 1;
             if (stepsBack < 0)
             {
-                if (isTracing) TraceNoChanges();
+                if (_logger.IsTrace) TraceNoChanges();
 
                 codeFlushTask.GetAwaiter().GetResult();
                 return;
             }
 
-            if (isTracing) TraceCommit(stepsBack);
-            if (_changes[stepsBack].IsNull)
+            if (stateTracer.IsTracingState)
             {
-                ThrowStartOfCommitIsNull(stepsBack);
+                CommitWithTracing(releaseSpec, stateTracer, isGenesis);
             }
-
-            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
-
-            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
-            for (int i = 0; i <= stepsBack; i++)
+            else
             {
-                ref readonly Change change = ref changes[stepsBack - i];
-                if (trace is null && change!.ChangeType == ChangeType.JustCache)
-                {
-                    continue;
-                }
-
-                if (_committedThisRound.Contains(change!.Address))
-                {
-                    if (change.ChangeType == ChangeType.JustCache)
-                    {
-                        trace?.UpdateTrace(change.Address, change.Account);
-                    }
-
-                    continue;
-                }
-
-                // because it was not committed yet it means that the just cache is the only state (so it was read only)
-                if (trace is not null && change.ChangeType == ChangeType.JustCache)
-                {
-                    _nullAccountReads.Add(change.Address);
-                    continue;
-                }
-
-                StackList<int> stack = _intraTxCache[change.Address];
-                int forAssertion = stack.Pop();
-                if (forAssertion != stepsBack - i)
-                {
-                    ThrowUnexpectedPosition(stepsBack, i, forAssertion);
-                }
-
-                _committedThisRound.Add(change.Address);
-
-                switch (change.ChangeType)
-                {
-                    case ChangeType.JustCache:
-                        break;
-                    case ChangeType.Touch:
-                    case ChangeType.Update:
-                        {
-                            if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
-                            {
-                                if (isTracing) TraceRemoveEmpty(change);
-                                SetState(change.Address, null);
-                                trace?.AddToTrace(change.Address, null);
-                            }
-                            else
-                            {
-                                if (isTracing) TraceUpdate(change);
-                                SetState(change.Address, change.Account);
-                                trace?.AddToTrace(change.Address, change.Account);
-                            }
-
-                            break;
-                        }
-                    case ChangeType.New:
-                        {
-                            if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
-                            {
-                                if (isTracing) TraceCreate(change);
-                                SetState(change.Address, change.Account);
-                                trace?.AddToTrace(change.Address, change.Account);
-                            }
-
-                            break;
-                        }
-                    case ChangeType.RecreateEmpty:
-                        {
-                            if (isTracing) TraceCreate(change);
-                            SetState(change.Address, change.Account);
-                            trace?.AddToTrace(change.Address, change.Account);
-
-                            break;
-                        }
-                    case ChangeType.Delete:
-                        {
-                            if (isTracing) TraceRemove(change);
-                            bool wasItCreatedNow = false;
-                            while (stack.Count > 0)
-                            {
-                                int previousOne = stack.Pop();
-                                wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                                if (wasItCreatedNow)
-                                {
-                                    break;
-                                }
-                            }
-
-                            if (!wasItCreatedNow)
-                            {
-                                SetState(change.Address, null);
-                                trace?.AddToTrace(change.Address, null);
-                            }
-
-                            break;
-                        }
-                    default:
-                        ThrowUnknownChangeType();
-                        break;
-                }
+                CommitFast(releaseSpec, isGenesis);
             }
-
-            // When tracing, reconcile _readCache entries with the trace:
-            // - Accounts both read-cached and modified: set the Before value from read cache
-            // - Accounts only read-cached: report as read-only via _nullAccountReads
-            if (trace is not null)
-            {
-                foreach (KeyValuePair<AddressAsKey, Account?> kvp in _readCache)
-                {
-                    if (trace.TryGetValue(kvp.Key, out ChangeTrace existingTrace))
-                    {
-                        trace[kvp.Key] = new ChangeTrace(kvp.Value, existingTrace.After);
-                    }
-                    else
-                    {
-                        _nullAccountReads.Add(kvp.Key);
-                    }
-                }
-            }
-
-            trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
-
-            _changes.Clear();
-            _committedThisRound.Clear();
-            _nullAccountReads.Clear();
-            _intraTxCache.ResetAndClear();
-            _readCache.Clear();
 
             codeFlushTask.GetAwaiter().GetResult();
 
@@ -680,10 +550,203 @@ namespace Nethermind.State
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceCommit(int currentPosition) => _logger.Trace($"Committing state changes (at {currentPosition})");
+            void TraceNoChanges() => _logger.Trace("No state changes to commit");
+        }
+
+        /// <summary>
+        /// Fast commit path for the common non-tracing case. Iterates <see cref="_intraTxCache"/>
+        /// directly (O(unique_addresses)) instead of backward through <see cref="_changes"/>
+        /// (O(total_entries)), eliminating the _committedThisRound dedup HashSet.
+        /// </summary>
+        private void CommitFast(IReleaseSpec releaseSpec, bool isGenesis)
+        {
+            bool isEip158 = releaseSpec.IsEip158Enabled;
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+
+            foreach (KeyValuePair<AddressAsKey, StackList<int>> kvp in _intraTxCache)
+            {
+                ReadOnlySpan<int> stack = CollectionsMarshal.AsSpan(kvp.Value);
+                ref readonly Change change = ref changes[stack[^1]];
+
+                switch (change.ChangeType)
+                {
+                    case ChangeType.JustCache:
+                        break;
+                    case ChangeType.Touch:
+                    case ChangeType.Update:
+                        if (isEip158 && change.Account.IsEmpty && !isGenesis)
+                            SetState(change.Address, null);
+                        else
+                            SetState(change.Address, change.Account);
+                        break;
+                    case ChangeType.New:
+                        if (!isEip158 || !change.Account.IsEmpty || isGenesis)
+                            SetState(change.Address, change.Account);
+                        break;
+                    case ChangeType.RecreateEmpty:
+                        SetState(change.Address, change.Account);
+                        break;
+                    case ChangeType.Delete:
+                        bool wasCreatedNow = false;
+                        for (int i = stack.Length - 2; i >= 0; i--)
+                        {
+                            if (changes[stack[i]].ChangeType == ChangeType.New)
+                            {
+                                wasCreatedNow = true;
+                                break;
+                            }
+                        }
+                        if (!wasCreatedNow)
+                            SetState(change.Address, null);
+                        break;
+                }
+            }
+
+            _changes.Clear();
+            _intraTxCache.ResetAndClear();
+            _readCache.Clear();
+        }
+
+        /// <summary>
+        /// Full commit path with state tracing support. Uses backward iteration through
+        /// <see cref="_changes"/> to provide Before/After state change tracking for tracers.
+        /// </summary>
+        private void CommitWithTracing(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis)
+        {
+            bool isTracing = _logger.IsTrace;
+            int stepsBack = _changes.Count - 1;
+
+            if (isTracing) TraceCommit(stepsBack);
+            if (_changes[stepsBack].IsNull)
+            {
+                ThrowStartOfCommitIsNull(stepsBack);
+            }
+
+            Dictionary<AddressAsKey, ChangeTrace> trace = [];
+
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            for (int i = 0; i <= stepsBack; i++)
+            {
+                ref readonly Change change = ref changes[stepsBack - i];
+                if (change!.ChangeType == ChangeType.JustCache)
+                {
+                    if (_committedThisRound.Contains(change.Address))
+                    {
+                        trace.UpdateTrace(change.Address, change.Account);
+                    }
+                    else
+                    {
+                        _nullAccountReads.Add(change.Address);
+                    }
+                    continue;
+                }
+
+                if (_committedThisRound.Contains(change.Address))
+                {
+                    continue;
+                }
+
+                StackList<int> stack = _intraTxCache[change.Address];
+                int forAssertion = stack.Pop();
+                if (forAssertion != stepsBack - i)
+                {
+                    ThrowUnexpectedPosition(stepsBack, i, forAssertion);
+                }
+
+                _committedThisRound.Add(change.Address);
+
+                switch (change.ChangeType)
+                {
+                    case ChangeType.JustCache:
+                        break;
+                    case ChangeType.Touch:
+                    case ChangeType.Update:
+                        {
+                            if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                            {
+                                if (isTracing) TraceRemoveEmpty(change);
+                                SetState(change.Address, null);
+                                trace.AddToTrace(change.Address, null);
+                            }
+                            else
+                            {
+                                if (isTracing) TraceUpdate(change);
+                                SetState(change.Address, change.Account);
+                                trace.AddToTrace(change.Address, change.Account);
+                            }
+
+                            break;
+                        }
+                    case ChangeType.New:
+                        {
+                            if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                            {
+                                if (isTracing) TraceCreate(change);
+                                SetState(change.Address, change.Account);
+                                trace.AddToTrace(change.Address, change.Account);
+                            }
+
+                            break;
+                        }
+                    case ChangeType.RecreateEmpty:
+                        {
+                            if (isTracing) TraceCreate(change);
+                            SetState(change.Address, change.Account);
+                            trace.AddToTrace(change.Address, change.Account);
+
+                            break;
+                        }
+                    case ChangeType.Delete:
+                        {
+                            if (isTracing) TraceRemove(change);
+                            bool wasItCreatedNow = false;
+                            while (stack.Count > 0)
+                            {
+                                int previousOne = stack.Pop();
+                                wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
+                                if (wasItCreatedNow)
+                                {
+                                    break;
+                                }
+                            }
+
+                            if (!wasItCreatedNow)
+                            {
+                                SetState(change.Address, null);
+                                trace.AddToTrace(change.Address, null);
+                            }
+
+                            break;
+                        }
+                    default:
+                        ThrowUnknownChangeType();
+                        break;
+                }
+            }
+
+            // Reconcile _readCache entries with the trace:
+            foreach (KeyValuePair<AddressAsKey, Account?> kvp in _readCache)
+            {
+                if (trace.TryGetValue(kvp.Key, out ChangeTrace existingTrace))
+                {
+                    trace[kvp.Key] = new ChangeTrace(kvp.Value, existingTrace.After);
+                }
+                else
+                {
+                    _nullAccountReads.Add(kvp.Key);
+                }
+            }
+
+            trace.ReportStateTrace(stateTracer, _nullAccountReads, this);
+
+            _changes.Clear();
+            _committedThisRound.Clear();
+            _nullAccountReads.Clear();
+            _intraTxCache.ResetAndClear();
+            _readCache.Clear();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceNoChanges() => _logger.Trace("No state changes to commit");
+            void TraceCommit(int currentPosition) => _logger.Trace($"Committing state changes (at {currentPosition})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceRemove(in Change change) => _logger.Trace($"Commit remove {change.Address}");
@@ -766,24 +829,6 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
         }
 
-        private Account? GetAndAddToCache(Address address)
-        {
-            if (_nullAccountReads.Contains(address)) return null;
-
-            Account? account = GetState(address);
-            if (account is not null)
-            {
-                PushJustCache(address, account);
-            }
-            else
-            {
-                // just for tracing - potential perf hit, maybe a better solution?
-                _nullAccountReads.Add(address);
-            }
-
-            return account;
-        }
-
         private Account? GetThroughCache(Address address)
         {
             if (_intraTxCache.TryGetValue(address, out StackList<int> value))
@@ -802,9 +847,6 @@ namespace Nethermind.State
             _readCache[key] = account;
             return account;
         }
-
-        private void PushJustCache(Address address, Account account)
-            => Push(address, account, ChangeType.JustCache);
 
         private void PushUpdate(Address address, Account account)
             => Push(address, account, ChangeType.Update);

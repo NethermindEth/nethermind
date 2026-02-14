@@ -153,6 +153,59 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
+        bool isTracing = tracer.IsTracingStorage;
+        if (isTracing)
+        {
+            CommitCoreWithTracing(tracer);
+        }
+        else
+        {
+            CommitCoreFast();
+        }
+    }
+
+    /// <summary>
+    /// Fast storage commit for the common non-tracing case. Iterates <see cref="PartialStorageProviderBase._intraBlockCache"/>
+    /// directly (O(unique_cells)) instead of backward through _changes, eliminating _committedThisRound dedup.
+    /// </summary>
+    private void CommitCoreFast()
+    {
+        HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+
+        foreach (KeyValuePair<StorageCell, StackList<int>> kvp in _intraBlockCache)
+        {
+            ReadOnlySpan<int> stack = CollectionsMarshal.AsSpan(kvp.Value);
+            ref readonly Change change = ref changes[stack[^1]];
+
+            if (change.ChangeType == ChangeType.Update)
+            {
+                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                    initialValue.AsSpan().SequenceEqual(change.Value))
+                {
+                    // no need to update the tree if the value is the same as original
+                }
+                else
+                {
+                    toUpdateRoots.Add(change.StorageCell.Address);
+                    GetOrCreateStorage(change.StorageCell.Address)
+                        .SaveChange(change.StorageCell, change.Value);
+                }
+            }
+        }
+
+        ProcessUpdateRoots(toUpdateRoots);
+
+        base.CommitCore(NullStateTracer.Instance);
+        _originalValues.Clear();
+        _storageReadCache.Clear();
+    }
+
+    /// <summary>
+    /// Full storage commit with tracing support. Uses backward iteration for Before/After tracking.
+    /// </summary>
+    private void CommitCoreWithTracing(IStorageTracer tracer)
+    {
         int currentPosition = _changes.Count - 1;
         if (currentPosition >= 0 && _changes[currentPosition].IsNull)
         {
@@ -160,35 +213,27 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
-
-        bool isTracing = tracer.IsTracingStorage;
-        Dictionary<StorageCell, StorageChangeTrace>? trace = null;
-        if (isTracing)
-        {
-            trace = [];
-        }
+        Dictionary<StorageCell, StorageChangeTrace> trace = [];
 
         for (int i = 0; i <= currentPosition; i++)
         {
             Change change = _changes[currentPosition - i];
-            if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+            if (change!.ChangeType == ChangeType.JustCache)
             {
-                continue;
-            }
-
-            if (_committedThisRound.Contains(change!.StorageCell))
-            {
-                if (isTracing && change.ChangeType == ChangeType.JustCache)
+                if (_committedThisRound.Contains(change.StorageCell))
                 {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value, trace[change.StorageCell].After);
+                    trace[change.StorageCell] = new StorageChangeTrace(change.Value, trace[change.StorageCell].After);
                 }
-
+                else
+                {
+                    tracer.ReportStorageRead(change.StorageCell);
+                }
                 continue;
             }
 
-            if (isTracing && change.ChangeType == ChangeType.JustCache)
+            if (_committedThisRound.Contains(change.StorageCell))
             {
-                tracer!.ReportStorageRead(change.StorageCell);
+                continue;
             }
 
             _committedThisRound.Add(change.StorageCell);
@@ -213,18 +258,39 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 else
                 {
                     toUpdateRoots.Add(change.StorageCell.Address);
-
                     GetOrCreateStorage(change.StorageCell.Address)
                         .SaveChange(change.StorageCell, change.Value);
                 }
 
-                if (isTracing)
-                {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
-                }
+                trace[change.StorageCell] = new StorageChangeTrace(change.Value);
             }
         }
 
+        ProcessUpdateRoots(toUpdateRoots);
+
+        // Report storage reads from read cache for tracing
+        foreach (KeyValuePair<StorageCell, byte[]> kvp in _storageReadCache)
+        {
+            if (!_committedThisRound.Contains(kvp.Key))
+            {
+                tracer.ReportStorageRead(kvp.Key);
+            }
+            else if (trace.TryGetValue(kvp.Key, out StorageChangeTrace existingTrace))
+            {
+                trace[kvp.Key] = new StorageChangeTrace(kvp.Value, existingTrace.After);
+            }
+        }
+
+        base.CommitCore(tracer);
+        _originalValues.Clear();
+        _committedThisRound.Clear();
+        _storageReadCache.Clear();
+
+        ReportChanges(tracer, trace);
+    }
+
+    private void ProcessUpdateRoots(HashSet<AddressAsKey> toUpdateRoots)
+    {
         foreach (AddressAsKey address in toUpdateRoots)
         {
             // since the accounts could be empty accounts that are removing (EIP-158)
@@ -246,32 +312,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
         toUpdateRoots.Clear();
-
-        // Report storage reads from read cache for tracing (read-cache entries bypass the journal)
-        if (isTracing)
-        {
-            foreach (KeyValuePair<StorageCell, byte[]> kvp in _storageReadCache)
-            {
-                if (!_committedThisRound.Contains(kvp.Key))
-                {
-                    tracer!.ReportStorageRead(kvp.Key);
-                }
-                else if (trace!.TryGetValue(kvp.Key, out StorageChangeTrace existingTrace))
-                {
-                    trace[kvp.Key] = new StorageChangeTrace(kvp.Value, existingTrace.After);
-                }
-            }
-        }
-
-        base.CommitCore(tracer);
-        _originalValues.Clear();
-        _committedThisRound.Clear();
-        _storageReadCache.Clear();
-
-        if (isTracing)
-        {
-            ReportChanges(tracer!, trace!);
-        }
     }
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
@@ -390,14 +430,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
-    }
-
-    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
-    {
-        StackList<int> stack = SetupRegistry(cell);
-        _originalValues[cell] = value;
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(in cell, value, ChangeType.JustCache));
     }
 
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
