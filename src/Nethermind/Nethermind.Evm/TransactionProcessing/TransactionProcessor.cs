@@ -580,7 +580,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            // Skip gas reservation write in warmup — only reads matter for cache warming
+            if (!senderReservedGasPayment.IsZero && !opts.HasFlag(ExecutionOptions.Warmup))
+                WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
         }
@@ -596,7 +598,10 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
-            WorldState.SetNonce(tx.SenderAddress, newNonce);
+            // Skip nonce write in warmup — only the read matters for cache warming.
+            // Exception: contract creation needs correct nonce for address derivation.
+            if (!opts.HasFlag(ExecutionOptions.Warmup) || tx.IsContractCreation)
+                WorldState.SetNonce(tx.SenderAddress, newNonce);
 
             return TransactionResult.Ok;
         }
@@ -872,7 +877,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+            // Skip value transfer write in warmup — preserving sender balance lets more
+            // code paths execute (fewer reverts), warming more storage slots.
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
