@@ -123,7 +123,9 @@ public class LogIndexStorageCompactorTests
         storage.MaxBlockNumber.Returns(storage.MaxBlockNumber + compactionDistance / 2);
         Assert.That(compactor.TryEnqueue(), Is.False);
 
-        storage.MaxBlockNumber.Returns(storage.MaxBlockNumber + compactionDistance);
+        await Task.Delay(100);
+
+        storage.MaxBlockNumber.Returns(storage.MaxBlockNumber + compactionDistance / 2);
         Assert.That(compactor.TryEnqueue(), Is.True);
 
         await compactor.StopAsync();
