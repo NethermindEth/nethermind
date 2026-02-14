@@ -111,8 +111,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void ResetTransient() => innerState.ResetTransient();
 
-    public void PrepareNextTransaction() => innerState.PrepareNextTransaction();
-
     public Account? GetAccountDirect(Address address) => innerState.GetAccountDirect(address);
 
     public void ApplyPlainTransferDirect(

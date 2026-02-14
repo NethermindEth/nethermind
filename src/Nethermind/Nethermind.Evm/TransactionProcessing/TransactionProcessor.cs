@@ -295,19 +295,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
-                // Full per-tx commit is only needed for tracing or pre-Byzantium (commitRoots).
-                // In the normal path, defer the expensive journal walk to the block-level commit.
-                // PrepareNextTransaction clears read-only caches and transient storage, and marks
-                // a transaction boundary snapshot for EIP-2200 — all at ~1000x less cost than
-                // full Commit which iterates all journal entries per transaction.
-                if (tracer.IsTracingState || !spec.IsEip658Enabled)
-                {
-                    WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
-                }
-                else
-                {
-                    WorldState.PrepareNextTransaction();
-                }
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
             }
             else
             {
