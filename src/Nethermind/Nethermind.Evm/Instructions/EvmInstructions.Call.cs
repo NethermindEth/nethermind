@@ -477,12 +477,15 @@ internal static partial class EvmInstructions
             byte[] returnBytes = outputData ?? Array.Empty<byte>();
             vm.ReturnDataBuffer = returnBytes;
 
-            if (!outputLength.IsZero)
+            // Match the normal CALL return path: slice output to min(actual, requested)
+            // and re-check memory cost before writing (mirrors ExecuteCall line 1151).
+            int actualOutLen = Math.Min(returnBytes.Length, (int)outputLength.u0);
+            if (actualOutLen > 0)
             {
-                int outLen = (int)outputLength.u0;
                 ReadOnlySpan<byte> src = returnBytes;
-                ZeroPaddedSpan outputSpan = src.SliceWithZeroPadding(0, outLen);
-                if (!vm.VmState.Memory.TrySave(in outputOffset, outputSpan))
+                ZeroPaddedSpan outputSpan = src.SliceWithZeroPadding(0, actualOutLen);
+                if (!TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, (ulong)actualOutLen, vm.VmState) ||
+                    !vm.VmState.Memory.TrySave(in outputOffset, outputSpan))
                     return EvmExceptionType.OutOfGas;
             }
 
