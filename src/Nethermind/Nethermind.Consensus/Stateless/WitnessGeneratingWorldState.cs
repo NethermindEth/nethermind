@@ -48,11 +48,11 @@ public class WitnessGeneratingWorldState(WorldState inner, IStateReader stateRea
         //
         // Notes:
         // - We wouldn't need to capture those trie nodes for nethermind stateless execution, but we need to
-        // if we want to be compatible with geth for example so that our witness can be used for other clients'
-        // stateless execution.
+        // if we want to be compatible with other clients (such as geth for example) so that our witness
+        // can be used for their stateless execution.
         // - Trie nodes capture using this additional tree visitor pattern should not add unnecessary trie nodes
-        // as anyway all keys recorded in this file should either be read or written to. In both cases, we want trie
-        // traversal and trie nodes capture along the path to be compatible with other clients such as geth.
+        // as anyway all keys recorded in this file should either be read or written to. In both cases, we want
+        // trie traversal with trie nodes capture along the path to be compatible with other clients.
         //
         HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
         stateNodes.UnionWith(trieStore.TouchedNodesRlp);
