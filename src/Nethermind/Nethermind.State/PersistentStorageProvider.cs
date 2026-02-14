@@ -43,10 +43,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
 
-    // Read-only cache: storage values loaded from the tree but not modified in the current tx.
-    // Avoids creating JustCache journal entries for pure reads, reducing Commit iteration cost.
-    private readonly Dictionary<StorageCell, byte[]> _storageReadCache = new();
-
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
@@ -66,7 +62,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         base.Reset();
         _originalValues.Clear();
         _committedThisRound.Clear();
-        _storageReadCache.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -84,16 +79,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
-    {
-        if (TryGetCachedValue(storageCell, out byte[]? bytes))
-            return bytes!;
-
-        if (_storageReadCache.TryGetValue(storageCell, out byte[]? cached))
-            return cached;
-
-        return LoadFromTree(storageCell);
-    }
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -135,26 +122,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// Used for persistent storage specific logic
     /// </summary>
     /// <param name="tracer">Storage tracer</param>
-    // Override Commit to also call CommitCore when storage read-cache has entries for tracing
-    public new void Commit(IStorageTracer tracer)
-    {
-        if (_changes.Count == 0 && (!tracer.IsTracingStorage || _storageReadCache.Count == 0))
-        {
-            if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
-            _storageReadCache.Clear();
-        }
-        else
-        {
-            CommitCore(tracer);
-        }
-    }
-
     protected override void CommitCore(IStorageTracer tracer)
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
         int currentPosition = _changes.Count - 1;
-        if (currentPosition >= 0 && _changes[currentPosition].IsNull)
+        if (currentPosition < 0)
+        {
+            return;
+        }
+        if (_changes[currentPosition].IsNull)
         {
             throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
         }
@@ -247,26 +224,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
         toUpdateRoots.Clear();
 
-        // Report storage reads from read cache for tracing (read-cache entries bypass the journal)
-        if (isTracing)
-        {
-            foreach (KeyValuePair<StorageCell, byte[]> kvp in _storageReadCache)
-            {
-                if (!_committedThisRound.Contains(kvp.Key))
-                {
-                    tracer!.ReportStorageRead(kvp.Key);
-                }
-                else if (trace!.TryGetValue(kvp.Key, out StorageChangeTrace existingTrace))
-                {
-                    trace[kvp.Key] = new StorageChangeTrace(kvp.Value, existingTrace.After);
-                }
-            }
-        }
-
         base.CommitCore(tracer);
         _originalValues.Clear();
         _committedThisRound.Clear();
-        _storageReadCache.Clear();
 
         if (isTracing)
         {
@@ -421,19 +381,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     public override void ClearStorage(Address address)
     {
         base.ClearStorage(address);
-
-        // Cells in _storageReadCache bypassed the journal, so base.ClearStorage (which
-        // iterates _intraBlockCache) didn't set them to zero. Write explicit Update entries
-        // for cells belonging to this address so CommitCore flushes zeros to BlockChange.
-        // ClearStorage is rare (selfdestruct only).
-        foreach (KeyValuePair<StorageCell, byte[]> kvp in _storageReadCache)
-        {
-            if (kvp.Key.Address == address)
-            {
-                Set(kvp.Key, StorageTree.ZeroBytes);
-            }
-        }
-        _storageReadCache.Clear();
 
         _toUpdateRoots.TryAdd(address, true);
 
@@ -607,13 +554,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash)
-            {
-                // Populate _originalValues for EIP-2200 net gas metering and _storageReadCache
-                // to avoid creating JustCache journal entries that add commit overhead.
-                _provider._originalValues[storageCell] = valueChange.After;
-                _provider._storageReadCache[storageCell] = valueChange.After;
-            }
+            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
         }
 

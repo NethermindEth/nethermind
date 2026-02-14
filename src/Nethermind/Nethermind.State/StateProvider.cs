@@ -33,9 +33,6 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
-        // Read-only cache: accounts looked up from _blockChanges but not modified in the current tx.
-        // Avoids creating JustCache journal entries for pure reads, reducing Commit iteration cost.
-        private readonly Dictionary<AddressAsKey, Account?> _readCache = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -93,23 +90,10 @@ namespace Nethermind.State
             return account is not null && account.IsContract;
         }
 
-        public bool AccountExists(Address address)
-        {
-            if (_intraTxCache.TryGetValue(address, out StackList<int> value))
-            {
-                return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
-            }
-
-            AddressAsKey key = address;
-            if (_readCache.TryGetValue(key, out Account? cached))
-            {
-                return cached is not null;
-            }
-
-            Account? account = GetState(address);
-            _readCache[key] = account;
-            return account is not null;
-        }
+        public bool AccountExists(Address address) =>
+            _intraTxCache.TryGetValue(address, out StackList<int> value)
+                ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
+                : GetAndAddToCache(address) is not null;
 
         public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
@@ -619,31 +603,12 @@ namespace Nethermind.State
                 }
             }
 
-            // When tracing, reconcile _readCache entries with the trace:
-            // - Accounts both read-cached and modified: set the Before value from read cache
-            // - Accounts only read-cached: report as read-only via _nullAccountReads
-            if (trace is not null)
-            {
-                foreach (KeyValuePair<AddressAsKey, Account?> kvp in _readCache)
-                {
-                    if (trace.TryGetValue(kvp.Key, out ChangeTrace existingTrace))
-                    {
-                        trace[kvp.Key] = new ChangeTrace(kvp.Value, existingTrace.After);
-                    }
-                    else
-                    {
-                        _nullAccountReads.Add(kvp.Key);
-                    }
-                }
-            }
-
             trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
             _changes.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _intraTxCache.ResetAndClear();
-            _readCache.Clear();
 
             codeFlushTask.GetAwaiter().GetResult();
 
@@ -791,15 +756,7 @@ namespace Nethermind.State
                 return _changes[value.Peek()].Account;
             }
 
-            // Check read-only cache before falling through to journal
-            AddressAsKey key = address;
-            if (_readCache.TryGetValue(key, out Account? cached))
-            {
-                return cached;
-            }
-
-            Account? account = GetState(address);
-            _readCache[key] = account;
+            Account account = GetAndAddToCache(address);
             return account;
         }
 
@@ -822,7 +779,6 @@ namespace Nethermind.State
         {
             StackList<int> stack = SetupCache(address);
             if (changeType == ChangeType.Touch
-                && stack.Count > 0
                 && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
             {
                 return;
@@ -886,7 +842,6 @@ namespace Nethermind.State
             _intraTxCache.ResetAndClear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
-            _readCache.Clear();
             _changes.Clear();
             _needsStateRootUpdate = false;
 
