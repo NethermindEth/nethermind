@@ -472,7 +472,7 @@ public partial class EthRpcModuleTests
         // Arrange: Create a mock state reader that throws MissingTrieNodeException
         // when accessed, simulating pruned state
         IStateReader stateReader = Substitute.For<IStateReader>();
-        
+
         stateReader.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>())
             .Returns(x =>
             {
@@ -502,12 +502,12 @@ public partial class EthRpcModuleTests
                 test.ForkInfo,
                 12))  // Use default seconds per slot
             .Build();
-        
+
         string serialized = await testBlockchain.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "latest");
 
         // Assert: Should return error code -32002 (ResourceUnavailable) instead of crashing
         Assert.That(serialized, Does.Contain("\"code\":-32002"));
-        
+
         testBlockchain.Dispose();
     }
 

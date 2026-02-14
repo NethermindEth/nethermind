@@ -405,9 +405,36 @@ namespace Nethermind.Facade
             stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
-        public bool HasStateForBlock(BlockHeader baseBlock)
+        public bool HasStateForBlock(BlockHeader? baseBlock)
         {
-            return stateReader.HasStateForBlock(baseBlock);
+            // If no block header provided, check against empty tree hash
+            if (baseBlock is null)
+            {
+                return stateReader.HasStateForBlock(null);
+            }
+
+            // First, check if the trie root exists
+            if (!stateReader.HasStateForBlock(baseBlock))
+            {
+                return false;
+            }
+
+            // Check if block might have partially pruned state
+            // BestPersistedState tracks the last block number whose full state was persisted
+            // During pruning, blocks older than this may have missing child nodes even if root exists
+            long? bestPersistedState = blockTree.BestPersistedState;
+            if (bestPersistedState.HasValue)
+            {
+                // Use 64 as safety margin (default pruning boundary from Reorganization.MaxDepth)
+                // This ensures we don't return true for blocks that might have partially pruned state
+                const long safetyMargin = 64;
+                if (baseBlock.Number < bestPersistedState.Value - safetyMargin)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)

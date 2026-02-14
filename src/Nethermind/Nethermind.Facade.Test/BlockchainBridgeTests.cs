@@ -26,6 +26,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -37,6 +38,7 @@ public class BlockchainBridgeTests
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
     private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
     private IContainer _container;
 
     [SetUp]
@@ -46,6 +48,10 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateReader = Substitute.For<IStateReader>();
+        
+        // By default, HasStateForBlock returns true (trie root exists)
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -55,6 +61,7 @@ public class BlockchainBridgeTests
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
             .Build();
 
         _specProvider = _container.Resolve<ISpecProvider>();
@@ -679,5 +686,55 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_block_older_than_BestPersistedState()
+    {
+        // Real scenario: trie root node exists but child nodes have been pruned.
+        // HasStateForBlock should detect this using BestPersistedState and return false,
+        // preventing MissingTrieNodeException in RPC methods like eth_getBalance.
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        // BestPersistedState at block 300, safety margin is Reorganization.MaxDepth (64)
+        // Block 100 < 300 - 64 = 236 → state may be partially pruned
+        _blockTree.BestPersistedState.Returns(300L);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_block_within_BestPersistedState_range()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(280).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        // BestPersistedState is 300, block 280 >= 300 - 64 = 236 → within safe range
+        _blockTree.BestPersistedState.Returns(300L);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_BestPersistedState_is_null()
+    {
+        // Archive node or not yet set — fall back to existing HasRoot check
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _blockTree.BestPersistedState.Returns((long?)null);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_root_does_not_exist()
+    {
+        // Root node doesn't exist in trie store — should fail immediately regardless of BestPersistedState
+        BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
+        
+        // Override the default mock to return false for this specific test
+        _stateReader.HasStateForBlock(header).Returns(false);
+        _blockTree.BestPersistedState.Returns(300L);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
     }
 }
