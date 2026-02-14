@@ -21,19 +21,19 @@ namespace Nethermind.Core.Collections;
 ///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
 ///
 /// Hash bit partitioning (64-bit hash):
-///   Bits  0-15: way 0 set index (16 bits)
-///   Bits 16-39: hash signature stored in header (24 bits)
-///   Bits 42-57: way 1 set index (16 bits, independent from way 0)
+///   Bits  0-13: way 0 set index (14 bits)
+///   Bits 14-41: hash signature stored in header (28 bits)
+///   Bits 42-55: way 1 set index (14 bits, independent from way 0)
 ///
 /// Header layout (64-bit):
-/// [Lock:1][Epoch:26][Hash:24][Seq:8][Occ:1]
+/// [Lock:1][Epoch:26][Hash:28][Seq:8][Occ:1]
 /// - Lock (bit 63): set during writes - readers retry/miss
 /// - Epoch (bits 37-62): global epoch tag - changes on Clear()
-/// - Hash  (bits  9-32): per-bucket hash signature (24 bits)
+/// - Hash  (bits  9-36): per-bucket hash signature (28 bits)
 /// - Seq   (bits  1- 8): per-entry sequence counter (8 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
-/// Array layout: [way0_set0..way0_set65535, way1_set0..way1_set65535] (split, not interleaved).
+/// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
 /// </summary>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
@@ -43,20 +43,20 @@ public sealed class SeqlockCache<TKey, TValue>
 {
     /// <summary>
     /// Number of sets. Must be a power of 2 for mask operations.
-    /// 65536 sets × 2 ways = 131072 total entries.
+    /// 16384 sets × 2 ways = 32768 total entries.
     /// </summary>
-    private const int Sets = 1 << 16; // 65536
+    private const int Sets = 1 << 14; // 16384
     private const int SetMask = Sets - 1;
 
     // Header bit layout:
-    // [Lock:1][Epoch:26][Hash:24][Seq:8][Occ:1]
+    // [Lock:1][Epoch:26][Hash:28][Seq:8][Occ:1]
 
     private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
 
     private const int EpochShift = 37;
     private const long EpochMask = 0x7FFF_FFE0_0000_0000;                  // bits 37-62 (26 bits)
 
-    private const long HashMask = 0x0000_0001_FFFF_FE00;                   // bits 9-32 (24 bits)
+    private const long HashMask = 0x0000_0001_FFFF_FE00;                   // bits 9-36 (28 bits)
 
     private const long SeqMask = 0x0000_0000_0000_01FE;                    // bits 1-8 (8 bits)
     private const long SeqInc = 0x0000_0000_0000_0002;                    // +1 in seq field
@@ -69,11 +69,11 @@ public sealed class SeqlockCache<TKey, TValue>
     // Mask for checking if an entry is live in the current epoch.
     private const long EpochOccMask = EpochMask | OccupiedBit;
 
-    // With 16-bit set index (bits 0-15) for way 0, hash signature needs bits 16+.
-    // HashShift=7 maps header bits 9-32 to original bits 16-39, avoiding overlap with both ways.
-    private const int HashShift = 7;
+    // With 14-bit set index (bits 0-13) for way 0, hash signature needs bits 14+.
+    // HashShift=5 maps header bits 9-36 to original bits 14-41, avoiding overlap with both ways.
+    private const int HashShift = 5;
 
-    // Way 1 uses bits 42-57 of the original hash (completely independent from way 0's bits 0-15).
+    // Way 1 uses bits 42-55 of the original hash (completely independent from way 0's bits 0-13).
     private const int Way1Shift = 42;
 
     /// <summary>
