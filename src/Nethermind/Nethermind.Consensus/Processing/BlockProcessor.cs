@@ -118,6 +118,9 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
+        // Overlap receipt root computation with state root: the receipt trie is fully
+        // self-contained and only reads already-computed blooms, so it runs safely
+        // on the thread pool while we finish commits and state root hashing.
         IReceiptsRootCalculator rootCalc = _receiptsRootCalculator;
         Hash256? suggestedReceiptsRoot = block.ReceiptsRoot;
         Task<Hash256> receiptRootTask = Task.Run(() => rootCalc.GetReceiptsRoot(receipts, spec, suggestedReceiptsRoot));
