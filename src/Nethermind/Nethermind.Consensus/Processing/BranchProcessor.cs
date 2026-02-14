@@ -127,6 +127,12 @@ public class BranchProcessor(
                 }
                 else
                 {
+                    // Even though we skip prewarming we still need to ensure the caches are cleared
+                    CacheType result = preWarmer?.ClearCaches() ?? default;
+                    if (result != default)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
+                    }
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
@@ -165,7 +171,7 @@ public class BranchProcessor(
 
                 // Update PreBlockCaches with committed state/storage values for
                 // cross-block cache reuse before resetting state providers.
-                _stateProvider.UpdatePreBlockCaches();
+                _stateProvider.UpdatePreBlockCaches(processedBlock.Hash);
                 _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory

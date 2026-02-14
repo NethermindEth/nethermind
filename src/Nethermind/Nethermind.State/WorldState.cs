@@ -383,7 +383,7 @@ namespace Nethermind.State
             _transientStorageProvider.Reset();
         }
 
-        public void UpdatePreBlockCaches()
+        public void UpdatePreBlockCaches(Hash256? blockHash = null)
         {
             if (ScopeProvider is not IPreBlockCaches { Caches: { } preBlockCaches }) return;
 
@@ -398,6 +398,8 @@ namespace Nethermind.State
             {
                 preBlockCaches.UpdateStorageCache(storageChanges);
             }
+
+            preBlockCaches.LastCachedBlockHash = blockHash;
         }
     }
 }

@@ -56,9 +56,16 @@ public sealed class BlockCachePreWarmer(
     {
         if (preBlockCaches is not null)
         {
-            // Only clear precompile cache; state and storage caches are kept warm
-            // across blocks via WorldState.UpdatePreBlockCaches() after each commit.
-            preBlockCaches.ClearPrecompileOnly();
+            // Keep state/storage caches warm only when processing linearly (same chain).
+            // On fork switches the caches hold values from a different state root and must be fully cleared.
+            if (preBlockCaches.LastCachedBlockHash is not null && preBlockCaches.LastCachedBlockHash == parent?.Hash)
+            {
+                preBlockCaches.ClearPrecompileOnly();
+            }
+            else
+            {
+                preBlockCaches.ClearCaches();
+            }
             // NodeStorageCache stores content-addressed trie node RLP (keyed by hash).
             // This data is immutable, so we keep it across blocks for free warm hits.
             nodeStorageCache.Enabled = true;

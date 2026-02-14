@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
@@ -35,6 +36,13 @@ public class PreBlockCaches
         ];
     }
 
+    /// <summary>
+    /// Hash of the last block whose committed values were written to these caches.
+    /// Used to detect fork switches: if the next block's parent hash doesn't match,
+    /// the caches must be fully cleared to avoid serving stale state.
+    /// </summary>
+    public Hash256? LastCachedBlockHash { get; set; }
+
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
     public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
@@ -42,6 +50,7 @@ public class PreBlockCaches
 
     public CacheType ClearCaches()
     {
+        LastCachedBlockHash = null;
         CacheType isDirty = CacheType.None;
         foreach (Func<CacheType> clearCache in _clearCaches)
         {

@@ -109,7 +109,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
 
-    public void UpdatePreBlockCaches() => innerState.UpdatePreBlockCaches();
+    public void UpdatePreBlockCaches(Hash256? blockHash = null) => innerState.UpdatePreBlockCaches(blockHash);
 
     public void ResetTransient() => innerState.ResetTransient();
 
