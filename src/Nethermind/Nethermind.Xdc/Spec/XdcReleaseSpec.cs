@@ -45,6 +45,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -126,5 +127,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
     public bool IsTIPXDCXMiner { get; set; }
+    public bool IsDynamicGasLimitBlock { get; set; }
     public void ApplyV2Config(ulong round);
 }
