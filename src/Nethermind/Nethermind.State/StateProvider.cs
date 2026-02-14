@@ -766,24 +766,6 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
         }
 
-        private Account? GetAndAddToCache(Address address)
-        {
-            if (_nullAccountReads.Contains(address)) return null;
-
-            Account? account = GetState(address);
-            if (account is not null)
-            {
-                PushJustCache(address, account);
-            }
-            else
-            {
-                // just for tracing - potential perf hit, maybe a better solution?
-                _nullAccountReads.Add(address);
-            }
-
-            return account;
-        }
-
         private Account? GetThroughCache(Address address)
         {
             if (_intraTxCache.TryGetValue(address, out StackList<int> value))
