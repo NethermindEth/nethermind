@@ -8,6 +8,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -20,6 +22,7 @@ namespace Nethermind.Xdc;
 
 internal class VotesManager(
     IXdcConsensusContext context,
+    ISyncPeerPool syncPeerPool,
     IBlockTree tree,
     IEpochSwitchManager epochSwitchManager,
     ISnapshotManager snapshotManager,
@@ -33,6 +36,7 @@ internal class VotesManager(
     private readonly ISnapshotManager _snapshotManager = snapshotManager;
     private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
     private readonly IXdcConsensusContext _ctx = context;
+    private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
     private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ISigner _signer = signer;
@@ -103,8 +107,10 @@ internal class VotesManager(
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
-        double CertificateThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
-        double requiredVotes = masternodeCount * CertificateThreshold;
+        BroadcastVote(vote);
+
+        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
+        double requiredVotes = masternodeCount * certThreshold;
         bool thresholdReached = roundVotes.Count >= requiredVotes;
         if (thresholdReached)
         {
@@ -192,6 +198,15 @@ internal class VotesManager(
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
         return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
+    }
+
+    private void BroadcastVote(Vote vote)
+    {
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
+        {
+            if (peer.SyncPeer is Xdpos2ProtocolHandler xdpos2Protocol)
+                xdpos2Protocol.SendVote(vote);
+        }
     }
 
     private void OnVotePoolThresholdReached(Signature[] validSignatures, Vote currVote)
