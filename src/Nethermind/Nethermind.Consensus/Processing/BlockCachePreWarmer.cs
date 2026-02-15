@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -229,23 +230,22 @@ public sealed class BlockCachePreWarmer(
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            using ArrayPoolList<ArrayPoolList<int>> groupedTransactionIndices = GroupTransactionIndicesBySender(block.Transactions);
 
             try
             {
-                // Convert to array for parallel iteration
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+                Transaction[] transactions = block.Transactions;
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
                     0,
-                    groupArray.Count,
+                    groupedTransactionIndices.Count,
                     parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
+                    (blockState, groupedTransactionIndices, transactions, parallelOptions.CancellationToken),
                     static (groupIndex, tupleState) =>
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
+                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<int>> groups, Transaction[] transactions, CancellationToken token) = tupleState;
+                        ArrayPoolList<int> txIndices = groups[groupIndex];
 
                         // Get thread-local processing state for this sender's transactions
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
@@ -256,10 +256,10 @@ public sealed class BlockCachePreWarmer(
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
                             // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
+                            foreach (int txIndex in txIndices.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, transactions[txIndex], txIndex, blockState);
                             }
                         }
                         finally
@@ -272,8 +272,10 @@ public sealed class BlockCachePreWarmer(
             }
             finally
             {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
+                foreach (ArrayPoolList<int> txIndices in groupedTransactionIndices.AsSpan())
+                {
+                    txIndices.Dispose();
+                }
             }
         }
         catch (OperationCanceledException)
@@ -286,21 +288,23 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    private static ArrayPoolList<ArrayPoolList<int>> GroupTransactionIndicesBySender(Transaction[] transactions)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new(block.Transactions.Length);
+        Dictionary<AddressAsKey, int> groupIndexes = new(transactions.Length);
+        ArrayPoolList<ArrayPoolList<int>> groups = new(transactions.Length);
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        for (int i = 0; i < transactions.Length; i++)
         {
-            Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            Address sender = transactions[i].SenderAddress!;
 
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
+            ref int groupIndex = ref CollectionsMarshal.GetValueRefOrAddDefault(groupIndexes, sender, out bool exists);
+            if (!exists)
             {
-                list = new(4);
-                groups[sender] = list;
+                groupIndex = groups.Count;
+                groups.Add(new ArrayPoolList<int>(4));
             }
-            list.Add((i, tx));
+
+            groups[groupIndex].Add(i);
         }
 
         return groups;
