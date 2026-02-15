@@ -229,6 +229,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
+            _persistentStorageProvider.ClearStorageMap();
         }
 
         public UInt256 GetNonce(Address address)
@@ -330,27 +331,6 @@ namespace Nethermind.State
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
-            }
-        }
-
-        /// <summary>
-        /// Apply committed block deltas to the cross-block PreBlockCaches.
-        /// Must be called after the prewarmer has fully stopped to avoid race conditions
-        /// where the prewarmer's GetOrAdd could evict freshly-written entries.
-        ///
-        /// Replays committed writes into warm caches.
-        /// State cache is epoch-cleared for correctness, while storage cache is retained
-        /// across blocks and updated incrementally from committed deltas.
-        /// </summary>
-        public void ApplyBlockDeltasToWarmCache()
-        {
-            if (ScopeProvider is IPreBlockCaches { IsWarmWorldState: true } preBlockCaches)
-            {
-                PreBlockCaches caches = preBlockCaches.Caches;
-
-                caches.StateCache.Clear();
-                _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
-                _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);
             }
         }
 

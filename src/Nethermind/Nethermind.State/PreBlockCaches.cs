@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -17,42 +17,37 @@ public class PreBlockCaches
     private const int InitialCapacity = 4096 * 8;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
+    private readonly Func<CacheType>[] _clearCaches;
+
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
-    /// <summary>
-    /// Hash of the last successfully processed block whose deltas were applied to the cache.
-    /// Used for fork detection: if the next block's parent hash doesn't match, the cache is stale.
-    /// </summary>
-    public Hash256? LastProcessedBlockHash { get; set; }
+    public PreBlockCaches()
+    {
+        _clearCaches =
+        [
+            () => { _storageCache.Clear(); return CacheType.None; },
+            () => { _stateCache.Clear(); return CacheType.None; },
+            () => { _precompileCache.NoResizeClear(); return CacheType.None; }
+        ];
+    }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
+    public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
-    /// <summary>
-    /// Clears only per-block caches (precompile). State and storage caches are kept warm
-    /// across blocks — deltas are applied by ApplyBlockDeltasToWarmCache after the prewarmer
-    /// has fully stopped, so no epoch clear is needed here.
-    /// </summary>
     public CacheType ClearCaches()
     {
-        _precompileCache.NoResizeClear();
-        return CacheType.None;
-    }
+        CacheType isDirty = CacheType.None;
+        foreach (Func<CacheType> clearCache in _clearCaches)
+        {
+            isDirty |= clearCache();
+        }
 
-    /// <summary>
-    /// Clears all caches including warm state/storage caches.
-    /// Used on fork/reorg detection or error recovery.
-    /// </summary>
-    public CacheType ClearAllCaches()
-    {
-        _storageCache.Clear();
-        _stateCache.Clear();
-        _precompileCache.NoResizeClear();
-        LastProcessedBlockHash = null;
-        return CacheType.None;
+        return isDirty;
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>

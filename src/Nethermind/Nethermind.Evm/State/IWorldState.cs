@@ -140,11 +140,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
-    /// <summary>
-    /// Apply committed block deltas to the cross-block warm cache.
-    /// Must be called after the prewarmer has fully stopped to avoid race conditions.
-    /// </summary>
-    void ApplyBlockDeltasToWarmCache() { }
-
     void ResetTransient();
 }

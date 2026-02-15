@@ -30,8 +30,11 @@ public class BranchProcessor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
+    private const long MinPrewarmBlockGas = 1_000_000;
+    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -78,6 +81,7 @@ public class BranchProcessor(
         try
         {
             // Start prewarming as early as possible
+            WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
@@ -92,6 +96,7 @@ public class BranchProcessor(
 
             for (int i = 0; i < blocksCount; i++)
             {
+                WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
                 if (i > 0)
                 {
@@ -139,9 +144,7 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-
-                // Track successfully processed block for cross-block cache validity
-                preWarmer?.NotifyBlockProcessed(processedBlock.Header.Hash);
+                QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
                 {
@@ -168,10 +171,6 @@ public class BranchProcessor(
                 WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
-                // Apply cross-block cache deltas AFTER prewarmer stops to avoid race condition
-                // where prewarmer's GetOrAdd could evict freshly-written cache entries
-                _stateProvider.ApplyBlockDeltasToWarmCache();
-
                 _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
@@ -186,8 +185,7 @@ public class BranchProcessor(
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
-            // Invalidate cross-block cache on error to prevent stale reads
-            preWarmer?.NotifyBlockProcessed(null);
+            QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
             throw;
         }
@@ -204,13 +202,39 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        // Always call PreWarmCaches to ensure cross-block cache fork detection runs.
-        // PreWarmCaches handles no-work blocks efficiently (no background task when there is nothing to warm).
-        preWarmer?.PreWarmCaches(suggestedBlock,
-            preBlockBaseBlock,
-            spec,
-            token,
-            beaconBlockRootHandler);
+        EstimateBlockGas(suggestedBlock) < MinPrewarmBlockGas
+            ? null
+            : preWarmer?.PreWarmCaches(suggestedBlock,
+                preBlockBaseBlock,
+                spec,
+                token,
+                beaconBlockRootHandler);
+
+    private static long EstimateBlockGas(Block block)
+    {
+        long totalGas = 0;
+        Transaction[] txs = block.Transactions;
+        for (int i = 0; i < txs.Length; i++)
+        {
+            totalGas += txs[i].GasLimit;
+        }
+        return totalGas;
+    }
+
+    private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
+
+    private void QueueClearCaches(Task? preWarmTask)
+    {
+        if (preWarmTask is not null)
+        {
+            // Can start clearing caches in background
+            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+        }
+        else if (preWarmer is not null)
+        {
+            _clearTask = Task.Run(preWarmer.ClearCaches);
+        }
+    }
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {

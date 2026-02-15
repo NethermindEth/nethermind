@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -37,15 +35,7 @@ public class PrewarmerScopeProvider(
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
-    {
-        IWorldStateScopeProvider.IScope mainScope = baseProvider.BeginScope(baseBlock);
-        // Prewarmer path: create a second read-only scope that is never committed to.
-        // The prewarmer's speculative commits modify mainScope's backing tree, so factory
-        // reads must use a separate scope to always return pre-block values.
-        IWorldStateScopeProvider.IScope? readOnlyScope = populatePreBlockCache ? baseProvider.BeginScope(baseBlock) : null;
-        return new ScopeWrapper(mainScope, readOnlyScope, preBlockCaches, populatePreBlockCache);
-    }
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
@@ -53,7 +43,6 @@ public class PrewarmerScopeProvider(
     private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope;
-        private readonly IWorldStateScopeProvider.IScope? readOnlyScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache;
         private readonly bool populatePreBlockCache;
@@ -61,34 +50,18 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
-        private readonly HashSet<AddressAsKey>? _dirtyAddresses;
-        private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated>? _dirtyTracker;
 
-        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, IWorldStateScopeProvider.IScope? readOnlyScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
+        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
         {
             this.baseScope = baseScope;
-            this.readOnlyScope = readOnlyScope;
             preBlockCache = preBlockCaches.StateCache;
             storageCache = preBlockCaches.StorageCache;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _getFromBaseTree = GetFromBaseTree;
-            if (!populatePreBlockCache)
-            {
-                HashSet<AddressAsKey> dirtyAddresses = new();
-                _dirtyAddresses = dirtyAddresses;
-                _dirtyTracker = (_, updated) =>
-                {
-                    dirtyAddresses.Add(updated.Address);
-                };
-            }
         }
 
-        public void Dispose()
-        {
-            readOnlyScope?.Dispose();
-            baseScope.Dispose();
-        }
+        public void Dispose() => baseScope.Dispose();
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -96,35 +69,24 @@ public class PrewarmerScopeProvider(
         {
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
-                readOnlyScope,
                 storageCache,
                 address,
-                populatePreBlockCache,
-                _dirtyAddresses);
+                populatePreBlockCache);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            // Reset dirty tracking from previous blocks so only current block's
-            // committed addresses are considered dirty. Without this, the set grows
-            // unbounded and forces all previously-modified addresses to fall through
-            // to the trie instead of the warm cache.
-            _dirtyAddresses?.Clear();
-
-            IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
-
-            if (_dirtyTracker is not null)
-            {
-                batch.OnAccountUpdated += _dirtyTracker;
-            }
-
             if (!_measureMetric)
             {
-                return batch;
+                return baseScope.StartWriteBatch(estimatedAccountNum);
             }
 
             long sw = Stopwatch.GetTimestamp();
-            return new WriteBatchLifetimeMeasurer(batch, _metricObserver, sw, populatePreBlockCache);
+            return new WriteBatchLifetimeMeasurer(
+                baseScope.StartWriteBatch(estimatedAccountNum),
+                _metricObserver,
+                sw,
+                populatePreBlockCache);
         }
 
         public void Commit(long blockNumber)
@@ -177,22 +139,17 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                // Main processor: use cache for addresses not modified by any commit in this block.
-                // The prewarmer only writes pre-block values (via the read-only scope), which are
-                // still current for unmodified addresses. Dirty addresses must read from the trie.
-                if (_dirtyAddresses is not null && (_dirtyAddresses.Count == 0 || !_dirtyAddresses.Contains(addressAsKey)))
+                if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
                 {
-                    if (preBlockCache.TryGetValue(in addressAsKey, out Account? cached))
-                    {
-                        if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
-                        Metrics.IncrementStateTreeCacheHits();
-                        baseScope.HintGet(address, cached);
-                        return cached;
-                    }
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
+                    baseScope.HintGet(address, account);
+                    Metrics.IncrementStateTreeCacheHits();
                 }
-
-                Account? account = baseScope.Get(address);
-                if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
+                else
+                {
+                    account = GetFromBaseTree(in addressAsKey);
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
+                }
                 return account;
             }
         }
@@ -201,13 +158,6 @@ public class PrewarmerScopeProvider(
 
         private Account? GetFromBaseTree(in AddressAsKey address)
         {
-            // Prewarmer path: read from the read-only scope that is never modified
-            // by speculative commits, ensuring we always get pre-block values.
-            if (readOnlyScope is not null)
-            {
-                return readOnlyScope.Get(address);
-            }
-
             return baseScope.Get(address);
         }
     }
@@ -215,7 +165,6 @@ public class PrewarmerScopeProvider(
     private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
-        private readonly IWorldStateScopeProvider.IScope? readOnlyScope;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;
         private readonly Address address;
         private readonly bool populatePreBlockCache;
@@ -223,23 +172,17 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
-        private readonly HashSet<AddressAsKey>? _dirtyAddresses;
-        private IWorldStateScopeProvider.IStorageTree? _readOnlyStorageTree;
 
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
-            IWorldStateScopeProvider.IScope? readOnlyScope,
             SeqlockCache<StorageCell, byte[]> preBlockCache,
             Address address,
-            bool populatePreBlockCache,
-            HashSet<AddressAsKey>? dirtyAddresses)
+            bool populatePreBlockCache)
         {
             this.baseStorageTree = baseStorageTree;
-            this.readOnlyScope = readOnlyScope;
             this.preBlockCache = preBlockCache;
             this.address = address;
             this.populatePreBlockCache = populatePreBlockCache;
-            _dirtyAddresses = dirtyAddresses;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _loadFromTreeStorage = LoadFromTreeStorage;
         }
@@ -270,26 +213,17 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                // Main processor: use cache for storage of non-dirty addresses.
-                // The storage cache epoch is cleared at block start, so only entries
-                // from the current block's prewarmer are visible. Non-dirty addresses'
-                // storage hasn't been modified, so prewarmer values are correct.
-                if (_dirtyAddresses is not null && (_dirtyAddresses.Count == 0 || !_dirtyAddresses.Contains(address)))
+                if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
                 {
-                    if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached))
-                    {
-                        if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
-                        Db.Metrics.IncrementStorageTreeCache();
-                        baseStorageTree.HintGet(in index, cached);
-                        return cached!;
-                    }
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
+                    baseStorageTree.HintGet(in index, value);
+                    Db.Metrics.IncrementStorageTreeCache();
                 }
-
-                Db.Metrics.IncrementStorageTreeReads();
-                byte[] value = !storageCell.IsHash
-                    ? baseStorageTree.Get(in index)
-                    : baseStorageTree.Get(storageCell.Hash);
-                if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
+                else
+                {
+                    value = LoadFromTreeStorage(in storageCell);
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
+                }
                 return value;
             }
         }
@@ -298,18 +232,8 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
-            if (readOnlyScope is not null)
-            {
-                // Prewarmer path: read from the read-only scope's storage tree that is
-                // never modified by speculative commits. Lazily created per-address.
-                _readOnlyStorageTree ??= readOnlyScope.CreateStorageTree(address);
-                Db.Metrics.IncrementStorageTreeReads();
-                return !storageCell.IsHash
-                    ? _readOnlyStorageTree.Get(storageCell.Index)
-                    : _readOnlyStorageTree.Get(storageCell.Hash);
-            }
-
             Db.Metrics.IncrementStorageTreeReads();
+
             return !storageCell.IsHash
                 ? baseStorageTree.Get(storageCell.Index)
                 : baseStorageTree.Get(storageCell.Hash);

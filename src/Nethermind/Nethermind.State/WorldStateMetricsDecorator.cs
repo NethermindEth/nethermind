@@ -109,8 +109,6 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
 
-    public void ApplyBlockDeltasToWarmCache() => innerState.ApplyBlockDeltasToWarmCache();
-
     public void ResetTransient() => innerState.ResetTransient();
 
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
