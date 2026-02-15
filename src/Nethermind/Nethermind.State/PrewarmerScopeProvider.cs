@@ -92,17 +92,23 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
+
+            // Main processor path: keep SeqlockCache in sync with committed state.
+            // Without this, within-block reads after commits return stale pre-block values
+            // because _loadedAccounts is cleared on commit but the cache still has old entries.
+            if (!populatePreBlockCache)
+            {
+                batch = new CacheSyncWriteBatch(batch, preBlockCache, storageCache);
+            }
+
             if (!_measureMetric)
             {
-                return baseScope.StartWriteBatch(estimatedAccountNum);
+                return batch;
             }
 
             long sw = Stopwatch.GetTimestamp();
-            return new WriteBatchLifetimeMeasurer(
-                baseScope.StartWriteBatch(estimatedAccountNum),
-                _metricObserver,
-                sw,
-                populatePreBlockCache);
+            return new WriteBatchLifetimeMeasurer(batch, _metricObserver, sw, populatePreBlockCache);
         }
 
         public void Commit(long blockNumber)
@@ -279,6 +285,71 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in ValueHash256 hash) =>
             // Not a critical path. so we just forward for simplicity
             baseStorageTree.Get(in hash);
+    }
+
+    /// <summary>
+    /// Wraps write batch for the main processor to keep SeqlockCache in sync during commits.
+    /// When a transaction commits, OnAccountUpdated fires and we update the state cache.
+    /// Storage writes are intercepted via wrapped storage batches.
+    /// </summary>
+    private sealed class CacheSyncWriteBatch(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
+        SeqlockCache<AddressAsKey, Account> stateCache,
+        SeqlockCache<StorageCell, byte[]> storageCache
+    ) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose()
+        {
+            baseBatch.OnAccountUpdated -= SyncAccountToCache;
+            baseBatch.Dispose();
+        }
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add
+            {
+                if (value is not null)
+                {
+                    // Ensure our sync handler is registered when the first external handler subscribes
+                    baseBatch.OnAccountUpdated -= SyncAccountToCache;
+                    baseBatch.OnAccountUpdated += SyncAccountToCache;
+                }
+                baseBatch.OnAccountUpdated += value;
+            }
+            remove => baseBatch.OnAccountUpdated -= value;
+        }
+
+        private void SyncAccountToCache(object? sender, IWorldStateScopeProvider.AccountUpdated args)
+        {
+            stateCache.Set((AddressAsKey)args.Address, args.Account);
+        }
+
+        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+        {
+            return new CacheSyncStorageWriteBatch(baseBatch.CreateStorageWriteBatch(key, estimatedEntries), storageCache, key);
+        }
+    }
+
+    /// <summary>
+    /// Wraps storage write batch to update the storage SeqlockCache on each Set.
+    /// </summary>
+    private sealed class CacheSyncStorageWriteBatch(
+        IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
+        SeqlockCache<StorageCell, byte[]> storageCache,
+        Address address
+    ) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, byte[] value)
+        {
+            baseBatch.Set(in index, value);
+            storageCache.Set(new StorageCell(address, in index), value);
+        }
+
+        public void Clear() => baseBatch.Clear();
+
+        public void Dispose() => baseBatch.Dispose();
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool populatePreBlockCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
