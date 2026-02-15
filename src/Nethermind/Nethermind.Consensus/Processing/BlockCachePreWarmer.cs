@@ -227,13 +227,13 @@ public sealed class BlockCachePreWarmer(
             Transaction[] transactions = block.Transactions;
             if (transactions.Length == 0) return;
 
-            TransactionWarmingState baseState = new(_envPool, blockState, transactions, parallelOptions.CancellationToken);
+            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
 
             ParallelUnbalancedWork.For(
                 0,
                 transactions.Length,
                 parallelOptions,
-                baseState.InitThreadState,
+                (blockState, transactions, context, parallelOptions.CancellationToken),
                 static (i, state) =>
                 {
                     if (state.CancellationToken.IsCancellationRequested)
@@ -241,11 +241,20 @@ public sealed class BlockCachePreWarmer(
                         return state;
                     }
 
-                    state.Scope!.WorldState.Restore(state.BaseSnapshot);
-                    WarmupSingleTransaction(state.Scope!, state.Transactions[i], i, state.BlockState);
+                    IReadOnlyTxProcessorSource env = state.blockState.PreWarmer._envPool.Get();
+                    try
+                    {
+                        using IReadOnlyTxProcessingScope scope = env.Build(state.blockState.Parent);
+                        scope.TransactionProcessor.SetBlockExecutionContext(state.context);
+                        WarmupSingleTransaction(scope, state.transactions[i], i, state.blockState);
+                    }
+                    finally
+                    {
+                        state.blockState.PreWarmer._envPool.Return(env);
+                    }
+
                     return state;
-                },
-                TransactionWarmingState.FinallyAction);
+                });
         }
         catch (OperationCanceledException)
         {
@@ -255,57 +264,6 @@ public sealed class BlockCachePreWarmer(
         {
             if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error pre-warming transactions", ex);
         }
-    }
-
-    private readonly struct TransactionWarmingState(
-        ObjectPool<IReadOnlyTxProcessorSource> envPool,
-        BlockState blockState,
-        Transaction[] transactions,
-        CancellationToken cancellationToken) : IDisposable
-    {
-        public static Action<TransactionWarmingState> FinallyAction { get; } = DisposeThreadState;
-
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly BlockState BlockState = blockState;
-        public readonly Transaction[] Transactions = transactions;
-        public readonly CancellationToken CancellationToken = cancellationToken;
-        public readonly IReadOnlyTxProcessingScope? Scope;
-        public readonly Snapshot BaseSnapshot;
-
-        private TransactionWarmingState(
-            ObjectPool<IReadOnlyTxProcessorSource> envPool,
-            BlockState blockState,
-            Transaction[] transactions,
-            CancellationToken cancellationToken,
-            IReadOnlyTxProcessorSource env,
-            IReadOnlyTxProcessingScope scope,
-            Snapshot baseSnapshot) : this(envPool, blockState, transactions, cancellationToken)
-        {
-            Env = env;
-            Scope = scope;
-            BaseSnapshot = baseSnapshot;
-        }
-
-        public TransactionWarmingState InitThreadState()
-        {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
-            IReadOnlyTxProcessingScope scope = env.Build(BlockState.Parent);
-            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(BlockState.Block.Header, BlockState.Spec));
-            Snapshot baseSnapshot = scope.WorldState.TakeSnapshot();
-            return new(EnvPool, BlockState, Transactions, CancellationToken, env, scope, baseSnapshot);
-        }
-
-        public void Dispose()
-        {
-            Scope?.Dispose();
-            if (Env is not null)
-            {
-                EnvPool.Return(Env);
-            }
-        }
-
-        private static void DisposeThreadState(TransactionWarmingState state) => state.Dispose();
     }
 
     private static void WarmupSingleTransaction(
