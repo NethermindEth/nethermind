@@ -313,31 +313,35 @@ internal static partial class EvmInstructions
     /// <c>true</c> if the destination is valid and the program counter is updated; otherwise, <c>false</c>.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Jump(in UInt256 jumpDestination, ref int programCounter, ExecutionEnvironment env)
     {
-        // Check if the jump destination exceeds the maximum allowed integer value.
-        if (jumpDestination > int.MaxValue)
+        // Fast check: if any high limb is set, the value exceeds code size limits.
+        // ValidateJump handles the case where u0 > int.MaxValue via its (uint) cast.
+        if ((jumpDestination.u1 | jumpDestination.u2 | jumpDestination.u3) != 0)
         {
             return false;
         }
 
-        // Extract the jump destination from the lowest limb of the UInt256.
-        return Jump((int)jumpDestination.u0, ref programCounter, env);
+        int dest = (int)jumpDestination.u0;
+        if (!env.CodeInfo.ValidateJump(dest))
+        {
+            return false;
+        }
+
+        programCounter = dest;
+        return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Jump(int jumpDestination, ref int programCounter, ExecutionEnvironment env)
     {
-        // Validate that the jump destination corresponds to a valid jump marker in the code.
         if (!env.CodeInfo.ValidateJump(jumpDestination))
         {
             return false;
         }
-        else
-        {
-            // Update the program counter to the valid jump destination.
-            programCounter = jumpDestination;
-        }
 
+        programCounter = jumpDestination;
         return true;
     }
 }
