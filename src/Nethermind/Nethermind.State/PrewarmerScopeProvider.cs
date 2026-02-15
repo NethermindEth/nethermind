@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -59,8 +60,9 @@ public class PrewarmerScopeProvider(
         /// which modifies the tree. If a cache entry is evicted and re-read, the factory would
         /// return the modified (wrong) value. This dictionary ensures the factory always returns
         /// the original pre-block values. Only used in the prewarmer path (populatePreBlockCache=true).
+        /// Must be ConcurrentDictionary because multiple prewarmer threads access it simultaneously.
         /// </summary>
-        private readonly Dictionary<AddressAsKey, Account?>? _originalAccounts;
+        private readonly ConcurrentDictionary<AddressAsKey, Account?>? _originalAccounts;
 
         public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
         {
@@ -177,12 +179,8 @@ public class PrewarmerScopeProvider(
             {
                 // Prewarmer path: cache original trie values to avoid returning
                 // modified values after speculative transaction commits.
-                ref Account? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalAccounts, address, out bool exists);
-                if (!exists)
-                {
-                    cached = baseScope.Get(address);
-                }
-                return cached;
+                // Must use ConcurrentDictionary as multiple prewarmer threads call this.
+                return _originalAccounts.GetOrAdd(address, static (addr, scope) => scope.Get(addr), baseScope);
             }
 
             return baseScope.Get(address);
@@ -205,8 +203,9 @@ public class PrewarmerScopeProvider(
         /// Same rationale as _originalAccounts in ScopeWrapper: the prewarmer modifies its
         /// storage trees via speculative commits, so the factory must return original values.
         /// Only used in the prewarmer path (populatePreBlockCache=true).
+        /// Must be ConcurrentDictionary because multiple prewarmer threads access it simultaneously.
         /// </summary>
-        private readonly Dictionary<StorageCell, byte[]>? _originalStorage;
+        private readonly ConcurrentDictionary<StorageCell, byte[]>? _originalStorage;
 
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
@@ -275,15 +274,14 @@ public class PrewarmerScopeProvider(
             {
                 // Prewarmer path: cache original trie values to avoid returning
                 // modified values after speculative transaction commits.
-                ref byte[]? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalStorage, storageCell, out bool exists);
-                if (!exists)
+                // Must use ConcurrentDictionary as multiple prewarmer threads call this.
+                return _originalStorage.GetOrAdd(storageCell, static (cell, tree) =>
                 {
                     Db.Metrics.IncrementStorageTreeReads();
-                    cached = !storageCell.IsHash
-                        ? baseStorageTree.Get(storageCell.Index)
-                        : baseStorageTree.Get(storageCell.Hash);
-                }
-                return cached!;
+                    return !cell.IsHash
+                        ? tree.Get(cell.Index)
+                        : tree.Get(cell.Hash);
+                }, baseStorageTree);
             }
 
             Db.Metrics.IncrementStorageTreeReads();
