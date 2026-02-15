@@ -100,7 +100,8 @@ public class PrewarmerScopeProvider(
                 readOnlyScope,
                 storageCache,
                 address,
-                populatePreBlockCache);
+                populatePreBlockCache,
+                _dirtyAddresses);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -217,6 +218,7 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
+        private readonly HashSet<AddressAsKey>? _dirtyAddresses;
         private IWorldStateScopeProvider.IStorageTree? _readOnlyStorageTree;
 
         public StorageTreeWrapper(
@@ -224,13 +226,15 @@ public class PrewarmerScopeProvider(
             IWorldStateScopeProvider.IScope? readOnlyScope,
             SeqlockCache<StorageCell, byte[]> preBlockCache,
             Address address,
-            bool populatePreBlockCache)
+            bool populatePreBlockCache,
+            HashSet<AddressAsKey>? dirtyAddresses)
         {
             this.baseStorageTree = baseStorageTree;
             this.readOnlyScope = readOnlyScope;
             this.preBlockCache = preBlockCache;
             this.address = address;
             this.populatePreBlockCache = populatePreBlockCache;
+            _dirtyAddresses = dirtyAddresses;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _loadFromTreeStorage = LoadFromTreeStorage;
         }
@@ -261,9 +265,21 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                // Main processor: always read from the authoritative storage trie.
-                // Storage delta tracking across blocks is not implemented, so the
-                // cache may contain stale storage values from previous blocks.
+                // Main processor: use cache for storage of non-dirty addresses.
+                // The storage cache epoch is cleared at block start, so only entries
+                // from the current block's prewarmer are visible. Non-dirty addresses'
+                // storage hasn't been modified, so prewarmer values are correct.
+                if (_dirtyAddresses is not null && !_dirtyAddresses.Contains(address))
+                {
+                    if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached))
+                    {
+                        if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
+                        Db.Metrics.IncrementStorageTreeCache();
+                        baseStorageTree.HintGet(in index, cached);
+                        return cached!;
+                    }
+                }
+
                 Db.Metrics.IncrementStorageTreeReads();
                 byte[] value = !storageCell.IsHash
                     ? baseStorageTree.Get(in index)
