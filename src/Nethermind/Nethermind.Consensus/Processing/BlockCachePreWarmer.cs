@@ -16,6 +16,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
@@ -345,7 +346,13 @@ public sealed class BlockCachePreWarmer(
     {
         try
         {
+            Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
+
+            if (!worldState.AccountExists(senderAddress))
+            {
+                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+            }
 
             if (blockState.Spec.UseTxAccessLists)
             {
