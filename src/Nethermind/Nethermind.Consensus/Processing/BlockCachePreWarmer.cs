@@ -277,9 +277,9 @@ public sealed class BlockCachePreWarmer(
                             return state;
                         }
 
-                        // Warmup mutates scope-local state, so each sender-group must run from
-                        // the same parent baseline in a reused per-thread scope.
-                        state.Scope!.WorldState.Reset(resetBlockChanges: false);
+                        // Warmup mutates scope-local state; restore parent baseline
+                        // before each sender-group in a reused per-thread scope.
+                        state.Scope!.WorldState.Restore(state.BaseSnapshot);
 
                         ArrayPoolList<int> txIndices = state.GroupedTransactionIndices[groupIndex];
                         Transaction[] transactions = state.BlockState.Block.Transactions;
@@ -383,6 +383,7 @@ public sealed class BlockCachePreWarmer(
         public readonly ArrayPoolList<ArrayPoolList<int>> GroupedTransactionIndices = groupedTransactionIndices;
         public readonly CancellationToken CancellationToken = cancellationToken;
         public readonly IReadOnlyTxProcessingScope? Scope;
+        public readonly Snapshot BaseSnapshot;
 
         private TransactionGroupWarmingState(
             ObjectPool<IReadOnlyTxProcessorSource> envPool,
@@ -390,10 +391,12 @@ public sealed class BlockCachePreWarmer(
             ArrayPoolList<ArrayPoolList<int>> groupedTransactionIndices,
             CancellationToken cancellationToken,
             IReadOnlyTxProcessorSource env,
-            IReadOnlyTxProcessingScope scope) : this(envPool, blockState, groupedTransactionIndices, cancellationToken)
+            IReadOnlyTxProcessingScope scope,
+            Snapshot baseSnapshot) : this(envPool, blockState, groupedTransactionIndices, cancellationToken)
         {
             Env = env;
             Scope = scope;
+            BaseSnapshot = baseSnapshot;
         }
 
         public TransactionGroupWarmingState InitThreadState()
@@ -401,7 +404,8 @@ public sealed class BlockCachePreWarmer(
             IReadOnlyTxProcessorSource env = EnvPool.Get();
             IReadOnlyTxProcessingScope scope = env.Build(BlockState.Parent);
             scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(BlockState.Block.Header, BlockState.Spec));
-            return new(EnvPool, BlockState, GroupedTransactionIndices, CancellationToken, env, scope);
+            Snapshot baseSnapshot = scope.WorldState.TakeSnapshot();
+            return new(EnvPool, BlockState, GroupedTransactionIndices, CancellationToken, env, scope, baseSnapshot);
         }
 
         public void Dispose()
