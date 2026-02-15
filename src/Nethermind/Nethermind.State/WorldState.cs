@@ -331,6 +331,29 @@ namespace Nethermind.State
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
+
+                ApplyBlockDeltasToCache();
+            }
+        }
+
+        /// <summary>
+        /// After FlushToTree, apply committed block deltas to the cross-block PreBlockCaches.
+        /// The next block's prewarmer and processor will benefit from warm state/storage caches.
+        /// </summary>
+        private void ApplyBlockDeltasToCache()
+        {
+            if (ScopeProvider is IPreBlockCaches { IsWarmWorldState: true } preBlockCaches)
+            {
+                PreBlockCaches caches = preBlockCaches.Caches;
+                _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
+
+                bool hasSelfDestruct = _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);
+                if (hasSelfDestruct)
+                {
+                    // SELFDESTRUCT clears all storage for a contract. Since we can't remove
+                    // individual entries from SeqlockCache, clear the entire storage cache.
+                    caches.StorageCache.Clear();
+                }
             }
         }
 

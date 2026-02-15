@@ -329,6 +329,22 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _storages.Clear();
     }
 
+    /// <summary>
+    /// Apply committed storage deltas to the cross-block storage cache.
+    /// Called after FlushToTree when _storages contains final storage values.
+    /// Returns true if any contract was self-destructed (requires full cache clear).
+    /// </summary>
+    internal bool ApplyStorageDeltasToCache(SeqlockCache<StorageCell, byte[]> storageCache)
+    {
+        bool hasSelfDestruct = false;
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        {
+            kvp.Value.ApplyDeltasToCache(kvp.Key.Value, storageCache, out bool hasClear);
+            hasSelfDestruct |= hasClear;
+        }
+        return hasSelfDestruct;
+    }
+
     private PerContractState GetOrCreateStorage(Address address)
     {
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
@@ -524,6 +540,21 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _backend = null;
             _wasWritten = false;
             Pool.Return(this);
+        }
+
+        /// <summary>
+        /// Apply this contract's storage deltas to the cross-block cache.
+        /// </summary>
+        public void ApplyDeltasToCache(Address address, SeqlockCache<StorageCell, byte[]> storageCache, out bool hasClear)
+        {
+            hasClear = BlockChange.HasClear;
+            if (hasClear) return;
+
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            {
+                StorageCell cell = new(address, kvp.Key);
+                storageCache.Set(in cell, kvp.Value.After);
+            }
         }
 
         public void SaveChange(StorageCell storageCell, byte[] value)

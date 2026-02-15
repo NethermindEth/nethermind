@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.State;
@@ -15,4 +16,10 @@ public interface IBlockCachePreWarmer
 {
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
+
+    /// <summary>
+    /// Track the last successfully processed block hash for cross-block cache validity.
+    /// Pass null to invalidate the cache (e.g., on error).
+    /// </summary>
+    void NotifyBlockProcessed(Hash256? blockHash);
 }

@@ -143,6 +143,10 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
+
+                // Track successfully processed block for cross-block cache validity
+                preWarmer?.NotifyBlockProcessed(processedBlock.Header.Hash);
+
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
@@ -184,6 +188,8 @@ public class BranchProcessor(
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+            // Invalidate cross-block cache on error to prevent stale reads
+            preWarmer?.NotifyBlockProcessed(null);
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
             throw;
@@ -201,13 +207,13 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        suggestedBlock.Transactions.Length < 3
-            ? null
-            : preWarmer?.PreWarmCaches(suggestedBlock,
-                preBlockBaseBlock,
-                spec,
-                token,
-                beaconBlockRootHandler);
+        // Always call PreWarmCaches to ensure cross-block cache fork detection runs.
+        // PreWarmCaches handles small blocks efficiently (skips actual prewarming for < 3 txs).
+        preWarmer?.PreWarmCaches(suggestedBlock,
+            preBlockBaseBlock,
+            spec,
+            token,
+            beaconBlockRootHandler);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 

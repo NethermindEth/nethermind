@@ -830,6 +830,18 @@ namespace Nethermind.State
             }
         }
 
+        /// <summary>
+        /// Apply committed account deltas to the cross-block state cache.
+        /// Called after FlushToTree when _blockChanges contains final account values.
+        /// </summary>
+        internal void ApplyAccountDeltasToCache(SeqlockCache<AddressAsKey, Account> stateCache)
+        {
+            foreach (KeyValuePair<AddressAsKey, ChangeTrace> kvp in _blockChanges)
+            {
+                stateCache.Set(kvp.Key, kvp.Value.After);
+            }
+        }
+
         public void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) Trace();

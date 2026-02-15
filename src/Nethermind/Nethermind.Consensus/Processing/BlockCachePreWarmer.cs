@@ -9,6 +9,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -56,13 +57,21 @@ public sealed class BlockCachePreWarmer(
     {
         if (preBlockCaches is not null)
         {
-            CacheType result = preBlockCaches.ClearCaches();
-            nodeStorageCache.ClearCaches();
-            nodeStorageCache.Enabled = true;
-            if (result != default)
+            // Fork detection: if parent doesn't match the last processed block, the cache is stale.
+            // This handles reorgs, first block after startup, and error recovery.
+            Hash256? lastHash = preBlockCaches.LastProcessedBlockHash;
+            if (lastHash is null || parent?.Hash != lastHash)
             {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
+                if (_logger.IsDebug) _logger.Debug($"Cross-block cache miss: parent {parent?.Hash?.ToShortString()} != last {lastHash?.ToShortString()}, clearing warm caches.");
+                preBlockCaches.ClearAllCaches();
             }
+
+            // Clear per-block caches (precompile); state/storage kept warm across blocks
+            preBlockCaches.ClearCaches();
+
+            // NodeStorageCache uses content-addressed keys (Address, Path, Hash),
+            // so entries from previous blocks are never stale - keep it warm across blocks.
+            nodeStorageCache.Enabled = true;
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
@@ -82,13 +91,18 @@ public sealed class BlockCachePreWarmer(
 
     public CacheType ClearCaches()
     {
-        if (_logger.IsDebug) _logger.Debug("Clearing caches");
+        if (_logger.IsDebug) _logger.Debug("Clearing per-block caches");
         CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-
-        nodeStorageCache.Enabled = false;
-        cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
+    }
+
+    public void NotifyBlockProcessed(Hash256? blockHash)
+    {
+        if (preBlockCaches is not null)
+        {
+            preBlockCaches.LastProcessedBlockHash = blockHash;
+        }
     }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
