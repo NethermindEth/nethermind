@@ -40,11 +40,11 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         IWorldStateScopeProvider.IScope mainScope = baseProvider.BeginScope(baseBlock);
-        // No separate read-only scope needed: prewarmer reads from the main backing tree
-        // are safe because any address modified by a committed tx is tracked in _blockChanges
-        // and the main processor won't consult the cache for it. Unmodified addresses have
-        // the same value in the post-commit tree as pre-block.
-        return new ScopeWrapper(mainScope, readOnlyScope: null, preBlockCaches, populatePreBlockCache);
+        // Prewarmer path: create a second read-only scope that is never committed to.
+        // The prewarmer's speculative commits modify mainScope's backing tree, so factory
+        // reads must use a separate scope to always return pre-block values.
+        IWorldStateScopeProvider.IScope? readOnlyScope = populatePreBlockCache ? baseProvider.BeginScope(baseBlock) : null;
+        return new ScopeWrapper(mainScope, readOnlyScope, preBlockCaches, populatePreBlockCache);
     }
 
     public PreBlockCaches? Caches => preBlockCaches;

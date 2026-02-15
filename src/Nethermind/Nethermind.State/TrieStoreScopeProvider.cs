@@ -157,6 +157,14 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _loadedAccounts.Clear();
         }
 
+        public void UpdateLoadedAccounts(Dictionary<AddressAsKey, Account?> dirtyAccounts)
+        {
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in dirtyAccounts)
+            {
+                _loadedAccounts[kv.Key] = kv.Value;
+            }
+        }
+
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             return LookupStorageTree(address);
@@ -214,7 +222,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
             }
 
-            scope.ClearLoadedAccounts();
+            scope.UpdateLoadedAccounts(_dirtyAccounts);
 
 
             [MethodImpl(MethodImplOptions.NoInlining)]
