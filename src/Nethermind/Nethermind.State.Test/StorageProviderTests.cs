@@ -423,8 +423,42 @@ public class StorageProviderTests
     }
 
     /// <summary>
-    /// Reset will reset transient state
+    /// Applying deltas should keep untouched account entries warm in state cache.
     /// </summary>
+    [Test]
+    public void Apply_block_deltas_keeps_untouched_state_cache_entries()
+    {
+        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        IWorldStateScopeProvider scopeProvider = new PrewarmerScopeProvider(
+            new TrieStoreScopeProvider(
+                TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                new MemDb(),
+                LimboLogs.Instance),
+            preBlockCaches,
+            populatePreBlockCache: false);
+        WorldState provider = new WorldState(scopeProvider, LogManager);
+
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        // Simulate a prior block and clear per-block traces before the block under test.
+        provider.CreateAccount(TestItem.AddressA, 10);
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.Commit(Frontier.Instance);
+        provider.Reset();
+
+        Account untouched = provider.GetAccount(TestItem.AddressA);
+        AddressAsKey untouchedKey = TestItem.AddressA;
+        preBlockCaches.StateCache.Set(untouchedKey, untouched);
+
+        provider.AddToBalance(TestItem.AddressB, 1, Frontier.Instance);
+        provider.Commit(Frontier.Instance);
+        provider.ApplyBlockDeltasToWarmCache();
+
+        preBlockCaches.StateCache.TryGetValue(in untouchedKey, out Account cached).Should().BeTrue();
+        cached.Should().NotBeNull();
+        cached!.Balance.Should().Be(untouched.Balance);
+    }
+
     [Test]
     public void Selfdestruct_clears_cache()
     {

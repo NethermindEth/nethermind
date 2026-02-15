@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <StartupObject>Nethermind.Benchmarks.Program</StartupObject>
+    <OutputType>Exe</OutputType>
     <RootNamespace>Nethermind.Benchmarks</RootNamespace>
   </PropertyGroup>
   

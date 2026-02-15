@@ -338,8 +338,9 @@ namespace Nethermind.State
         /// Must be called after the prewarmer has fully stopped to avoid race conditions
         /// where the prewarmer's GetOrAdd could evict freshly-written entries.
         ///
-        /// Epoch-clears both caches to invalidate stale prewarmer entries, then
-        /// re-populates with writes-only deltas (reads are warmed by the prewarmer).
+        /// Keeps state cache entries warm across blocks and replays committed account
+        /// deltas for modified addresses. Storage cache is still epoch-cleared because
+        /// SELFDESTRUCT invalidates unknown prior slots that cannot be selectively removed.
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
@@ -347,7 +348,6 @@ namespace Nethermind.State
             {
                 PreBlockCaches caches = preBlockCaches.Caches;
 
-                caches.StateCache.Clear();
                 caches.StorageCache.Clear();
 
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);

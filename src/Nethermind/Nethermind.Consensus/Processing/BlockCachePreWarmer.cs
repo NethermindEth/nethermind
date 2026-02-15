@@ -73,14 +73,24 @@ public sealed class BlockCachePreWarmer(
             // so entries from previous blocks are never stale - keep it warm across blocks.
             nodeStorageCache.Enabled = true;
 
-            if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
+            bool hasTransactions = suggestedBlock.Transactions.Length > 0;
+            bool hasSystemAccessLists = systemAccessLists.Length > 0;
+            bool hasWithdrawals = spec.WithdrawalsEnabled && suggestedBlock.Withdrawals is not null && suggestedBlock.Withdrawals.Length > 0;
+            bool hasAnyWarmupWork = hasTransactions || hasSystemAccessLists || hasWithdrawals;
+
+            if (parent is not null && _concurrencyLevel > 1 && hasAnyWarmupWork && !cancellationToken.IsCancellationRequested)
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
-                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
-                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+                AddressWarmer? addressWarmer = null;
+                if (hasTransactions || hasSystemAccessLists)
+                {
+                    // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+                    addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
+                    ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+                }
+
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
                 return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
             }
@@ -105,7 +115,7 @@ public sealed class BlockCachePreWarmer(
         }
     }
 
-    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer? addressWarmer, CancellationToken cancellationToken)
     {
         try
         {
@@ -125,7 +135,7 @@ public sealed class BlockCachePreWarmer(
         finally
         {
             // Don't compete the task until address warmer is also done.
-            addressWarmer.Wait();
+            addressWarmer?.Wait();
         }
     }
 
@@ -137,25 +147,26 @@ public sealed class BlockCachePreWarmer(
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                ParallelUnbalancedWork.For(0, block.Withdrawals.Length, parallelOptions, (EnvPool: _envPool, Block: block, Parent: parent),
+                WithdrawalWarmingState baseState = new(_envPool, block, parent);
+
+                ParallelUnbalancedWork.For(
+                    0,
+                    block.Withdrawals.Length,
+                    parallelOptions,
+                    baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        IReadOnlyTxProcessorSource env = state.EnvPool.Get();
                         try
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(state.Parent);
-                            scope.WorldState.WarmUp(state.Block.Withdrawals![i].Address);
+                            state.Scope!.WorldState.WarmUp(state.Block.Withdrawals![i].Address);
                         }
                         catch (MissingTrieNodeException)
                         {
                         }
-                        finally
-                        {
-                            state.EnvPool.Return(env);
-                        }
 
                         return state;
-                    });
+                    },
+                    WithdrawalWarmingState.FinallyAction);
             }
         }
         catch (OperationCanceledException)
@@ -166,6 +177,45 @@ public sealed class BlockCachePreWarmer(
         {
             if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error pre-warming withdrawal", ex);
         }
+    }
+
+    private readonly struct WithdrawalWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader? parent) : IDisposable
+    {
+        public static Action<WithdrawalWarmingState> FinallyAction { get; } = DisposeThreadState;
+
+        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
+        private readonly BlockHeader? Parent = parent;
+        private readonly IReadOnlyTxProcessorSource? Env;
+        public readonly Block Block = block;
+        public readonly IReadOnlyTxProcessingScope? Scope;
+
+        private WithdrawalWarmingState(
+            ObjectPool<IReadOnlyTxProcessorSource> envPool,
+            Block block,
+            BlockHeader? parent,
+            IReadOnlyTxProcessorSource env,
+            IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
+        {
+            Env = env;
+            Scope = scope;
+        }
+
+        public WithdrawalWarmingState InitThreadState()
+        {
+            IReadOnlyTxProcessorSource env = EnvPool.Get();
+            return new(EnvPool, Block, Parent, env, env.Build(Parent));
+        }
+
+        public void Dispose()
+        {
+            Scope?.Dispose();
+            if (Env is not null)
+            {
+                EnvPool.Return(Env);
+            }
+        }
+
+        private static void DisposeThreadState(WithdrawalWarmingState state) => state.Dispose();
     }
 
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
