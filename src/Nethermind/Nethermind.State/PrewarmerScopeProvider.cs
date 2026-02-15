@@ -142,7 +142,8 @@ public class PrewarmerScopeProvider(
                 if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
-                    baseScope.HintGet(address, account);
+                    // Skip HintGet: cached Account's StorageRoot may be stale across blocks.
+                    // LookupStorageTree will read from trie for a correct StorageRoot.
                     Metrics.IncrementStateTreeCacheHits();
                 }
                 else
