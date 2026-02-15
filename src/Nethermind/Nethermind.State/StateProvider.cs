@@ -728,6 +728,7 @@ namespace Nethermind.State
         {
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
+            accountChanges.WasModified = true;
             _needsStateRootUpdate = true;
         }
 
@@ -832,14 +833,14 @@ namespace Nethermind.State
 
         /// <summary>
         /// Apply committed account deltas to the cross-block state cache.
-        /// Only replays modified entries (Before != After) to reduce rebuild cost;
+        /// Only replays entries marked as modified during this block to reduce rebuild cost;
         /// read-only entries are warmed by the prewarmer instead.
         /// </summary>
         internal void ApplyAccountDeltasToCache(SeqlockCache<AddressAsKey, Account> stateCache)
         {
             foreach (KeyValuePair<AddressAsKey, ChangeTrace> kvp in _blockChanges)
             {
-                if (!ReferenceEquals(kvp.Value.Before, kvp.Value.After))
+                if (kvp.Value.WasModified)
                 {
                     stateCache.Set(kvp.Key, kvp.Value.After);
                 }
@@ -912,7 +913,7 @@ namespace Nethermind.State
             public bool IsNull => ChangeType == ChangeType.Null;
         }
 
-        internal struct ChangeTrace(Account? before, Account? after)
+        internal struct ChangeTrace(Account? before, Account? after, bool wasModified = false)
         {
             public ChangeTrace(Account? after) : this(null, after)
             {
@@ -920,6 +921,7 @@ namespace Nethermind.State
 
             public Account? Before { get; set; } = before;
             public Account? After { get; set; } = after;
+            public bool WasModified { get; set; } = wasModified;
         }
     }
 

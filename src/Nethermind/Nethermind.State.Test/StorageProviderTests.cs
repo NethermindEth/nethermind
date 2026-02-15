@@ -627,6 +627,32 @@ public class StorageProviderTests
         worldState.AccountExists(TestItem.AddressA).Should().BeFalse();
     }
 
+    [Test]
+    public void Apply_block_deltas_updates_warm_state_cache_for_modified_accounts()
+    {
+        PreBlockCaches preBlockCaches = new();
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(
+            TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+            new MemDb(),
+            LimboLogs.Instance);
+        scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: false);
+        IWorldState worldState = new WorldState(scopeProvider, LogManager);
+
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
+
+        worldState.CreateAccount(TestItem.AddressA, 0);
+        worldState.Commit(Frontier.Instance);
+
+        preBlockCaches.StateCache.Set(TestItem.AddressA, new Account((UInt256)0, (UInt256)0));
+
+        worldState.IncrementNonce(TestItem.AddressA, 1);
+        worldState.Commit(Frontier.Instance);
+        worldState.ApplyBlockDeltasToWarmCache();
+
+        preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out Account cachedAccount).Should().BeTrue();
+        cachedAccount.Nonce.Should().Be((UInt256)1);
+    }
+
     [TestCase(2)]
     [TestCase(1000)]
     public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
