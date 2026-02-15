@@ -174,6 +174,10 @@ public class BranchProcessor(
                 WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
+                // Apply cross-block cache deltas AFTER prewarmer stops to avoid race condition
+                // where prewarmer's GetOrAdd could evict freshly-written cache entries
+                _stateProvider.ApplyBlockDeltasToWarmCache();
+
                 _stateProvider.Reset();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
