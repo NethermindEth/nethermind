@@ -832,13 +832,17 @@ namespace Nethermind.State
 
         /// <summary>
         /// Apply committed account deltas to the cross-block state cache.
-        /// Called after FlushToTree when _blockChanges contains final account values.
+        /// Only replays modified entries (Before != After) to reduce rebuild cost;
+        /// read-only entries are warmed by the prewarmer instead.
         /// </summary>
         internal void ApplyAccountDeltasToCache(SeqlockCache<AddressAsKey, Account> stateCache)
         {
             foreach (KeyValuePair<AddressAsKey, ChangeTrace> kvp in _blockChanges)
             {
-                stateCache.Set(kvp.Key, kvp.Value.After);
+                if (!ReferenceEquals(kvp.Value.Before, kvp.Value.After))
+                {
+                    stateCache.Set(kvp.Key, kvp.Value.After);
+                }
             }
         }
 

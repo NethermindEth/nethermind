@@ -338,10 +338,8 @@ namespace Nethermind.State
         /// Must be called after the prewarmer has fully stopped to avoid race conditions
         /// where the prewarmer's GetOrAdd could evict freshly-written entries.
         ///
-        /// State cache is epoch-cleared to prevent stale account nonces/balances from
-        /// the prewarmer being served to the main processor. Storage cache is NOT
-        /// epoch-cleared — dirty-address tracking ensures stale entries are never served
-        /// while untouched storage slots stay warm across blocks.
+        /// Epoch-clears both caches to invalidate stale prewarmer entries, then
+        /// re-populates with writes-only deltas (reads are warmed by the prewarmer).
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
@@ -349,9 +347,8 @@ namespace Nethermind.State
             {
                 PreBlockCaches caches = preBlockCaches.Caches;
 
-                // Only epoch-clear state cache (nonce/balance correctness).
-                // Storage cache stays warm — dirty-address filtering prevents serving stale values.
                 caches.StateCache.Clear();
+                caches.StorageCache.Clear();
 
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
                 _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);

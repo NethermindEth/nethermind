@@ -343,6 +343,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
+
     private PerContractState GetOrCreateStorage(Address address)
     {
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
@@ -542,9 +543,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         /// <summary>
         /// Apply this contract's storage deltas to the cross-block cache.
+        /// Only replays if the contract had writes; read-only contracts are
+        /// warmed by the prewarmer instead.
         /// </summary>
         public void ApplyDeltasToCache(Address address, SeqlockCache<StorageCell, byte[]> storageCache)
         {
+            if (!_wasWritten) return;
+
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 StorageCell cell = new(address, kvp.Key);
