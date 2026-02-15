@@ -52,6 +52,10 @@ public class PreBlockCaches
     /// </summary>
     public CacheType ClearCaches()
     {
+        // Advance the state cache epoch so that any lingering writes from the previous
+        // block's prewarmer (which may still be completing on other threads) become
+        // invisible. Then re-populate modified accounts with correct post-block values.
+        _stateCache.Clear();
         if (_pendingAccountDeltas.Count > 0)
         {
             foreach (KeyValuePair<AddressAsKey, Account?> delta in _pendingAccountDeltas)
