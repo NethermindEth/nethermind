@@ -136,18 +136,25 @@ public partial class DebugRpcModuleTests
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        Address address = Build.An.Address.TestObject;
-        await ctx.Blockchain.AddFunds(address, 100.Ether());
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a 32-byte uint256
+        var stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
+        // Request 100K gas — should be capped to 50K by GasCap
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { from = $"{address}", to = $"{TestItem.AddressC}", gas = "0x186A0" } // gas = 100_000
+            new { to = "0xc200000000000000000000000000000000000000", gas = "0x186A0" },
+            null,
+            new { stateOverrides = stateOverride }
         );
 
         GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
             .Which.Result.Should().BeOfType<GethLikeTxTrace>()
             .Subject;
 
-        trace.Gas.Should().BeLessThan(gasCap);
+        long gasAvailable = Convert.ToInt64(Convert.ToHexString(trace.ReturnValue), 16);
+        gasAvailable.Should().BeLessThan(gasCap);
+        gasAvailable.Should().BeGreaterThan(0);
     }
 
     [TestCase(
