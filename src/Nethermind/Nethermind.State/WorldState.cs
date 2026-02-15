@@ -338,11 +338,10 @@ namespace Nethermind.State
         /// Must be called after the prewarmer has fully stopped to avoid race conditions
         /// where the prewarmer's GetOrAdd could evict freshly-written entries.
         ///
-        /// Epoch-clears both caches first to invalidate any stale entries from the
-        /// prewarmer, then re-populates with correct post-block values from _blockChanges
-        /// and _storages. This keeps modified accounts/storage warm for the next block.
-        /// SELFDESTRUCT is handled implicitly: the epoch clear invalidates all prior entries,
-        /// and ApplyDeltasToCache skips self-destructed contracts (no stale storage survives).
+        /// Only overwrites modified entries — untouched entries remain warm across blocks.
+        /// Correctness relies on HintGet using assignment (not TryAdd) so the base scope's
+        /// _loadedAccounts always reflects the latest cached value, preventing stale
+        /// StorageRoot from being used when creating storage trees.
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
@@ -350,11 +349,6 @@ namespace Nethermind.State
             {
                 PreBlockCaches caches = preBlockCaches.Caches;
 
-                // Epoch clear: invalidate any stale prewarmer entries
-                caches.StateCache.Clear();
-                caches.StorageCache.Clear();
-
-                // Re-populate with correct post-block values
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
                 _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);
             }

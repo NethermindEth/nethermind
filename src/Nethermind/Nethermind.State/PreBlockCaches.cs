@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
-using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -20,7 +19,6 @@ public class PreBlockCaches
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
     /// <summary>
@@ -31,7 +29,6 @@ public class PreBlockCaches
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
-    public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     /// <summary>

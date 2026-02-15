@@ -336,7 +336,7 @@ public sealed class BlockCachePreWarmer(
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested)
             {
-                SystemTxAccessLists!.Dispose();
+                SystemTxAccessLists?.Dispose();
                 return;
             }
 
