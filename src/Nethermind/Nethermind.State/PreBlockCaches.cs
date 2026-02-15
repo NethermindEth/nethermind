@@ -40,8 +40,9 @@ public class PreBlockCaches
     /// </summary>
     public CacheType ClearCaches()
     {
-        // Keep state warm, clear storage per block to isolate correctness
+        // Baseline: clear all caches per block (no cross-block caching)
         _storageCache.Clear();
+        _stateCache.Clear();
         _precompileCache.NoResizeClear();
         return CacheType.None;
     }
