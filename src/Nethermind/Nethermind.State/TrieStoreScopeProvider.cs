@@ -222,10 +222,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
             }
 
-            // Update _loadedAccounts with post-commit values instead of clearing.
-            // Dirty accounts get their final values (with updated storage roots);
-            // untouched accounts retain correct pre-block values for next block.
-            scope.UpdateLoadedAccounts(_dirtyAccounts);
+            scope.ClearLoadedAccounts();
 
 
             [MethodImpl(MethodImplOptions.NoInlining)]
