@@ -263,40 +263,45 @@ public sealed class BlockCachePreWarmer(
 
             try
             {
-                TransactionGroupWarmingState baseState = new(_envPool, blockState, groupedTransactionIndices, parallelOptions.CancellationToken);
+                BlockExecutionContext blockExecutionContext = new(blockState.Block.Header, blockState.Spec);
+                ObjectPool<IReadOnlyTxProcessorSource> envPool = _envPool;
+                CancellationToken cancellationToken = parallelOptions.CancellationToken;
+                Transaction[] transactions = block.Transactions;
 
                 // Parallel across different senders, sequential within the same sender
-                ParallelUnbalancedWork.For(
+                Parallel.For(
                     0,
                     groupedTransactionIndices.Count,
                     parallelOptions,
-                    baseState.InitThreadState,
-                    static (groupIndex, state) =>
+                    groupIndex =>
                     {
-                        if (state.CancellationToken.IsCancellationRequested)
+                        if (cancellationToken.IsCancellationRequested)
                         {
-                            return state;
+                            return;
                         }
 
-                        // Warmup mutates scope-local state; restore parent baseline
-                        // before each sender-group in a reused per-thread scope.
-                        state.Scope!.WorldState.Restore(state.BaseSnapshot);
-
-                        ArrayPoolList<int> txIndices = state.GroupedTransactionIndices[groupIndex];
-                        Transaction[] transactions = state.BlockState.Block.Transactions;
-                        foreach (int txIndex in txIndices.AsSpan())
+                        IReadOnlyTxProcessorSource env = envPool.Get();
+                        try
                         {
-                            if (state.CancellationToken.IsCancellationRequested)
+                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                            scope.TransactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+
+                            ArrayPoolList<int> txIndices = groupedTransactionIndices[groupIndex];
+                            foreach (int txIndex in txIndices.AsSpan())
                             {
-                                return state;
+                                if (cancellationToken.IsCancellationRequested)
+                                {
+                                    return;
+                                }
+
+                                WarmupSingleTransaction(scope, transactions[txIndex], txIndex, blockState);
                             }
-
-                            WarmupSingleTransaction(state.Scope!, transactions[txIndex], txIndex, state.BlockState);
                         }
-
-                        return state;
-                    },
-                    TransactionGroupWarmingState.FinallyAction);
+                        finally
+                        {
+                            envPool.Return(env);
+                        }
+                    });
             }
             finally
             {
@@ -374,57 +379,6 @@ public sealed class BlockCachePreWarmer(
         {
             if (blockState.PreWarmer._logger.IsDebug) blockState.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx.Hash}", ex);
         }
-    }
-
-    private readonly struct TransactionGroupWarmingState(
-        ObjectPool<IReadOnlyTxProcessorSource> envPool,
-        BlockState blockState,
-        ArrayPoolList<ArrayPoolList<int>> groupedTransactionIndices,
-        CancellationToken cancellationToken) : IDisposable
-    {
-        public static Action<TransactionGroupWarmingState> FinallyAction { get; } = DisposeThreadState;
-
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly BlockState BlockState = blockState;
-        public readonly ArrayPoolList<ArrayPoolList<int>> GroupedTransactionIndices = groupedTransactionIndices;
-        public readonly CancellationToken CancellationToken = cancellationToken;
-        public readonly IReadOnlyTxProcessingScope? Scope;
-        public readonly Snapshot BaseSnapshot;
-
-        private TransactionGroupWarmingState(
-            ObjectPool<IReadOnlyTxProcessorSource> envPool,
-            BlockState blockState,
-            ArrayPoolList<ArrayPoolList<int>> groupedTransactionIndices,
-            CancellationToken cancellationToken,
-            IReadOnlyTxProcessorSource env,
-            IReadOnlyTxProcessingScope scope,
-            Snapshot baseSnapshot) : this(envPool, blockState, groupedTransactionIndices, cancellationToken)
-        {
-            Env = env;
-            Scope = scope;
-            BaseSnapshot = baseSnapshot;
-        }
-
-        public TransactionGroupWarmingState InitThreadState()
-        {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
-            IReadOnlyTxProcessingScope scope = env.Build(BlockState.Parent);
-            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(BlockState.Block.Header, BlockState.Spec));
-            Snapshot baseSnapshot = scope.WorldState.TakeSnapshot();
-            return new(EnvPool, BlockState, GroupedTransactionIndices, CancellationToken, env, scope, baseSnapshot);
-        }
-
-        public void Dispose()
-        {
-            Scope?.Dispose();
-            if (Env is not null)
-            {
-                EnvPool.Return(Env);
-            }
-        }
-
-        private static void DisposeThreadState(TransactionGroupWarmingState state) => state.Dispose();
     }
 
     private class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
