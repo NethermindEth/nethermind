@@ -19,6 +19,9 @@ public class PreBlockCacheReuseBenchmarks
     private readonly FakeEnvPool _envPool = new();
 
     private Address[] _withdrawalAddresses = null!;
+    private int[] _txGroupStarts = null!;
+    private int[] _txGroupLengths = null!;
+    private Address[] _txGroupedAddresses = null!;
 
     [Params(1024)]
     public int WithdrawalCount { get; set; }
@@ -37,6 +40,25 @@ public class PreBlockCacheReuseBenchmarks
         {
             random.NextBytes(bytes);
             _withdrawalAddresses[i] = new Address((byte[])bytes.Clone());
+        }
+
+        const int groups = 512;
+        _txGroupStarts = new int[groups];
+        _txGroupLengths = new int[groups];
+        int totalTxs = 0;
+        for (int i = 0; i < groups; i++)
+        {
+            _txGroupStarts[i] = totalTxs;
+            int groupLength = 1 + (i % 4);
+            _txGroupLengths[i] = groupLength;
+            totalTxs += groupLength;
+        }
+
+        _txGroupedAddresses = new Address[totalTxs];
+        for (int i = 0; i < totalTxs; i++)
+        {
+            random.NextBytes(bytes);
+            _txGroupedAddresses[i] = new Address((byte[])bytes.Clone());
         }
     }
 
@@ -95,6 +117,59 @@ public class PreBlockCacheReuseBenchmarks
             (i, _, state) =>
             {
                 state.Scope.WarmUp(_withdrawalAddresses[i]);
+                return state;
+            },
+            static state => state.Dispose());
+    }
+
+    [Benchmark]
+    public void Legacy_TxGroupsPerGroupScope()
+    {
+        ParallelOptions options = new() { MaxDegreeOfParallelism = Concurrency };
+
+        Parallel.For(0, _txGroupStarts.Length, options, groupIndex =>
+        {
+            FakeEnv env = _envPool.Get();
+            try
+            {
+                using FakeScope scope = env.Build();
+                int start = _txGroupStarts[groupIndex];
+                int end = start + _txGroupLengths[groupIndex];
+                for (int i = start; i < end; i++)
+                {
+                    scope.WarmUp(_txGroupedAddresses[i]);
+                }
+            }
+            finally
+            {
+                _envPool.Return(env);
+            }
+        });
+    }
+
+    [Benchmark]
+    public void Current_TxGroupsPerThreadScope()
+    {
+        ParallelOptions options = new() { MaxDegreeOfParallelism = Concurrency };
+
+        Parallel.For<WithdrawalThreadState>(
+            0,
+            _txGroupStarts.Length,
+            options,
+            () =>
+            {
+                FakeEnv env = _envPool.Get();
+                return new WithdrawalThreadState(env, env.Build(), _envPool);
+            },
+            (groupIndex, _, state) =>
+            {
+                int start = _txGroupStarts[groupIndex];
+                int end = start + _txGroupLengths[groupIndex];
+                for (int i = start; i < end; i++)
+                {
+                    state.Scope.WarmUp(_txGroupedAddresses[i]);
+                }
+
                 return state;
             },
             static state => state.Dispose());
