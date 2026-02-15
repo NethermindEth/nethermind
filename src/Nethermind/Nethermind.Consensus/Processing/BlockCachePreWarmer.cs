@@ -184,7 +184,7 @@ public sealed class BlockCachePreWarmer(
             try
             {
                 // Convert to array for parallel iteration
-                ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(

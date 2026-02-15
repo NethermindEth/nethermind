@@ -341,6 +341,8 @@ namespace Nethermind.State
         /// Epoch-clears both caches first to invalidate any stale entries from the
         /// prewarmer, then re-populates with correct post-block values from _blockChanges
         /// and _storages. This keeps modified accounts/storage warm for the next block.
+        /// SELFDESTRUCT is handled implicitly: the epoch clear invalidates all prior entries,
+        /// and ApplyDeltasToCache skips self-destructed contracts (no stale storage survives).
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
@@ -354,12 +356,7 @@ namespace Nethermind.State
 
                 // Re-populate with correct post-block values
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
-
-                bool hasSelfDestruct = _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);
-                if (hasSelfDestruct)
-                {
-                    caches.StorageCache.Clear();
-                }
+                _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);
             }
         }
 

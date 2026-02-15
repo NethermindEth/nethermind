@@ -105,6 +105,12 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            // Reset dirty tracking from previous blocks so only current block's
+            // committed addresses are considered dirty. Without this, the set grows
+            // unbounded and forces all previously-modified addresses to fall through
+            // to the trie instead of the warm cache.
+            _dirtyAddresses?.Clear();
+
             IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
 
             if (_dirtyTracker is not null)

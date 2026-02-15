@@ -332,17 +332,15 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <summary>
     /// Apply committed storage deltas to the cross-block storage cache.
     /// Called after FlushToTree when _storages contains final storage values.
-    /// Returns true if any contract was self-destructed (requires full cache clear).
+    /// Self-destructed contracts are skipped (HasClear flag is already unmarked by
+    /// ProcessStorageChanges, and the epoch clear in the caller handles invalidation).
     /// </summary>
-    internal bool ApplyStorageDeltasToCache(SeqlockCache<StorageCell, byte[]> storageCache)
+    internal void ApplyStorageDeltasToCache(SeqlockCache<StorageCell, byte[]> storageCache)
     {
-        bool hasSelfDestruct = false;
         foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
         {
-            kvp.Value.ApplyDeltasToCache(kvp.Key.Value, storageCache, out bool hasClear);
-            hasSelfDestruct |= hasClear;
+            kvp.Value.ApplyDeltasToCache(kvp.Key.Value, storageCache);
         }
-        return hasSelfDestruct;
     }
 
     private PerContractState GetOrCreateStorage(Address address)
@@ -545,11 +543,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         /// <summary>
         /// Apply this contract's storage deltas to the cross-block cache.
         /// </summary>
-        public void ApplyDeltasToCache(Address address, SeqlockCache<StorageCell, byte[]> storageCache, out bool hasClear)
+        public void ApplyDeltasToCache(Address address, SeqlockCache<StorageCell, byte[]> storageCache)
         {
-            hasClear = BlockChange.HasClear;
-            if (hasClear) return;
-
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 StorageCell cell = new(address, kvp.Key);
