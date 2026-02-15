@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -38,7 +36,15 @@ public class PrewarmerScopeProvider(
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    {
+        IWorldStateScopeProvider.IScope mainScope = baseProvider.BeginScope(baseBlock);
+        // Prewarmer path: create a second read-only scope that is never committed to.
+        // The prewarmer's speculative commits modify mainScope's backing tree, so factory
+        // reads must use a separate scope to always return pre-block values.
+        IWorldStateScopeProvider.IScope? readOnlyScope = populatePreBlockCache ? baseProvider.BeginScope(baseBlock) : null;
+        return new ScopeWrapper(mainScope, readOnlyScope, preBlockCaches, populatePreBlockCache);
+    }
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
@@ -46,6 +52,7 @@ public class PrewarmerScopeProvider(
     private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope;
+        private readonly IWorldStateScopeProvider.IScope? readOnlyScope;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache;
         private readonly bool populatePreBlockCache;
@@ -54,31 +61,22 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
-        /// <summary>
-        /// Caches original pre-block Account values read from the trie by the factory function.
-        /// The prewarmer commits speculative transaction results to its backing state tree,
-        /// which modifies the tree. If a cache entry is evicted and re-read, the factory would
-        /// return the modified (wrong) value. This dictionary ensures the factory always returns
-        /// the original pre-block values. Only used in the prewarmer path (populatePreBlockCache=true).
-        /// Must be ConcurrentDictionary because multiple prewarmer threads access it simultaneously.
-        /// </summary>
-        private readonly ConcurrentDictionary<AddressAsKey, Account?>? _originalAccounts;
-
-        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
+        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, IWorldStateScopeProvider.IScope? readOnlyScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
         {
             this.baseScope = baseScope;
+            this.readOnlyScope = readOnlyScope;
             preBlockCache = preBlockCaches.StateCache;
             storageCache = preBlockCaches.StorageCache;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _getFromBaseTree = GetFromBaseTree;
-            if (populatePreBlockCache)
-            {
-                _originalAccounts = new();
-            }
         }
 
-        public void Dispose() => baseScope.Dispose();
+        public void Dispose()
+        {
+            readOnlyScope?.Dispose();
+            baseScope.Dispose();
+        }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -86,6 +84,7 @@ public class PrewarmerScopeProvider(
         {
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
+                readOnlyScope,
                 storageCache,
                 address,
                 populatePreBlockCache);
@@ -175,12 +174,11 @@ public class PrewarmerScopeProvider(
 
         private Account? GetFromBaseTree(in AddressAsKey address)
         {
-            if (_originalAccounts is not null)
+            // Prewarmer path: read from the read-only scope that is never modified
+            // by speculative commits, ensuring we always get pre-block values.
+            if (readOnlyScope is not null)
             {
-                // Prewarmer path: cache original trie values to avoid returning
-                // modified values after speculative transaction commits.
-                // Must use ConcurrentDictionary as multiple prewarmer threads call this.
-                return _originalAccounts.GetOrAdd(address, static (addr, scope) => scope.Get(addr), baseScope);
+                return readOnlyScope.Get(address);
             }
 
             return baseScope.Get(address);
@@ -190,6 +188,7 @@ public class PrewarmerScopeProvider(
     private sealed class StorageTreeWrapper : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
+        private readonly IWorldStateScopeProvider.IScope? readOnlyScope;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;
         private readonly Address address;
         private readonly bool populatePreBlockCache;
@@ -197,32 +196,22 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
-
-        /// <summary>
-        /// Caches original pre-block storage values read from the trie by the factory function.
-        /// Same rationale as _originalAccounts in ScopeWrapper: the prewarmer modifies its
-        /// storage trees via speculative commits, so the factory must return original values.
-        /// Only used in the prewarmer path (populatePreBlockCache=true).
-        /// Must be ConcurrentDictionary because multiple prewarmer threads access it simultaneously.
-        /// </summary>
-        private readonly ConcurrentDictionary<StorageCell, byte[]>? _originalStorage;
+        private IWorldStateScopeProvider.IStorageTree? _readOnlyStorageTree;
 
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
+            IWorldStateScopeProvider.IScope? readOnlyScope,
             SeqlockCache<StorageCell, byte[]> preBlockCache,
             Address address,
             bool populatePreBlockCache)
         {
             this.baseStorageTree = baseStorageTree;
+            this.readOnlyScope = readOnlyScope;
             this.preBlockCache = preBlockCache;
             this.address = address;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _loadFromTreeStorage = LoadFromTreeStorage;
-            if (populatePreBlockCache)
-            {
-                _originalStorage = new();
-            }
         }
 
         public Hash256 RootHash => baseStorageTree.RootHash;
@@ -270,18 +259,15 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
-            if (_originalStorage is not null)
+            if (readOnlyScope is not null)
             {
-                // Prewarmer path: cache original trie values to avoid returning
-                // modified values after speculative transaction commits.
-                // Must use ConcurrentDictionary as multiple prewarmer threads call this.
-                return _originalStorage.GetOrAdd(storageCell, static (cell, tree) =>
-                {
-                    Db.Metrics.IncrementStorageTreeReads();
-                    return !cell.IsHash
-                        ? tree.Get(cell.Index)
-                        : tree.Get(cell.Hash);
-                }, baseStorageTree);
+                // Prewarmer path: read from the read-only scope's storage tree that is
+                // never modified by speculative commits. Lazily created per-address.
+                _readOnlyStorageTree ??= readOnlyScope.CreateStorageTree(address);
+                Db.Metrics.IncrementStorageTreeReads();
+                return !storageCell.IsHash
+                    ? _readOnlyStorageTree.Get(storageCell.Index)
+                    : _readOnlyStorageTree.Get(storageCell.Hash);
             }
 
             Db.Metrics.IncrementStorageTreeReads();
