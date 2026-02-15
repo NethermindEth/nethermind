@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -51,6 +53,15 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
+        /// <summary>
+        /// Caches original pre-block Account values read from the trie by the factory function.
+        /// The prewarmer commits speculative transaction results to its backing state tree,
+        /// which modifies the tree. If a cache entry is evicted and re-read, the factory would
+        /// return the modified (wrong) value. This dictionary ensures the factory always returns
+        /// the original pre-block values. Only used in the prewarmer path (populatePreBlockCache=true).
+        /// </summary>
+        private readonly Dictionary<AddressAsKey, Account?>? _originalAccounts;
+
         public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache)
         {
             this.baseScope = baseScope;
@@ -59,6 +70,10 @@ public class PrewarmerScopeProvider(
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _getFromBaseTree = GetFromBaseTree;
+            if (populatePreBlockCache)
+            {
+                _originalAccounts = new();
+            }
         }
 
         public void Dispose() => baseScope.Dispose();
@@ -142,8 +157,7 @@ public class PrewarmerScopeProvider(
                 if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
-                    // Skip HintGet: cached Account's StorageRoot may be stale across blocks.
-                    // LookupStorageTree will read from trie for a correct StorageRoot.
+                    baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
                 else
@@ -159,6 +173,18 @@ public class PrewarmerScopeProvider(
 
         private Account? GetFromBaseTree(in AddressAsKey address)
         {
+            if (_originalAccounts is not null)
+            {
+                // Prewarmer path: cache original trie values to avoid returning
+                // modified values after speculative transaction commits.
+                ref Account? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalAccounts, address, out bool exists);
+                if (!exists)
+                {
+                    cached = baseScope.Get(address);
+                }
+                return cached;
+            }
+
             return baseScope.Get(address);
         }
     }
@@ -174,6 +200,14 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
+        /// <summary>
+        /// Caches original pre-block storage values read from the trie by the factory function.
+        /// Same rationale as _originalAccounts in ScopeWrapper: the prewarmer modifies its
+        /// storage trees via speculative commits, so the factory must return original values.
+        /// Only used in the prewarmer path (populatePreBlockCache=true).
+        /// </summary>
+        private readonly Dictionary<StorageCell, byte[]>? _originalStorage;
+
         public StorageTreeWrapper(
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
             SeqlockCache<StorageCell, byte[]> preBlockCache,
@@ -186,6 +220,10 @@ public class PrewarmerScopeProvider(
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
             _loadFromTreeStorage = LoadFromTreeStorage;
+            if (populatePreBlockCache)
+            {
+                _originalStorage = new();
+            }
         }
 
         public Hash256 RootHash => baseStorageTree.RootHash;
@@ -233,8 +271,22 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
-            Db.Metrics.IncrementStorageTreeReads();
+            if (_originalStorage is not null)
+            {
+                // Prewarmer path: cache original trie values to avoid returning
+                // modified values after speculative transaction commits.
+                ref byte[]? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalStorage, storageCell, out bool exists);
+                if (!exists)
+                {
+                    Db.Metrics.IncrementStorageTreeReads();
+                    cached = !storageCell.IsHash
+                        ? baseStorageTree.Get(storageCell.Index)
+                        : baseStorageTree.Get(storageCell.Hash);
+                }
+                return cached!;
+            }
 
+            Db.Metrics.IncrementStorageTreeReads();
             return !storageCell.IsHash
                 ? baseStorageTree.Get(storageCell.Index)
                 : baseStorageTree.Get(storageCell.Hash);
