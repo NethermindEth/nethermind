@@ -338,16 +338,17 @@ namespace Nethermind.State
         /// Must be called after the prewarmer has fully stopped to avoid race conditions
         /// where the prewarmer's GetOrAdd could evict freshly-written entries.
         ///
-        /// Only overwrites modified entries — untouched entries remain warm across blocks.
-        /// Correctness relies on HintGet using assignment (not TryAdd) so the base scope's
-        /// _loadedAccounts always reflects the latest cached value, preventing stale
-        /// StorageRoot from being used when creating storage trees.
+        /// Epoch-clears first to invalidate stale prewarmer entries, then re-populates
+        /// with post-block deltas so the next block's reads see correct values.
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
             if (ScopeProvider is IPreBlockCaches { IsWarmWorldState: true } preBlockCaches)
             {
                 PreBlockCaches caches = preBlockCaches.Caches;
+
+                caches.StateCache.Clear();
+                caches.StorageCache.Clear();
 
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
                 _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);

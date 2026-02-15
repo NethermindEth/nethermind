@@ -73,7 +73,7 @@ public sealed class BlockCachePreWarmer(
             // so entries from previous blocks are never stale - keep it warm across blocks.
             nodeStorageCache.Enabled = true;
 
-            if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
+            if (parent is not null && _concurrencyLevel > 1 && suggestedBlock.Transactions.Length > 2 && !cancellationToken.IsCancellationRequested)
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
@@ -238,7 +238,7 @@ public sealed class BlockCachePreWarmer(
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new(block.Transactions.Length);
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {

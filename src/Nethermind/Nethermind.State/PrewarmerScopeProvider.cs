@@ -180,7 +180,7 @@ public class PrewarmerScopeProvider(
                 // Main processor: use cache for addresses not modified by any commit in this block.
                 // The prewarmer only writes pre-block values (via the read-only scope), which are
                 // still current for unmodified addresses. Dirty addresses must read from the trie.
-                if (_dirtyAddresses is not null && !_dirtyAddresses.Contains(addressAsKey))
+                if (_dirtyAddresses is not null && (_dirtyAddresses.Count == 0 || !_dirtyAddresses.Contains(addressAsKey)))
                 {
                     if (preBlockCache.TryGetValue(in addressAsKey, out Account? cached))
                     {
@@ -274,7 +274,7 @@ public class PrewarmerScopeProvider(
                 // The storage cache epoch is cleared at block start, so only entries
                 // from the current block's prewarmer are visible. Non-dirty addresses'
                 // storage hasn't been modified, so prewarmer values are correct.
-                if (_dirtyAddresses is not null && !_dirtyAddresses.Contains(address))
+                if (_dirtyAddresses is not null && (_dirtyAddresses.Count == 0 || !_dirtyAddresses.Contains(address)))
                 {
                     if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached))
                     {
