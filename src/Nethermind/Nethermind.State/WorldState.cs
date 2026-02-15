@@ -337,19 +337,27 @@ namespace Nethermind.State
         /// Apply committed block deltas to the cross-block PreBlockCaches.
         /// Must be called after the prewarmer has fully stopped to avoid race conditions
         /// where the prewarmer's GetOrAdd could evict freshly-written entries.
+        ///
+        /// Epoch-clears both caches first to invalidate any stale entries from the
+        /// prewarmer, then re-populates with correct post-block values from _blockChanges
+        /// and _storages. This keeps modified accounts/storage warm for the next block.
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
             if (ScopeProvider is IPreBlockCaches { IsWarmWorldState: true } preBlockCaches)
             {
                 PreBlockCaches caches = preBlockCaches.Caches;
+
+                // Epoch clear: invalidate any stale prewarmer entries
+                caches.StateCache.Clear();
+                caches.StorageCache.Clear();
+
+                // Re-populate with correct post-block values
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
 
                 bool hasSelfDestruct = _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);
                 if (hasSelfDestruct)
                 {
-                    // SELFDESTRUCT clears all storage for a contract. Since we can't remove
-                    // individual entries from SeqlockCache, clear the entire storage cache.
                     caches.StorageCache.Clear();
                 }
             }
