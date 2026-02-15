@@ -118,3 +118,117 @@ Before creating a pull request:
 ## Prerequisites
 
 See [global.json](./global.json) for the required .NET SDK version.
+
+## Cross-block Cache Performance Playbook (Session-derived)
+
+This section captures the operational workflow and correctness gates for optimizing cross-block state caching and prewarmer throughput.
+
+### Scope and reference commits
+
+- Reth reference commits:
+  - `c9169705e2` - initial cross-block caching
+  - `628ac03c6a` - hierarchical storage cache follow-up
+- Nethermind focus area:
+  - `src/Nethermind/Nethermind.Consensus/Processing/BlockCachePreWarmer.cs`
+  - `src/Nethermind/Nethermind.State/PreBlockCaches.cs`
+  - `src/Nethermind/Nethermind.State/PrewarmerScopeProvider.cs`
+  - `src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs`
+
+### Hard correctness constraints
+
+- Preserve tx nonce progression semantics for same-sender transactions in prewarmer.
+- Naive removal of sender sequencing is unsafe:
+  - Prior session attempts that removed sender grouping caused runtime failures (`InvalidTransactionException`, nonce too high) during block replay.
+  - These runs also produced unrealistic MGas/s (~10x), which is invalid.
+- `ApplyBlockDeltasToWarmCache()` must run only after prewarmer completion for each block.
+- Fork/reorg safety must remain:
+  - If `parent.Hash != LastProcessedBlockHash`, clear warm caches before next prewarm.
+
+### Approved optimization pattern (safe high-performance)
+
+- Favor per-thread scope reuse over per-item/per-group scope creation.
+- If changing scheduler away from explicit sender groups, keep sender affinity:
+  - Same sender must be routed to exactly one processing lane.
+  - Lane order must preserve block tx order for that sender.
+- Optimize allocations in hot path:
+  - Prefer pooled arrays / low-allocation partitioning.
+  - Avoid per-block dictionary-of-lists churn when possible.
+
+### Mandatory local validation (before VM)
+
+Run at minimum:
+
+```bash
+dotnet build src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj -c Release
+dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release -v minimal
+dotnet test --project src/Nethermind/Nethermind.State.Test/Nethermind.State.Test.csproj -c Release -v minimal --filter FullyQualifiedName~StorageProviderTests
+dotnet run --project src/Nethermind/Nethermind.Benchmark/Nethermind.Benchmark.csproj -c Release -- --filter "*PreBlockCacheReuseBenchmarks*"
+```
+
+### CI gate before VM
+
+- Trigger/check `nethermind-tests.yml` before VM benchmarking when credentials are available:
+  - https://github.com/NethermindEth/nethermind/actions/workflows/nethermind-tests.yml
+- If triggering is unavailable in the current environment (missing token/CLI), explicitly report that limitation before proceeding.
+
+### VM benchmark workflow (authoritative)
+
+SSH:
+
+```bash
+/c/Windows/System32/OpenSSH/ssh.exe -i "C:\Users\kamil\.ssh\id_rsa" -o StrictHostKeyChecking=no ubuntu@51.68.103.177
+```
+
+Build image from branch head (must include pushed commits):
+
+```bash
+sudo bash -c 'cd /home/ubuntu/nethermind && git fetch origin && git checkout perf/cross-block-state-caching --force && git reset --hard origin/perf/cross-block-state-caching && docker build -t block-stm . && docker tag block-stm nethermindeth/nethermind:block-stm'
+```
+
+Run scenario:
+
+```bash
+sudo bash -c 'cd /mnt/sda/expb-data && expb execute-scenarios --config-file nethermind-only.yaml --per-payload-metrics --per-payload-metrics-logs --print-logs'
+```
+
+Collect output directory and validity metrics:
+
+```bash
+sudo ls -t /mnt/sda/expb-data/outputs/ | head -1
+sudo grep -c Exception /mnt/sda/expb-data/outputs/<DIR>/nethermind.log
+sudo grep -c InvalidStateRoot /mnt/sda/expb-data/outputs/<DIR>/nethermind.log
+sudo grep -c Processed /mnt/sda/expb-data/outputs/<DIR>/nethermind.log
+sudo python3 /tmp/calc_mgas.py /mnt/sda/expb-data/outputs/<DIR>/k6.log
+```
+
+### VM result acceptance criteria
+
+- Must have:
+  - `Exception == 0`
+  - `InvalidStateRoot == 0`
+  - `Processed > 0`
+- Reject run as invalid if:
+  - Exceptions are present, or
+  - MGas/s appears unrealistically high (for example ~10x historical baseline).
+- Performance objective for this scenario:
+  - Track whether average MGas/s exceeds `1000`.
+  - Always report this explicitly after each valid run.
+
+### Branch hygiene for reproducible VM runs
+
+- Always push branch commits before running VM benchmark.
+- VM build command resets to `origin/perf/cross-block-state-caching`; unpushed local changes are not benchmarked.
+- Record in reports:
+  - branch name
+  - commit SHA
+  - VM output directory
+  - Exception / InvalidStateRoot / Processed counts
+  - MGas/s summary (count, avg, median, min, max, p10, p90)
+
+### Regression protocol when optimization fails
+
+- If blockchain replay fails or logs show invalid tx/state behavior:
+  - revert unsafe scheduler changes immediately
+  - restore last known-good behavior
+  - rerun local tests and VM validation
+- Prefer incremental, measurable changes over large unsafe deltas unless a full redesign is explicitly requested.

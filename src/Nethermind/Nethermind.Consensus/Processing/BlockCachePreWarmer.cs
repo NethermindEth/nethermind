@@ -36,6 +36,12 @@ public sealed class BlockCachePreWarmer(
     ILogManager logManager
 ) : IBlockCachePreWarmer
 {
+    // Minimum estimated block gas below which prewarming is skipped.
+    // Benchmark data shows the prewarmer overhead (thread scheduling, scope creation,
+    // speculative execution) exceeds cache benefit for blocks under ~1M gas.
+    // On mainnet, blocks typically have 15-30M gas so this rarely triggers.
+    private const long MinPrewarmBlockGas = 1_000_000;
+
     private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
@@ -75,10 +81,10 @@ public sealed class BlockCachePreWarmer(
             // so entries from previous blocks are never stale - keep it warm across blocks.
             nodeStorageCache.Enabled = true;
 
-            bool hasTransactions = suggestedBlock.Transactions.Length > 0;
             bool hasSystemAccessLists = systemAccessLists.Length > 0;
             bool hasWithdrawals = spec.WithdrawalsEnabled && suggestedBlock.Withdrawals is not null && suggestedBlock.Withdrawals.Length > 0;
-            bool hasAnyWarmupWork = hasTransactions || hasSystemAccessLists || hasWithdrawals;
+            bool hasEnoughTransactionWork = suggestedBlock.Transactions.Length > 0 && EstimateBlockGas(suggestedBlock) >= MinPrewarmBlockGas;
+            bool hasAnyWarmupWork = hasEnoughTransactionWork || hasSystemAccessLists || hasWithdrawals;
 
             if (parent is not null && _concurrencyLevel > 1 && hasAnyWarmupWork && !cancellationToken.IsCancellationRequested)
             {
@@ -86,7 +92,7 @@ public sealed class BlockCachePreWarmer(
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 AddressWarmer? addressWarmer = null;
-                if (hasTransactions || hasSystemAccessLists)
+                if (hasEnoughTransactionWork || hasSystemAccessLists)
                 {
                     // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                     addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this);
@@ -330,6 +336,18 @@ public sealed class BlockCachePreWarmer(
     private static int GetSenderLane(Address sender, int laneCount)
     {
         return (int)((uint)sender.GetHashCode() % (uint)laneCount);
+    }
+
+    private static long EstimateBlockGas(Block block)
+    {
+        long totalGas = 0;
+        Transaction[] txs = block.Transactions;
+        for (int i = 0; i < txs.Length; i++)
+        {
+            totalGas += txs[i].GasLimit;
+        }
+
+        return totalGas;
     }
 
     private static void WarmupSingleTransaction(

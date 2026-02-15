@@ -23,7 +23,10 @@ namespace Nethermind.State
 
         private static ValueHash256[] CreateLookup()
         {
-            const int LookupSize = 1024;
+            // 4096 entries covers most common storage indices and avoids Keccak hashing
+            // for typical contract slots (mappings hash to large indices but sequential
+            // slots like struct fields, arrays, and simple variables stay < 4096)
+            const int LookupSize = 4096;
 
             Span<byte> buffer = stackalloc byte[32];
             ValueHash256[] lookup = new ValueHash256[LookupSize];

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -622,8 +621,16 @@ namespace Nethermind.State
                 {
                     using (var batch = codeDb.BeginCodeWrite())
                     {
-                        // Insert ordered for improved performance
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        // Insert ordered for improved RocksDB LSM tree performance
+                        // Manual sort avoids LINQ allocation overhead
+                        using ArrayPoolList<KeyValuePair<Hash256AsKey, byte[]>> sorted = new(dict.Count);
+                        foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict)
+                        {
+                            sorted.Add(kvp);
+                        }
+
+                        sorted.AsSpan().Sort(static (a, b) => a.Key.CompareTo(b.Key));
+                        foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in sorted.AsSpan())
                         {
                             batch.Set(kvp.Key.Value, kvp.Value);
                         }
