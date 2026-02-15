@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,7 +22,6 @@ public class PreBlockCaches
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
-    private readonly Dictionary<AddressAsKey, Account?> _pendingAccountDeltas = new();
 
     /// <summary>
     /// Hash of the last successfully processed block whose deltas were applied to the cache.
@@ -37,36 +35,12 @@ public class PreBlockCaches
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     /// <summary>
-    /// Records a modified account value for delta application between blocks.
-    /// Called by the main processor during commits via OnAccountUpdated.
-    /// </summary>
-    public void RecordAccountDelta(AddressAsKey address, Account? account)
-    {
-        _pendingAccountDeltas[address] = account;
-    }
-
-    /// <summary>
     /// Clears only per-block caches (precompile). State and storage caches are kept warm
-    /// across blocks. Pending account deltas from the previous block are applied to the
-    /// state cache before the new block's prewarmer starts.
+    /// across blocks — deltas are applied by ApplyBlockDeltasToWarmCache after the prewarmer
+    /// has fully stopped, so no epoch clear is needed here.
     /// </summary>
     public CacheType ClearCaches()
     {
-        // Advance the state cache epoch so that any lingering writes from the previous
-        // block's prewarmer (which may still be completing on other threads) become
-        // invisible. Then re-populate modified accounts with correct post-block values.
-        _stateCache.Clear();
-        _storageCache.Clear();
-        if (_pendingAccountDeltas.Count > 0)
-        {
-            foreach (KeyValuePair<AddressAsKey, Account?> delta in _pendingAccountDeltas)
-            {
-                AddressAsKey key = delta.Key;
-                _stateCache.Set(in key, delta.Value);
-            }
-            _pendingAccountDeltas.Clear();
-        }
-
         _precompileCache.NoResizeClear();
         return CacheType.None;
     }
@@ -80,7 +54,6 @@ public class PreBlockCaches
         _storageCache.Clear();
         _stateCache.Clear();
         _precompileCache.NoResizeClear();
-        _pendingAccountDeltas.Clear();
         LastProcessedBlockHash = null;
         return CacheType.None;
     }

@@ -80,7 +80,6 @@ public class PrewarmerScopeProvider(
                 _dirtyTracker = (_, updated) =>
                 {
                     dirtyAddresses.Add(updated.Address);
-                    preBlockCaches.RecordAccountDelta(updated.Address, updated.Account);
                 };
             }
         }
