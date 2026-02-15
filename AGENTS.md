@@ -113,7 +113,7 @@ Before creating a pull request:
   ```bash
   dotnet format whitespace src/Nethermind/ --folder
   ```
-- Use [pull_request_template.md](.github/pull_request_template.md)
+- Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
 
 ## Prerequisites
 
