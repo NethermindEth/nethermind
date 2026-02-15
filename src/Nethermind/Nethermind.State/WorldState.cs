@@ -338,18 +338,14 @@ namespace Nethermind.State
         /// Must be called after the prewarmer has fully stopped to avoid race conditions
         /// where the prewarmer's GetOrAdd could evict freshly-written entries.
         ///
-        /// Epoch-clears the state/storage caches, then replays writes-only deltas.
-        /// This keeps correctness for now while still avoiding full trie reloads for
-        /// modified entries after each block.
+        /// Replays committed writes into warm state/storage caches, keeping them hot
+        /// across blocks while preserving correctness.
         /// </summary>
         public void ApplyBlockDeltasToWarmCache()
         {
             if (ScopeProvider is IPreBlockCaches { IsWarmWorldState: true } preBlockCaches)
             {
                 PreBlockCaches caches = preBlockCaches.Caches;
-
-                caches.StateCache.Clear();
-                caches.StorageCache.Clear();
 
                 _stateProvider.ApplyAccountDeltasToCache(caches.StateCache);
                 _persistentStorageProvider.ApplyStorageDeltasToCache(caches.StorageCache);

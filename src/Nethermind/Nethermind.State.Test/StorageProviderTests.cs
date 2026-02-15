@@ -653,6 +653,40 @@ public class StorageProviderTests
         cachedAccount.Nonce.Should().Be((UInt256)1);
     }
 
+    [Test]
+    public void Apply_block_deltas_storage_only_update_uses_authoritative_account_state()
+    {
+        PreBlockCaches preBlockCaches = new();
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(
+            TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+            new MemDb(),
+            LimboLogs.Instance);
+        scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: false);
+        WorldState worldState = new(scopeProvider, LogManager);
+
+        BlockHeader baseBlock;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, (UInt256)1, (UInt256)1);
+            worldState.Commit(Frontier.Instance);
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).TestObject;
+        }
+
+        preBlockCaches.StateCache.Set(TestItem.AddressA, new Account((UInt256)0, (UInt256)1));
+
+        using (worldState.BeginScope(baseBlock))
+        {
+            _ = worldState.GetNonce(TestItem.AddressA);
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), [1]);
+            worldState.Commit(Frontier.Instance);
+            worldState.ApplyBlockDeltasToWarmCache();
+        }
+
+        preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out Account cachedAccount).Should().BeTrue();
+        cachedAccount.Nonce.Should().Be((UInt256)1);
+    }
+
     [TestCase(2)]
     [TestCase(1000)]
     public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)

@@ -201,8 +201,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account))
-                    account = scope.Get(key);
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
+                {
+                    // Storage-only updates must merge into authoritative trie state, not a hinted
+                    // loaded-account entry, otherwise stale hinted account fields (e.g. nonce)
+                    // can be written back while only storage root changed.
+                    account = scope._backingStateTree.Get(key);
+                }
 
                 // Account may be null when EIP-161 deletes an empty account that had storage
                 // changes in the same block. Skip the storage root update since the account
