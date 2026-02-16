@@ -69,7 +69,7 @@
     "maximumExtraDataSize": "0x400",
     "Eip150Transition": 2,
     "Eip155Transition": 3,
-    "Eip160Transition": 3,
+    "Eip160Transition": 999999999,
     "Eip161abcTransition": 999999999,
     "Eip161dTransition": 999999999,
     "Eip140Transition": 4,
