@@ -4,10 +4,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -119,12 +117,24 @@ public class RewardTests
         long current = chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(targetIncludingBlockForSecondSign - current - 1)); // move so AddBlockMayHaveExtraTx produces the target
 
+        // For 4E reward calculation, the masternodes come from the second epoch switch found
+        // when walking backwards from 4E. The signed header (3E - mergeSignRange) is in the
+        // range [2E+1, 3E), so its epoch switch info provides the relevant masternodes.
+        // Use a masternode from that epoch to ensure the signature is counted.
+        EpochSwitchInfo? epochSwitchInfoFor2E = chain.EpochSwitchManager.GetEpochSwitchInfo(signedHeader3EMinusMerge);
+        Assert.That(epochSwitchInfoFor2E, Is.Not.Null);
+        PrivateKey signerForPart2 = chain.MasterNodeCandidates.First(k => k.Address == epochSwitchInfoFor2E!.Masternodes[0]);
+
+        // Set the chain's signer to our chosen masternode - required because
+        // SignTransactionFilter rejects signing txs from non-current-signers
+        chain.Signer.SetSigner(signerForPart2);
+
         await chain.AddBlock(BuildSigningTx(
             spec,
             signedHeader3EMinusMerge.Number,
             signedHeader3EMinusMerge.Hash ?? signedHeader3EMinusMerge.CalculateHash().ToHash256(),
-            chain.Signer.Key!,
-            (long)chain.ReadOnlyState.GetNonce(chain.Signer.Address)));
+            signerForPart2,
+            (long)chain.ReadOnlyState.GetNonce(signerForPart2.Address)));
 
         // --- Evaluate rewards at checkpoint (4E) ---
         long checkpoint4E = 4 * epochLength;
@@ -163,7 +173,6 @@ public class RewardTests
     {
         var chain = await XdcTestBlockchain.Create();
         var masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-
         masternodeVotingContract
             .GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
@@ -256,8 +265,7 @@ public class RewardTests
         UInt256 signerAReward = totalRewards / 3;
         UInt256 ownerAReward = signerAReward * 90 / 100;
         UInt256 foundationReward = signerAReward / 10;
-
-        UInt256 signerBReward = totalRewards * 2 / 3;
+        UInt256 signerBReward = totalRewards / 3 * 2;
         UInt256 ownerBReward = signerBReward * 90 / 100;
         foundationReward += signerBReward / 10;
 
@@ -364,6 +372,36 @@ public class RewardTests
         Assert.That(aOwnerReward, Is.EqualTo(aOwnerExpected));
         Assert.That(bOwnerReward, Is.EqualTo(bOwnerExpected));
     }
+
+    [Test]
+    public void RewardCalculator_CalculateRewardsForSignersAndHolders_MatchesExpectedValues()
+    {
+        IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
+        var rewardCalculator = new XdcRewardCalculator(
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<IBlockTree>(),
+            masternodeVotingContract
+            );
+
+        var totalReward = UInt256.Parse("171000000000000000000");
+        long totalSigner = 177, sign = 59;
+        var expectedReward = UInt256.Parse("56999999999999999983");
+
+        Assert.That(rewardCalculator.CalculateProportionalReward(sign, totalSigner, totalReward), Is.EqualTo(expectedReward));
+
+        var expectedAmountOwner = UInt256.Parse(("51299999999999999984"));
+        var expectedAmountFoundationWallet = UInt256.Parse(("5699999999999999998"));
+        bool ok = Address.TryParse("0x68d1e2F85e4583BeCc610b47Dd1b857850a4025A", out Address? signer);
+        Assert.That(ok, Is.True);
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        masternodeVotingContract.GetCandidateOwner(header, signer!).Returns(signer!);
+        (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer!, expectedReward, header);
+
+        Assert.That(holderReward.Value, Is.EqualTo(expectedAmountOwner));
+        Assert.That(foundationWalletReward, Is.EqualTo(expectedAmountFoundationWallet));
+    }
+
 
     private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)
     {
