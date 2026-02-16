@@ -120,7 +120,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             ExcessBlobGas = src.ExcessBlobGas,
             BlobGasUsed = src.BlobGasUsed,
-            // Set XDC-specific fields to empty arrays (null encodes the same in RLP, but explicit is clearer)
+            // XDC fields: empty byte arrays encode as 0x80 in RLP (matching geth-xdc)
             Validator = Array.Empty<byte>(),
             Validators = Array.Empty<byte>(),
             Penalties = Array.Empty<byte>(),

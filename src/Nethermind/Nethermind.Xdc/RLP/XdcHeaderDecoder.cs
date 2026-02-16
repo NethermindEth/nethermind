@@ -166,12 +166,12 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         rlpStream.Encode(h.ExtraData);
         rlpStream.Encode(h.MixHash);
         rlpStream.Encode(h.Nonce, NonceLength);
-        rlpStream.Encode(h.Validators);
+        rlpStream.Encode(h.Validators ?? Array.Empty<byte>());
         if (notForSealing)
         {
-            rlpStream.Encode(h.Validator);
+            rlpStream.Encode(h.Validator ?? Array.Empty<byte>());
         }
-        rlpStream.Encode(h.Penalties);
+        rlpStream.Encode(h.Penalties ?? Array.Empty<byte>());
 
         if (!h.BaseFeePerGas.IsZero) rlpStream.Encode(h.BaseFeePerGas);
 
@@ -218,12 +218,12 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
                             + Rlp.LengthOf(item.MixHash)
                             + Rlp.LengthOfNonce(item.Nonce);
 
+        contentLength += Rlp.LengthOf(item.Validators ?? Array.Empty<byte>());
         if (notForSealing)
         {
-            contentLength += Rlp.LengthOf(item.Validator);
+            contentLength += Rlp.LengthOf(item.Validator ?? Array.Empty<byte>());
         }
-        contentLength += Rlp.LengthOf(item.Validators);
-        contentLength += Rlp.LengthOf(item.Penalties);
+        contentLength += Rlp.LengthOf(item.Penalties ?? Array.Empty<byte>());
 
         if (!item.BaseFeePerGas.IsZero) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
         return contentLength;
