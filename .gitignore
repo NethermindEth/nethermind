@@ -444,5 +444,4 @@ keystore/
 
 #ZKVM
 /tools/StatelessExecution/nethermind/**
-/tools/StatelessExecution/*.sh
-/tools/StatelessExecution/Program
+/tools/StatelessExecution/Program*

@@ -704,7 +704,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
+#if ZKVM
+                substate = ((VirtualMachine<TGasPolicy>)VirtualMachine).ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+#else
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+#endif
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.Gas;
 
