@@ -153,7 +153,9 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = suggestedBlock.Header;
+                    // Use processedBlock.Header (has our computed state root) instead of
+                    // suggestedBlock.Header (has network state root which may differ for XDC)
+                    previousBranchStateRoot = processedBlock.Header;
 
                     worldStateCloser.Dispose();
                     worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);

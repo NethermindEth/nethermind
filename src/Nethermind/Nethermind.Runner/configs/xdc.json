@@ -31,6 +31,9 @@
   "Merge": {
     "Enabled": false
   },
+  "Pruning": {
+    "Mode": "None"
+  },
   "Network": {
     "P2PPort": 30303,
     "DiscoveryPort": 30303,
