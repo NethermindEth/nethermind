@@ -189,7 +189,7 @@ public class BlockValidator(
             var spec = _specProvider.GetSpec(suggestedBlock.Header);
             if (specProvider.ChainId == 50) // XDC mainnet
             {
-                if (_logger.IsWarn) _logger.Warn($"[XDC-BYPASS] State root mismatch at block {suggestedBlock.Number}: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}. Continuing anyway.");
+                Console.WriteLine($"[XDC-MISMATCH] Block {suggestedBlock.Number}: computed={processedBlock.Header.StateRoot} expected={suggestedBlock.Header.StateRoot}");
                 // Don't set error - allow sync to continue
             }
             else

@@ -131,15 +131,11 @@ internal class XdcBlockProcessor : BlockProcessor
         IReleaseSpec spec,
         CancellationToken token)
     {
-        // XDC: Disable EIP-158 empty account cleanup.
-        // Geth-xdc has eip158Block=3, but its AddBalance(0) behavior differs from Nethermind's.
-        // The 0x00 account (empty, balance=0) gets touched during fee payment and EIP-161
-        // deletes it in Nethermind but not in geth, causing state root divergence.
-        // Same fix as erigon-xdc (commit 1628981).
-        if (spec is Nethermind.Specs.ReleaseSpec mutableSpec)
-        {
-            mutableSpec.IsEip158Enabled = false;
-        }
+        // XDC: EIP-158 RE-ENABLED (eip158Block=3 in geth-xdc)
+        // Geth calls IntermediateRoot(deleteEmptyObjects=true) which deletes empty touched accounts.
+        // Previous attempt disabled EIP-158 following erigon-xdc, but erigon also has state root bypass.
+        // Since blocks 0-1799 match perfectly WITH EIP-158 enabled (via chainspec), and mismatch starts
+        // at block 1800, re-enabling to match geth behavior.
         
         var receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
         
