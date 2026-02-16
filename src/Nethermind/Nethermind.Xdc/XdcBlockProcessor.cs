@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -13,6 +14,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
 namespace Nethermind.Xdc;
@@ -114,5 +116,24 @@ internal class XdcBlockProcessor : BlockProcessor
         }
 
         return suggestedBlock.WithReplacedHeader(headerForProcessing);
+    }
+
+    protected override TxReceipt[] ProcessBlock(
+        Block block,
+        IBlockTracer blockTracer,
+        ProcessingOptions options,
+        IReleaseSpec spec,
+        CancellationToken token)
+    {
+        // XDC: Disable EIP-158 empty account cleanup.
+        // Geth-xdc has eip158Block=3, but its AddBalance(0) behavior differs from Nethermind's.
+        // The 0x00 account (empty, balance=0) gets touched during fee payment and EIP-161
+        // deletes it in Nethermind but not in geth, causing state root divergence.
+        // Same fix as erigon-xdc (commit 1628981).
+        if (spec is Nethermind.Specs.ReleaseSpec mutableSpec)
+        {
+            mutableSpec.IsEip158Enabled = false;
+        }
+        return base.ProcessBlock(block, blockTracer, options, spec, token);
     }
 }
