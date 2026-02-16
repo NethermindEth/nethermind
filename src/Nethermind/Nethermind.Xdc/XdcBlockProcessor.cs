@@ -35,23 +35,33 @@ internal class XdcBlockProcessor : BlockProcessor
 
         // XDC: Resolve the actual fee recipient (masternode owner) from the validator contract
         // In XDPoS, header.Beneficiary is 0x0, but fees should go to the masternode owner
+        // IMPORTANT: Only override beneficiary when there are actual non-zero gas fees to pay.
+        // If we set beneficiary to a non-zero address when fee=0, Nethermind's PayFees still
+        // "touches" the account (AddToBalanceAndCreateIfNotExists), modifying the state tree.
+        // Geth-xdc only resolves coinbase during ApplyTransaction when fee > 0.
         Address resolvedBeneficiary = suggestedBlock.Header.Beneficiary;
         
-        // Only resolve if beneficiary is zero or if we have gas fees to distribute
-        if (suggestedBlock.Header.Beneficiary == Address.Zero || suggestedBlock.Header.GasUsed > 0)
+        // Check if any transaction has non-zero gas price (actual fees to distribute)
+        bool hasNonZeroFees = false;
+        if (suggestedBlock.Header.GasUsed > 0)
+        {
+            foreach (var tx in suggestedBlock.Transactions)
+            {
+                if (tx.GasPrice > 0)
+                {
+                    hasNonZeroFees = true;
+                    break;
+                }
+            }
+        }
+        
+        if (hasNonZeroFees)
         {
             try
             {
-                // We need to access the world state to look up the owner
-                // The state provider is accessible from the base class via the _stateProvider field
                 resolvedBeneficiary = _coinbaseResolver.ResolveCoinbase(suggestedBlock.Header, _stateProvider);
                 
                 Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Beneficiary {suggestedBlock.Header.Beneficiary} -> Resolved {resolvedBeneficiary}");
-                
-                if (resolvedBeneficiary != suggestedBlock.Header.Beneficiary)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Block {suggestedBlock.Number}: Resolved beneficiary from {suggestedBlock.Header.Beneficiary} to {resolvedBeneficiary}");
-                }
             }
             catch (Exception ex)
             {

@@ -272,12 +272,15 @@ public class XdcCoinbaseResolver
             UInt256 locCandidateOwner = locValidatorsState;  // + 0 for .owner field
 
             // Read storage at contract 0x88
-            var storageCell = new StorageCell(ValidatorContractAddress, new Hash256(locCandidateOwner.ToBigEndian()));
+            Console.WriteLine($"[XDC-OWNER] Reading storage at 0x88, slot {locCandidateOwner}");
+            var storageCell = new StorageCell(ValidatorContractAddress, locCandidateOwner);
             ReadOnlySpan<byte> value = worldState.Get(storageCell);
 
+            Console.WriteLine($"[XDC-OWNER] Block signer {signer}: storage value length={value.Length}, hex={Convert.ToHexString(value)}");
+            
             if (value.Length == 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"No owner found for signer {signer} at slot {locCandidateOwner}");
+                Console.WriteLine($"[XDC-OWNER] No owner found for signer {signer} at slot {locCandidateOwner}");
                 return null;
             }
 
@@ -289,9 +292,12 @@ public class XdcCoinbaseResolver
                     ? value.Slice(12, 20)  // Skip first 12 bytes (padding)
                     : value.Slice(value.Length - 20, 20);
                 
-                return new Address(addressBytes.ToArray());
+                Address owner = new Address(addressBytes.ToArray());
+                Console.WriteLine($"[XDC-OWNER] Resolved owner: {owner}");
+                return owner;
             }
 
+            Console.WriteLine($"[XDC-OWNER] Value too short ({value.Length} bytes) for signer {signer}");
             return null;
         }
         catch (Exception ex)
