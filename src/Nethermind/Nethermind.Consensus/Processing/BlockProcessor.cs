@@ -147,19 +147,22 @@ public partial class BlockProcessor(
             var zeroAddr = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
             Console.WriteLine($"[XDC-DEBUG] Block {block.Number} - 0x00 exists BEFORE commit: {_stateProvider.AccountExists(zeroAddr)}");
         }
-        if (block.Number == 16)
+        if (block.Number == 16 || block.Number == 1395)
         {
             var sender = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
             var blockSigners = new Nethermind.Core.Address("0x0000000000000000000000000000000000000089");
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
+            var txSender1395 = new Nethermind.Core.Address("0x54d454dc37e0c0245f82ead86c940c75e0fba0b1");
+            var txRecipient1395 = new Nethermind.Core.Address("0x381047523972c9fdc3aa343e0b96900a8e2fa765");
             
-            Console.WriteLine($"[XDC-DEBUG] Block 16 computed state root: {header.StateRoot}");
-            Console.WriteLine($"[XDC-DEBUG] Sender 0xcfcc exists: {_stateProvider.AccountExists(sender)}");
-            Console.WriteLine($"[XDC-DEBUG] Sender balance: {_stateProvider.GetBalance(sender)}");
-            Console.WriteLine($"[XDC-DEBUG] 0x89 exists: {_stateProvider.AccountExists(blockSigners)}");
-            Console.WriteLine($"[XDC-DEBUG] 0x89 balance: {_stateProvider.GetBalance(blockSigners)}");
-            Console.WriteLine($"[XDC-DEBUG] 0x00 exists: {_stateProvider.AccountExists(coinbase)}");
-            Console.WriteLine($"[XDC-DEBUG] 0x00 balance: {_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-DEBUG] Block {block.Number} computed state root: {header.StateRoot}");
+            Console.WriteLine($"[XDC-DEBUG] Block {block.Number} expected state root: {block.Header.StateRoot}");
+            Console.WriteLine($"[XDC-DEBUG] Block {block.Number} beneficiary: {header.Beneficiary}");
+            Console.WriteLine($"[XDC-DEBUG] 0x00 exists: {_stateProvider.AccountExists(coinbase)}, balance: {_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-DEBUG] Sender 0xcfcc exists: {_stateProvider.AccountExists(sender)}, balance: {_stateProvider.GetBalance(sender)}");
+            Console.WriteLine($"[XDC-DEBUG] 0x89 exists: {_stateProvider.AccountExists(blockSigners)}, balance: {_stateProvider.GetBalance(blockSigners)}");
+            Console.WriteLine($"[XDC-DEBUG] txSender 0x54d4 exists: {_stateProvider.AccountExists(txSender1395)}, balance: {_stateProvider.GetBalance(txSender1395)}");
+            Console.WriteLine($"[XDC-DEBUG] txRecipient 0x3810 exists: {_stateProvider.AccountExists(txRecipient1395)}, balance: {_stateProvider.GetBalance(txRecipient1395)}");
             Console.WriteLine($"[XDC-DEBUG] Receipts count: {receipts.Length}");
             if (receipts.Length > 0)
             {
