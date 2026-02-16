@@ -16,6 +16,8 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 
@@ -72,7 +74,10 @@ public class XdcModule : Module
             var parameters = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<XdcChainSpecEngineParameters>();
             
-            return new XdcRewardCalculator(parameters);
+            var logManager = ctx.Resolve<ILogManager>();
+            var blockTree = ctx.Resolve<IBlockTree>();
+            var stateProvider = ctx.Resolve<IWorldState>();
+            return new XdcRewardCalculator(logManager, blockTree, stateProvider);
         }).As<IRewardCalculator>()
           .As<IRewardCalculatorSource>()
           .SingleInstance();
