@@ -503,7 +503,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         string result = JToken.Parse(serialized).Value<string>("result")!;
-        long gasAvailable = Convert.ToInt64(result, 16);
+        long gasAvailable = (long)Bytes.FromHexString(result).ToUInt256();
 
         // gas available = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gas available < 50K
         // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)

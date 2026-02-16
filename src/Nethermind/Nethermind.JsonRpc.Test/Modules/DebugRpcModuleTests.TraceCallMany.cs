@@ -210,7 +210,7 @@ public partial class DebugRpcModuleTests
         var result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
         GethLikeTxTrace trace = result.Data.First().First();
-        long gasAvailable = Convert.ToInt64(Convert.ToHexString(trace.ReturnValue), 16);
+        long gasAvailable = (long)trace.ReturnValue.ToUInt256();
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
     }

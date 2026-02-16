@@ -59,7 +59,7 @@ namespace Nethermind.Core
             public ulong GetBlobGas() => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
             public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
 
-            public void EnsureDefaults(long? gasCap)
+            public void CapGasLimit(long? gasCap)
             {
                 if (gasCap is not null and not 0)
                 {
