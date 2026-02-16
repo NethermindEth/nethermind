@@ -118,3 +118,47 @@ Before creating a pull request:
 ## Prerequisites
 
 See [global.json](./global.json) for the required .NET SDK version.
+
+## EVM Gas Benchmarks
+
+The [Nethermind.Evm.Benchmark](./src/Nethermind/Nethermind.Evm.Benchmark/) project includes BenchmarkDotNet benchmarks that measure EVM opcode throughput in MGas/s. These replay real `engine_newPayloadV4` payload files from the [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) submodule through `EthereumTransactionProcessor` — no Docker or running node required.
+
+**When to use:** After any change to EVM execution, transaction processing, state management, or opcode implementation, run the relevant gas benchmarks to verify there is no throughput regression.
+
+### Setup (one-time)
+
+```bash
+git lfs install && git submodule update --init tools/gas-benchmarks
+```
+
+### Running benchmarks
+
+```bash
+# Run all gas benchmarks
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --filter "*GasPayload*"
+
+# Run a specific opcode (e.g. MULMOD, shifts, SLOAD)
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --filter "*MULMOD*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --filter "*shifts*"
+
+# Fast iteration — skips BDN's ~90s internal rebuild
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --filter "*MULMOD*"
+
+# Run from pre-built executable (no build at all)
+dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
+./src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark --inprocess --filter "*MULMOD*"
+
+# Quick diagnostic mode (single payload, no BDN harness, debuggable)
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --diag
+
+# List all available scenarios
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --list flat --filter "*GasPayload*"
+```
+
+### Reading results
+
+The output includes custom columns:
+- **MGas/s**: `100M gas / mean_seconds / 1M` — higher is better
+- **CI-Lower / CI-Upper**: 99% confidence interval bounds for MGas/s
+
+Test scenarios are auto-discovered from `tools/gas-benchmarks/eest_tests/testing/`. New tests added to the gas-benchmarks submodule appear automatically after `git submodule update --remote tools/gas-benchmarks`.
