@@ -368,7 +368,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             foreach (var tx in block.Transactions)
             {
                 // Signing transactions are sent TO the BlockSigners contract (0x89)
-                if (tx.To == BlockSignersAddress && tx.Data is not null && tx.Data.Length >= 32)
+                if (tx.To == BlockSignersAddress && tx.Data.Length >= 32)
                 {
                     // The sender is the signer
                     if (tx.SenderAddress is not null)
