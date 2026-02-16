@@ -67,14 +67,14 @@ internal class XdcBlockProcessor : BlockProcessor
                 {
                     resolvedBeneficiary = signer;
                 }
-                Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: signer={signer} -> owner={resolvedBeneficiary}");
+                // Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: signer={signer} -> owner={resolvedBeneficiary}");
             }
             else
             {
                 // Before TIPTRC21Fee: fees go directly to the signer
                 resolvedBeneficiary = signer;
-                if (suggestedBlock.Number % 1000 == 0 || suggestedBlock.Number == 1395)
-                    Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: signer={signer} (pre-TIPTRC21Fee)");
+                // Reduced logging for production
+                if (false) { } // was: debug log for pre-TIPTRC21Fee blocks
             }
         }
         catch (Exception ex)

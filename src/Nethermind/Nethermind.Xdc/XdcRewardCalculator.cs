@@ -74,8 +74,6 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[XDC-REWARD] ERROR at block {number}: {ex.Message}");
-            Console.WriteLine($"[XDC-REWARD] Stack: {ex.StackTrace}");
             _logger.Error($"Error calculating rewards for block {number}", ex);
             return Array.Empty<BlockReward>();
         }
@@ -84,18 +82,18 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     private BlockReward[] CalculateCheckpointRewards(Block block)
     {
         long number = block.Number;
-        Console.WriteLine($"[XDC-REWARD] ====== Block {number} Checkpoint Rewards ======");
+        // Console.WriteLine($"[XDC-REWARD] ====== Block {number} Checkpoint Rewards ======");
         
         // 1. Calculate chain reward with inflation
         UInt256 chainReward = RewardInflation((UInt256)250 * 1_000_000_000_000_000_000, (ulong)number);
-        Console.WriteLine($"[XDC-REWARD] chainReward = {chainReward}");
+        // Console.WriteLine($"[XDC-REWARD] chainReward = {chainReward}");
 
         // 2. Get masternodes from prev checkpoint header
         long prevCheckpoint = number - RewardCheckpoint;
         Address[] masternodes = GetMasternodesFromCheckpoint(prevCheckpoint);
         if (masternodes.Length == 0)
         {
-            Console.WriteLine($"[XDC-REWARD] No masternodes found, skipping");
+            // Console.WriteLine($"[XDC-REWARD] No masternodes found, skipping");
             return Array.Empty<BlockReward>();
         }
         var masternodeSet = new HashSet<Address>(masternodes);
@@ -106,7 +104,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         long startBlock = prevCheckpoint2 + 1;
         long endBlock = startBlock + RewardCheckpoint - 1;
         
-        Console.WriteLine($"[XDC-REWARD] Counting signers for blocks {startBlock}-{endBlock}");
+        // Console.WriteLine($"[XDC-REWARD] Counting signers for blocks {startBlock}-{endBlock}");
 
         // First: collect all signing txs and map blockHash -> signers
         // Geth iterates from (prevCheckpoint + rCheckpoint*2 - 1) down to startBlock
@@ -115,7 +113,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         
         if (_blockTree is null)
         {
-            Console.WriteLine($"[XDC-REWARD] No block tree! Cannot count signing txs");
+            // Console.WriteLine($"[XDC-REWARD] No block tree! Cannot count signing txs");
             return Array.Empty<BlockReward>();
         }
 
@@ -146,7 +144,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
                     if (sender is null) continue;
                     
                     signingTxCount++;
-                    Console.WriteLine($"[XDC-REWARD] Found signing tx in block {pastBlock.Number} from {sender} to {to}");
+                    // Console.WriteLine($"[XDC-REWARD] Found signing tx in block {pastBlock.Number} from {sender} to {to}");
                     
                     byte[] txData = tx.Data.ToArray();
                     if (txData.Length >= 32)
@@ -168,8 +166,8 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         if (prevHeader is not null)
             blockNumToHash[prevCheckpoint2] = prevHeader.Hash!;
 
-        Console.WriteLine($"[XDC-REWARD] Found {blocksFound} blocks, {txCount} total txs, {signingTxCount} signing txs");
-        Console.WriteLine($"[XDC-REWARD] blockHashSigners has {blockHashSigners.Count} entries");
+        // Console.WriteLine($"[XDC-REWARD] Found {blocksFound} blocks, {txCount} total txs, {signingTxCount} signing txs");
+        // Console.WriteLine($"[XDC-REWARD] blockHashSigners has {blockHashSigners.Count} entries");
 
         // 4. Count signers per qualifying block (matching geth logic)
         var signerCounts = new Dictionary<Address, ulong>();
@@ -190,7 +188,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             if (!blockHashSigners.TryGetValue(blkHash, out var addrs) || addrs.Count == 0)
             {
                 if (i <= 30 || i == 900)
-                    Console.WriteLine($"[XDC-REWARD] Block {i} hash {blkHash} has NO signing tx matches");
+                    // Console.WriteLine($"[XDC-REWARD] Block {i} hash {blkHash} has NO signing tx matches");
                 continue;
             }
             matchedBlocks++;
@@ -217,14 +215,14 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             }
         }
 
-        Console.WriteLine($"[XDC-REWARD] qualifyingBlocks={qualifyingBlocks}, matchedBlocks={matchedBlocks}");
-        Console.WriteLine($"[XDC-REWARD] totalSigner = {totalSigner}, unique signers = {signerCounts.Count}");
+        // Console.WriteLine($"[XDC-REWARD] qualifyingBlocks={qualifyingBlocks}, matchedBlocks={matchedBlocks}");
+        // Console.WriteLine($"[XDC-REWARD] totalSigner = {totalSigner}, unique signers = {signerCounts.Count}");
         foreach (var (addr, cnt) in signerCounts)
-            Console.WriteLine($"[XDC-REWARD]   {addr}: {cnt} signs");
+            // Console.WriteLine($"[XDC-REWARD]   {addr}: {cnt} signs");
 
         if (totalSigner == 0)
         {
-            Console.WriteLine($"[XDC-REWARD] No signers found, skipping rewards");
+            // Console.WriteLine($"[XDC-REWARD] No signers found, skipping rewards");
             return Array.Empty<BlockReward>();
         }
 
@@ -235,7 +233,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         {
             UInt256 calcReward = (chainReward / (UInt256)totalSigner) * (UInt256)signCount;
             signerRewards[signer] = calcReward;
-            Console.WriteLine($"[XDC-REWARD]   {signer}: calcReward = {calcReward}");
+            // Console.WriteLine($"[XDC-REWARD]   {signer}: calcReward = {calcReward}");
         }
 
         // 6. Distribute to owners and foundation, matching geth order exactly:
@@ -259,11 +257,11 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             result.Add(new BlockReward(FoundationWallet, foundationReward, BlockRewardType.External));
             total += foundationReward;
 
-            Console.WriteLine($"[XDC-REWARD]   {signer} -> owner {owner}: {ownerReward} wei, foundation: {foundationReward} wei");
+            // Console.WriteLine($"[XDC-REWARD]   {signer} -> owner {owner}: {ownerReward} wei, foundation: {foundationReward} wei");
         }
 
-        Console.WriteLine($"[XDC-REWARD] Total distributed: {total} wei ({result.Count} reward entries)");
-        Console.WriteLine($"[XDC-REWARD] ====== End Block {number} ======");
+        // Console.WriteLine($"[XDC-REWARD] Total distributed: {total} wei ({result.Count} reward entries)");
+        // Console.WriteLine($"[XDC-REWARD] ====== End Block {number} ======");
 
         return result.ToArray();
     }
@@ -294,7 +292,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             masternodes[i] = new Address(addr);
         }
         
-        Console.WriteLine($"[XDC-REWARD] Extracted {count} masternodes from checkpoint {checkpointBlock}");
+        // Console.WriteLine($"[XDC-REWARD] Extracted {count} masternodes from checkpoint {checkpointBlock}");
         return masternodes;
     }
 
@@ -327,9 +325,9 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
                 return owner;
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[XDC-REWARD] Error getting owner for {candidate}: {ex.Message}");
+            // Console.WriteLine($"[XDC-REWARD] Error getting owner for {candidate}: {ex.Message}");
         }
         
         return Address.Zero;
@@ -370,9 +368,9 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[XDC-REWARD] Error fetching geth hash for block {blockNumber}: {ex.Message}");
+            // Console.WriteLine($"[XDC-REWARD] Error fetching geth hash for block {blockNumber}: {ex.Message}");
         }
         return null;
     }

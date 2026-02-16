@@ -32,7 +32,6 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private static readonly UInt256 _zero = UInt256.Zero;
-        private static int _flushCounter = 0; // DEBUG: track FlushToTree calls
 
         private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
@@ -750,9 +749,6 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            // DEBUG: track flush number
-            int flushNum = Interlocked.Increment(ref _flushCounter);
-
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
             foreach (AddressAsKey key in _blockChanges.Keys)
             {
@@ -768,18 +764,6 @@ namespace Nethermind.State
 
                     bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
                     writes++;
-
-                    // DEBUG: only log for block 1800 (when we see 0x92a289 foundation account created)
-                    if (key.Value.ToString().StartsWith("0x92a289"))
-                    {
-                        Console.WriteLine($"[TRIE-1800] === Flush #{flushNum} (Block 1800) ===");
-                        Console.WriteLine($"[TRIE-1800] writes={writes} skipped={skipped} totalChanges={_blockChanges.Count} bulkWrite={bulkWrite.Count}");
-                        for (int j = 0; j < bulkWrite.Count; j++)
-                        {
-                            var entry = bulkWrite[j];
-                            Console.WriteLine($"[TRIE-1800] bulk[{j}] keccak={entry.Path} rlp={Convert.ToHexString(entry.Value ?? Array.Empty<byte>())}");
-                        }
-                    }
                 }
                 else
                 {
@@ -787,12 +771,7 @@ namespace Nethermind.State
                 }
             }
 
-            // DEBUG: Use individual Set instead of BulkSet to test if BulkSet is the issue
-            foreach (var entry in bulkWrite.AsSpan())
-            {
-                _tree.Set(entry.Path.BytesAsSpan, entry.Value);
-            }
-            // _tree.BulkSet(bulkWrite);
+            _tree.BulkSet(bulkWrite);
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);

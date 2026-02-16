@@ -85,7 +85,7 @@ public class XdcCoinbaseResolver
                 return header.Beneficiary;
             }
 
-            Console.WriteLine($"[XDC-COINBASE] Block {header.Number}: Extracted signer {signer}");
+            // Console.WriteLine($"[XDC-COINBASE] Block {header.Number}: Extracted signer {signer}");
             if (_logger.IsDebug) _logger.Debug($"Block {header.Number}: Extracted signer {signer}");
 
             // Step 2: Look up the owner from validatorsState[signer].owner
@@ -98,7 +98,7 @@ public class XdcCoinbaseResolver
                 return signer;
             }
 
-            Console.WriteLine($"[XDC-COINBASE] Block {header.Number}: Resolved owner {owner} for signer {signer}");
+            // Console.WriteLine($"[XDC-COINBASE] Block {header.Number}: Resolved owner {owner} for signer {signer}");
             if (_logger.IsDebug) _logger.Debug($"Block {header.Number}: Resolved owner {owner} for signer {signer}");
             return owner;
         }
@@ -293,11 +293,11 @@ public class XdcCoinbaseResolver
             UInt256 locCandidateOwner = locValidatorsState;  // + 0 for .owner field
 
             // Read storage at contract 0x88
-            Console.WriteLine($"[XDC-OWNER] Reading storage at 0x88, slot {locCandidateOwner}");
+            // Console.WriteLine($"[XDC-OWNER] Reading storage at 0x88, slot {locCandidateOwner}");
             var storageCell = new StorageCell(ValidatorContractAddress, locCandidateOwner);
             ReadOnlySpan<byte> value = worldState.Get(storageCell);
 
-            Console.WriteLine($"[XDC-OWNER] Block signer {signer}: storage value length={value.Length}, hex={Convert.ToHexString(value)}");
+            // Console.WriteLine($"[XDC-OWNER] Block signer {signer}: storage value length={value.Length}, hex={Convert.ToHexString(value)}");
             
             if (value.Length == 0)
             {
@@ -318,7 +318,7 @@ public class XdcCoinbaseResolver
                 return owner;
             }
 
-            Console.WriteLine($"[XDC-OWNER] Value too short ({value.Length} bytes) for signer {signer}");
+            // Console.WriteLine($"[XDC-OWNER] Value too short ({value.Length} bytes) for signer {signer}");
             return null;
         }
         catch (Exception ex)
