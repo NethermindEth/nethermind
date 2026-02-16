@@ -78,7 +78,7 @@ internal class XdcBlockProcessor : BlockProcessor
         XdcBlockHeader headerForProcessing = new(
             bh.ParentHash,
             bh.UnclesHash,
-            resolvedBeneficiary,  // Use resolved beneficiary
+            bh.Beneficiary,  // Keep original beneficiary for hash validation
             bh.Difficulty,
             bh.Number,
             bh.GasLimit,
@@ -87,7 +87,7 @@ internal class XdcBlockProcessor : BlockProcessor
         )
         {
             Bloom = Bloom.Empty,
-            Author = bh.Author,
+            Author = resolvedBeneficiary,  // Set Author so GasBeneficiary returns the signer
             Hash = bh.Hash,
             MixHash = bh.MixHash,
             Nonce = bh.Nonce,
