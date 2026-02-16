@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -9,17 +10,20 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
 /// <summary>
-/// XDC-specific transaction processor that handles special system transactions
-/// like BlockSigners (0x89) which require non-standard processing.
+/// XDC-specific transaction processor that handles special system transactions.
 /// 
 /// In XDPoS, transactions to the BlockSigners contract (0x89) bypass normal
-/// EVM execution and are handled directly by the consensus layer. This matches
-/// the behavior in geth-xdc's ApplySignTransaction() function.
+/// EVM execution and are handled directly. This matches the behavior in 
+/// geth-xdc's ApplySignTransaction() function.
+/// 
+/// Reference: https://github.com/XinFinOrg/XDPoSChain/blob/master/core/state_processor.go
 /// </summary>
 public class XdcTransactionProcessor : TransactionProcessorBase
 {
@@ -50,109 +54,87 @@ public class XdcTransactionProcessor : TransactionProcessorBase
     }
 
     /// <summary>
-    /// Checks if a transaction is destined for the BlockSigners contract
-    /// Must be to address 0x89 with zero value
+    /// Checks if a transaction is destined for the BlockSigners contract (0x89).
+    /// Matches geth-xdc: to == BlockSignersBinary (0x89)
     /// </summary>
     private bool IsBlockSignersTransaction(Transaction transaction)
     {
         return transaction.To is not null 
-            && transaction.To == XdcConstants.BlockSignersAddress
-            && transaction.Value.IsZero;
+            && transaction.To == XdcConstants.BlockSignersAddress;
     }
 
     /// <summary>
-    /// Apply BlockSigners transaction - special handling that bypasses EVM
+    /// Apply BlockSigners transaction - special handling that bypasses EVM.
     /// 
     /// This replicates geth-xdc's ApplySignTransaction() behavior:
-    /// 1. Update nonce
-    /// 2. Deduct gas cost (but gas used is 0)
-    /// 3. Create receipt with BlockSigners log
-    /// 4. Do NOT execute any EVM code
+    /// 1. Get sender and validate nonce
+    /// 2. Increment nonce
+    /// 3. Finalize state (apply pending changes)
+    /// 4. Create receipt with 0 gas used
+    /// 5. Add log entry for BlockSigners
+    /// 6. Do NOT execute any EVM code
+    /// 
+    /// Reference implementation:
+    /// https://github.com/XinFinOrg/XDPoSChain/blob/master/core/state_processor.go#L312
     /// </summary>
     private TransactionResult ApplySignTransaction(
-        Transaction transaction, 
+        Transaction tx, 
         ITxTracer tracer,
         ExecutionOptions opts)
     {
-        IReleaseSpec spec = SpecProvider.GetSpec(WorldState.BlockNumber);
-
         try
         {
-            // Get sender address
-            Address sender = transaction.SenderAddress!;
-
-            // Validate and increment nonce
+            // Get current block header for context
+            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+            IReleaseSpec spec = GetSpec(header);
+            
+            // Get sender address (must be already set)
+            Address sender = tx.SenderAddress!;
+            
+            // Validate and increment nonce (geth-xdc behavior)
             UInt256 nonce = WorldState.GetNonce(sender);
-            if (nonce != transaction.Nonce)
+            if (nonce != tx.Nonce)
             {
-                if (tracer.IsTracingReceipt)
-                {
-                    tracer.MarkAsFailed(
-                        sender,
-                        0,
-                        Array.Empty<byte>(),
-                        "invalid nonce",
-                        null);
-                }
-                return TransactionProcessor.ErrorType.WrongTransactionNonce;
+                if (Logger.IsDebug)
+                    Logger.Debug($"BlockSigners tx invalid nonce: expected {nonce}, got {tx.Nonce}");
+                
+                return TransactionResult.WrongTransactionNonce;
             }
             WorldState.IncrementNonce(sender);
 
-            // Calculate gas cost (but we won't actually consume the gas)
-            UInt256 gasCost = (UInt256)transaction.GasLimit * transaction.GasPrice;
+            // Commit state to apply the nonce change
+            WorldState.Commit(spec);
+
+            // Create log entry for BlockSigners (matching geth-xdc)
+            var logEntry = new LogEntry(
+                XdcConstants.BlockSignersAddress,
+                Array.Empty<byte>(),
+                Array.Empty<Hash256>());
             
-            // Deduct gas cost from sender
-            if (!WorldState.BalanceEnough(sender, gasCost, spec))
-            {
-                if (tracer.IsTracingReceipt)
-                {
-                    tracer.MarkAsFailed(
-                        sender,
-                        0,
-                        Array.Empty<byte>(),
-                        "insufficient balance for gas",
-                        null);
-                }
-                return TransactionProcessor.ErrorType.InsufficientSenderBalance;
-            }
-            WorldState.SubtractFromBalance(sender, gasCost, spec);
-
-            // Refund the gas cost immediately (since gas used is 0)
-            WorldState.AddToBalance(sender, gasCost, spec);
-
-            // Create receipt - success with 0 gas used
+            // Use the tracer to report the log if needed
             if (tracer.IsTracingReceipt)
             {
+                // Report as success with 0 gas used
+                var gasConsumed = new GasConsumed(0, 0);
                 tracer.MarkAsSuccess(
                     XdcConstants.BlockSignersAddress,
-                    0, // Gas used = 0
+                    gasConsumed, // Gas used = 0
                     Array.Empty<byte>(),
-                    Array.Empty<LogEntry>(),
-                    null);
+                    new[] { logEntry });
             }
 
-            if (Logger.IsTrace)
-                Logger.Trace($"Applied BlockSigners transaction from {sender} at block {WorldState.BlockNumber}");
+            if (Logger.IsDebug)
+                Logger.Debug($"Applied BlockSigners transaction from {sender} at block {header.Number}");
 
-            // Return success (TransactionProcessor.ErrorType.None)
-            return new TransactionResult();
+            // Return success - 0 gas used, no error
+            return TransactionResult.Ok;
         }
         catch (Exception ex)
         {
             if (Logger.IsError)
                 Logger.Error($"Failed to apply BlockSigners transaction: {ex.Message}");
             
-            if (tracer.IsTracingReceipt)
-            {
-                tracer.MarkAsFailed(
-                    transaction.SenderAddress!,
-                    0,
-                    Array.Empty<byte>(),
-                    ex.Message,
-                    null);
-            }
-            
-            return TransactionProcessor.ErrorType.MalformedTransaction;
+            return TransactionResult.MalformedTransaction;
         }
     }
 }
