@@ -126,6 +126,11 @@ internal class Xdpos2ProtocolHandler(
         Send(new TimeoutMsg() { Timeout = timeout });
     }
 
+    public void SendSyncinfo(SyncInfo syncInfo)
+    {
+        Send(new SyncInfoMsg() { SyncInfo = syncInfo });
+    }
+
     private bool ShouldNotifyVote(Vote vote)
     {
         if (_notifiedVotes.Contains(vote.Hash))

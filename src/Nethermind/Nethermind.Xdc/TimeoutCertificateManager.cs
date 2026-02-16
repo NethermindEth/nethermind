@@ -181,7 +181,11 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
         {
             SyncInfo syncInfo = GetSyncInfo();
-            //TODO: Broadcast syncInfo
+            foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+            {
+                if (peerInfo.SyncPeer is Xdpos2ProtocolHandler xdpos2ProtocolHandler)
+                    xdpos2ProtocolHandler.SendSyncinfo(syncInfo);
+            }
         }
     }
 
