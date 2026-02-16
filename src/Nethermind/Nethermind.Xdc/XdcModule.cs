@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -34,12 +35,11 @@ public class XdcModule : Module
         // Register snapshot manager for XDPoS consensus state
         builder.Register(ctx =>
         {
-            var dbProvider = ctx.Resolve<IDbProvider>();
             var blockTree = ctx.Resolve<IBlockTree>();
             var penaltyHandler = ctx.Resolve<IPenaltyHandler>();
             
-            // Get or create the XDC snapshot database
-            var snapshotDb = dbProvider.GetDb<IDb>("xdc_snapshot");
+            // Use in-memory DB for snapshots (TODO: register proper DB column in DbProvider)
+            var snapshotDb = new MemDb("xdc_snapshot");
             
             return new SnapshotManager(snapshotDb, blockTree, penaltyHandler);
         }).As<ISnapshotManager>()
@@ -48,6 +48,11 @@ public class XdcModule : Module
         // Register XDC-specific genesis builder that uses XdcBlockHeader
         builder.RegisterType<XdcGenesisBuilder>()
             .As<IGenesisBuilder>()
+            .InstancePerLifetimeScope();
+
+        // Register XDC block processor that preserves XdcBlockHeader during processing
+        builder.RegisterType<XdcBlockProcessor>()
+            .As<IBlockProcessor>()
             .InstancePerLifetimeScope();
 
         // Register XDC consensus message processor

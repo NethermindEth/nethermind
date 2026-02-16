@@ -39,13 +39,20 @@ public class XdcGenesisBuilder(
             postProcessor.PostProcess(genesis);
         }
 
-        stateProvider.Commit(specProvider.GenesisSpec, true);
-        stateProvider.CommitTree(0);
-        genesis.Header.StateRoot = stateProvider.StateRoot;
+        if (!chainSpec.GenesisStateUnavailable)
+        {
+            stateProvider.Commit(specProvider.GenesisSpec, true);
+            stateProvider.CommitTree(0);
+            genesis.Header.StateRoot = stateProvider.StateRoot;
+        }
+
         genesis.Header.Hash = genesis.Header.CalculateHash();
 
-        var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
-        snapshotManager.StoreSnapshot(new Types.Snapshot(genesis.Number, genesis.Hash!, finalSpec.GenesisMasterNodes));
+        // Store genesis snapshot if XDC spec provider is available
+        if (specProvider.GetFinalSpec() is IXdcReleaseSpec finalSpec)
+        {
+            snapshotManager.StoreSnapshot(new Types.Snapshot(genesis.Number, genesis.Hash!, finalSpec.GenesisMasterNodes));
+        }
 
         return genesis;
     }
