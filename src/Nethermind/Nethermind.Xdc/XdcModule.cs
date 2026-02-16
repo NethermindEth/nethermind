@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -69,10 +70,11 @@ public class XdcModule : Module
         {
             var logManager = ctx.Resolve<ILogManager>();
             var blockTree = ctx.Resolve<IBlockTree>();
-            return new XdcRewardCalculator(logManager, blockTree);
+            var worldState = ctx.Resolve<IWorldState>();
+            return new XdcRewardCalculator(logManager, blockTree, worldState);
         }).As<IRewardCalculator>()
           .As<IRewardCalculatorSource>()
-          .SingleInstance();
+          .InstancePerLifetimeScope();
 
         // Register XDC transaction processor for BlockSigners special handling
         builder.RegisterType<XdcTransactionProcessor>()
