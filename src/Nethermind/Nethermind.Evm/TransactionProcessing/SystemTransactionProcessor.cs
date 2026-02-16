@@ -12,7 +12,8 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcessorBase<TGasPolicy>
+public sealed class SystemTransactionProcessor<TVirtualMachine, TGasPolicy> : TransactionProcessorBase<TVirtualMachine, TGasPolicy>
+    where TVirtualMachine : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly bool _isAura;
@@ -27,7 +28,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
-        IVirtualMachine<TGasPolicy>? virtualMachine,
+        TVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
         : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)

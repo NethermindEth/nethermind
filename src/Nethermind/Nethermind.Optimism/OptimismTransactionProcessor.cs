@@ -17,7 +17,7 @@ public class OptimismTransactionProcessor(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
-    IVirtualMachine virtualMachine,
+    EthereumVirtualMachine virtualMachine,
     ILogManager logManager,
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,

@@ -95,7 +95,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected ITxTracer _txTracer = NullTxTracer.Instance;
 
     private ICodeInfoRepository _codeInfoRepository;
-    private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected VmState<TGasPolicy> _currentState;
@@ -146,10 +145,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
 #if !ZKVM
-    public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
-#else
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+    virtual
 #endif
+    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+
         VmState<TGasPolicy> vmState,
         IWorldState worldState,
         ITxTracer txTracer)
@@ -347,7 +346,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (previousState.IsPrecompile)
         {
             // parity induced if else for vmtrace
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
             }
@@ -634,7 +633,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
-       if (Flag.IsActive<TTracingInst>())
+       if (TTracingInst.IsActive)
         {
             txTracer.ReportOperationRemainingGas(0);
             txTracer.ReportOperationError(errorType);
@@ -1051,7 +1050,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </returns>
     /// <remarks>
     /// The generic struct parameter is used to eliminate runtime if-statements via compile-time evaluation
-    /// of <c>Flag.IsActive<TTracingInst>()</c>.
+    /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
     protected CallResult ExecuteCall<TTracingInst>(
@@ -1104,7 +1103,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
 
             // Report the remaining gas if tracing instructions are enabled.
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
             }
@@ -1174,10 +1173,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     [SkipLocalsInit]
 #if !ZKVM
-    protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
-#else
-    protected unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+    virtual
 #endif
+    protected CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
@@ -1204,11 +1202,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         var opcodeArray = _opcodeMethods;
-#if !ZKVM
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
-#else
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
-#endif
         {
             int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
@@ -1223,11 +1217,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
 
                 // If cancellation is enabled and cancellation has been requested, throw an exception.
-                if (Flag.IsActive<TCancelable>() && _txTracer.IsCancelled)
+                if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
                 // If tracing is enabled, start an instruction trace.
-               if (Flag.IsActive<TTracingInst>())
+               //if (TTracingInst.IsActive)
+               if (TTracingInst.IsActive)
                     StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
 
                 // Advance the program counter to point to the next instruction.
@@ -1259,7 +1254,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     break;
 
                 // If tracing is enabled, complete the trace for the current instruction.
-               if (Flag.IsActive<TTracingInst>())
+               if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
                 // If return data has been set, exit the loop to process the returned value.
@@ -1273,7 +1268,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
             // If tracing is enabled, complete the trace for the current instruction.
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             UpdateCurrentState(programCounter, in gas, stack.Head);
         }

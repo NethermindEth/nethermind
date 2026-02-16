@@ -40,9 +40,3 @@ public struct OnFlag : IFlag
     /// <inheritdoc />
     public static bool IsActive => true;
 }
-
-public static partial class Flag
-{
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static partial bool IsActive<TFlag>() where TFlag : struct, IFlag;
-}

@@ -84,7 +84,7 @@ public static partial class EvmInstructions
             if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
 
             // If tracing is enabled, report the memory change.
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -191,7 +191,7 @@ public static partial class EvmInstructions
             if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
 
             // Report memory changes if tracing is enabled.
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -243,7 +243,7 @@ public static partial class EvmInstructions
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (!Flag.IsActive<TTracingInst>() && programCounter < codeSection.Length)
+        if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
             // Peek at the next instruction to detect patterns.

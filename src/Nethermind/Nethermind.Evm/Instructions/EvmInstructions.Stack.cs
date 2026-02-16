@@ -129,7 +129,7 @@ public static partial class EvmInstructions
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
         Instruction nextInstruction;
-        if (!Flag.IsActive<TTracingInst>() &&
+        if (!TTracingInst.IsActive &&
             remainingCode > Size &&
             stack.Head < EvmStack.MaxStackSize - 1 &&
             ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))

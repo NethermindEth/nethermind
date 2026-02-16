@@ -131,7 +131,7 @@ public static partial class EvmInstructions
             if (!vm.VmState.Memory.TrySave(in destOffset, in slice)) goto OutOfGas;
 
             // Report the memory change if tracing is active.
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(destOffset, in slice);
             }
@@ -279,7 +279,7 @@ public static partial class EvmInstructions
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
             if (!vm.VmState.Memory.TrySave(in memOffset, in dataSectionSlice)) goto OutOfGas;
 
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(memOffset, dataSectionSlice);
             }
@@ -716,7 +716,7 @@ public static partial class EvmInstructions
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
-       if (Flag.IsActive<TTracingInst>())
+       if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // Take a snapshot before modifying state for the new contract.
@@ -974,7 +974,7 @@ public static partial class EvmInstructions
 
             // If tracing is active, record additional details regarding the failure.
             ITxTracer txTracer = vm.TxTracer;
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 ReadOnlyMemory<byte> memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
                 txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);

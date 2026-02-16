@@ -64,13 +64,13 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             RunOpCodes<OffFlag>(vm, state, vmState, spec);
         }
 
-        TransactionProcessor<TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        TransactionProcessor<VirtualMachine<TGasPolicy>, TGasPolicy> processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
 
         RunTransactions(processor, state, spec);
     }
 
-    private static void RunTransactions(TransactionProcessor<TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
+    private static void RunTransactions(TransactionProcessor<VirtualMachine<TGasPolicy>, TGasPolicy> processor, IWorldState state, IReleaseSpec spec)
     {
         const int WarmUpIterations = 40;
 

@@ -226,7 +226,7 @@ public static partial class EvmInstructions
                 vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
             }
 
-            if (Flag.IsActive<TTracingInst>())
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
                 vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
@@ -234,7 +234,7 @@ public static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-           if (Flag.IsActive<TTracingInst>())
+           if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
@@ -247,7 +247,7 @@ public static partial class EvmInstructions
         state.SubtractFromBalance(caller, in transferValue, spec);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !Flag.IsActive<TTracingInst>() && !vm.TxTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);

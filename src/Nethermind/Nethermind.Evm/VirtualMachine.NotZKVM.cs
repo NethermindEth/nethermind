@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if ZKVM
+#if !ZKVM
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,12 +11,13 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    private static long _txCount;
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
         // Check if tracing instructions are inactive.
-        if (!Flag.IsActive<TTracingInst>())
+        if (!TTracingInst.IsActive)
         {
             // Occasionally refresh the opcode cache for non-tracing opcodes.
             // The cache is flushed every 10,000 transactions until a threshold of 500,000 transactions.

@@ -5,19 +5,20 @@ ARTIFACTS_DIR := $(PARENT_DIR)/artifacts/bin/StatelessExecution/release
 .PHONY: all build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu build-zisk execute-zisk publish-aot run-docker
 
 all: build-tool-local build-riscv execute-riscv
-zisk_sim: build-tool-local build-zisk-sim execute-zisk-sim
+zisk_sim: build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu
 zisk: build-tool-local build-zisk execute-zisk
 
 build-tool-local:
-	rm -rf nethermind
+	rm -rf nethermind; \
 	dotnet build -c release '-p:DefineConstants=ZKVM' .
 
 run-docker:
 	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk  /bin/bash
 
 build-zisk:
-	rm -f Program
-	rm -f Program.o
+	rm -f Program; \
+	rm -f Program.patched; \
+	rm -f Program.o; \
 	./docker_build.sh bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
 		-d ZKVM \
 		--nostdlibrefs \
@@ -79,7 +80,7 @@ build-zisk:
 		--stdlib dotnet --verbose ./Program.cs
 
 build-zisk-sim:
-	rm -f Program
+	rm -f Program; \
 	./docker_build.sh bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk_sim \
 		-d ZKVM \
 		--nostdlibrefs \
@@ -141,7 +142,10 @@ build-zisk-sim:
 		--stdlib dotnet --verbose ./Program.cs
 
 execute-zisk-sim:
-	DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 ./Program
+	DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 ./Program; \
+	status=$$?; \
+	echo $$status; \
+	exit $$status
 
 execute-zisk-qemu:
 	@port=1234; \
@@ -161,7 +165,7 @@ execute-zisk-qemu:
 	wait "$$QEMU_PID"
 
 execute-zisk:
-	RUST_BACKTRACE=full ziskemu -a -e ./Program
+	RUST_BACKTRACE=full ziskemu -a -e ./Program.patched
 
 publish-aot:
 	dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishAot=true
