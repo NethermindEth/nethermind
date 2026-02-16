@@ -62,7 +62,11 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     {
         // XDPoS does NOT apply rewards on every block
         // Rewards only at checkpoint blocks (every 900 for V1)
-        if (block.IsGenesis || block.Number % CheckpointInterval != 0)
+        // Geth-xdc condition: number > 0 && number - rCheckpoint > 0
+        // This means block 900 gets NO rewards (900-900=0, not > 0)
+        // First actual reward is at block 1800
+        if (block.IsGenesis || block.Number % CheckpointInterval != 0 
+            || block.Number <= CheckpointInterval)
         {
             return Array.Empty<BlockReward>();
         }
