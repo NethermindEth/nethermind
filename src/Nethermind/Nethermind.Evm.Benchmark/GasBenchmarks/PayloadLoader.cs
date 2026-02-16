@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -89,6 +90,102 @@ public static class PayloadLoader
         }
 
         return (header, transactions);
+    }
+
+    /// <summary>
+    /// Parses an engine_newPayloadV4 payload file and returns a full Block suitable for BlockProcessor.
+    /// Includes withdrawals, TxRoot, WithdrawalsRoot, and other block-level fields.
+    /// </summary>
+    public static Block LoadBlock(string filePath)
+    {
+        string firstLine;
+        using (StreamReader reader = new(filePath))
+        {
+            firstLine = reader.ReadLine();
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(firstLine);
+        JsonElement paramsArray = doc.RootElement.GetProperty("params");
+        JsonElement payload = paramsArray[0];
+
+        long blockNumber = ParseHexLong(payload, "blockNumber");
+        long gasLimit = ParseHexLong(payload, "gasLimit");
+        long gasUsed = ParseHexLong(payload, "gasUsed");
+        ulong timestamp = ParseHexULong(payload, "timestamp");
+        UInt256 baseFeePerGas = ParseHexUInt256(payload, "baseFeePerGas");
+        Hash256 parentHash = new(Bytes.FromHexString(payload.GetProperty("parentHash").GetString()));
+        Hash256 prevRandao = new(Bytes.FromHexString(payload.GetProperty("prevRandao").GetString()));
+        Address beneficiary = new(payload.GetProperty("feeRecipient").GetString());
+
+        // Parse blob gas fields (EIP-4844)
+        ulong? blobGasUsed = payload.TryGetProperty("blobGasUsed", out JsonElement blobGasEl) ? ParseHexULong(blobGasEl.GetString()) : null;
+        ulong? excessBlobGas = payload.TryGetProperty("excessBlobGas", out JsonElement excessEl) ? ParseHexULong(excessEl.GetString()) : null;
+
+        // Parse parent beacon block root (EIP-4788) — separate JSON-RPC param, not inside payload object
+        Hash256 parentBeaconBlockRoot = null;
+        if (paramsArray.GetArrayLength() > 2 && paramsArray[2].ValueKind == JsonValueKind.String)
+        {
+            string beaconRootHex = paramsArray[2].GetString();
+            if (beaconRootHex is not null && beaconRootHex.Length > 2)
+                parentBeaconBlockRoot = new Hash256(Bytes.FromHexString(beaconRootHex));
+        }
+
+        // Decode transactions
+        JsonElement txsArray = payload.GetProperty("transactions");
+        int txCount = txsArray.GetArrayLength();
+        Transaction[] transactions = new Transaction[txCount];
+
+        EthereumEcdsa ecdsa = new(1);
+        for (int i = 0; i < txCount; i++)
+        {
+            byte[] rlpBytes = Bytes.FromHexString(txsArray[i].GetString());
+            transactions[i] = TxDecoder.Instance.Decode(rlpBytes);
+            transactions[i].SenderAddress = ecdsa.RecoverAddress(transactions[i]);
+        }
+
+        // Parse withdrawals (EIP-4895)
+        Withdrawal[] withdrawals = null;
+        if (payload.TryGetProperty("withdrawals", out JsonElement withdrawalsEl) && withdrawalsEl.ValueKind == JsonValueKind.Array)
+        {
+            int wCount = withdrawalsEl.GetArrayLength();
+            withdrawals = new Withdrawal[wCount];
+            for (int i = 0; i < wCount; i++)
+            {
+                JsonElement w = withdrawalsEl[i];
+                withdrawals[i] = new Withdrawal
+                {
+                    Index = ParseHexULong(w, "index"),
+                    ValidatorIndex = ParseHexULong(w, "validatorIndex"),
+                    Address = new Address(w.GetProperty("address").GetString()),
+                    AmountInGwei = ParseHexULong(w, "amount"),
+                };
+            }
+        }
+
+        // Build header with full block-level fields
+        BlockHeader header = new(
+            parentHash,
+            Keccak.OfAnEmptySequenceRlp,
+            beneficiary,
+            UInt256.Zero,
+            blockNumber,
+            gasLimit,
+            timestamp,
+            Array.Empty<byte>(),
+            blobGasUsed,
+            excessBlobGas)
+        {
+            GasUsed = gasUsed,
+            BaseFeePerGas = baseFeePerGas,
+            MixHash = prevRandao,
+            IsPostMerge = true,
+            Hash = new Hash256(Bytes.FromHexString(payload.GetProperty("blockHash").GetString())),
+            ParentBeaconBlockRoot = parentBeaconBlockRoot,
+            TxRoot = TxTrie.CalculateRoot(transactions),
+            WithdrawalsRoot = withdrawals is not null ? WithdrawalTrie.CalculateRoot(withdrawals) : null,
+        };
+
+        return new Block(header, new BlockBody(transactions, Array.Empty<BlockHeader>(), withdrawals));
     }
 
     /// <summary>
@@ -241,6 +338,11 @@ public static class PayloadLoader
     private static ulong ParseHexULong(JsonElement parent, string propertyName)
     {
         string hex = parent.GetProperty(propertyName).GetString();
+        return ParseHexULong(hex);
+    }
+
+    private static ulong ParseHexULong(string hex)
+    {
         return Convert.ToUInt64(hex, 16);
     }
 

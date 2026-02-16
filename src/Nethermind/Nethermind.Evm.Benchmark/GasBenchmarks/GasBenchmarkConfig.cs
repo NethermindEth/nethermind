@@ -13,6 +13,12 @@ public class GasBenchmarkConfig : ManualConfig
 {
     internal static bool InProcess { get; set; }
 
+    /// <summary>1-based chunk index (e.g. 1 means first chunk). 0 = no chunking.</summary>
+    internal static int ChunkIndex { get; set; }
+
+    /// <summary>Total number of chunks to split scenarios into.</summary>
+    internal static int ChunkTotal { get; set; }
+
     public GasBenchmarkConfig()
     {
         Job job = Job.MediumRun.WithLaunchCount(1).WithIterationCount(10);

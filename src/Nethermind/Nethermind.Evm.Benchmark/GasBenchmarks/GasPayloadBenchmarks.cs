@@ -31,7 +31,7 @@ public class GasPayloadBenchmarks
     private static readonly string s_gasBenchmarksRoot = Path.Combine(s_repoRoot, "tools", "gas-benchmarks");
     private static readonly string s_testingDir = Path.Combine(s_gasBenchmarksRoot, "eest_tests", "testing");
     private static readonly string s_setupDir = Path.Combine(s_gasBenchmarksRoot, "eest_tests", "setup");
-    private static readonly string s_genesisPath = Path.Combine(s_gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
+    internal static readonly string s_genesisPath = Path.Combine(s_gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
     private static bool s_missingSubmoduleWarned;
 
     private IWorldState _state;
@@ -143,11 +143,22 @@ public class GasPayloadBenchmarks
         string[] dirs = Directory.GetDirectories(s_testingDir);
         Array.Sort(dirs);
 
+        int globalIndex = 0;
+        int chunkIndex = GasBenchmarkConfig.ChunkIndex;
+        int chunkTotal = GasBenchmarkConfig.ChunkTotal;
+
         for (int d = 0; d < dirs.Length; d++)
         {
             string[] files = Directory.GetFiles(dirs[d], "*.txt");
+            Array.Sort(files);
             for (int f = 0; f < files.Length; f++)
             {
+                if (chunkTotal > 0 && (globalIndex % chunkTotal) != (chunkIndex - 1))
+                {
+                    globalIndex++;
+                    continue;
+                }
+                globalIndex++;
                 yield return new TestCase(files[f]);
             }
         }
@@ -157,7 +168,7 @@ public class GasPayloadBenchmarks
     /// Finds the setup payload file matching a given test filename, if any.
     /// Setup files share the same filename as test files but live under setup/ directories.
     /// </summary>
-    private static string FindSetupFile(string testFileName)
+    internal static string FindSetupFile(string testFileName)
     {
         if (!Directory.Exists(s_setupDir))
             return null;

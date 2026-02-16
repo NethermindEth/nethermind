@@ -36,7 +36,113 @@ if (inprocessIdx >= 0)
     args = filtered;
 }
 
+// Handle --mode=EVM or --mode=Block: translates to BDN filter for the corresponding benchmark class
+args = ApplyModeFilter(args);
+
+// Handle --chunk N/M: splits scenarios across runners (e.g. --chunk 2/5 means second of five chunks)
+args = ApplyChunkFilter(args);
+
 BenchmarkSwitcher.FromAssembly(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks).Assembly).Run(args);
+
+static string[] ApplyModeFilter(string[] args)
+{
+    int modeIdx = -1;
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i].StartsWith("--mode=", StringComparison.OrdinalIgnoreCase) || args[i].StartsWith("--mode:", StringComparison.OrdinalIgnoreCase))
+        {
+            modeIdx = i;
+            break;
+        }
+    }
+
+    if (modeIdx < 0)
+        return args;
+
+    string modeValue = args[modeIdx].Substring(7); // after "--mode=" or "--mode:"
+    string classFilter = modeValue.ToUpperInvariant() switch
+    {
+        "EVM" => "*GasPayload*",
+        "BLOCK" => "*GasBlock*",
+        _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM' or 'Block'.")
+    };
+
+    // Remove --mode from args
+    string[] remaining = new string[args.Length - 1];
+    Array.Copy(args, 0, remaining, 0, modeIdx);
+    Array.Copy(args, modeIdx + 1, remaining, modeIdx, args.Length - modeIdx - 1);
+
+    // If user already has --filter, combine with mode filter; otherwise add --filter
+    int filterIdx = Array.IndexOf(remaining, "--filter");
+    if (filterIdx >= 0 && filterIdx + 1 < remaining.Length)
+    {
+        // Wrap the existing filter with the mode class prefix
+        // e.g. --mode=Block --filter "*MULMOD*" → --filter "*GasBlock*MULMOD*"
+        string existing = remaining[filterIdx + 1].Trim('"');
+        remaining[filterIdx + 1] = classFilter.TrimEnd('*') + "*" + existing.TrimStart('*');
+    }
+    else
+    {
+        // No existing filter — add one
+        string[] withFilter = new string[remaining.Length + 2];
+        Array.Copy(remaining, withFilter, remaining.Length);
+        withFilter[remaining.Length] = "--filter";
+        withFilter[remaining.Length + 1] = classFilter;
+        remaining = withFilter;
+    }
+
+    return remaining;
+}
+
+static string[] ApplyChunkFilter(string[] args)
+{
+    int chunkIdx = -1;
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i].StartsWith("--chunk", StringComparison.OrdinalIgnoreCase))
+        {
+            chunkIdx = i;
+            break;
+        }
+    }
+
+    if (chunkIdx < 0)
+        return args;
+
+    // Support --chunk N/M or --chunk=N/M
+    string chunkValue;
+    int removeCount;
+    if (args[chunkIdx].Contains('=') || args[chunkIdx].Contains(':'))
+    {
+        int sep = args[chunkIdx].IndexOfAny(new[] { '=', ':' });
+        chunkValue = args[chunkIdx].Substring(sep + 1);
+        removeCount = 1;
+    }
+    else if (chunkIdx + 1 < args.Length)
+    {
+        chunkValue = args[chunkIdx + 1];
+        removeCount = 2;
+    }
+    else
+    {
+        throw new ArgumentException("--chunk requires a value in format N/M (e.g. --chunk 2/5)");
+    }
+
+    string[] parts = chunkValue.Split('/');
+    if (parts.Length != 2 || !int.TryParse(parts[0], out int n) || !int.TryParse(parts[1], out int m) || n < 1 || n > m)
+    {
+        throw new ArgumentException($"Invalid --chunk value: '{chunkValue}'. Expected format N/M where 1 <= N <= M (e.g. 2/5)");
+    }
+
+    GasBenchmarkConfig.ChunkIndex = n;
+    GasBenchmarkConfig.ChunkTotal = m;
+
+    // Remove --chunk from args
+    string[] remaining = new string[args.Length - removeCount];
+    Array.Copy(args, 0, remaining, 0, chunkIdx);
+    Array.Copy(args, chunkIdx + removeCount, remaining, chunkIdx, args.Length - chunkIdx - removeCount);
+    return remaining;
+}
 
 static void RunDiagnostic(string pattern)
 {
