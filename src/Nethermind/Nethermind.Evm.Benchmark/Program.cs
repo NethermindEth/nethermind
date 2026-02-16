@@ -133,6 +133,22 @@ static void RunDiagnostic(string pattern)
         codeInfoRepo,
         LimboLogs.Instance);
 
+    // Execute setup payload if one exists (e.g. storage pre-population for SLOAD/SSTORE)
+    string setupDir = Path.Combine(gasBenchmarksRoot, "eest_tests", "setup");
+    string setupFile = FindSetupFile(setupDir, Path.GetFileName(matchedFile));
+    if (setupFile is not null)
+    {
+        Console.WriteLine($"\nSetup file: {Path.GetFileName(setupFile)}");
+        (BlockHeader setupHeader, Transaction[] setupTxs) = PayloadLoader.LoadPayload(setupFile);
+        txProcessor.SetBlockExecutionContext(setupHeader);
+        for (int i = 0; i < setupTxs.Length; i++)
+        {
+            txProcessor.Execute(setupTxs[i], NullTxTracer.Instance);
+        }
+        state.Commit(pragueSpec);
+        Console.WriteLine($"Setup complete: {setupTxs.Length} transactions executed");
+    }
+
     txProcessor.SetBlockExecutionContext(header);
 
     Console.WriteLine("\n--- Executing transactions ---");
@@ -158,6 +174,21 @@ static void RunDiagnostic(string pattern)
 
     scope.Dispose();
     Console.WriteLine("\nDiagnostic complete.");
+}
+
+static string FindSetupFile(string setupDir, string testFileName)
+{
+    if (!Directory.Exists(setupDir))
+        return null;
+
+    foreach (string dir in Directory.GetDirectories(setupDir))
+    {
+        string candidate = Path.Combine(dir, testFileName);
+        if (File.Exists(candidate))
+            return candidate;
+    }
+
+    return null;
 }
 
 static string FindRepoRoot()
