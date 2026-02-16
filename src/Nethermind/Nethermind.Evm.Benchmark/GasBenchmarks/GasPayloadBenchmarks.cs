@@ -124,7 +124,12 @@ public class GasPayloadBenchmarks
     public static IEnumerable<TestCase> GetTestCases()
     {
         if (!Directory.Exists(s_testingDir))
+        {
+            Console.Error.WriteLine(
+                "[GasPayloadBenchmarks] No test cases found. Initialize the gas-benchmarks submodule:\n" +
+                "  git lfs install && git submodule update --init tools/gas-benchmarks");
             yield break;
+        }
 
         string[] dirs = Directory.GetDirectories(s_testingDir);
         Array.Sort(dirs);

@@ -164,7 +164,7 @@ public static class PayloadLoader
             throw new FileNotFoundException(
                 $"Genesis file not found: {genesisPath}\n" +
                 "Make sure the gas-benchmarks submodule is initialized:\n" +
-                "  git submodule update --init tools/gas-benchmarks");
+                "  git lfs install && git submodule update --init tools/gas-benchmarks");
         }
 
         using FileStream fs = File.OpenRead(genesisPath);
@@ -178,7 +178,7 @@ public static class PayloadLoader
         {
             throw new InvalidOperationException(
                 $"Genesis file appears to be a Git LFS pointer: {genesisPath}\n" +
-                "Run the following to download the actual file:\n" +
+                "Git LFS was not installed when the submodule was cloned. Fix with:\n" +
                 "  git lfs install && cd tools/gas-benchmarks && git lfs pull");
         }
 
