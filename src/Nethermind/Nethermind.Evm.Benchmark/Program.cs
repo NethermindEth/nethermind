@@ -21,7 +21,8 @@ using Nethermind.Evm.Benchmark;
 
 if (args.Length > 0 && args[0] == "--diag")
 {
-    RunDiagnostic();
+    string pattern = args.Length > 1 ? args[1] : "*";
+    RunDiagnostic(pattern);
     return;
 }
 
@@ -37,32 +38,32 @@ if (inprocessIdx >= 0)
 
 BenchmarkSwitcher.FromAssembly(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks).Assembly).Run(args);
 
-static void RunDiagnostic()
+static void RunDiagnostic(string pattern)
 {
     string repoRoot = FindRepoRoot();
     string gasBenchmarksRoot = Path.Combine(repoRoot, "tools", "gas-benchmarks");
     string genesisPath = Path.Combine(gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
     string testingDir = Path.Combine(gasBenchmarksRoot, "eest_tests", "testing");
 
-    // Find first MULMOD test file
-    string mulmodFile = null;
+    // Find first test file matching the pattern
+    string matchedFile = null;
     foreach (string dir in Directory.GetDirectories(testingDir))
     {
-        foreach (string file in Directory.GetFiles(dir, "*MULMOD*"))
+        foreach (string file in Directory.GetFiles(dir, $"*{pattern}*"))
         {
-            mulmodFile = file;
+            matchedFile = file;
             break;
         }
-        if (mulmodFile is not null) break;
+        if (matchedFile is not null) break;
     }
 
-    if (mulmodFile is null)
+    if (matchedFile is null)
     {
-        Console.WriteLine("ERROR: No MULMOD test file found");
+        Console.WriteLine($"ERROR: No test file matching '{pattern}' found");
         return;
     }
 
-    Console.WriteLine($"Test file: {Path.GetFileName(mulmodFile)}");
+    Console.WriteLine($"Test file: {Path.GetFileName(matchedFile)}");
 
     IReleaseSpec pragueSpec = Prague.Instance;
     ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
@@ -80,7 +81,7 @@ static void RunDiagnostic()
     IDisposable scope = state.BeginScope(genesisBlock);
 
     // Load test payload
-    (BlockHeader header, Transaction[] txs) = PayloadLoader.LoadPayload(mulmodFile);
+    (BlockHeader header, Transaction[] txs) = PayloadLoader.LoadPayload(matchedFile);
     Console.WriteLine($"Block: number={header.Number}, gasLimit={header.GasLimit}, gasUsed={header.GasUsed}");
     Console.WriteLine($"Transactions: {txs.Length}");
 
