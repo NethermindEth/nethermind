@@ -1,21 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Anil Chinchawale
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Xdc.P2P;
 
 namespace Nethermind.Xdc;
-
-using Nethermind.Xdc.P2P.Eth100;
 
 /// <summary>
 /// Autofac module for XDC Network support
@@ -32,37 +29,30 @@ public class XdcModule : Module
             .As<IXdcConsensusMessageProcessor>()
             .SingleInstance();
 
-        // Register custom eth protocol factory for XDC eth/100
+        // Register custom eth protocol factory for XDC eth/100 using lambda to handle optional dependencies
         builder.Register(ctx =>
         {
-            return new Func<ISession, int, SyncPeerProtocolHandlerBase?>((session, version) =>
-            {
-                if (version != 100)
-                    return null;
+            var serializer = ctx.Resolve<IMessageSerializationService>();
+            var nodeStatsManager = ctx.Resolve<INodeStatsManager>();
+            var syncServer = ctx.Resolve<ISyncServer>();
+            var backgroundTaskScheduler = ctx.Resolve<IBackgroundTaskScheduler>();
+            var txPool = ctx.Resolve<ITxPool>();
+            var gossipPolicy = ctx.Resolve<IGossipPolicy>();
+            var logManager = ctx.Resolve<ILogManager>();
+            var txGossipPolicy = ctx.ResolveOptional<ITxGossipPolicy>();
+            var consensusProcessor = ctx.ResolveOptional<IXdcConsensusMessageProcessor>();
 
-                var serializer = ctx.Resolve<IMessageSerializationService>();
-                var stats = ctx.Resolve<INodeStatsManager>();
-                var syncServer = ctx.Resolve<ISyncServer>();
-                var backgroundTaskScheduler = ctx.Resolve<IBackgroundTaskScheduler>();
-                var txPool = ctx.Resolve<ITxPool>();
-                var gossipPolicy = ctx.Resolve<IGossipPolicy>();
-                var logManager = ctx.Resolve<ILogManager>();
-                var consensusProcessor = ctx.ResolveOptional<IXdcConsensusMessageProcessor>();
-                var txGossipPolicy = ctx.ResolveOptional<ITxGossipPolicy>();
-
-                return new Eth100ProtocolHandler(
-                    session,
-                    serializer,
-                    stats,
-                    syncServer,
-                    backgroundTaskScheduler,
-                    txPool,
-                    gossipPolicy,
-                    logManager,
-                    consensusProcessor,
-                    txGossipPolicy);
-            });
-        }).As<Func<ISession, int, SyncPeerProtocolHandlerBase?>>()
+            return new Eth100ProtocolFactory(
+                serializer,
+                nodeStatsManager,
+                syncServer,
+                backgroundTaskScheduler,
+                txPool,
+                gossipPolicy,
+                logManager,
+                txGossipPolicy,
+                consensusProcessor);
+        }).As<ICustomEthProtocolFactory>()
           .SingleInstance();
     }
 }

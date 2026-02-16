@@ -19,6 +19,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -74,7 +75,7 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
-        private readonly Func<ISession, int, SyncPeerProtocolHandlerBase?>? _customEthProtocolFactory;
+        private ICustomEthProtocolFactory? _customEthFactory;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
@@ -93,8 +94,7 @@ namespace Nethermind.Network
             ILogManager logManager,
             ITxPoolConfig txPoolConfdig,
             ISpecProvider specProvider,
-            ITxGossipPolicy? transactionsGossipPolicy = null,
-            Func<ISession, int, SyncPeerProtocolHandlerBase?>? customEthProtocolFactory = null)
+            ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -113,7 +113,6 @@ namespace Nethermind.Network
             _txPoolConfdig = txPoolConfdig;
             _specProvider = specProvider;
             _snapServer = worldStateManager.SnapServer;
-            _customEthProtocolFactory = customEthProtocolFactory;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
@@ -226,9 +225,9 @@ namespace Nethermind.Network
                 [Protocol.Eth] = (session, version) =>
                 {
                     // Try custom factory first (for XDC eth/100)
-                    if (_customEthProtocolFactory is not null)
+                    if (_customEthFactory is not null && _customEthFactory.CanHandle(version))
                     {
-                        var customHandler = _customEthProtocolFactory(session, version);
+                        var customHandler = _customEthFactory.Create(session, version);
                         if (customHandler is not null)
                         {
                             InitSyncPeerProtocol(session, customHandler);
@@ -476,6 +475,12 @@ namespace Nethermind.Network
             }
 
             return highestVersion;
+        }
+
+        public void SetCustomEthProtocolFactory(ICustomEthProtocolFactory factory)
+        {
+            _customEthFactory = factory ?? throw new ArgumentNullException(nameof(factory));
+            if (_logger.IsDebug) _logger.Debug($"Registered custom Eth protocol factory: {factory.GetType().Name}");
         }
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
@@ -15,5 +16,6 @@ namespace Nethermind.Network
         void SendNewCapability(Capability capability); // TODO: remove as unused?
         void AddProtocol(string code, Func<ISession, IProtocolHandler> factory);
         int GetHighestProtocolVersion(string protocol);
+        void SetCustomEthProtocolFactory(ICustomEthProtocolFactory factory);
     }
 }

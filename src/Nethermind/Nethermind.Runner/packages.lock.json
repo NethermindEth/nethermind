@@ -1286,13 +1286,6 @@
           "Nethermind.Core": "[1.36.0-unstable, )"
         }
       },
-      "nethermind.analytics": {
-        "type": "Project",
-        "dependencies": {
-          "Nethermind.Api": "[1.36.0-unstable, )",
-          "Nethermind.Init": "[1.36.0-unstable, )"
-        }
-      },
       "nethermind.api": {
         "type": "Project",
         "dependencies": {
@@ -1555,7 +1548,8 @@
           "Nethermind.Network.Discovery": "[1.36.0-unstable, )",
           "Nethermind.Network.Dns": "[1.36.0-unstable, )",
           "Nethermind.Network.Enr": "[1.36.0-unstable, )",
-          "Nethermind.Specs": "[1.36.0-unstable, )"
+          "Nethermind.Specs": "[1.36.0-unstable, )",
+          "Nethermind.Xdc": "[1.36.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {
@@ -1863,7 +1857,8 @@
           "Nethermind.Api": "[1.36.0-unstable, )",
           "Nethermind.Consensus": "[1.36.0-unstable, )",
           "Nethermind.Core": "[1.36.0-unstable, )",
-          "Nethermind.Init": "[1.36.0-unstable, )"
+          "Nethermind.Network": "[1.36.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {

@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using System;
@@ -60,6 +63,21 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             }
 
             _api.ProtocolsManager?.AddSupportedCapability(new Capability(Protocol.Eth, 100));
+
+            // Register custom eth/100 protocol factory
+            var customFactory = _api.Context.ResolveOptional<ICustomEthProtocolFactory>();
+            if (customFactory is not null)
+            {
+                _api.ProtocolsManager?.SetCustomEthProtocolFactory(customFactory);
+                if (_logger is { } logger2 && logger2.IsDebug)
+                {
+                    logger2.Debug("Registered custom eth/100 protocol factory");
+                }
+            }
+            else if (_logger is { } logger3 && logger3.IsWarn)
+            {
+                logger3.Warn("Custom eth/100 protocol factory not found in container");
+            }
         }
 
         return Task.CompletedTask;
