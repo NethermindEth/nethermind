@@ -25,6 +25,16 @@ if (args.Length > 0 && args[0] == "--diag")
     return;
 }
 
+int inprocessIdx = Array.IndexOf(args, "--inprocess");
+if (inprocessIdx >= 0)
+{
+    GasBenchmarkConfig.InProcess = true;
+    string[] filtered = new string[args.Length - 1];
+    Array.Copy(args, 0, filtered, 0, inprocessIdx);
+    Array.Copy(args, inprocessIdx + 1, filtered, inprocessIdx, args.Length - inprocessIdx - 1);
+    args = filtered;
+}
+
 BenchmarkSwitcher.FromAssembly(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks).Assembly).Run(args);
 
 static void RunDiagnostic()

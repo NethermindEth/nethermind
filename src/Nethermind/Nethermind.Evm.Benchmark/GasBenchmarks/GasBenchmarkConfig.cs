@@ -5,14 +5,24 @@ using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 public class GasBenchmarkConfig : ManualConfig
 {
+    internal static bool InProcess { get; set; }
+
     public GasBenchmarkConfig()
     {
-        AddJob(Job.MediumRun.WithIterationCount(10));
+        Job job = Job.MediumRun.WithIterationCount(10);
+
+        if (InProcess)
+        {
+            job = job.WithToolchain(InProcessEmitToolchain.Instance);
+        }
+
+        AddJob(job);
         AddDiagnoser(MemoryDiagnoser.Default);
         AddColumnProvider(new GasBenchmarkColumnProvider());
         AddExporter(JsonExporter.Full);
