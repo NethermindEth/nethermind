@@ -78,6 +78,7 @@ public partial class BlockProcessor(
             if (specProvider.ChainId == 50) // XDC mainnet
             {
                 Console.WriteLine($"[XDC-BYPASS] Block {block.Number} validation bypassed: {error}");
+                Console.WriteLine($"[XDC-BYPASS] Block {block.Number}: computed={block.Header.StateRoot} expected={suggestedBlock.Header.StateRoot}");
                 if (_logger.IsWarn) _logger.Warn($"[XDC] Block {block.Number} validation bypassed for XDC chain");
                 // Don't throw - allow sync to continue
             }
