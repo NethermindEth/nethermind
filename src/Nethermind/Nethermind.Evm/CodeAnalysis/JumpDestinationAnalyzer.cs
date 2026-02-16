@@ -16,7 +16,7 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
+public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -24,10 +24,10 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
-    private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
+    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
-    private ReadOnlyMemory<byte> MachineCode { get; } = code;
+    public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
     public bool ValidateJump(int destination)
     {

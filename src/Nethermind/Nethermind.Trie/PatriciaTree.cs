@@ -6,9 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -26,7 +24,6 @@ namespace Nethermind.Trie
     public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
-        private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
 
         private readonly ILogger _logger;
 
@@ -142,12 +139,18 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit = 0;
 
-            using ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags);
-            if (RootRef is not null && RootRef.IsDirty)
+            TrieNode? newRoot = RootRef;
+            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
             {
-                TreePath path = TreePath.Empty;
-                RootRef = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                if (RootRef is not null && RootRef.IsDirty)
+                {
+                    TreePath path = TreePath.Empty;
+                    newRoot = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                }
             }
+
+            // Need to be after committer dispose so that it can find it in trie store properly
+            RootRef = newRoot;
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
@@ -774,7 +777,9 @@ namespace Nethermind.Trie
                 byte[] extensionKey = HexPrefix.SingleNibble((byte)onlyChildIdx);
                 if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
                 {
+                    path.AppendMut(onlyChildIdx);
                     TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                    path.TruncateOne();
                     if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode))
                     {
                         return originalNode;
@@ -793,8 +798,11 @@ namespace Nethermind.Trie
                 {
                     if (Bytes.AreEqual(newKey, originalNode.Key))
                     {
+                        int originalLength = path.Length;
+                        path.AppendMut(newKey);
                         TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
                         TrieNode? newChild = onlyChildNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                        path.TruncateMut(originalLength);
                         if (!ShouldUpdateChild(originalNode, originalChild, newChild))
                         {
                             return originalNode;
@@ -993,25 +1001,5 @@ namespace Nethermind.Trie
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowReadOnlyTrieException() => throw new TrieException("Commits are not allowed on this trie.");
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowInvalidDataException(TrieNode originalNode)
-        {
-            throw new InvalidDataException(
-                $"Extension {originalNode.Keccak} has no child.");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowMissingChildException(TrieNode node)
-        {
-            throw new TrieException(
-                $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowMissingPrefixException()
-        {
-            throw new InvalidDataException("An attempt to visit a node without a prefix path.");
-        }
     }
 }
