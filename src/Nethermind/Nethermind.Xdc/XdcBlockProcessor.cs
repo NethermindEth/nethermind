@@ -139,12 +139,6 @@ internal class XdcBlockProcessor : BlockProcessor
         if (spec is Nethermind.Specs.ReleaseSpec mutableSpec)
         {
             mutableSpec.IsEip158Enabled = false;
-            if (block.Number == 1800 || block.Number == 1395)
-                Console.WriteLine($"[XDC-SPEC] Block {block.Number}: spec type={spec.GetType().FullName}, IsEip158Enabled={spec.IsEip158Enabled}");
-        }
-        else
-        {
-            Console.WriteLine($"[XDC-SPEC] Block {block.Number}: spec is NOT ReleaseSpec! type={spec.GetType().FullName}, IsEip158Enabled={spec.IsEip158Enabled}");
         }
         
         var receipts = base.ProcessBlock(block, blockTracer, options, spec, token);

@@ -77,10 +77,8 @@ public partial class BlockProcessor(
             // XDC uses different state commitment than geth; state roots won't match
             if (specProvider.ChainId == 50) // XDC mainnet
             {
-                Console.WriteLine($"[XDC-BYPASS] Block {block.Number} validation bypassed: {error}");
-                Console.WriteLine($"[XDC-BYPASS] Block {block.Number}: computed={block.Header.StateRoot} expected={suggestedBlock.Header.StateRoot}");
-                Console.WriteLine($"[XDC-BYPASS] Block {block.Number}: match={block.Header.StateRoot == suggestedBlock.Header.StateRoot}");
-                if (_logger.IsWarn) _logger.Warn($"[XDC] Block {block.Number} validation bypassed for XDC chain");
+                if (block.Number % 900 == 0)
+                    Console.WriteLine($"[XDC-BYPASS] Block {block.Number}: computed={block.Header.StateRoot} expected={suggestedBlock.Header.StateRoot}");
                 // Don't throw - allow sync to continue
             }
             else
@@ -118,30 +116,6 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        // XDC DEBUG: Pre-state for block 16 and 1395
-        if (block.Number == 16 || block.Number == 1395 || block.Number == 1800)
-        {
-            var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
-            
-            Console.WriteLine($"[XDC-{block.Number}] BEFORE processing:");
-            Console.WriteLine($"[XDC-{block.Number}]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
-            Console.WriteLine($"[XDC-{block.Number}]   beneficiary={header.Beneficiary}");
-            Console.WriteLine($"[XDC-{block.Number}]   block txCount={block.Transactions.Length}");
-            Console.WriteLine($"[XDC-{block.Number}]   spec.IsEip158Enabled={spec.IsEip158Enabled}");
-            foreach (var tx in block.Transactions)
-            {
-                Console.WriteLine($"[XDC-{block.Number}]   tx: from={tx.SenderAddress} to={tx.To} value={tx.Value} gasPrice={tx.GasPrice} gas={tx.GasLimit}");
-                if (tx.SenderAddress is not null)
-                {
-                    Console.WriteLine($"[XDC-{block.Number}]     sender exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)}");
-                }
-                if (tx.To is not null)
-                {
-                    Console.WriteLine($"[XDC-{block.Number}]     recipient exists={_stateProvider.AccountExists(tx.To)} bal={_stateProvider.GetBalance(tx.To)}");
-                }
-            }
-        }
-
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
@@ -178,50 +152,6 @@ public partial class BlockProcessor(
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
-        }
-
-        // XDC DEBUG: Comprehensive state dump for block 16 and 1395
-        if (block.Number == 16 || block.Number == 1395 || block.Number == 1800)
-        {
-            var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
-            
-            // Dump all changed accounts
-            if (block.AccountChanges is not null)
-            {
-                Console.WriteLine($"[XDC-{block.Number}] CHANGED ACCOUNTS ({block.AccountChanges.Count}):");
-                foreach (var addr in block.AccountChanges)
-                {
-                    var a = (Nethermind.Core.Address)addr;
-                    _stateProvider.TryGetAccount(a, out var acct);
-                    Console.WriteLine($"[XDC-{block.Number}]   changed: {a} exists={_stateProvider.AccountExists(a)} bal={_stateProvider.GetBalance(a)} nonce={acct.Nonce} storage={acct.StorageRoot} code={acct.CodeHash}");
-                }
-            }
-            
-            Console.WriteLine($"[XDC-{block.Number}] AFTER processing, AFTER state root calc:");
-            Console.WriteLine($"[XDC-{block.Number}]   computed stateRoot: {header.StateRoot}");
-            Console.WriteLine($"[XDC-{block.Number}]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
-            Console.WriteLine($"[XDC-{block.Number}]   beneficiary={header.Beneficiary}");
-            Console.WriteLine($"[XDC-{block.Number}]   gasUsed={header.GasUsed}");
-            Console.WriteLine($"[XDC-{block.Number}]   receipts={receipts.Length}");
-            if (receipts.Length > 0)
-            {
-                Console.WriteLine($"[XDC-{block.Number}]   receipt[0] gasUsed={receipts[0].GasUsed} cumGas={receipts[0].GasUsedTotal} status={receipts[0].StatusCode} logs={receipts[0].Logs?.Length ?? 0}");
-            }
-            foreach (var tx in block.Transactions)
-            {
-                if (tx.SenderAddress is not null)
-                {
-                    _stateProvider.TryGetAccount(tx.SenderAddress, out var senderAcct);
-                    Console.WriteLine($"[XDC-{block.Number}]   sender {tx.SenderAddress} exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)}");
-                    Console.WriteLine($"[XDC-{block.Number}]     sender detail: nonce={senderAcct.Nonce} storage={senderAcct.StorageRoot} code={senderAcct.CodeHash}");
-                }
-                if (tx.To is not null)
-                {
-                    _stateProvider.TryGetAccount(tx.To, out var recipAcct);
-                    Console.WriteLine($"[XDC-{block.Number}]   recipient {tx.To} exists={_stateProvider.AccountExists(tx.To)} bal={_stateProvider.GetBalance(tx.To)}");
-                    Console.WriteLine($"[XDC-{block.Number}]     recipient detail: nonce={recipAcct.Nonce} storage={recipAcct.StorageRoot} code={recipAcct.CodeHash}");
-                }
-            }
         }
 
         header.Hash = header.CalculateHash();
@@ -307,12 +237,6 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
-        if (block.Number == 1800)
-        {
-            Console.WriteLine($"[XDC-REWARDS-1800] {rewards.Length} rewards returned by {rewardCalculator.GetType().Name}:");
-            for (int j = 0; j < rewards.Length; j++)
-                Console.WriteLine($"[XDC-REWARDS-1800]   [{j}] addr={rewards[j].Address} val={rewards[j].Value} type={rewards[j].RewardType}");
-        }
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];

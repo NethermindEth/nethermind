@@ -279,12 +279,6 @@ namespace Nethermind.State
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            // XDC debug: trace who touches 0x00 and 0x88
-            if (address == Nethermind.Core.Address.Zero || address.ToString() == "0x0000000000000000000000000000000000000088")
-            {
-                Console.WriteLine($"[XDC-TRACE] AddToBalance({address}, {balanceChange})");
-                Console.WriteLine($"[XDC-TRACE]   caller: {new System.Diagnostics.StackTrace(true)}");
-            }
             _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
@@ -767,20 +761,6 @@ namespace Nethermind.State
 
                     var account = change.After;
                     Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
-
-                    // XDC DEBUG: dump RLP bytes for reward accounts at block 1800
-                    string addrHex = key.Value.ToString().ToLowerInvariant();
-                    if (addrHex.Contains("381047") || addrHex.Contains("92a289"))
-                    {
-                        Console.WriteLine($"[XDC-RLP] FlushToTree: addr={key.Value}");
-                        Console.WriteLine($"[XDC-RLP]   keyHash={keccak}");
-                        Console.WriteLine($"[XDC-RLP]   nonce={account?.Nonce} balance={account?.Balance}");
-                        Console.WriteLine($"[XDC-RLP]   storageRoot={account?.StorageRoot}");
-                        Console.WriteLine($"[XDC-RLP]   codeHash={account?.CodeHash}");
-                        Console.WriteLine($"[XDC-RLP]   IsTotallyEmpty={account?.IsTotallyEmpty} IsEmpty={account?.IsEmpty}");
-                        Console.WriteLine($"[XDC-RLP]   RLP hex={accountRlp?.Bytes.ToArray().Select(b => b.ToString("x2")).Aggregate("", (a,b) => a+b) ?? "null"}");
-                        Console.WriteLine($"[XDC-RLP]   RLP len={accountRlp?.Bytes.Length ?? 0}");
-                    }
 
                     bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
                     writes++;
