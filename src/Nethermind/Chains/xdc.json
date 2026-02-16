@@ -66,13 +66,19 @@
   },
   "params": {
     "chainId": 50,
-    "homesteadBlock": 1,
-    "eip150Block": 2,
-    "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "eip155Block": 3,
-    "eip158Block": 3,
-    "byzantiumBlock": 4,
-    "maximumExtraDataSize": "0x400"
+    "maximumExtraDataSize": "0x400",
+    "Eip150Transition": 2,
+    "Eip155Transition": 3,
+    "Eip160Transition": 3,
+    "Eip161abcTransition": 999999999,
+    "Eip161dTransition": 999999999,
+    "Eip140Transition": 4,
+    "Eip211Transition": 4,
+    "Eip214Transition": 4,
+    "Eip658Transition": 4,
+    "Eip198Transition": 4,
+    "Eip212Transition": 4,
+    "Eip213Transition": 4
   },
   "genesis": {
     "seal": {

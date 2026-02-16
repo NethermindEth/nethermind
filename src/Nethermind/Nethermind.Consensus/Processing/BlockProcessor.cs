@@ -141,6 +141,32 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        // XDC DEBUG: Dump state for blocks 15-16
+        if (block.Number >= 15 && block.Number <= 16)
+        {
+            var zeroAddr = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
+            Console.WriteLine($"[XDC-DEBUG] Block {block.Number} - 0x00 exists BEFORE commit: {_stateProvider.AccountExists(zeroAddr)}");
+        }
+        if (block.Number == 16)
+        {
+            var sender = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
+            var blockSigners = new Nethermind.Core.Address("0x0000000000000000000000000000000000000089");
+            var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
+            
+            Console.WriteLine($"[XDC-DEBUG] Block 16 computed state root: {header.StateRoot}");
+            Console.WriteLine($"[XDC-DEBUG] Sender 0xcfcc exists: {_stateProvider.AccountExists(sender)}");
+            Console.WriteLine($"[XDC-DEBUG] Sender balance: {_stateProvider.GetBalance(sender)}");
+            Console.WriteLine($"[XDC-DEBUG] 0x89 exists: {_stateProvider.AccountExists(blockSigners)}");
+            Console.WriteLine($"[XDC-DEBUG] 0x89 balance: {_stateProvider.GetBalance(blockSigners)}");
+            Console.WriteLine($"[XDC-DEBUG] 0x00 exists: {_stateProvider.AccountExists(coinbase)}");
+            Console.WriteLine($"[XDC-DEBUG] 0x00 balance: {_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-DEBUG] Receipts count: {receipts.Length}");
+            if (receipts.Length > 0)
+            {
+                Console.WriteLine($"[XDC-DEBUG] Receipt[0] gasUsed: {receipts[0].GasUsed}, status: {receipts[0].StatusCode}");
+            }
+        }
+
         header.Hash = header.CalculateHash();
 
         return receipts;

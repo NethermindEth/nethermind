@@ -1,29 +1,31 @@
 {
-  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
+    "GenesisHash": "0x4a9d748bd78a8d0385b67788c2435dcdb914f98a96250b68863a1f8b7642d6b1",
     "BaseDbPath": "nethermind_db/xdc",
-    "LogFileName": "xdc.logs.txt"
+    "LogFileName": "xdc.log",
+    "MemoryHint": 2048000000
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "Metrics": {
+    "NodeName": "XDC-Nethermind"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 20000,
+    "Host": "0.0.0.0",
+    "Port": 8545,
+    "EnabledModules": ["Eth", "Net", "Web3", "Admin"]
   },
   "Merge": {
     "Enabled": false
   },
   "Network": {
-    "DiscoveryPort": 30303,
     "P2PPort": 30303,
-    "ActivePeersMaxCount": 50
-  },
-  "JsonRpc": {
-    "Enabled": true,
-    "EnabledModules": ["Eth", "Subscribe", "Trace", "TxPool", "Web3", "Personal", "Proof", "Net", "Parity", "Health", "Rpc"],
-    "Host": "0.0.0.0",
-    "Port": 8545
-  },
-  "TxPool": {
-    "BlobsSupport": "Disabled"
-  },
-  "Sync": {
-    "FastSync": false,
-    "SnapSync": false
+    "DiscoveryPort": 30303,
+    "StaticPeers": "enode://362c05688c81b60f20b7b11c4c44a991136b00863947b1fb2d1b8cf1c015b60e0b55eed9889ecc252e637827a646163bb76c2c65813bedfedb65080b31b35a01@172.20.0.3:30303"
   }
 }
