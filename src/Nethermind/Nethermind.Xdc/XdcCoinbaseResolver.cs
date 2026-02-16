@@ -47,6 +47,27 @@ public class XdcCoinbaseResolver
     }
 
     /// <summary>
+    /// Recovers the block signer address from the header's seal via ecrecover.
+    /// This is what geth-xdc uses as evm.Context.Coinbase.
+    /// </summary>
+    public Address RecoverSigner(BlockHeader header)
+    {
+        Address? signer = ExtractSigner(header);
+        if (signer is null)
+            throw new InvalidOperationException($"Could not extract signer for block {header.Number}");
+        return signer;
+    }
+
+    /// <summary>
+    /// Resolves the owner of a signer from the validator contract (0x88).
+    /// </summary>
+    public Address ResolveOwner(Address signer, IWorldState worldState)
+    {
+        Address? owner = GetValidatorOwner(signer, worldState);
+        return owner ?? Address.Zero;
+    }
+
+    /// <summary>
     /// Resolves the actual fee recipient for a block.
     /// </summary>
     /// <param name="header">The block header</param>

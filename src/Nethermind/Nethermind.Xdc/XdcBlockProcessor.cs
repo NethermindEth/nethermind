@@ -33,48 +33,46 @@ internal class XdcBlockProcessor : BlockProcessor
         if (suggestedBlock.Header is not XdcBlockHeader bh)
             return base.PrepareBlockForProcessing(suggestedBlock);
 
-        // XDC: Resolve the actual fee recipient (masternode owner) from the validator contract
-        // In XDPoS, header.Beneficiary is 0x0, but fees should go to the masternode owner
-        // 
-        // CRITICAL: Only resolve coinbase for blocks >= TIPTRC21Fee (38383838 on mainnet).
-        // For earlier blocks, geth-xdc pays fees to the regular Coinbase (0x0), not the owner.
-        // The owner resolution is only used for fee payment in blocks after TIPTRC21Fee.
-        // See geth-xdc: core/state_transition.go lines 388-400
+        // XDC: In geth-xdc, evm.Context.Coinbase = ecrecover(header) (the signer), NOT header.Coinbase (0x0).
+        // For blocks < TIPTRC21Fee: fees go to the signer address directly.
+        // For blocks >= TIPTRC21Fee: fees go to the signer's OWNER (resolved from 0x88 contract).
+        // See geth-xdc: core/evm.go (Coinbase = Author(header) = ecrecover), 
+        //               core/state_transition.go lines 388-400 (owner resolution for TIPTRC21Fee+)
         const ulong TIPTRC21Fee = 38383838;  // Mainnet value
         
         Address resolvedBeneficiary = suggestedBlock.Header.Beneficiary;
         
-        // Only resolve coinbase for blocks after TIPTRC21Fee
-        if ((ulong)suggestedBlock.Header.Number >= TIPTRC21Fee)
+        try
         {
-            // Check if any transaction has non-zero gas price (actual fees to distribute)
-            bool hasNonZeroFees = false;
-            if (suggestedBlock.Header.GasUsed > 0)
-            {
-                foreach (var tx in suggestedBlock.Transactions)
-                {
-                    if (tx.GasPrice > 0)
-                    {
-                        hasNonZeroFees = true;
-                        break;
-                    }
-                }
-            }
+            // Always ecrecover the signer from the header seal - this is what geth uses as evm.Context.Coinbase
+            Address signer = _coinbaseResolver.RecoverSigner(suggestedBlock.Header);
             
-            if (hasNonZeroFees)
+            if ((ulong)suggestedBlock.Header.Number >= TIPTRC21Fee)
             {
-                try
+                // After TIPTRC21Fee: resolve the signer's owner from 0x88 contract
+                Address owner = _coinbaseResolver.ResolveOwner(signer, _stateProvider);
+                if (owner != Address.Zero)
                 {
-                    resolvedBeneficiary = _coinbaseResolver.ResolveCoinbase(suggestedBlock.Header, _stateProvider);
-                    
-                    Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Beneficiary {suggestedBlock.Header.Beneficiary} -> Resolved {resolvedBeneficiary}");
+                    resolvedBeneficiary = owner;
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Error resolving: {ex}");
-                    if (_logger.IsWarn) _logger.Warn($"Block {suggestedBlock.Number}: Error resolving beneficiary: {ex.Message}");
+                    resolvedBeneficiary = signer;
                 }
+                Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: signer={signer} -> owner={resolvedBeneficiary}");
             }
+            else
+            {
+                // Before TIPTRC21Fee: fees go directly to the signer
+                resolvedBeneficiary = signer;
+                if (suggestedBlock.Number % 1000 == 0 || suggestedBlock.Number == 1395)
+                    Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: signer={signer} (pre-TIPTRC21Fee)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Error resolving: {ex.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Block {suggestedBlock.Number}: Error resolving beneficiary: {ex.Message}");
         }
 
         XdcBlockHeader headerForProcessing = new(
