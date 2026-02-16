@@ -130,8 +130,8 @@ public class GasPayloadBenchmarks
             {
                 s_missingSubmoduleWarned = true;
                 Console.Error.WriteLine(
-                    "[GasPayloadBenchmarks] No test cases found. Initialize the gas-benchmarks submodule:\n" +
-                    "  git lfs install && git submodule update --init tools/gas-benchmarks");
+                    "\u001b[33m[GasPayloadBenchmarks] No test cases found.\u001b[0m Initialize the gas-benchmarks submodule:\n" +
+                    "  \u001b[36mgit lfs install && git submodule update --init tools/gas-benchmarks\u001b[0m");
             }
 
             yield break;
