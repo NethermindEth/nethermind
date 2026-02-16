@@ -775,7 +775,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             UInt256 balance = WorldState.GetBalance(toBeDestroyed);
                             if (!balance.IsZero)
                             {
-                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                                substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                             }
                         }
 

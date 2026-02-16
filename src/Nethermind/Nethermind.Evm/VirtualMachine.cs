@@ -1500,11 +1500,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    internal void AddSelfDestructLog(Address contract, in UInt256 value)
+    internal void AddBurnLog(Address account, in UInt256 value)
     {
         if (Spec.IsEip7708Enabled && !value.IsZero)
         {
-            AddLog(TransferLog.CreateSelfDestruct(contract, value));
+            AddLog(TransferLog.CreateBurn(account, value));
         }
     }
 }

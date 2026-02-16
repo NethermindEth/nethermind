@@ -459,7 +459,7 @@ namespace Nethermind.Core.Specs
         bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
-        /// EIP-7708: ETH transfers emit a log
+        /// EIP-7708: ETH transfers and burns emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }
 
