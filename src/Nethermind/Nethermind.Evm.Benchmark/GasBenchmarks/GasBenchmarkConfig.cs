@@ -15,7 +15,7 @@ public class GasBenchmarkConfig : ManualConfig
 
     public GasBenchmarkConfig()
     {
-        Job job = Job.MediumRun.WithIterationCount(10);
+        Job job = Job.MediumRun.WithLaunchCount(1).WithIterationCount(10);
 
         if (InProcess)
         {

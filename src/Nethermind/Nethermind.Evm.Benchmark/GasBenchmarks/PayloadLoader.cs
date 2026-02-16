@@ -159,7 +159,29 @@ public static class PayloadLoader
 
     private static void LoadGenesisAccounts(IWorldState state, string genesisPath, IReleaseSpec spec)
     {
+        if (!File.Exists(genesisPath))
+        {
+            throw new FileNotFoundException(
+                $"Genesis file not found: {genesisPath}\n" +
+                "Make sure the gas-benchmarks submodule is initialized:\n" +
+                "  git submodule update --init tools/gas-benchmarks");
+        }
+
         using FileStream fs = File.OpenRead(genesisPath);
+
+        // Detect Git LFS pointer (starts with "version https://git-lfs")
+        byte[] header = new byte[8];
+        int read = fs.Read(header, 0, header.Length);
+        fs.Position = 0;
+
+        if (read >= 7 && header[0] == (byte)'v' && header[1] == (byte)'e' && header[2] == (byte)'r')
+        {
+            throw new InvalidOperationException(
+                $"Genesis file appears to be a Git LFS pointer: {genesisPath}\n" +
+                "Run the following to download the actual file:\n" +
+                "  git lfs install && cd tools/gas-benchmarks && git lfs pull");
+        }
+
         using JsonDocument doc = JsonDocument.Parse(fs);
         JsonElement accounts = doc.RootElement.GetProperty("accounts");
 
