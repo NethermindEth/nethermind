@@ -860,12 +860,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
-            // XDC: Skip fee payment to zero address (0x00) - geth-xdc never pays fees to 0x00 beneficiary
-            // In XDPoS, the beneficiary/miner is often the zero address for system blocks
-            bool isZeroAddressBeneficiary = header.GasBeneficiary is null || header.GasBeneficiary == Nethermind.Core.Address.Zero;
-            if ((statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed) && !isZeroAddressBeneficiary)
+            // XDC: Pay fees to coinbase even if it's the zero address (0x00)
+            // geth-xdc always does AddBalance(Coinbase, fee) for non-special txs before TIPTRC21Fee
+            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
-                WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+                if (header.GasBeneficiary is not null)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary, fees, spec);
+                }
             }
 
             UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;

@@ -120,7 +120,7 @@ public partial class BlockProcessor(
                 Console.WriteLine($"[XDC-{block.Number}]   tx: from={tx.SenderAddress} to={tx.To} value={tx.Value} gasPrice={tx.GasPrice} gas={tx.GasLimit}");
                 if (tx.SenderAddress is not null)
                 {
-                    Console.WriteLine($"[XDC-{block.Number}]     sender exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)} nonce={_stateProvider.GetNonce(tx.SenderAddress)}");
+                    Console.WriteLine($"[XDC-{block.Number}]     sender exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)}");
                 }
                 if (tx.To is not null)
                 {
@@ -186,11 +186,15 @@ public partial class BlockProcessor(
             {
                 if (tx.SenderAddress is not null)
                 {
-                    Console.WriteLine($"[XDC-{block.Number}]   sender {tx.SenderAddress} exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)} nonce={_stateProvider.GetNonce(tx.SenderAddress)}");
+                    _stateProvider.TryGetAccount(tx.SenderAddress, out var senderAcct);
+                    Console.WriteLine($"[XDC-{block.Number}]   sender {tx.SenderAddress} exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)}");
+                    Console.WriteLine($"[XDC-{block.Number}]     sender detail: nonce={senderAcct.Nonce} storage={senderAcct.StorageRoot} code={senderAcct.CodeHash}");
                 }
                 if (tx.To is not null)
                 {
+                    _stateProvider.TryGetAccount(tx.To, out var recipAcct);
                     Console.WriteLine($"[XDC-{block.Number}]   recipient {tx.To} exists={_stateProvider.AccountExists(tx.To)} bal={_stateProvider.GetBalance(tx.To)}");
+                    Console.WriteLine($"[XDC-{block.Number}]     recipient detail: nonce={recipAcct.Nonce} storage={recipAcct.StorageRoot} code={recipAcct.CodeHash}");
                 }
             }
         }
