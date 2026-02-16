@@ -8,7 +8,10 @@
   },
   "Sync": {
     "FastSync": false,
-    "SnapSync": false
+    "SnapSync": false,
+    "DownloadReceiptsInFastSync": false,
+    "DownloadBodiesInFastSync": false,
+    "NonValidatorNode": true
   },
   "Metrics": {
     "NodeName": "XDC-Nethermind"
@@ -18,7 +21,12 @@
     "Timeout": 20000,
     "Host": "0.0.0.0",
     "Port": 8545,
-    "EnabledModules": ["Eth", "Net", "Web3", "Admin"]
+    "EnabledModules": [
+      "Eth",
+      "Net",
+      "Web3",
+      "Admin"
+    ]
   },
   "Merge": {
     "Enabled": false
