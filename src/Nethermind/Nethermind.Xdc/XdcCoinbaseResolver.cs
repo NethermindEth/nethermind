@@ -64,6 +64,7 @@ public class XdcCoinbaseResolver
                 return header.Beneficiary;
             }
 
+            Console.WriteLine($"[XDC-COINBASE] Block {header.Number}: Extracted signer {signer}");
             if (_logger.IsDebug) _logger.Debug($"Block {header.Number}: Extracted signer {signer}");
 
             // Step 2: Look up the owner from validatorsState[signer].owner
@@ -76,6 +77,7 @@ public class XdcCoinbaseResolver
                 return signer;
             }
 
+            Console.WriteLine($"[XDC-COINBASE] Block {header.Number}: Resolved owner {owner} for signer {signer}");
             if (_logger.IsDebug) _logger.Debug($"Block {header.Number}: Resolved owner {owner} for signer {signer}");
             return owner;
         }
@@ -135,10 +137,11 @@ public class XdcCoinbaseResolver
     /// </summary>
     private void EncodeHeaderForSigHash(RlpStream stream, BlockHeader header, byte[] extraDataWithoutSeal)
     {
-        // XDC header encoding for V1:
-        // [parentHash, unclesHash, beneficiary, stateRoot, txRoot, receiptsRoot, bloom, 
-        //  difficulty, number, gasLimit, gasUsed, timestamp, extraData, mixHash, nonce,
-        //  validators, validator, penalties]
+        // XDC V1 sigHash uses ONLY the standard 15 Ethereum header fields (NO XDC-specific fields!)
+        // See geth-xdc: consensus/XDPoS/engines/engine_v1/utils.go sigHash()
+        // Fields: parentHash, unclesHash, coinbase, stateRoot, txRoot, receiptsRoot, bloom,
+        //         difficulty, number, gasLimit, gasUsed, timestamp, extraData(truncated), mixHash, nonce
+        //         [+ optional BaseFee]
         
         int contentLength = GetContentLength(header, extraDataWithoutSeal.Length);
         stream.StartSequence(contentLength);
@@ -159,21 +162,9 @@ public class XdcCoinbaseResolver
         stream.Encode(header.MixHash);
         stream.Encode(header.Nonce, 8);  // 8 bytes for nonce
         
-        // XDC-specific fields
-        if (header is XdcBlockHeader xdcHeader)
-        {
-            stream.Encode(xdcHeader.Validators ?? Array.Empty<byte>());
-            stream.Encode(xdcHeader.Validator ?? Array.Empty<byte>());
-            stream.Encode(xdcHeader.Penalties ?? Array.Empty<byte>());
-        }
-        else
-        {
-            stream.Encode(Array.Empty<byte>());  // Validators
-            stream.Encode(Array.Empty<byte>());  // Validator
-            stream.Encode(Array.Empty<byte>());  // Penalties
-        }
+        // NOTE: Do NOT include Validators/Validator/Penalties - geth-xdc sigHash doesn't include them!
         
-        // BaseFee (if not zero)
+        // BaseFee only if present (XDC doesn't use it, but keep for compatibility)
         if (!header.BaseFeePerGas.IsZero)
         {
             stream.Encode(header.BaseFeePerGas);
@@ -199,19 +190,7 @@ public class XdcCoinbaseResolver
         length += Rlp.LengthOf(header.MixHash);
         length += Rlp.LengthOfNonce(header.Nonce);
         
-        // XDC-specific fields (empty arrays for non-XDC headers)
-        if (header is XdcBlockHeader xdcHeader)
-        {
-            length += Rlp.LengthOf(xdcHeader.Validators ?? Array.Empty<byte>());
-            length += Rlp.LengthOf(xdcHeader.Validator ?? Array.Empty<byte>());
-            length += Rlp.LengthOf(xdcHeader.Penalties ?? Array.Empty<byte>());
-        }
-        else
-        {
-            length += Rlp.LengthOf(Array.Empty<byte>());
-            length += Rlp.LengthOf(Array.Empty<byte>());
-            length += Rlp.LengthOf(Array.Empty<byte>());
-        }
+        // NOTE: No XDC-specific fields in sigHash!
         
         if (!header.BaseFeePerGas.IsZero)
         {

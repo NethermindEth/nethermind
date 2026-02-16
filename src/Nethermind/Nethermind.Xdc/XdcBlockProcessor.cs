@@ -46,6 +46,8 @@ internal class XdcBlockProcessor : BlockProcessor
                 // The state provider is accessible from the base class via the _stateProvider field
                 resolvedBeneficiary = _coinbaseResolver.ResolveCoinbase(suggestedBlock.Header, _stateProvider);
                 
+                Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Beneficiary {suggestedBlock.Header.Beneficiary} -> Resolved {resolvedBeneficiary}");
+                
                 if (resolvedBeneficiary != suggestedBlock.Header.Beneficiary)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Block {suggestedBlock.Number}: Resolved beneficiary from {suggestedBlock.Header.Beneficiary} to {resolvedBeneficiary}");
