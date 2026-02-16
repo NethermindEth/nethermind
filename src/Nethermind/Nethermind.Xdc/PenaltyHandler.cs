@@ -86,7 +86,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(currentHash)!.Masternodes;
         var penalties = new HashSet<Address>();
 
-        int minMinerBlockPerEpoch = XdcConstants.MinimunMinerBlockPerEpoch;
+        int minMinerBlockPerEpoch = XdcConstants.MinimumMinerBlockPerEpoch;
         if (currentSpec.TipUpgradePenalty <= number)
         {
             minMinerBlockPerEpoch = currentSpec.MinimumMinerBlockPerEpoch;
