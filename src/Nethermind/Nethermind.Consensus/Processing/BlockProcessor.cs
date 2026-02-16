@@ -105,23 +105,28 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        // XDC DEBUG: Pre-state for block 16
-        if (block.Number == 16)
+        // XDC DEBUG: Pre-state for block 16 and 1395
+        if (block.Number == 16 || block.Number == 1395)
         {
-            var sender = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
-            var blockSigners = new Nethermind.Core.Address("0x0000000000000000000000000000000000000089");
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
-            var precompile1 = new Nethermind.Core.Address("0x0000000000000000000000000000000000000001");
             
-            Console.WriteLine($"[XDC-16] BEFORE processing:");
-            Console.WriteLine($"[XDC-16]   sender 0xcfcc exists={_stateProvider.AccountExists(sender)} bal={_stateProvider.GetBalance(sender)}");
-            Console.WriteLine($"[XDC-16]   blockSigners 0x89 exists={_stateProvider.AccountExists(blockSigners)} bal={_stateProvider.GetBalance(blockSigners)} isContract={_stateProvider.IsContract(blockSigners)}");
-            Console.WriteLine($"[XDC-16]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
-            Console.WriteLine($"[XDC-16]   precompile1 exists={_stateProvider.AccountExists(precompile1)}");
-            Console.WriteLine($"[XDC-16]   block txCount={block.Transactions.Length}");
-            Console.WriteLine($"[XDC-16]   spec.IsEip158Enabled={spec.IsEip158Enabled}");
+            Console.WriteLine($"[XDC-{block.Number}] BEFORE processing:");
+            Console.WriteLine($"[XDC-{block.Number}]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-{block.Number}]   beneficiary={header.Beneficiary}");
+            Console.WriteLine($"[XDC-{block.Number}]   block txCount={block.Transactions.Length}");
+            Console.WriteLine($"[XDC-{block.Number}]   spec.IsEip158Enabled={spec.IsEip158Enabled}");
             foreach (var tx in block.Transactions)
-                Console.WriteLine($"[XDC-16]   tx: from={tx.SenderAddress} to={tx.To} value={tx.Value} gasPrice={tx.GasPrice} gas={tx.GasLimit}");
+            {
+                Console.WriteLine($"[XDC-{block.Number}]   tx: from={tx.SenderAddress} to={tx.To} value={tx.Value} gasPrice={tx.GasPrice} gas={tx.GasLimit}");
+                if (tx.SenderAddress is not null)
+                {
+                    Console.WriteLine($"[XDC-{block.Number}]     sender exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)} nonce={_stateProvider.GetNonce(tx.SenderAddress)}");
+                }
+                if (tx.To is not null)
+                {
+                    Console.WriteLine($"[XDC-{block.Number}]     recipient exists={_stateProvider.AccountExists(tx.To)} bal={_stateProvider.GetBalance(tx.To)}");
+                }
+            }
         }
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -162,29 +167,32 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        // XDC DEBUG: Comprehensive state dump for block 16
-        if (block.Number == 16)
+        // XDC DEBUG: Comprehensive state dump for block 16 and 1395
+        if (block.Number == 16 || block.Number == 1395)
         {
-            var sender = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
-            var blockSigners = new Nethermind.Core.Address("0x0000000000000000000000000000000000000089");
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
-            var precompile1 = new Nethermind.Core.Address("0x0000000000000000000000000000000000000001");
-            var validator = new Nethermind.Core.Address("0x0000000000000000000000000000000000000088");
-            var randomize = new Nethermind.Core.Address("0x0000000000000000000000000000000000000090");
             
-            Console.WriteLine($"[XDC-16] AFTER processing, AFTER state root calc:");
-            Console.WriteLine($"[XDC-16]   computed stateRoot: {header.StateRoot}");
-            Console.WriteLine($"[XDC-16]   sender 0xcfcc exists={_stateProvider.AccountExists(sender)} bal={_stateProvider.GetBalance(sender)}");
-            Console.WriteLine($"[XDC-16]   blockSigners 0x89 exists={_stateProvider.AccountExists(blockSigners)} isContract={_stateProvider.IsContract(blockSigners)}");
-            Console.WriteLine($"[XDC-16]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
-            Console.WriteLine($"[XDC-16]   precompile1 exists={_stateProvider.AccountExists(precompile1)}");
-            Console.WriteLine($"[XDC-16]   validator 0x88 exists={_stateProvider.AccountExists(validator)}");
-            Console.WriteLine($"[XDC-16]   randomize 0x90 exists={_stateProvider.AccountExists(randomize)}");
-            Console.WriteLine($"[XDC-16]   beneficiary={header.Beneficiary}");
-            Console.WriteLine($"[XDC-16]   gasUsed={header.GasUsed}");
-            Console.WriteLine($"[XDC-16]   receipts={receipts.Length}");
+            Console.WriteLine($"[XDC-{block.Number}] AFTER processing, AFTER state root calc:");
+            Console.WriteLine($"[XDC-{block.Number}]   computed stateRoot: {header.StateRoot}");
+            Console.WriteLine($"[XDC-{block.Number}]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-{block.Number}]   beneficiary={header.Beneficiary}");
+            Console.WriteLine($"[XDC-{block.Number}]   gasUsed={header.GasUsed}");
+            Console.WriteLine($"[XDC-{block.Number}]   receipts={receipts.Length}");
             if (receipts.Length > 0)
-                Console.WriteLine($"[XDC-16]   receipt[0] gasUsed={receipts[0].GasUsed} cumGas={receipts[0].GasUsedTotal} status={receipts[0].StatusCode} logs={receipts[0].Logs?.Length ?? 0}");
+            {
+                Console.WriteLine($"[XDC-{block.Number}]   receipt[0] gasUsed={receipts[0].GasUsed} cumGas={receipts[0].GasUsedTotal} status={receipts[0].StatusCode} logs={receipts[0].Logs?.Length ?? 0}");
+            }
+            foreach (var tx in block.Transactions)
+            {
+                if (tx.SenderAddress is not null)
+                {
+                    Console.WriteLine($"[XDC-{block.Number}]   sender {tx.SenderAddress} exists={_stateProvider.AccountExists(tx.SenderAddress)} bal={_stateProvider.GetBalance(tx.SenderAddress)} nonce={_stateProvider.GetNonce(tx.SenderAddress)}");
+                }
+                if (tx.To is not null)
+                {
+                    Console.WriteLine($"[XDC-{block.Number}]   recipient {tx.To} exists={_stateProvider.AccountExists(tx.To)} bal={_stateProvider.GetBalance(tx.To)}");
+                }
+            }
         }
 
         header.Hash = header.CalculateHash();
