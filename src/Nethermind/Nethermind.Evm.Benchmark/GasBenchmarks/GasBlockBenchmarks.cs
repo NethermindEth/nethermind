@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
@@ -31,6 +32,8 @@ public class GasBlockBenchmarks
     private BranchProcessor _branchProcessor;
     private Block[] _blocksToProcess;
     private BlockHeader _preBlockHeader;
+    private IBlockCachePreWarmer _preWarmer;
+    private IDisposable _preWarmerLifetime;
 
     [ParamsSource(nameof(GetTestCases))]
     public GasPayloadBenchmarks.TestCase Scenario { get; set; }
@@ -45,12 +48,18 @@ public class GasBlockBenchmarks
 
         PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
 
-        _state = PayloadLoader.CreateWorldState();
-        _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
-
         TestBlockhashProvider blockhashProvider = new();
+        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(specProvider, blockhashProvider);
+        _state = branchProcessingContext.State;
+        _preWarmer = branchProcessingContext.PreWarmer;
+        _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
+        _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
         ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
-            _state, blockhashProvider, specProvider);
+            _state,
+            blockhashProvider,
+            specProvider,
+            branchProcessingContext.PreBlockCaches,
+            branchProcessingContext.CachePrecompiles);
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
 
@@ -60,7 +69,7 @@ public class GasBlockBenchmarks
         _branchProcessor = new BranchProcessor(
             blockProcessor, specProvider, _state,
             new BeaconBlockRootHandler(txProcessor, _state),
-            blockhashProvider, LimboLogs.Instance, preWarmer: null);
+            blockhashProvider, LimboLogs.Instance, _preWarmer);
 
         _blocksToProcess = [PayloadLoader.LoadBlock(Scenario.FilePath)];
 
@@ -84,8 +93,12 @@ public class GasBlockBenchmarks
     [GlobalCleanup]
     public void GlobalCleanup()
     {
+        _preWarmer?.ClearCaches();
+        _preWarmerLifetime?.Dispose();
         _state = null;
         _branchProcessor = null;
         _blocksToProcess = null;
+        _preWarmer = null;
+        _preWarmerLifetime = null;
     }
 }

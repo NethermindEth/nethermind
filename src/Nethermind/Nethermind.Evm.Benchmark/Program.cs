@@ -42,7 +42,23 @@ args = ApplyModeFilter(args);
 // Handle --chunk N/M: splits scenarios across runners (e.g. --chunk 2/5 means second of five chunks)
 args = ApplyChunkFilter(args);
 
+ConfigureTimingFilePath();
 BenchmarkSwitcher.FromAssembly(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks).Assembly).Run(args);
+GasNewPayloadBenchmarks.PrintFinalTimingBreakdown();
+
+static void ConfigureTimingFilePath()
+{
+    string timingFilePath = Path.Combine(
+        Path.GetTempPath(),
+        $"nethermind-newpayload-timing-{Guid.NewGuid():N}.jsonl");
+    string timingReportFilePath = Path.Combine(
+        Directory.GetCurrentDirectory(),
+        "BenchmarkDotNet.Artifacts",
+        "results",
+        $"newpayload-timing-breakdown-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
+    Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingFileEnvVar, timingFilePath);
+    Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingReportFileEnvVar, timingReportFilePath);
+}
 
 static string[] ApplyModeFilter(string[] args)
 {

@@ -245,14 +245,42 @@ public static class PayloadLoader
     /// Creates a new WorldState backed by the shared TrieStore (which contains the genesis trie).
     /// Caller must call BeginScope with a BlockHeader whose StateRoot is GenesisStateRoot.
     /// </summary>
-    public static IWorldState CreateWorldState()
+    public static IWorldState CreateWorldState(
+        NodeStorageCache nodeStorageCache = null,
+        PreBlockCaches preBlockCaches = null,
+        bool populatePreBlockCache = true)
     {
         if (!s_genesisInitialized)
             throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
 
-        return new WorldState(
-            new TrieStoreScopeProvider(s_trieStore, s_codeDb, LimboLogs.Instance),
-            LimboLogs.Instance);
+        ITrieStore trieStore = s_trieStore;
+        if (nodeStorageCache is not null)
+        {
+            trieStore = new PreCachedTrieStore(trieStore, nodeStorageCache);
+        }
+
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(trieStore, s_codeDb, LimboLogs.Instance);
+        if (preBlockCaches is not null)
+        {
+            scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache);
+        }
+
+        return new WorldState(scopeProvider, LimboLogs.Instance);
+    }
+
+    public static IWorldStateManager CreateWorldStateManager(NodeStorageCache nodeStorageCache = null)
+    {
+        if (!s_genesisInitialized)
+            throw new InvalidOperationException("Genesis not initialized. Call EnsureGenesisInitialized first.");
+
+        ITrieStore trieStore = s_trieStore;
+        if (nodeStorageCache is not null)
+        {
+            trieStore = new PreCachedTrieStore(trieStore, nodeStorageCache);
+        }
+
+        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(trieStore, s_codeDb, LimboLogs.Instance);
+        return new WorldStateManager(scopeProvider, s_trieStore, s_dbProvider, LimboLogs.Instance);
     }
 
     private static void LoadGenesisAccounts(IWorldState state, string genesisPath, IReleaseSpec spec)
