@@ -77,6 +77,16 @@ public partial class BlockProcessor(
             throw new InvalidBlockException(suggestedBlock, error);
         }
 
+        // XDC: Update suggested block's state root to match our computed root.
+        // This ensures HasStateForBlock() can find the trie root when checking
+        // if state exists for this block during branch processing.
+        // The block hash is NOT recalculated — it stays as the network hash.
+        bool isXdc = specProvider.ChainId == 50 || specProvider.ChainId == 51;
+        if (isXdc && block.Header.StateRoot != suggestedBlock.Header.StateRoot)
+        {
+            suggestedBlock.Header.StateRoot = block.Header.StateRoot;
+        }
+
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
