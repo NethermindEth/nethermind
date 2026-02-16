@@ -126,7 +126,7 @@ public class XdcCoinbaseResolver
 
         // Create a temporary header with truncated extra data for hashing
         // We need to compute the RLP hash similar to how XDC does it
-        var stream = new RlpStream(GetHeaderRlpLength(header, extraDataWithoutSeal.Length));
+        var stream = new RlpStream(GetHeaderRlpLength(header, extraDataWithoutSeal));
         EncodeHeaderForSigHash(stream, header, extraDataWithoutSeal);
         
         return ValueKeccak.Compute(stream.Data);
@@ -143,7 +143,7 @@ public class XdcCoinbaseResolver
         //         difficulty, number, gasLimit, gasUsed, timestamp, extraData(truncated), mixHash, nonce
         //         [+ optional BaseFee]
         
-        int contentLength = GetContentLength(header, extraDataWithoutSeal.Length);
+        int contentLength = GetContentLength(header, extraDataWithoutSeal);
         stream.StartSequence(contentLength);
         
         stream.Encode(header.ParentHash);
@@ -171,7 +171,7 @@ public class XdcCoinbaseResolver
         }
     }
 
-    private int GetContentLength(BlockHeader header, int extraDataLength)
+    private int GetContentLength(BlockHeader header, byte[] extraDataWithoutSeal)
     {
         int length = 0;
         length += Rlp.LengthOf(header.ParentHash);
@@ -186,7 +186,7 @@ public class XdcCoinbaseResolver
         length += Rlp.LengthOf(header.GasLimit);
         length += Rlp.LengthOf(header.GasUsed);
         length += Rlp.LengthOf(header.Timestamp);
-        length += Rlp.LengthOf(extraDataLength);
+        length += Rlp.LengthOf(extraDataWithoutSeal);
         length += Rlp.LengthOf(header.MixHash);
         length += Rlp.LengthOfNonce(header.Nonce);
         
@@ -200,9 +200,9 @@ public class XdcCoinbaseResolver
         return length;
     }
 
-    private int GetHeaderRlpLength(BlockHeader header, int extraDataLength)
+    private int GetHeaderRlpLength(BlockHeader header, byte[] extraDataWithoutSeal)
     {
-        return Rlp.LengthOfSequence(GetContentLength(header, extraDataLength));
+        return Rlp.LengthOfSequence(GetContentLength(header, extraDataWithoutSeal));
     }
 
     /// <summary>

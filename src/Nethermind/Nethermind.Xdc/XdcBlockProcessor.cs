@@ -55,6 +55,7 @@ internal class XdcBlockProcessor : BlockProcessor
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Error resolving: {ex}");
                 if (_logger.IsWarn) _logger.Warn($"Block {suggestedBlock.Number}: Error resolving beneficiary: {ex.Message}");
             }
         }
