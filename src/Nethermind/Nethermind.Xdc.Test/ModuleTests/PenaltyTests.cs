@@ -214,7 +214,7 @@ internal class PenaltyTests
                 .TestObject;
 
             blockHeaders[i].Beneficiary = masternodes[i % (masternodes.Length - 1)].Address;
-            if(!shouldPenalizeAtSwitch(i)) blockHeaders[i].Penalties = [];
+            if (!shouldPenalizeAtSwitch(i)) blockHeaders[i].Penalties = [];
             Hash256 hash = blockHeaders[i].Hash ?? blockHeaders[i].CalculateHash().ToHash256();
             hashToHeader[hash] = blockHeaders[i];
             blocks[i] = new Block(blockHeaders[i]);
