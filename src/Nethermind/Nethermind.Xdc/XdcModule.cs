@@ -5,15 +5,18 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
@@ -59,6 +62,19 @@ public class XdcModule : Module
         builder.RegisterType<XdcHeaderValidator>()
             .As<Nethermind.Consensus.Validators.IHeaderValidator>()
             .SingleInstance();
+
+        // Register XDC reward calculator for checkpoint block rewards
+        builder.Register(ctx =>
+        {
+            // Get chain spec from the context resolution
+            var chainSpec = ctx.Resolve<ChainSpec>();
+            var parameters = chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<XdcChainSpecEngineParameters>();
+            
+            return new XdcRewardCalculator(parameters);
+        }).As<IRewardCalculator>()
+          .As<IRewardCalculatorSource>()
+          .SingleInstance();
 
         // Register XDC consensus message processor
         builder.RegisterType<XdcConsensusMessageProcessor>()
