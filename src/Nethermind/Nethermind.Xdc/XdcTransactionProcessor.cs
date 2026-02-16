@@ -38,18 +38,25 @@ public class XdcTransactionProcessor : TransactionProcessorBase
     {
     }
 
+    // TIPSigning fork block for XDC mainnet - special handling only applies after this block
+    private const long TIPSigningBlock = 3_000_000;
+
     protected override TransactionResult Execute(
         Transaction tx, 
         ITxTracer tracer, 
         ExecutionOptions opts)
     {
-        // Check if this is a BlockSigners transaction that needs special handling
-        if (IsBlockSignersTransaction(tx))
+        // Get current block header to check block number
+        BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        
+        // Only apply special BlockSigners handling after TIPSigning fork (block 3,000,000)
+        // Before this fork, BlockSigners transactions are processed normally through EVM
+        if (header.Number >= TIPSigningBlock && IsBlockSignersTransaction(tx))
         {
             return ApplySignTransaction(tx, tracer, opts);
         }
 
-        // Normal transaction processing
+        // Normal transaction processing (EVM execution)
         return base.Execute(tx, tracer, opts);
     }
 
@@ -121,6 +128,10 @@ public class XdcTransactionProcessor : TransactionProcessorBase
             // Commit state to apply changes
             WorldState.Commit(spec);
 
+            // Increment header.GasUsed to match expected block gas
+            // This is critical - without this, block validation fails with HeaderGasUsedMismatch
+            header.GasUsed += tx.GasLimit;
+
             // Create log entry for BlockSigners (matching geth-xdc)
             var logEntry = new LogEntry(
                 XdcConstants.BlockSignersAddress,
@@ -128,7 +139,7 @@ public class XdcTransactionProcessor : TransactionProcessorBase
                 Array.Empty<Hash256>());
 
             // Report to tracer with the ORIGINAL gas limit (107558)
-            // This ensures the block header gas used matches the expected value
+            // This ensures the receipt cumulative gas used matches
             if (tracer.IsTracingReceipt)
             {
                 var gasConsumed = new GasConsumed(tx.GasLimit, tx.GasLimit);

@@ -74,9 +74,13 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
         {
             if (_logger is { } logger && logger.IsInfo)
             {
-                logger.Info("Adding eth/100 capability for XDPoS v2");
+                logger.Info("Adding eth/62, eth/63, eth/100 capabilities for XDC mainnet compatibility");
             }
 
+            // Add eth/62, eth/63, eth/100 for XDC mainnet compatibility
+            // XDC uses eth/62-style handshake (no ForkID) and eth/63-style messages
+            _api.ProtocolsManager?.AddSupportedCapability(new Capability(Protocol.Eth, 62));
+            _api.ProtocolsManager?.AddSupportedCapability(new Capability(Protocol.Eth, 63));
             _api.ProtocolsManager?.AddSupportedCapability(new Capability(Protocol.Eth, 100));
 
             // Register custom eth/100 protocol factory

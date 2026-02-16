@@ -1,0 +1,40 @@
+version: '3.3'
+
+services:
+  nethermind-xdc:
+    image: mcr.microsoft.com/dotnet/sdk:9.0-noble
+    container_name: nethermind-xdc
+    hostname: nethermind-xdc
+    networks:
+      - docker_xdc-network
+    ports:
+      - "8556:8545"     # RPC (different port to avoid conflict)
+      - "30306:30303"   # P2P
+      - "30306:30303/udp"
+    volumes:
+      - /root/.openclaw/workspace/nethermind:/nethermind
+      - nethermind-data:/nethermind-data
+    working_dir: /nethermind/src/Nethermind
+    command: >
+      dotnet run -c release --project Nethermind.Runner --
+      --config xdc
+      --datadir /nethermind-data
+      --log debug
+      --Network.P2PPort 30303
+      --Network.DiscoveryPort 30303
+      --JsonRpc.Port 8545
+      --JsonRpc.Enabled true
+      --JsonRpc.Host 0.0.0.0
+      --JsonRpc.EnabledModules "Eth,Net,Web3,Admin"
+      --Network.StaticPeers "enode://362c05688c81b60f20b7b11c4c44a991136b00863947b1fb2d1b8cf1c015b60e0b55eed9889ecc252e637827a646163bb76c2c65813bedfedb65080b31b35a01@xdc-node:30303"
+    environment:
+      - DOTNET_CLI_HOME=/tmp
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    restart: unless-stopped
+
+volumes:
+  nethermind-data:
+
+networks:
+  docker_xdc-network:
+    external: true
