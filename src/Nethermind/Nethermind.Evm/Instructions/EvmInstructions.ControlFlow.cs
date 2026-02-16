@@ -244,7 +244,7 @@ internal static partial class EvmInstructions
 
         if (executingAccount == inheritor)
         {
-            vm.AddSelfDestructLog(executingAccount, result);
+            vm.AddBurnLog(executingAccount, result);
         }
         else
         {

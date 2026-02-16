@@ -32,8 +32,8 @@ public class Eip7708Tests(bool eip7708Enabled)
     private static LogEntry ExpectedTransferLog(Address from, Address to, UInt256 value) =>
         new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.TransferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]);
 
-    private static LogEntry ExpectedSelfDestructLog(Address account, UInt256 value) =>
-        new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.SelfDestructSignature, account.ToHash().ToHash256()]);
+    private static LogEntry ExpectedBurnLog(Address account, UInt256 value) =>
+        new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.BurnSignature, account.ToHash().ToHash256()]);
 
     private void AssertLogs(TxReceipt[] receipts, LogEntry[] expectedLogs, bool logCondition = true)
     {
@@ -196,7 +196,7 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         Block block = await chain.AddBlock(callTx);
 
-        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedSelfDestructLog(contractAddress, contractBalance)], contractBalance != 0);
+        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedBurnLog(contractAddress, contractBalance)], contractBalance != 0);
     }
 
     [Test]
@@ -275,7 +275,7 @@ public class Eip7708Tests(bool eip7708Enabled)
             ExpectedTransferLog(contractBAddress, contractAAddress, contractABalance),
             ExpectedTransferLog(contractAAddress, inheritorA, contractABalance),
             ExpectedTransferLog(contractBAddress, contractAAddress, ethToSend),
-            ExpectedSelfDestructLog(contractAAddress, ethToSend)
+            ExpectedBurnLog(contractAAddress, ethToSend)
         ]);
     }
 }
