@@ -12,6 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Crypto;
 
 namespace Nethermind.Xdc;
 
@@ -40,12 +41,14 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
 
     private readonly IBlockTree? _blockTree;
     private readonly IWorldState? _stateProvider;
+    private readonly IEthereumEcdsa? _ecdsa;
     private readonly ILogger _logger;
 
-    public XdcRewardCalculator(ILogManager logManager, IBlockTree? blockTree = null, IWorldState? stateProvider = null)
+    public XdcRewardCalculator(ILogManager logManager, IBlockTree? blockTree = null, IWorldState? stateProvider = null, IEthereumEcdsa? ecdsa = null)
     {
         _blockTree = blockTree;
         _stateProvider = stateProvider;
+        _ecdsa = ecdsa;
         _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
     }
 
@@ -111,18 +114,34 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         }
 
         // Iterate backwards collecting signing txs (matching geth order)
+        long blocksFound = 0;
+        long txCount = 0;
+        long signingTxCount = 0;
         for (long i = prevCheckpoint2 + (RewardCheckpoint * 2) - 1; i >= startBlock; i--)
         {
             Block? pastBlock = _blockTree.FindBlock(i, BlockTreeLookupOptions.None);
             if (pastBlock is null) continue;
-            
+            blocksFound++;
             blockNumToHash[i] = pastBlock.Hash!;
+            txCount += pastBlock.Transactions.Length;
             
             foreach (var tx in pastBlock.Transactions)
             {
-                if (tx.To is not null && tx.To == BlockSignersContract && tx.SenderAddress is not null)
+                var to = tx.To?.ToString()?.ToLowerInvariant();
+                if (to == BlockSignersContract.ToString().ToLowerInvariant())
                 {
-                    // Extract block hash being signed from tx data (last 32 bytes)
+                    // Recover sender if not available
+                    Address? sender = tx.SenderAddress;
+                    if (sender is null && _ecdsa is not null)
+                    {
+                        try { sender = _ecdsa.RecoverAddress(tx); }
+                        catch { sender = null; }
+                    }
+                    if (sender is null) continue;
+                    
+                    signingTxCount++;
+                    Console.WriteLine($"[XDC-REWARD] Found signing tx in block {pastBlock.Number} from {sender} to {to}");
+                    
                     byte[] txData = tx.Data.ToArray();
                     if (txData.Length >= 32)
                     {
@@ -132,7 +151,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
                         
                         if (!blockHashSigners.ContainsKey(signedBlockHash))
                             blockHashSigners[signedBlockHash] = new List<Address>();
-                        blockHashSigners[signedBlockHash].Add(tx.SenderAddress);
+                        blockHashSigners[signedBlockHash].Add(sender);
                     }
                 }
             }
@@ -142,6 +161,9 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         var prevHeader = _blockTree.FindBlock(prevCheckpoint2, BlockTreeLookupOptions.None);
         if (prevHeader is not null)
             blockNumToHash[prevCheckpoint2] = prevHeader.Hash!;
+
+        Console.WriteLine($"[XDC-REWARD] Found {blocksFound} blocks, {txCount} total txs, {signingTxCount} signing txs");
+        Console.WriteLine($"[XDC-REWARD] blockHashSigners has {blockHashSigners.Count} entries");
 
         // 4. Count signers per qualifying block (matching geth logic)
         var signerCounts = new Dictionary<Address, ulong>();

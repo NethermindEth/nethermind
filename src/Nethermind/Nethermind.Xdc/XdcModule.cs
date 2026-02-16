@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Crypto;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
@@ -71,7 +72,8 @@ public class XdcModule : Module
             var logManager = ctx.Resolve<ILogManager>();
             var blockTree = ctx.Resolve<IBlockTree>();
             var worldState = ctx.Resolve<IWorldState>();
-            return new XdcRewardCalculator(logManager, blockTree, worldState);
+            var ecdsa = ctx.Resolve<IEthereumEcdsa>();
+            return new XdcRewardCalculator(logManager, blockTree, worldState, ecdsa);
         }).As<IRewardCalculator>()
           .As<IRewardCalculatorSource>()
           .InstancePerLifetimeScope();
