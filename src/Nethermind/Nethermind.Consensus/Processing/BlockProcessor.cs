@@ -174,9 +174,9 @@ public partial class BlockProcessor(
             
             Console.WriteLine($"[XDC-1395] AFTER processing, AFTER state root calc:");
             Console.WriteLine($"[XDC-1395]   computed stateRoot: {header.StateRoot}");
-            Console.WriteLine($"[XDC-1395]   ACTUAL sender exists={_stateProvider.AccountExists(actualSender)} bal={_stateProvider.GetBalance(actualSender)} nonce={_stateProvider.GetNonce(actualSender)}");
-            Console.WriteLine($"[XDC-1395]   recipient exists={_stateProvider.AccountExists(txRecipient)} bal={_stateProvider.GetBalance(txRecipient)} nonce={_stateProvider.GetNonce(txRecipient)}");
-            Console.WriteLine($"[XDC-1395]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)} nonce={_stateProvider.GetNonce(coinbase)}");
+            Console.WriteLine($"[XDC-1395]   ACTUAL sender exists={_stateProvider.AccountExists(actualSender)} bal={_stateProvider.GetBalance(actualSender)}");
+            Console.WriteLine($"[XDC-1395]   recipient exists={_stateProvider.AccountExists(txRecipient)} bal={_stateProvider.GetBalance(txRecipient)}");
+            Console.WriteLine($"[XDC-1395]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
             Console.WriteLine($"[XDC-1395]   mn1 exists={_stateProvider.AccountExists(mn1)} bal={_stateProvider.GetBalance(mn1)}");
             Console.WriteLine($"[XDC-1395]   mn2 exists={_stateProvider.AccountExists(mn2)} bal={_stateProvider.GetBalance(mn2)}");
             Console.WriteLine($"[XDC-1395]   mn3 exists={_stateProvider.AccountExists(mn3)} bal={_stateProvider.GetBalance(mn3)}");

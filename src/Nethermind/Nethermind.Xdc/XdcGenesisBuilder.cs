@@ -48,6 +48,16 @@ public class XdcGenesisBuilder(
 
         genesis.Header.Hash = genesis.Header.CalculateHash();
 
+        // Debug: print XDC header fields
+        if (genesis.Header is XdcBlockHeader xdcHeader)
+        {
+            Console.WriteLine($"[GENESIS-DEBUG] XDC Header fields:");
+            Console.WriteLine($"[GENESIS-DEBUG]   Validators: {(xdcHeader.Validators == null ? "null" : $"len={xdcHeader.Validators.Length}")}");
+            Console.WriteLine($"[GENESIS-DEBUG]   Validator: {(xdcHeader.Validator == null ? "null" : $"len={xdcHeader.Validator.Length}")}");
+            Console.WriteLine($"[GENESIS-DEBUG]   Penalties: {(xdcHeader.Penalties == null ? "null" : $"len={xdcHeader.Penalties.Length}")}");
+            Console.WriteLine($"[GENESIS-DEBUG]   Hash: {genesis.Header.Hash}");
+        }
+
         // Store genesis snapshot if XDC spec provider is available
         if (specProvider.GetFinalSpec() is IXdcReleaseSpec finalSpec)
         {
