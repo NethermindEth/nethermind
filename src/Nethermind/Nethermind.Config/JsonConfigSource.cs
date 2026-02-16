@@ -150,13 +150,8 @@ public class JsonConfigSource : IConfigSource
             return (false, null);
         }
 
-        if (!_values.TryGetValue(category, out Dictionary<string, string> configCategory) ||
-            !configCategory.TryGetValue(name, out string configValue))
-        {
-            return (false, null);
-        }
-
-        return (true, configValue);
+        bool isSet = _values.TryGetValue(category, out Dictionary<string, string> configCategory) && configCategory.TryGetValue(name, out string configValue);
+        return (isSet, isSet ? configValue : null);
     }
 
     public IEnumerable<(string Category, string Name)> GetConfigKeys()
