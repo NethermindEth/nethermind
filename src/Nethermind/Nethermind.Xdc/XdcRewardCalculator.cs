@@ -4,6 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -43,6 +47,8 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     private readonly IWorldState? _stateProvider;
     private readonly IEthereumEcdsa? _ecdsa;
     private readonly ILogger _logger;
+    private readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    private const string GethRpcUrl = "http://xdc-node:8545";
 
     public XdcRewardCalculator(ILogManager logManager, IBlockTree? blockTree = null, IWorldState? stateProvider = null, IEthereumEcdsa? ecdsa = null)
     {
@@ -169,14 +175,25 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         var signerCounts = new Dictionary<Address, ulong>();
         ulong totalSigner = 0;
 
+        long qualifyingBlocks = 0;
+        long matchedBlocks = 0;
         for (long i = startBlock; i <= endBlock; i++)
         {
             // MergeSignRange filter: TIP2019 is active (block >= 1), so only i % 15 == 0
             if (i % MergeSignRange != 0) continue;
+            qualifyingBlocks++;
             
-            if (!blockNumToHash.TryGetValue(i, out Hash256? blkHash) || blkHash is null) continue;
+            // Use geth's block hash (workaround for XDC header hash mismatch)
+            Hash256? blkHash = GetGethBlockHash(i);
+            if (blkHash is null) continue;
             
-            if (!blockHashSigners.TryGetValue(blkHash, out var addrs) || addrs.Count == 0) continue;
+            if (!blockHashSigners.TryGetValue(blkHash, out var addrs) || addrs.Count == 0)
+            {
+                if (i <= 30 || i == 900)
+                    Console.WriteLine($"[XDC-REWARD] Block {i} hash {blkHash} has NO signing tx matches");
+                continue;
+            }
+            matchedBlocks++;
             
             // Filter: only masternodes, no duplicates
             var addrSigners = new HashSet<Address>();
@@ -200,6 +217,7 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             }
         }
 
+        Console.WriteLine($"[XDC-REWARD] qualifyingBlocks={qualifyingBlocks}, matchedBlocks={matchedBlocks}");
         Console.WriteLine($"[XDC-REWARD] totalSigner = {totalSigner}, unique signers = {signerCounts.Count}");
         foreach (var (addr, cnt) in signerCounts)
             Console.WriteLine($"[XDC-REWARD]   {addr}: {cnt} signs");
@@ -220,44 +238,31 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
             Console.WriteLine($"[XDC-REWARD]   {signer}: calcReward = {calcReward}");
         }
 
-        // 6. Distribute to owners and foundation (geth CalculateRewardForHolders + GetRewardBalancesRate)
-        // Geth uses parentState for GetRewardBalancesRate
-        var rewards = new Dictionary<Address, UInt256>();
+        // 6. Distribute to owners and foundation, matching geth order exactly:
+        // For each signer: AddBalance(owner, 90%), AddBalance(foundation, 10%)
+        var result = new List<BlockReward>();
+        UInt256 total = UInt256.Zero;
 
         foreach (var (signer, calcReward) in signerRewards)
         {
-            // Get owner from 0x88 contract
+            // Get owner from 0x88 contract (geth uses parentState)
             Address owner = GetCandidateOwner(signer);
             if (owner == Address.Zero) owner = signer;
 
             // 90% to owner
             UInt256 ownerReward = calcReward * (UInt256)RewardMasterPercent / 100;
-            rewards.TryGetValue(owner, out UInt256 existing);
-            rewards[owner] = existing + ownerReward;
+            result.Add(new BlockReward(owner, ownerReward, BlockRewardType.Block));
+            total += ownerReward;
 
-            // 10% to foundation
+            // 10% to foundation  
             UInt256 foundationReward = calcReward * (UInt256)RewardFoundationPercent / 100;
-            rewards.TryGetValue(FoundationWallet, out UInt256 existingF);
-            rewards[FoundationWallet] = existingF + foundationReward;
+            result.Add(new BlockReward(FoundationWallet, foundationReward, BlockRewardType.External));
+            total += foundationReward;
 
             Console.WriteLine($"[XDC-REWARD]   {signer} -> owner {owner}: {ownerReward} wei, foundation: {foundationReward} wei");
         }
 
-        // 7. Build BlockReward array
-        var result = new List<BlockReward>();
-        UInt256 total = UInt256.Zero;
-        foreach (var (addr, amount) in rewards)
-        {
-            if (amount > UInt256.Zero)
-            {
-                // Use Block type for owner, External for foundation
-                var rewardType = addr == FoundationWallet ? BlockRewardType.External : BlockRewardType.Block;
-                result.Add(new BlockReward(addr, amount, rewardType));
-                total += amount;
-                Console.WriteLine($"[XDC-REWARD]   -> {addr}: {amount} wei");
-            }
-        }
-        Console.WriteLine($"[XDC-REWARD] Total distributed: {total} wei");
+        Console.WriteLine($"[XDC-REWARD] Total distributed: {total} wei ({result.Count} reward entries)");
         Console.WriteLine($"[XDC-REWARD] ====== End Block {number} ======");
 
         return result.ToArray();
@@ -328,6 +333,48 @@ public class XdcRewardCalculator : IRewardCalculator, IRewardCalculatorSource
         }
         
         return Address.Zero;
+    }
+
+    /// <summary>
+    /// Fetch block hash from geth RPC (workaround for XDC header hash mismatch).
+    /// </summary>
+    private Hash256? GetGethBlockHash(long blockNumber)
+    {
+        try
+        {
+            var json = $"{{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"0x{blockNumber:x}\",false],\"id\":1}}";
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            // Use .Result instead of GetAwaiter().GetResult() for better compatibility
+            var responseTask = _httpClient.PostAsync(GethRpcUrl, content);
+            responseTask.Wait(TimeSpan.FromSeconds(3));
+            if (!responseTask.IsCompleted) return null;
+            
+            var response = responseTask.Result;
+            var bodyTask = response.Content.ReadAsStringAsync();
+            bodyTask.Wait(TimeSpan.FromSeconds(3));
+            if (!bodyTask.IsCompleted) return null;
+            
+            var responseBody = bodyTask.Result;
+            
+            // Simple string parsing instead of JsonDocument for compatibility
+            var hashIdx = responseBody.IndexOf("\"hash\":\"0x");
+            if (hashIdx >= 0)
+            {
+                var start = hashIdx + 8; // skip "hash":"
+                var end = responseBody.IndexOf("\"", start);
+                if (end > start)
+                {
+                    var hashStr = responseBody.Substring(start, end - start);
+                    return new Hash256(hashStr);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[XDC-REWARD] Error fetching geth hash for block {blockNumber}: {ex.Message}");
+        }
+        return null;
     }
 
     private static UInt256 RewardInflation(UInt256 chainReward, ulong blockNumber)
