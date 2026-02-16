@@ -28,9 +28,12 @@ env:
 
 jobs:
   resolve:
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'benchmark')
     runs-on: ubuntu-slim
     outputs:
-      should-run: ${{ steps.check.outputs.should-run }}
       mode: ${{ steps.check.outputs.mode }}
       filter: ${{ steps.check.outputs.filter }}
     steps:
@@ -40,29 +43,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          should_run="true"
           mode="Block"
           filter=""
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            label="${{ github.event.label.name }}"
-            if [[ "$label" != "benchmark" ]]; then
-              should_run="false"
-            fi
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             mode="${{ inputs.mode }}"
             filter="${{ inputs.filter }}"
           fi
 
           {
-            echo "should-run=${should_run}"
             echo "mode=${mode}"
             echo "filter=${filter}"
           } >> "$GITHUB_OUTPUT"
 
   benchmark:
     needs: resolve
-    if: needs.resolve.outputs.should-run == 'true'
+    if: always() && !cancelled() && needs.resolve.result == 'success'
     runs-on: [self-hosted, Linux, X64, benchmark]
     strategy:
       fail-fast: false
@@ -107,7 +103,7 @@ jobs:
 
   collect:
     needs: [resolve, benchmark]
-    if: always() && needs.resolve.outputs.should-run == 'true' && needs.benchmark.result == 'success'
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.benchmark.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
