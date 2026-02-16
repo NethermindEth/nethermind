@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -25,10 +26,29 @@ public class XdcModule : Module
     {
         base.Load(builder);
 
-        // Register genesis post-processor to convert BlockHeader to XdcBlockHeader
-        builder.RegisterType<XdcGenesisPostProcessor>()
-            .As<IGenesisPostProcessor>()
+        // Register penalty handler for masternode penalties
+        builder.RegisterType<PenaltyHandler>()
+            .As<IPenaltyHandler>()
             .SingleInstance();
+
+        // Register snapshot manager for XDPoS consensus state
+        builder.Register(ctx =>
+        {
+            var dbProvider = ctx.Resolve<IDbProvider>();
+            var blockTree = ctx.Resolve<IBlockTree>();
+            var penaltyHandler = ctx.Resolve<IPenaltyHandler>();
+            
+            // Get or create the XDC snapshot database
+            var snapshotDb = dbProvider.GetDb<IDb>("xdc_snapshot");
+            
+            return new SnapshotManager(snapshotDb, blockTree, penaltyHandler);
+        }).As<ISnapshotManager>()
+          .SingleInstance();
+
+        // Register XDC-specific genesis builder that uses XdcBlockHeader
+        builder.RegisterType<XdcGenesisBuilder>()
+            .As<IGenesisBuilder>()
+            .InstancePerLifetimeScope();
 
         // Register XDC consensus message processor
         builder.RegisterType<XdcConsensusMessageProcessor>()
