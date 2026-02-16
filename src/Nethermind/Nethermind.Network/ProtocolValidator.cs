@@ -92,15 +92,19 @@ namespace Nethermind.Network
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }
 
-            if (syncPeerArgs.ForkId is null)
+            // eth/100 (XDC) uses eth/62-style handshake without ForkId - skip ForkId validation
+            if (syncPeerArgs.ProtocolVersion < 100)
             {
-                return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
-            }
+                if (syncPeerArgs.ForkId is null)
+                {
+                    return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
+                }
 
-            ValidationResult validationResult = _forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head?.Header);
-            if (validationResult != ValidationResult.Valid)
-            {
-                return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, $"{validationResult}, network id {syncPeerArgs.NetworkId} fork id {syncPeerArgs.ForkId.Value}");
+                ValidationResult validationResult = _forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head?.Header);
+                if (validationResult != ValidationResult.Valid)
+                {
+                    return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, $"{validationResult}, network id {syncPeerArgs.NetworkId} fork id {syncPeerArgs.ForkId.Value}");
+                }
             }
 
             return true;

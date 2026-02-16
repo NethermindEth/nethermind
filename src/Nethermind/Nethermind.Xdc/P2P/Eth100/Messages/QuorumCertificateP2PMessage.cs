@@ -13,7 +13,8 @@ namespace Nethermind.Xdc.P2P.Eth100.Messages
     /// </summary>
     public class QuorumCertificateP2PMessage : P2PMessage
     {
-        public override int PacketType => Eth100MessageCode.QuorumCertificate;
+        // QC is embedded in Vote/Timeout/SyncInfo in geth-xdc, not a standalone message
+        public override int PacketType => 0xFF; // unused
         public override string Protocol => "eth";
 
         public QuorumCertificate QuorumCertificate { get; set; }

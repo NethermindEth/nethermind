@@ -49,7 +49,7 @@ namespace Nethermind.Xdc.P2P.Eth100
 
         public override string Name => "eth100";
 
-        public override int MessageIdSpaceSize => 21; // 0x00-0x14 (includes eth/63 + XDPoS messages)
+        public override int MessageIdSpaceSize => 227; // 0x00-0xe2 (eth/63 + XDPoS consensus at 0xe0-0xe2)
 
         /// <summary>
         /// Override to prevent ForkID from being added (XDC uses eth/62-style status)
@@ -102,13 +102,9 @@ namespace Nethermind.Xdc.P2P.Eth100
                     Handle(syncInfoMessage);
                     break;
 
-                case Eth100MessageCode.QuorumCertificate:
-                    QuorumCertificateP2PMessage qcMessage = Deserialize<QuorumCertificateP2PMessage>(message.Content);
-                    ReportIn(qcMessage, size);
-                    Handle(qcMessage);
-                    break;
-
                 default:
+                    // Note: QuorumCertificate is embedded in Vote/Timeout/SyncInfo in geth-xdc,
+                    // not a standalone message
                     // Delegate to base class for standard eth/63 messages
                     base.HandleMessage(message);
                     break;
