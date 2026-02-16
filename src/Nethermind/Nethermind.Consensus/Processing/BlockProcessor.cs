@@ -106,7 +106,7 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         // XDC DEBUG: Pre-state for block 16 and 1395
-        if (block.Number == 16 || block.Number == 1395)
+        if (block.Number == 16 || block.Number == 1395 || block.Number == 1800)
         {
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
             
@@ -168,7 +168,7 @@ public partial class BlockProcessor(
         }
 
         // XDC DEBUG: Comprehensive state dump for block 16 and 1395
-        if (block.Number == 16 || block.Number == 1395)
+        if (block.Number == 16 || block.Number == 1395 || block.Number == 1800)
         {
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
             
