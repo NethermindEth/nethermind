@@ -100,7 +100,8 @@ public class XdcTransactionProcessor : TransactionProcessorBase
             
             // Deduct gas cost from sender (pre-payment) - IMPORTANT for state root
             UInt256 gasCost = (UInt256)tx.GasLimit * tx.GasPrice;
-            if (!WorldState.BalanceEnough(sender, gasCost, spec))
+            UInt256 senderBalance = WorldState.GetBalance(sender);
+            if (senderBalance < gasCost)
             {
                 return TransactionResult.InsufficientSenderBalance;
             }
