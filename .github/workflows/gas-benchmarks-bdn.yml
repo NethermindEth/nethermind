@@ -31,7 +31,7 @@ jobs:
     if: >-
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.label.name == 'benchmark')
+      (github.event_name == 'pull_request' && github.event.label.name == 'performance is good')
     runs-on: ubuntu-slim
     outputs:
       mode: ${{ steps.check.outputs.mode }}

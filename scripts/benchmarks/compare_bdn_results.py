@@ -8,6 +8,7 @@ import json
 import sys
 
 GAS_PER_BENCHMARK = 100_000_000  # 100M gas per scenario
+SIGNIFICANT_CHANGE_THRESHOLD = 3.0  # % change to flag as regression/improvement
 
 
 def extract_scenario(benchmark):
@@ -77,9 +78,9 @@ def main():
             change_pct = 0.0
 
         entry = (scenario, b, p, change_pct)
-        if change_pct < -5:
+        if change_pct < -SIGNIFICANT_CHANGE_THRESHOLD:
             regressions.append(entry)
-        elif change_pct > 5:
+        elif change_pct > SIGNIFICANT_CHANGE_THRESHOLD:
             improvements.append(entry)
         else:
             neutral.append(entry)
@@ -93,7 +94,7 @@ def main():
     has_improvements = len(improvements) > 0
 
     if has_regressions:
-        lines.append("### :warning: Regressions (>5% slower)")
+        lines.append("### :warning: Regressions (>{:.0f}% slower)".format(SIGNIFICANT_CHANGE_THRESHOLD))
         lines.append("")
         lines.append("| Scenario | Master (MGas/s) | PR (MGas/s) | Change |")
         lines.append("|----------|----------------:|------------:|-------:|")
@@ -103,7 +104,7 @@ def main():
         lines.append("")
 
     if has_improvements:
-        lines.append("### :rocket: Improvements (>5% faster)")
+        lines.append("### :rocket: Improvements (>{:.0f}% faster)".format(SIGNIFICANT_CHANGE_THRESHOLD))
         lines.append("")
         lines.append("| Scenario | Master (MGas/s) | PR (MGas/s) | Change |")
         lines.append("|----------|----------------:|------------:|-------:|")
@@ -113,7 +114,7 @@ def main():
         lines.append("")
 
     if not has_regressions and not has_improvements:
-        lines.append(":white_check_mark: No significant changes detected (all within +/-5%).")
+        lines.append(":white_check_mark: No significant changes detected (all within +/-{:.0f}%).".format(SIGNIFICANT_CHANGE_THRESHOLD))
         lines.append("")
 
     # Summary table (collapsed for large sets)
