@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -75,6 +76,11 @@ public class XdcModule : Module
         }).As<IRewardCalculator>()
           .As<IRewardCalculatorSource>()
           .SingleInstance();
+
+        // Register XDC transaction processor for BlockSigners special handling
+        builder.RegisterType<XdcTransactionProcessor>()
+            .As<ITransactionProcessor>()
+            .InstancePerLifetimeScope();
 
         // Register XDC consensus message processor
         builder.RegisterType<XdcConsensusMessageProcessor>()
