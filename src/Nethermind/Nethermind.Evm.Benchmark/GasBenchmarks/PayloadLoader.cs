@@ -329,6 +329,71 @@ public static class PayloadLoader
         }
     }
 
+    /// <summary>
+    /// Reads the raw JSON-RPC line from a payload file. Used by NewPayload mode to measure deserialization.
+    /// </summary>
+    public static string ReadRawJson(string filePath)
+    {
+        using StreamReader reader = new(filePath);
+        return reader.ReadLine();
+    }
+
+    /// <summary>
+    /// Parses expected stateRoot and blockHash from a payload file for verification.
+    /// </summary>
+    public static (Hash256 StateRoot, Hash256 BlockHash) ParseExpectedHashes(string filePath)
+    {
+        string firstLine = ReadRawJson(filePath);
+
+        using JsonDocument doc = JsonDocument.Parse(firstLine);
+        JsonElement payload = doc.RootElement.GetProperty("params")[0];
+
+        Hash256 stateRoot = null;
+        if (payload.TryGetProperty("stateRoot", out JsonElement stateRootEl))
+        {
+            string hex = stateRootEl.GetString();
+            if (hex is not null && hex.Length > 2)
+                stateRoot = new Hash256(Bytes.FromHexString(hex));
+        }
+
+        Hash256 blockHash = null;
+        if (payload.TryGetProperty("blockHash", out JsonElement blockHashEl))
+        {
+            string hex = blockHashEl.GetString();
+            if (hex is not null && hex.Length > 2)
+                blockHash = new Hash256(Bytes.FromHexString(hex));
+        }
+
+        return (stateRoot, blockHash);
+    }
+
+    /// <summary>
+    /// Verifies a processed block's state root and block hash against expected values from the payload.
+    /// </summary>
+    public static void VerifyProcessedBlock(Block processedBlock, string scenarioName, string filePath)
+    {
+        (Hash256 expectedStateRoot, Hash256 expectedBlockHash) = ParseExpectedHashes(filePath);
+
+        if (expectedStateRoot is not null && processedBlock.Header.StateRoot != expectedStateRoot)
+        {
+            throw new InvalidOperationException(
+                $"State root mismatch for {scenarioName}!\n" +
+                $"  Expected: {expectedStateRoot}\n" +
+                $"  Computed: {processedBlock.Header.StateRoot}\n" +
+                "Block processing produced incorrect results.");
+        }
+
+        if (expectedBlockHash is not null && processedBlock.Header.Hash != expectedBlockHash)
+        {
+            throw new InvalidOperationException(
+                $"Block hash mismatch for {scenarioName}!\n" +
+                $"  Expected: {expectedBlockHash}\n" +
+                $"  Computed: {processedBlock.Header.Hash}\n" +
+                $"  StateRoot match: {processedBlock.Header.StateRoot == expectedStateRoot}\n" +
+                "Block processing produced a different block hash — some header field differs.");
+        }
+    }
+
     private static long ParseHexLong(JsonElement parent, string propertyName)
     {
         string hex = parent.GetProperty(propertyName).GetString();

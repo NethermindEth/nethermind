@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Nethermind.Evm.Benchmark": {
+      "commandName": "Project",
+      "commandLineArgs": "--diag MULMOD"
+    }
+  }
+}

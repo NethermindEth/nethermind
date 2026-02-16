@@ -63,8 +63,10 @@ static string[] ApplyModeFilter(string[] args)
     string classFilter = modeValue.ToUpperInvariant() switch
     {
         "EVM" => "*GasPayload*",
-        "BLOCK" => "*GasBlock*",
-        _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM' or 'Block'.")
+        "BLOCKONE" => "*GasBlockOne*",
+        "BLOCK" => "*GasBlockBenchmarks*",
+        "NEWPAYLOAD" => "*GasNewPayload*",
+        _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM', 'BlockOne', 'Block', or 'NewPayload'.")
     };
 
     // Remove --mode from args
