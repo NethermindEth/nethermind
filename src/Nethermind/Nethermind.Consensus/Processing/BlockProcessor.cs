@@ -172,6 +172,18 @@ public partial class BlockProcessor(
         {
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
             
+            // Dump all changed accounts
+            if (block.AccountChanges is not null)
+            {
+                Console.WriteLine($"[XDC-{block.Number}] CHANGED ACCOUNTS ({block.AccountChanges.Count}):");
+                foreach (var addr in block.AccountChanges)
+                {
+                    var a = (Nethermind.Core.Address)addr;
+                    _stateProvider.TryGetAccount(a, out var acct);
+                    Console.WriteLine($"[XDC-{block.Number}]   changed: {a} exists={_stateProvider.AccountExists(a)} bal={_stateProvider.GetBalance(a)} nonce={acct.Nonce} storage={acct.StorageRoot} code={acct.CodeHash}");
+                }
+            }
+            
             Console.WriteLine($"[XDC-{block.Number}] AFTER processing, AFTER state root calc:");
             Console.WriteLine($"[XDC-{block.Number}]   computed stateRoot: {header.StateRoot}");
             Console.WriteLine($"[XDC-{block.Number}]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
