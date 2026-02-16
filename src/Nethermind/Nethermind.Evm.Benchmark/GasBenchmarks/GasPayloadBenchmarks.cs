@@ -31,6 +31,7 @@ public class GasPayloadBenchmarks
     private static readonly string s_testingDir = Path.Combine(s_gasBenchmarksRoot, "eest_tests", "testing");
     private static readonly string s_setupDir = Path.Combine(s_gasBenchmarksRoot, "eest_tests", "setup");
     private static readonly string s_genesisPath = Path.Combine(s_gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
+    private static bool s_missingSubmoduleWarned;
 
     private IWorldState _state;
     private IDisposable _stateScope;
@@ -125,9 +126,14 @@ public class GasPayloadBenchmarks
     {
         if (!Directory.Exists(s_testingDir))
         {
-            Console.Error.WriteLine(
-                "[GasPayloadBenchmarks] No test cases found. Initialize the gas-benchmarks submodule:\n" +
-                "  git lfs install && git submodule update --init tools/gas-benchmarks");
+            if (!s_missingSubmoduleWarned)
+            {
+                s_missingSubmoduleWarned = true;
+                Console.Error.WriteLine(
+                    "[GasPayloadBenchmarks] No test cases found. Initialize the gas-benchmarks submodule:\n" +
+                    "  git lfs install && git submodule update --init tools/gas-benchmarks");
+            }
+
             yield break;
         }
 
