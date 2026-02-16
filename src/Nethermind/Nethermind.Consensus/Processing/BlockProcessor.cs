@@ -105,20 +105,23 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        // XDC DEBUG: Pre-state for block 1395
-        if (block.Number == 1395)
+        // XDC DEBUG: Pre-state for block 16
+        if (block.Number == 16)
         {
-            var actualSender = new Nethermind.Core.Address("0x54d4369719bf06b194c32f8be57e2605dd5b59e5");
-            var txRecipient = new Nethermind.Core.Address("0x381047523972c9fdc3aa343e0b96900a8e2fa765");
+            var sender = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
+            var blockSigners = new Nethermind.Core.Address("0x0000000000000000000000000000000000000089");
             var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
+            var precompile1 = new Nethermind.Core.Address("0x0000000000000000000000000000000000000001");
             
-            Console.WriteLine($"[XDC-1395] BEFORE processing:");
-            Console.WriteLine($"[XDC-1395]   ACTUAL sender 0x54d436 exists={_stateProvider.AccountExists(actualSender)} bal={_stateProvider.GetBalance(actualSender)}");
-            Console.WriteLine($"[XDC-1395]   recipient 0x3810 exists={_stateProvider.AccountExists(txRecipient)} bal={_stateProvider.GetBalance(txRecipient)}");
-            Console.WriteLine($"[XDC-1395]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
-            Console.WriteLine($"[XDC-1395]   block txCount={block.Transactions.Length}");
+            Console.WriteLine($"[XDC-16] BEFORE processing:");
+            Console.WriteLine($"[XDC-16]   sender 0xcfcc exists={_stateProvider.AccountExists(sender)} bal={_stateProvider.GetBalance(sender)}");
+            Console.WriteLine($"[XDC-16]   blockSigners 0x89 exists={_stateProvider.AccountExists(blockSigners)} bal={_stateProvider.GetBalance(blockSigners)} isContract={_stateProvider.IsContract(blockSigners)}");
+            Console.WriteLine($"[XDC-16]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-16]   precompile1 exists={_stateProvider.AccountExists(precompile1)}");
+            Console.WriteLine($"[XDC-16]   block txCount={block.Transactions.Length}");
+            Console.WriteLine($"[XDC-16]   spec.IsEip158Enabled={spec.IsEip158Enabled}");
             foreach (var tx in block.Transactions)
-                Console.WriteLine($"[XDC-1395]   tx: from={tx.SenderAddress} to={tx.To} value={tx.Value} gasPrice={tx.GasPrice} gas={tx.GasLimit}");
+                Console.WriteLine($"[XDC-16]   tx: from={tx.SenderAddress} to={tx.To} value={tx.Value} gasPrice={tx.GasPrice} gas={tx.GasLimit}");
         }
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -159,34 +162,29 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        // XDC DEBUG: Comprehensive state dump for block 1395
-        if (block.Number == 1395)
+        // XDC DEBUG: Comprehensive state dump for block 16
+        if (block.Number == 16)
         {
-            var actualSender = new Nethermind.Core.Address("0x54d4369719bf06b194c32f8be57e2605dd5b59e5");
-            var txRecipient = new Nethermind.Core.Address("0x381047523972c9fdc3aa343e0b96900a8e2fa765");
-            var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
-            // Also check the 3 masternodes
-            var mn1 = new Nethermind.Core.Address("0x25c65b4b379ac37cf78357c4915f73677022eaff");
-            var mn2 = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
-            var mn3 = new Nethermind.Core.Address("0xc7d49d0a2cf198deebd6ce581af465944ec8b2bb");
+            var sender = new Nethermind.Core.Address("0xcfccdea1006a5cfa7d9484b5b293b46964c265c0");
             var blockSigners = new Nethermind.Core.Address("0x0000000000000000000000000000000000000089");
+            var coinbase = new Nethermind.Core.Address("0x0000000000000000000000000000000000000000");
+            var precompile1 = new Nethermind.Core.Address("0x0000000000000000000000000000000000000001");
+            var validator = new Nethermind.Core.Address("0x0000000000000000000000000000000000000088");
             var randomize = new Nethermind.Core.Address("0x0000000000000000000000000000000000000090");
             
-            Console.WriteLine($"[XDC-1395] AFTER processing, AFTER state root calc:");
-            Console.WriteLine($"[XDC-1395]   computed stateRoot: {header.StateRoot}");
-            Console.WriteLine($"[XDC-1395]   ACTUAL sender exists={_stateProvider.AccountExists(actualSender)} bal={_stateProvider.GetBalance(actualSender)}");
-            Console.WriteLine($"[XDC-1395]   recipient exists={_stateProvider.AccountExists(txRecipient)} bal={_stateProvider.GetBalance(txRecipient)}");
-            Console.WriteLine($"[XDC-1395]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
-            Console.WriteLine($"[XDC-1395]   mn1 exists={_stateProvider.AccountExists(mn1)} bal={_stateProvider.GetBalance(mn1)}");
-            Console.WriteLine($"[XDC-1395]   mn2 exists={_stateProvider.AccountExists(mn2)} bal={_stateProvider.GetBalance(mn2)}");
-            Console.WriteLine($"[XDC-1395]   mn3 exists={_stateProvider.AccountExists(mn3)} bal={_stateProvider.GetBalance(mn3)}");
-            Console.WriteLine($"[XDC-1395]   0x89 exists={_stateProvider.AccountExists(blockSigners)}");
-            Console.WriteLine($"[XDC-1395]   0x90 exists={_stateProvider.AccountExists(randomize)}");
-            Console.WriteLine($"[XDC-1395]   beneficiary={header.Beneficiary}");
-            Console.WriteLine($"[XDC-1395]   gasUsed={header.GasUsed}");
-            Console.WriteLine($"[XDC-1395]   receipts={receipts.Length}");
+            Console.WriteLine($"[XDC-16] AFTER processing, AFTER state root calc:");
+            Console.WriteLine($"[XDC-16]   computed stateRoot: {header.StateRoot}");
+            Console.WriteLine($"[XDC-16]   sender 0xcfcc exists={_stateProvider.AccountExists(sender)} bal={_stateProvider.GetBalance(sender)}");
+            Console.WriteLine($"[XDC-16]   blockSigners 0x89 exists={_stateProvider.AccountExists(blockSigners)} isContract={_stateProvider.IsContract(blockSigners)}");
+            Console.WriteLine($"[XDC-16]   coinbase 0x00 exists={_stateProvider.AccountExists(coinbase)} bal={_stateProvider.GetBalance(coinbase)}");
+            Console.WriteLine($"[XDC-16]   precompile1 exists={_stateProvider.AccountExists(precompile1)}");
+            Console.WriteLine($"[XDC-16]   validator 0x88 exists={_stateProvider.AccountExists(validator)}");
+            Console.WriteLine($"[XDC-16]   randomize 0x90 exists={_stateProvider.AccountExists(randomize)}");
+            Console.WriteLine($"[XDC-16]   beneficiary={header.Beneficiary}");
+            Console.WriteLine($"[XDC-16]   gasUsed={header.GasUsed}");
+            Console.WriteLine($"[XDC-16]   receipts={receipts.Length}");
             if (receipts.Length > 0)
-                Console.WriteLine($"[XDC-1395]   receipt[0] gasUsed={receipts[0].GasUsed} cumGas={receipts[0].GasUsedTotal} status={receipts[0].StatusCode}");
+                Console.WriteLine($"[XDC-16]   receipt[0] gasUsed={receipts[0].GasUsed} cumGas={receipts[0].GasUsedTotal} status={receipts[0].StatusCode} logs={receipts[0].Logs?.Length ?? 0}");
         }
 
         header.Hash = header.CalculateHash();

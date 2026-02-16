@@ -834,13 +834,36 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
+        // XDC: Check if transaction is to a special contract (BlockSigners or Randomize)
+        // In geth-xdc, fee payment is skipped entirely for these transactions
+        private static readonly Nethermind.Core.Address XdcBlockSigners = new("0x0000000000000000000000000000000000000089");
+        private static readonly Nethermind.Core.Address XdcRandomize = new("0x0000000000000000000000000000000000000090");
+        private static bool IsXdcSpecialTx(Transaction tx)
+        {
+            return tx.To is not null && (tx.To == XdcBlockSigners || tx.To == XdcRandomize);
+        }
+
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
+            // XDC: Skip fee payment for special transactions (BlockSigners, Randomize)
+            // Matching geth-xdc behavior: "GasPrice of special tx is always 0, so we can skip AddBalance"
+            if (IsXdcSpecialTx(tx))
+            {
+                if (tracer.IsTracingFees)
+                {
+                    tracer.ReportFees(UInt256.Zero, UInt256.Zero);
+                }
+                return;
+            }
+
             UInt256 fees = premiumPerGas * (ulong)spentGas;
 
             // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+            // XDC: Skip fee payment to zero address (0x00) - geth-xdc never pays fees to 0x00 beneficiary
+            // In XDPoS, the beneficiary/miner is often the zero address for system blocks
+            bool isZeroAddressBeneficiary = header.GasBeneficiary is null || header.GasBeneficiary == Nethermind.Core.Address.Zero;
+            if ((statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed) && !isZeroAddressBeneficiary)
             {
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
