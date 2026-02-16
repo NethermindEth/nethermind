@@ -67,12 +67,16 @@ public class XdcTransactionProcessor : TransactionProcessorBase
     /// Apply BlockSigners transaction - special handling that bypasses EVM.
     /// 
     /// This replicates geth-xdc's ApplySignTransaction() behavior:
-    /// 1. Get sender and validate nonce
-    /// 2. Increment nonce
-    /// 3. Finalize state (apply pending changes)
-    /// 4. Create receipt with 0 gas used
-    /// 5. Add log entry for BlockSigners
-    /// 6. Do NOT execute any EVM code
+    /// 1. Deduct gas cost from sender (pre-payment)
+    /// 2. Get sender and validate nonce
+    /// 3. Increment nonce
+    /// 4. Finalize state (apply pending changes)
+    /// 5. Create receipt with the ORIGINAL gas limit (for block header validation)
+    /// 6. Add log entry for BlockSigners
+    /// 7. Do NOT execute any EVM code
+    /// 
+    /// Note: The receipt shows gasUsed = tx.GasLimit (107558), not 0.
+    /// This is because the gas is prepaid and must be recorded in the block header.
     /// 
     /// Reference implementation:
     /// https://github.com/XinFinOrg/XDPoSChain/blob/master/core/state_processor.go#L312
@@ -91,6 +95,17 @@ public class XdcTransactionProcessor : TransactionProcessorBase
             // Get sender address (must be already set)
             Address sender = tx.SenderAddress!;
             
+            // Create account if it doesn't exist (geth-xdc behavior)
+            WorldState.CreateAccountIfNotExists(sender, UInt256.Zero, UInt256.Zero);
+            
+            // Deduct gas cost from sender (pre-payment) - IMPORTANT for state root
+            UInt256 gasCost = (UInt256)tx.GasLimit * tx.GasPrice;
+            if (!WorldState.BalanceEnough(sender, gasCost, spec))
+            {
+                return TransactionResult.InsufficientSenderBalance;
+            }
+            WorldState.SubtractFromBalance(sender, gasCost, spec);
+
             // Validate and increment nonce (geth-xdc behavior)
             UInt256 nonce = WorldState.GetNonce(sender);
             if (nonce != tx.Nonce)
@@ -102,7 +117,7 @@ public class XdcTransactionProcessor : TransactionProcessorBase
             }
             WorldState.IncrementNonce(sender);
 
-            // Commit state to apply the nonce change
+            // Commit state to apply changes
             WorldState.Commit(spec);
 
             // Create log entry for BlockSigners (matching geth-xdc)
@@ -110,23 +125,23 @@ public class XdcTransactionProcessor : TransactionProcessorBase
                 XdcConstants.BlockSignersAddress,
                 Array.Empty<byte>(),
                 Array.Empty<Hash256>());
-            
-            // Use the tracer to report the log if needed
+
+            // Report to tracer with the ORIGINAL gas limit (107558)
+            // This ensures the block header gas used matches the expected value
             if (tracer.IsTracingReceipt)
             {
-                // Report as success with 0 gas used
-                var gasConsumed = new GasConsumed(0, 0);
+                var gasConsumed = new GasConsumed(tx.GasLimit, tx.GasLimit);
                 tracer.MarkAsSuccess(
                     XdcConstants.BlockSignersAddress,
-                    gasConsumed, // Gas used = 0
+                    gasConsumed, // Gas used = tx.GasLimit (107558)
                     Array.Empty<byte>(),
                     new[] { logEntry });
             }
 
             if (Logger.IsDebug)
-                Logger.Debug($"Applied BlockSigners transaction from {sender} at block {header.Number}");
+                Logger.Debug($"Applied BlockSigners transaction from {sender} at block {header.Number}, gas used: {tx.GasLimit}");
 
-            // Return success - 0 gas used, no error
+            // Return success
             return TransactionResult.Ok;
         }
         catch (Exception ex)
