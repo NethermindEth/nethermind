@@ -22,6 +22,9 @@ internal class XdcBlockProcessor : BlockProcessor
 {
     private readonly ILogger _logger;
     private readonly XdcCoinbaseResolver _coinbaseResolver;
+    
+    // Store expected state root from suggested block before PrepareBlockForProcessing replaces it
+    private Nethermind.Core.Crypto.Hash256? _expectedStateRoot;
 
     public XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor) : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
     {
@@ -31,6 +34,9 @@ internal class XdcBlockProcessor : BlockProcessor
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
+        // Save expected state root BEFORE we replace the header
+        _expectedStateRoot = suggestedBlock.Header.StateRoot;
+        
         // If header isn't XdcBlockHeader (e.g. from cache), fall back to base implementation
         if (suggestedBlock.Header is not XdcBlockHeader bh)
             return base.PrepareBlockForProcessing(suggestedBlock);
@@ -133,29 +139,15 @@ internal class XdcBlockProcessor : BlockProcessor
         if (spec is Nethermind.Specs.ReleaseSpec mutableSpec)
         {
             mutableSpec.IsEip158Enabled = false;
+            if (block.Number == 1800 || block.Number == 1395)
+                Console.WriteLine($"[XDC-SPEC] Block {block.Number}: spec type={spec.GetType().FullName}, IsEip158Enabled={spec.IsEip158Enabled}");
         }
-        
-        // Save expected state root from the peer's header BEFORE processing
-        var expectedStateRoot = block.Header.StateRoot;
+        else
+        {
+            Console.WriteLine($"[XDC-SPEC] Block {block.Number}: spec is NOT ReleaseSpec! type={spec.GetType().FullName}, IsEip158Enabled={spec.IsEip158Enabled}");
+        }
         
         var receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
-        
-        // XDC: If state root mismatches, force the expected root so the trie stays consistent.
-        // Without this, the bypass in ValidateProcessedBlock lets wrong roots through,
-        // causing MissingTrieNodeException on subsequent blocks.
-        if (block.Header.StateRoot != expectedStateRoot && expectedStateRoot is not null)
-        {
-            Console.WriteLine($"[XDC-STATEFIX] Block {block.Number}: forcing state root from {block.Header.StateRoot} to expected {expectedStateRoot}");
-            block.Header.StateRoot = expectedStateRoot;
-            
-            // Also reset the world state to the expected root so subsequent blocks
-            // can read state correctly (prevents MissingTrieNodeException)
-            // WorldStateMetricsDecorator now exposes a setter that delegates to WorldState
-            if (_stateProvider is Nethermind.State.WorldStateMetricsDecorator decorator)
-            {
-                decorator.StateRoot = expectedStateRoot;
-            }
-        }
         
         return receipts;
     }

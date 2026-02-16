@@ -79,6 +79,7 @@ public partial class BlockProcessor(
             {
                 Console.WriteLine($"[XDC-BYPASS] Block {block.Number} validation bypassed: {error}");
                 Console.WriteLine($"[XDC-BYPASS] Block {block.Number}: computed={block.Header.StateRoot} expected={suggestedBlock.Header.StateRoot}");
+                Console.WriteLine($"[XDC-BYPASS] Block {block.Number}: match={block.Header.StateRoot == suggestedBlock.Header.StateRoot}");
                 if (_logger.IsWarn) _logger.Warn($"[XDC] Block {block.Number} validation bypassed for XDC chain");
                 // Don't throw - allow sync to continue
             }
@@ -306,6 +307,12 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+        if (block.Number == 1800)
+        {
+            Console.WriteLine($"[XDC-REWARDS-1800] {rewards.Length} rewards returned by {rewardCalculator.GetType().Name}:");
+            for (int j = 0; j < rewards.Length; j++)
+                Console.WriteLine($"[XDC-REWARDS-1800]   [{j}] addr={rewards[j].Address} val={rewards[j].Value} type={rewards[j].RewardType}");
+        }
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];

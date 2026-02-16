@@ -279,6 +279,12 @@ namespace Nethermind.State
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            // XDC debug: trace who touches 0x00 and 0x88
+            if (address == Nethermind.Core.Address.Zero || address.ToString() == "0x0000000000000000000000000000000000000088")
+            {
+                Console.WriteLine($"[XDC-TRACE] AddToBalance({address}, {balanceChange})");
+                Console.WriteLine($"[XDC-TRACE]   caller: {new System.Diagnostics.StackTrace(true)}");
+            }
             _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
