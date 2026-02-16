@@ -51,7 +51,15 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
-    public Hash256 StateRoot => innerState.StateRoot;
+    public Hash256 StateRoot
+    {
+        get => innerState.StateRoot;
+        set
+        {
+            if (innerState is WorldState ws)
+                ws.StateRoot = value;
+        }
+    }
 
     public double StateMerkleizationTime { get; private set; }
 

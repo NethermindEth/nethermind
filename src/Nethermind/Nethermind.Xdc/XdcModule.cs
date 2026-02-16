@@ -67,6 +67,9 @@ public class XdcModule : Module
             .SingleInstance();
 
         // Register XDC reward calculator for checkpoint block rewards
+        // NOTE: We only register as IRewardCalculatorSource, NOT as IRewardCalculator directly.
+        // The BlockProcessingModule creates IRewardCalculator from IRewardCalculatorSource.
+        // XdcBlockProcessor will create its own instance to ensure it uses the correct calculator.
         builder.Register(ctx =>
         {
             var logManager = ctx.Resolve<ILogManager>();
@@ -74,8 +77,7 @@ public class XdcModule : Module
             var worldState = ctx.Resolve<IWorldState>();
             var ecdsa = ctx.Resolve<IEthereumEcdsa>();
             return new XdcRewardCalculator(logManager, blockTree, worldState, ecdsa);
-        }).As<IRewardCalculator>()
-          .As<IRewardCalculatorSource>()
+        }).As<IRewardCalculatorSource>()
           .InstancePerLifetimeScope();
 
         // Register XDC transaction processor for BlockSigners special handling
