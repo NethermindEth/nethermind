@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -129,9 +130,11 @@ public class GasPayloadBenchmarks
             if (!s_missingSubmoduleWarned)
             {
                 s_missingSubmoduleWarned = true;
-                Console.Error.WriteLine(
-                    "\u001b[33m[GasPayloadBenchmarks] No test cases found.\u001b[0m Initialize the gas-benchmarks submodule:\n" +
-                    "  \u001b[36mgit lfs install && git submodule update --init tools/gas-benchmarks\u001b[0m");
+                string hint = "\u001b[33m[GasPayloadBenchmarks] No test cases found.\u001b[0m Initialize the gas-benchmarks submodule:\n" +
+                    "  \u001b[36mgit lfs install && git submodule update --init tools/gas-benchmarks\u001b[0m";
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    hint += "\n  On Windows, you may also need: \u001b[36mgit config --global core.longpaths true\u001b[0m";
+                Console.Error.WriteLine(hint);
             }
 
             yield break;

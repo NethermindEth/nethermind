@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -161,10 +162,12 @@ public static class PayloadLoader
     {
         if (!File.Exists(genesisPath))
         {
-            throw new FileNotFoundException(
-                $"Genesis file not found: {genesisPath}\n" +
+            string message = $"Genesis file not found: {genesisPath}\n" +
                 "Make sure the gas-benchmarks submodule is initialized:\n" +
-                "  git lfs install && git submodule update --init tools/gas-benchmarks");
+                "  git lfs install && git submodule update --init tools/gas-benchmarks";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                message += "\n  On Windows, you may also need: git config --global core.longpaths true";
+            throw new FileNotFoundException(message);
         }
 
         using FileStream fs = File.OpenRead(genesisPath);
