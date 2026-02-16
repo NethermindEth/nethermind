@@ -7,9 +7,11 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Logging;
+using Nethermind.Core;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using System;
@@ -45,6 +47,19 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = nethermindApi;
         _logger = _api.LogManager.GetClassLogger();
+
+        if (Enabled)
+        {
+            // Register XDC header/block decoders globally so all P2P message serializers
+            // (BlockHeadersMessage, NewBlockMessage, etc.) decode XDC block headers
+            // with the extra Validator/Validators/Penalties fields
+            var xdcHeaderDecoder = new XdcHeaderDecoder();
+            Rlp.RegisterDecoder(typeof(BlockHeader), xdcHeaderDecoder);
+            Rlp.RegisterDecoder(typeof(Block), new BlockDecoder(xdcHeaderDecoder));
+            if (_logger is { IsInfo: true } logger)
+                logger.Info("Registered XdcHeaderDecoder as global BlockHeader/Block decoder");
+        }
+
         return Task.CompletedTask;
     }
 

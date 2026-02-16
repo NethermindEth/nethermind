@@ -55,6 +55,11 @@ public class XdcModule : Module
             .As<IBlockProcessor>()
             .InstancePerLifetimeScope();
 
+        // Register XDC header validator (relaxes gas limit validation for XDPoS)
+        builder.RegisterType<XdcHeaderValidator>()
+            .As<Nethermind.Consensus.Validators.IHeaderValidator>()
+            .SingleInstance();
+
         // Register XDC consensus message processor
         builder.RegisterType<XdcConsensusMessageProcessor>()
             .As<IXdcConsensusMessageProcessor>()

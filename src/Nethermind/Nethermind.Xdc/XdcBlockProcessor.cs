@@ -23,8 +23,9 @@ internal class XdcBlockProcessor : BlockProcessor
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
-        //TODO find a better way to do this copy
-        XdcBlockHeader bh = suggestedBlock.Header as XdcBlockHeader;
+        // If header isn't XdcBlockHeader (e.g. from cache), fall back to base implementation
+        if (suggestedBlock.Header is not XdcBlockHeader bh)
+            return base.PrepareBlockForProcessing(suggestedBlock);
         XdcBlockHeader headerForProcessing = new(
             bh.ParentHash,
             bh.UnclesHash,
