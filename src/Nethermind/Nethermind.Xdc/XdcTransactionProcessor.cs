@@ -62,12 +62,12 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         }
 
         Address coinbase = header.GasBeneficiary!;
-        Address owner = _masternodeVotingContract.GetCandidateOwner(header, coinbase);
+        Address owner = _masternodeVotingContract.GetCandidateOwnerDuringProcessing(this, header, coinbase);
 
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 fee = premiumPerGas * (ulong)spentGas;
+        UInt256 fee = tx.GasPrice * (ulong)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
         if (tracer.IsTracingFees)

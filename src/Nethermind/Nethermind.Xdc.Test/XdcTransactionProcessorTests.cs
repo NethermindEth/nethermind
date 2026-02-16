@@ -81,7 +81,7 @@ internal class XdcTransactionProcessorTests
         _stateProvider!.CreateAccount(beneficiaryAddress, AccountBalance);
         _stateProvider.CreateAccount(ownerAddress, UInt256.Zero);
 
-        _masternodeVotingContract.GetCandidateOwner(Arg.Any<XdcBlockHeader>(), beneficiaryAddress)
+        _masternodeVotingContract.GetCandidateOwnerDuringProcessing(Arg.Any<XdcTransactionProcessor>(), Arg.Any<XdcBlockHeader>(), beneficiaryAddress)
             .Returns(ownerAddress);
 
         Transaction tx = Build.A.Transaction
@@ -110,14 +110,15 @@ internal class XdcTransactionProcessorTests
         UInt256 beneficiaryReceivedFees = finalBeneficiaryBalance - initialBeneficiaryBalance;
         UInt256 ownerReceivedFees = finalOwnerBalance - initialOwnerBalance;
 
-        UInt256 expectedFees = premiumPerGas * (ulong)spentGas;
         if (tipTrc21FeeEnabled)
         {
+            UInt256 expectedFees = tx.GasPrice * (ulong)spentGas;
             Assert.That(ownerReceivedFees, Is.EqualTo(expectedFees));
             Assert.That(beneficiaryReceivedFees, Is.EqualTo(UInt256.Zero));
         }
         else
         {
+            UInt256 expectedFees = premiumPerGas * (ulong)spentGas;
             Assert.That(beneficiaryReceivedFees, Is.EqualTo(expectedFees));
             Assert.That(ownerReceivedFees, Is.EqualTo(UInt256.Zero));
         }
