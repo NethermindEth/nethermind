@@ -35,38 +35,45 @@ internal class XdcBlockProcessor : BlockProcessor
 
         // XDC: Resolve the actual fee recipient (masternode owner) from the validator contract
         // In XDPoS, header.Beneficiary is 0x0, but fees should go to the masternode owner
-        // IMPORTANT: Only override beneficiary when there are actual non-zero gas fees to pay.
-        // If we set beneficiary to a non-zero address when fee=0, Nethermind's PayFees still
-        // "touches" the account (AddToBalanceAndCreateIfNotExists), modifying the state tree.
-        // Geth-xdc only resolves coinbase during ApplyTransaction when fee > 0.
+        // 
+        // CRITICAL: Only resolve coinbase for blocks >= TIPTRC21Fee (38383838 on mainnet).
+        // For earlier blocks, geth-xdc pays fees to the regular Coinbase (0x0), not the owner.
+        // The owner resolution is only used for fee payment in blocks after TIPTRC21Fee.
+        // See geth-xdc: core/state_transition.go lines 388-400
+        const ulong TIPTRC21Fee = 38383838;  // Mainnet value
+        
         Address resolvedBeneficiary = suggestedBlock.Header.Beneficiary;
         
-        // Check if any transaction has non-zero gas price (actual fees to distribute)
-        bool hasNonZeroFees = false;
-        if (suggestedBlock.Header.GasUsed > 0)
+        // Only resolve coinbase for blocks after TIPTRC21Fee
+        if ((ulong)suggestedBlock.Header.Number >= TIPTRC21Fee)
         {
-            foreach (var tx in suggestedBlock.Transactions)
+            // Check if any transaction has non-zero gas price (actual fees to distribute)
+            bool hasNonZeroFees = false;
+            if (suggestedBlock.Header.GasUsed > 0)
             {
-                if (tx.GasPrice > 0)
+                foreach (var tx in suggestedBlock.Transactions)
                 {
-                    hasNonZeroFees = true;
-                    break;
+                    if (tx.GasPrice > 0)
+                    {
+                        hasNonZeroFees = true;
+                        break;
+                    }
                 }
             }
-        }
-        
-        if (hasNonZeroFees)
-        {
-            try
+            
+            if (hasNonZeroFees)
             {
-                resolvedBeneficiary = _coinbaseResolver.ResolveCoinbase(suggestedBlock.Header, _stateProvider);
-                
-                Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Beneficiary {suggestedBlock.Header.Beneficiary} -> Resolved {resolvedBeneficiary}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Error resolving: {ex}");
-                if (_logger.IsWarn) _logger.Warn($"Block {suggestedBlock.Number}: Error resolving beneficiary: {ex.Message}");
+                try
+                {
+                    resolvedBeneficiary = _coinbaseResolver.ResolveCoinbase(suggestedBlock.Header, _stateProvider);
+                    
+                    Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Beneficiary {suggestedBlock.Header.Beneficiary} -> Resolved {resolvedBeneficiary}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[XDC-COINBASE] Block {suggestedBlock.Number}: Error resolving: {ex}");
+                    if (_logger.IsWarn) _logger.Warn($"Block {suggestedBlock.Number}: Error resolving beneficiary: {ex.Message}");
+                }
             }
         }
 
