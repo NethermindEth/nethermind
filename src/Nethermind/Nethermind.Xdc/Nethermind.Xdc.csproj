@@ -9,6 +9,8 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
+    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
 
 </Project>

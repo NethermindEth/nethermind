@@ -44,6 +44,7 @@ namespace Nethermind.Network
             new(Protocol.Eth, 66),
             new(Protocol.Eth, 67),
             new(Protocol.Eth, 68),
+            new(Protocol.Eth, 100),
             new(Protocol.NodeData, 1)
         };
 
@@ -73,6 +74,7 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
+        private readonly Func<ISession, int, SyncPeerProtocolHandlerBase?>? _customEthProtocolFactory;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
@@ -91,7 +93,8 @@ namespace Nethermind.Network
             ILogManager logManager,
             ITxPoolConfig txPoolConfdig,
             ISpecProvider specProvider,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            Func<ISession, int, SyncPeerProtocolHandlerBase?>? customEthProtocolFactory = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -110,6 +113,7 @@ namespace Nethermind.Network
             _txPoolConfdig = txPoolConfdig;
             _specProvider = specProvider;
             _snapServer = worldStateManager.SnapServer;
+            _customEthProtocolFactory = customEthProtocolFactory;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
@@ -221,12 +225,13 @@ namespace Nethermind.Network
                 },
                 [Protocol.Eth] = (session, version) =>
                 {
-                    Eth66ProtocolHandler ethHandler = version switch
+                    SyncPeerProtocolHandlerBase ethHandler = version switch
                     {
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
                         69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
+                        100 => new Eth100ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _logManager, _xdcConsensusProcessor, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 

@@ -22,6 +22,7 @@ using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Xdc100 = Nethermind.Xdc.P2P.Eth100.Messages;
 
 namespace Nethermind.Init.Modules;
 
@@ -118,6 +119,12 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V69.BlockRangeUpdateMessage, V69.BlockRangeUpdateMessageSerializer>()
             .AddMessageSerializer<V69.ReceiptsMessage69, V69.ReceiptsMessageSerializer69>()
             .AddMessageSerializer<V69.StatusMessage69, V69.StatusMessageSerializer69>()
+
+            // XDC eth/100
+            .AddMessageSerializer<Xdc100.VoteP2PMessage, Xdc100.VoteP2PMessageSerializer>()
+            .AddMessageSerializer<Xdc100.TimeoutP2PMessage, Xdc100.TimeoutP2PMessageSerializer>()
+            .AddMessageSerializer<Xdc100.SyncInfoP2PMessage, Xdc100.SyncInfoP2PMessageSerializer>()
+            .AddMessageSerializer<Xdc100.QuorumCertificateP2PMessage, Xdc100.QuorumCertificateP2PMessageSerializer>()
 
             ;
     }

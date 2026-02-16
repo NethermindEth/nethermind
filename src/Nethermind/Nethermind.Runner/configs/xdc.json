@@ -3,14 +3,24 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc",
-    "LogFileName": "xdc.log"
+    "LogFileName": "xdc.logs.txt"
+  },
+  "Network": {
+    "DiscoveryPort": 30303,
+    "P2PPort": 30303,
+    "ActivePeersMaxCount": 50
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "EnabledModules": ["Eth", "Subscribe", "Trace", "TxPool", "Web3", "Personal", "Proof", "Net", "Parity", "Health", "Rpc"],
+    "Host": "0.0.0.0",
+    "Port": 8545
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
-    "FastSync": true,
-    "SnapSync": true,
-    "PivotNumber": 80370000
+    "FastSync": false,
+    "SnapSync": false
   }
 }

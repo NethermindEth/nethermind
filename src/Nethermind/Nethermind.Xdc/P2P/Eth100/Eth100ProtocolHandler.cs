@@ -1,0 +1,170 @@
+// SPDX-FileCopyrightText: 2026 Anil Chinchawale
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.TxPool;
+using Nethermind.Xdc.P2P.Eth100.Messages;
+using Nethermind.Xdc.Types;
+
+namespace Nethermind.Xdc.P2P.Eth100
+{
+    /// <summary>
+    /// XDC Network eth/100 protocol handler
+    /// Extends standard Ethereum eth/63 with XDPoS v2 consensus messages
+    /// </summary>
+    public class Eth100ProtocolHandler : Eth63ProtocolHandler
+    {
+        private readonly IXdcConsensusMessageProcessor? _consensusProcessor;
+
+        public Eth100ProtocolHandler(
+            ISession session,
+            IMessageSerializationService serializer,
+            INodeStatsManager nodeStatsManager,
+            ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ITxPool txPool,
+            IGossipPolicy gossipPolicy,
+            ILogManager logManager,
+            IXdcConsensusMessageProcessor? consensusProcessor = null,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, 
+                   txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+        {
+            _consensusProcessor = consensusProcessor;
+        }
+
+        public override byte ProtocolVersion => 100; // eth/100
+
+        public override string Name => "eth100";
+
+        public override int MessageIdSpaceSize => 21; // 0x00-0x14 (includes eth/63 + XDPoS messages)
+
+        public override void HandleMessage(ZeroPacket message)
+        {
+            int size = message.Content.ReadableBytes;
+
+            // Handle XDPoS v2 messages
+            switch (message.PacketType)
+            {
+                case Eth100MessageCode.Vote:
+                    VoteP2PMessage voteMessage = Deserialize<VoteP2PMessage>(message.Content);
+                    ReportIn(voteMessage, size);
+                    Handle(voteMessage);
+                    break;
+
+                case Eth100MessageCode.Timeout:
+                    TimeoutP2PMessage timeoutMessage = Deserialize<TimeoutP2PMessage>(message.Content);
+                    ReportIn(timeoutMessage, size);
+                    Handle(timeoutMessage);
+                    break;
+
+                case Eth100MessageCode.SyncInfo:
+                    SyncInfoP2PMessage syncInfoMessage = Deserialize<SyncInfoP2PMessage>(message.Content);
+                    ReportIn(syncInfoMessage, size);
+                    Handle(syncInfoMessage);
+                    break;
+
+                case Eth100MessageCode.QuorumCertificate:
+                    QuorumCertificateP2PMessage qcMessage = Deserialize<QuorumCertificateP2PMessage>(message.Content);
+                    ReportIn(qcMessage, size);
+                    Handle(qcMessage);
+                    break;
+
+                default:
+                    // Delegate to base class for standard eth/63 messages
+                    base.HandleMessage(message);
+                    break;
+            }
+        }
+
+        protected virtual void Handle(VoteP2PMessage msg)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"Received Vote from {Node:c}: {msg.Vote}");
+
+            _consensusProcessor?.ProcessVote(msg.Vote);
+        }
+
+        protected virtual void Handle(TimeoutP2PMessage msg)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"Received Timeout from {Node:c}: {msg.Timeout}");
+
+            _consensusProcessor?.ProcessTimeout(msg.Timeout);
+        }
+
+        protected virtual void Handle(SyncInfoP2PMessage msg)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"Received SyncInfo from {Node:c}");
+
+            _consensusProcessor?.ProcessSyncInfo(msg.SyncInfo);
+        }
+
+        protected virtual void Handle(QuorumCertificateP2PMessage msg)
+        {
+            if (Logger.IsTrace)
+                Logger.Trace($"Received QuorumCertificate from {Node:c}: {msg.QuorumCertificate?.ProposedBlockInfo}");
+
+            _consensusProcessor?.ProcessQuorumCertificate(msg.QuorumCertificate);
+        }
+
+        /// <summary>
+        /// Broadcast a vote to all connected peers
+        /// </summary>
+        public void BroadcastVote(Nethermind.Xdc.Types.Vote vote)
+        {
+            VoteP2PMessage message = new(vote);
+            Send(message);
+            
+            if (Logger.IsDebug)
+                Logger.Debug($"Broadcast Vote: {vote}");
+        }
+
+        /// <summary>
+        /// Broadcast a timeout to all connected peers
+        /// </summary>
+        public void BroadcastTimeout(Nethermind.Xdc.Types.Timeout timeout)
+        {
+            TimeoutP2PMessage message = new(timeout);
+            Send(message);
+            
+            if (Logger.IsDebug)
+                Logger.Debug($"Broadcast Timeout: {timeout}");
+        }
+
+        /// <summary>
+        /// Send sync info to a specific peer
+        /// </summary>
+        public void SendSyncInfo(Nethermind.Xdc.Types.SyncInfo syncInfo)
+        {
+            SyncInfoP2PMessage message = new(syncInfo);
+            Send(message);
+            
+            if (Logger.IsTrace)
+                Logger.Trace($"Sent SyncInfo to {Node:c}");
+        }
+
+        /// <summary>
+        /// Broadcast a quorum certificate to all connected peers
+        /// </summary>
+        public void BroadcastQuorumCertificate(Nethermind.Xdc.Types.QuorumCertificate qc)
+        {
+            QuorumCertificateP2PMessage message = new(qc);
+            Send(message);
+            
+            if (Logger.IsDebug)
+                Logger.Debug($"Broadcast QC: {qc?.ProposedBlockInfo}");
+        }
+    }
+}
