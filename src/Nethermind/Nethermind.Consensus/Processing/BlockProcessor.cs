@@ -141,7 +141,15 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        header.Hash = header.CalculateHash();
+        // XDC: Don't recalculate block hash if state root differs from network.
+        // For XDC chains, computed state root may differ from geth's. If we recalculate
+        // the hash, the block gets a different hash than what the network uses, breaking
+        // parent chain lookups for subsequent blocks.
+        bool isXdc = specProvider.ChainId == 50 || specProvider.ChainId == 51;
+        if (!isXdc)
+        {
+            header.Hash = header.CalculateHash();
+        }
 
         return receipts;
     }
