@@ -1,76 +1,68 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Anil Chinchawale
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
-using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Init.Modules;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Xdc.Spec;
-using Nethermind.Blockchain.Headers;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.TxPool;
 
 namespace Nethermind.Xdc;
 
+using Nethermind.Xdc.P2P.Eth100;
+
+/// <summary>
+/// Autofac module for XDC Network support
+/// Registers XDPoS v2 consensus components and eth/100 protocol
+/// </summary>
 public class XdcModule : Module
 {
-    private const string SnapshotDbName = "Snapshots";
-
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
-        builder
-            .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
-            .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
-                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
+        // Register XDC consensus message processor
+        builder.RegisterType<XdcConsensusMessageProcessor>()
+            .As<IXdcConsensusMessageProcessor>()
+            .SingleInstance();
 
-            .AddScoped<IGenesisBuilder, XdcGenesisBuilder>()
-            .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+        // Register custom eth protocol factory for XDC eth/100
+        builder.Register(ctx =>
+        {
+            return new Func<ISession, int, SyncPeerProtocolHandlerBase?>((session, version) =>
+            {
+                if (version != 100)
+                    return null;
 
-            // stores
-            .AddSingleton<IHeaderStore, XdcHeaderStore>()
-            .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
-            .AddSingleton<IBlockStore, XdcBlockStore>()
-            .AddSingleton<IBlockTree, XdcBlockTree>()
+                var serializer = ctx.Resolve<IMessageSerializationService>();
+                var stats = ctx.Resolve<INodeStatsManager>();
+                var syncServer = ctx.Resolve<ISyncServer>();
+                var backgroundTaskScheduler = ctx.Resolve<IBackgroundTaskScheduler>();
+                var txPool = ctx.Resolve<ITxPool>();
+                var gossipPolicy = ctx.Resolve<IGossipPolicy>();
+                var logManager = ctx.Resolve<ILogManager>();
+                var consensusProcessor = ctx.ResolveOptional<IXdcConsensusMessageProcessor>();
+                var txGossipPolicy = ctx.ResolveOptional<ITxGossipPolicy>();
 
-            // sealer
-            .AddSingleton<ISealer, XdcSealer>()
-
-            // penalty handler
-
-            // reward handler
-
-            // forensics handler
-
-            // Validators
-            .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
-            .AddSingleton<ISealValidator, XdcSealValidator>()
-            .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
-
-            // managers
-            .AddSingleton<IVotesManager, VotesManager>()
-            .AddSingleton<IQuorumCertificateManager, QuorumCertificateManager>()
-            .AddSingleton<ITimeoutCertificateManager, TimeoutCertificateManager>()
-            .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
-            .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
-            .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
-            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
-            .AddSingleton<ITimeoutTimer, TimeoutTimer>()
-            .AddSingleton<ISyncInfoManager, SyncInfoManager>()
-            ;
+                return new Eth100ProtocolHandler(
+                    session,
+                    serializer,
+                    stats,
+                    syncServer,
+                    backgroundTaskScheduler,
+                    txPool,
+                    gossipPolicy,
+                    logManager,
+                    consensusProcessor,
+                    txGossipPolicy);
+            });
+        }).As<Func<ISession, int, SyncPeerProtocolHandlerBase?>>()
+          .SingleInstance();
     }
-
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler)
-    {
-        return new SnapshotManager(db, blockTree, penaltyHandler);
-    }
-
 }

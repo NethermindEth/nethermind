@@ -225,13 +225,23 @@ namespace Nethermind.Network
                 },
                 [Protocol.Eth] = (session, version) =>
                 {
+                    // Try custom factory first (for XDC eth/100)
+                    if (_customEthProtocolFactory is not null)
+                    {
+                        var customHandler = _customEthProtocolFactory(session, version);
+                        if (customHandler is not null)
+                        {
+                            InitSyncPeerProtocol(session, customHandler);
+                            return customHandler;
+                        }
+                    }
+
                     SyncPeerProtocolHandlerBase ethHandler = version switch
                     {
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
                         69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
-                        100 => new Eth100ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _logManager, _xdcConsensusProcessor, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 

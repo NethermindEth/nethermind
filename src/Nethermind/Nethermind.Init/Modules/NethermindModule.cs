@@ -25,6 +25,7 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Xdc;
 
 namespace Nethermind.Init.Modules;
 
@@ -55,6 +56,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
+            .AddModule(new XdcModule())
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)

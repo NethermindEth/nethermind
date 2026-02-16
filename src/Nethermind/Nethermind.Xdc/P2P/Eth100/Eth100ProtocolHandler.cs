@@ -8,6 +8,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -21,6 +22,7 @@ namespace Nethermind.Xdc.P2P.Eth100
     /// <summary>
     /// XDC Network eth/100 protocol handler
     /// Extends standard Ethereum eth/63 with XDPoS v2 consensus messages
+    /// Uses eth/62-style handshake WITHOUT ForkID (XDC specific)
     /// </summary>
     public class Eth100ProtocolHandler : Eth63ProtocolHandler
     {
@@ -48,6 +50,32 @@ namespace Nethermind.Xdc.P2P.Eth100
         public override string Name => "eth100";
 
         public override int MessageIdSpaceSize => 21; // 0x00-0x14 (includes eth/63 + XDPoS messages)
+
+        /// <summary>
+        /// Override to prevent ForkID from being added (XDC uses eth/62-style status)
+        /// XDC eth/100 does NOT use ForkID - uses eth/62-style handshake
+        /// </summary>
+        protected override void EnrichStatusMessage(StatusMessage statusMessage)
+        {
+            // Intentionally empty - XDC eth/100 does NOT use ForkID
+            // This ensures compatibility with XDC's pre-merge, eth/62-style handshake
+            if (Logger.IsDebug)
+                Logger.Debug("XDC eth/100: Skipping ForkID in status message (eth/62-style handshake)");
+        }
+
+        /// <summary>
+        /// Initialize the protocol and send status message to peer
+        /// </summary>
+        public override void Init()
+        {
+            if (Logger.IsDebug)
+                Logger.Debug($"XDC eth/100: Initializing protocol with {Node:c}");
+
+            base.Init();
+
+            if (Logger.IsDebug)
+                Logger.Debug($"XDC eth/100: Protocol initialized with {Node:c}");
+        }
 
         public override void HandleMessage(ZeroPacket message)
         {
