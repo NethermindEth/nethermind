@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -23,6 +24,11 @@ public class XdcModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        // Register genesis post-processor to convert BlockHeader to XdcBlockHeader
+        builder.RegisterType<XdcGenesisPostProcessor>()
+            .As<IGenesisPostProcessor>()
+            .SingleInstance();
 
         // Register XDC consensus message processor
         builder.RegisterType<XdcConsensusMessageProcessor>()

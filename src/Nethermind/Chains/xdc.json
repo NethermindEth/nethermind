@@ -45,20 +45,20 @@
             "MinePeriod": 2
           },
           {
-            "MaxMasternodes":       108,
-            "SwitchRound":          460000,
-            "CertThreshold":        0.667,
+            "MaxMasternodes": 108,
+            "SwitchRound": 460000,
+            "CertThreshold": 0.667,
             "TimeoutSyncThreshold": 2,
-            "TimeoutPeriod":        20,
-            "MinePeriod":           2
+            "TimeoutPeriod": 20,
+            "MinePeriod": 2
           },
           {
-            "MaxMasternodes":       108,
-            "SwitchRound":          3200000,
-            "CertThreshold":        0.667,
+            "MaxMasternodes": 108,
+            "SwitchRound": 3200000,
+            "CertThreshold": 0.667,
             "TimeoutSyncThreshold": 3,
-            "TimeoutPeriod":        10,
-            "MinePeriod":           2
+            "TimeoutPeriod": 10,
+            "MinePeriod": 2
           }
         ]
       }
@@ -74,16 +74,18 @@
     "byzantiumBlock": 4
   },
   "genesis": {
-    "nonce": "0x0",
-    "timestamp": "0x5cefae27",
-    "extraData": "0x000000000000000000000000000000000000000000000000000000000000000025c65b4b379ac37cf78357c4915f73677022eaffc7d49d0a2cf198deebd6ce581af465944ec8b2bbcfccdea1006a5cfa7d9484b5b293b46964c265c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "gasLimit": "0x47b760",
+    "seal": {
+      "ethereum": {
+        "nonce": "0x0",
+        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
     "difficulty": "0x1",
-    "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "coinbase": "xdc0000000000000000000000000000000000000000",
-    "number": "0x0",
-    "gasUsed": "0x0",
-    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    "author": "0x0000000000000000000000000000000000000000",
+    "timestamp": "0x5cefae27",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "extraData": "0x000000000000000000000000000000000000000000000000000000000000000025c65b4b379ac37cf78357c4915f73677022eaffc7d49d0a2cf198deebd6ce581af465944ec8b2bbcfccdea1006a5cfa7d9484b5b293b46964c265c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "gasLimit": "0x47b760"
   },
   "nodes": [
     "enode://91e59fa1b034ae35e9f4e8a99cc6621f09d74e76a6220abb6c93b29ed41a9e1fc4e5b70e2c5fc43f883cffbdcd6f4f6cbc1d23af077f28c2aecc22403355d4b1@81.0.220.137:30304",
