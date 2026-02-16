@@ -73,7 +73,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
-    private const int MaxBranchSize = 8192;
+    // XDC has 2-second blocks; full sync branches can be very large
+    private const int MaxBranchSize = 131072; // 128K blocks (~3 days of XDC chain)
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
 
