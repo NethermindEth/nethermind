@@ -1,36 +1,34 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 /// <summary>
-/// Benchmarks that replay gas-benchmark payload files via BranchProcessor.Process,
-/// matching the real Nethermind block processing pipeline. Includes state scope management,
-/// CommitTree, pre-warming coordination, beacon root, blockhash store, transaction execution,
-/// bloom filters, receipts root, withdrawals, execution requests, and state root recalculation.
+/// Benchmarks that replay gas-benchmark payload files via BlockProcessor.ProcessOne.
+/// This measures block processing without the BranchProcessor overhead (state scope management,
+/// pre-warming coordination, cache clearing, TxHashCalculator).
 /// </summary>
 [Config(typeof(GasBenchmarkConfig))]
-public class GasBlockBenchmarks
+public class GasBlockOneBenchmarks
 {
     private IWorldState _state;
-    private BranchProcessor _branchProcessor;
-    private Block[] _blocksToProcess;
+    private BlockProcessor _blockProcessor;
+    private Block _testBlock;
     private BlockHeader _preBlockHeader;
+    private IReleaseSpec _spec;
 
     [ParamsSource(nameof(GetTestCases))]
     public GasPayloadBenchmarks.TestCase Scenario { get; set; }
@@ -42,6 +40,7 @@ public class GasBlockBenchmarks
     {
         IReleaseSpec pragueSpec = Prague.Instance;
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
+        _spec = pragueSpec;
 
         PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
 
@@ -54,38 +53,37 @@ public class GasBlockBenchmarks
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
 
-        BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
-            specProvider, txProcessor, _state);
-
-        _branchProcessor = new BranchProcessor(
-            blockProcessor, specProvider, _state,
-            new BeaconBlockRootHandler(txProcessor, _state),
-            blockhashProvider, LimboLogs.Instance, preWarmer: null);
-
-        _blocksToProcess = [PayloadLoader.LoadBlock(Scenario.FilePath)];
+        _blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(specProvider, txProcessor, _state);
+        _testBlock = PayloadLoader.LoadBlock(Scenario.FilePath);
 
         // Warm up and verify correctness
-        Block[] result = _branchProcessor.Process(
-            _preBlockHeader, _blocksToProcess,
-            ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
-            NullBlockTracer.Instance);
-        PayloadLoader.VerifyProcessedBlock(result[0], Scenario.ToString(), Scenario.FilePath);
+        using (IDisposable scope = _state.BeginScope(_preBlockHeader))
+        {
+            (Block processedBlock, _) = _blockProcessor.ProcessOne(
+                _testBlock,
+                ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
+                NullBlockTracer.Instance, _spec, default);
+            _state.CommitTree(_preBlockHeader.Number + 1);
+            PayloadLoader.VerifyProcessedBlock(processedBlock, Scenario.ToString(), Scenario.FilePath);
+        }
     }
 
     [Benchmark]
     public void ProcessBlock()
     {
-        _branchProcessor.Process(
-            _preBlockHeader, _blocksToProcess,
+        using IDisposable scope = _state.BeginScope(_preBlockHeader);
+        _blockProcessor.ProcessOne(
+            _testBlock,
             ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
-            NullBlockTracer.Instance);
+            NullBlockTracer.Instance, _spec, default);
+        _state.CommitTree(_preBlockHeader.Number + 1);
     }
 
     [GlobalCleanup]
     public void GlobalCleanup()
     {
         _state = null;
-        _branchProcessor = null;
-        _blocksToProcess = null;
+        _blockProcessor = null;
+        _testBlock = null;
     }
 }
