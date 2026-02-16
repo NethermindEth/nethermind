@@ -118,3 +118,77 @@ Before creating a pull request:
 ## Prerequisites
 
 See [global.json](./global.json) for the required .NET SDK version.
+
+## EVM Gas Benchmarks
+
+The [Nethermind.Evm.Benchmark](./src/Nethermind/Nethermind.Evm.Benchmark/) project includes BenchmarkDotNet benchmarks that measure EVM opcode throughput in MGas/s. These replay real `engine_newPayloadV4` payload files from the [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) submodule through `EthereumTransactionProcessor` — no Docker or running node required.
+
+**When to use:** After any change to the following projects, run the relevant gas benchmarks to verify there is no throughput regression:
+- [Nethermind.Evm](./src/Nethermind/Nethermind.Evm/) — opcode implementations, `VirtualMachine`, instruction handling
+- [Nethermind.Evm.Precompiles](./src/Nethermind/Nethermind.Evm.Precompiles/) — precompiled contracts
+- [Nethermind.State](./src/Nethermind/Nethermind.State/) — world state, storage access, `WorldState`
+- [Nethermind.Trie](./src/Nethermind/Nethermind.Trie/) — Merkle Patricia trie, trie store
+- [Nethermind.Blockchain](./src/Nethermind/Nethermind.Blockchain/) — transaction processing, `EthereumTransactionProcessor`
+- [Nethermind.Specs](./src/Nethermind/Nethermind.Specs/) — gas cost changes, hard fork rules
+
+### Setup (one-time)
+
+```bash
+git lfs install && git submodule update --init tools/gas-benchmarks
+```
+
+On Windows, if you get "Filename too long" errors, enable long paths first:
+
+```bash
+git config --global core.longpaths true
+```
+
+If the submodule was already cloned without LFS installed (genesis file shows as ~130 bytes instead of ~53MB):
+
+```bash
+git lfs install && cd tools/gas-benchmarks && git lfs pull
+```
+
+### Running benchmarks
+
+```bash
+# Run all gas benchmarks
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --filter "*GasPayload*"
+
+# Run a specific opcode (e.g. MULMOD, shifts, SLOAD)
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --filter "*MULMOD*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --filter "*shifts*"
+
+# Fast iteration — skips BDN's ~90s internal rebuild
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --filter "*MULMOD*"
+
+# Run from pre-built executable (no build at all)
+dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
+./src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark --inprocess --filter "*MULMOD*"
+
+# Quick diagnostic mode (single payload, no BDN harness, debuggable)
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --diag
+
+# List all available scenarios
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --list flat --filter "*GasPayload*"
+```
+
+### Reading results
+
+The output includes custom columns:
+- **MGas/s**: `100M gas / mean_seconds / 1M` — higher is better
+- **CI-Lower / CI-Upper**: 99% confidence interval bounds for MGas/s
+
+A regression is a drop in MGas/s outside the confidence interval. If CI intervals of before/after overlap, the difference is not statistically significant.
+
+### Workflow for performance changes
+
+1. Run the relevant benchmarks **before** your change to get a baseline
+2. Make your change
+3. Run the same benchmarks **after** and compare MGas/s
+4. Include before/after MGas/s numbers in your PR description
+5. If a scenario regresses (MGas/s drops beyond CI), investigate before merging
+
+To run only scenarios related to your change, use `--filter` with a pattern matching the opcode or category name. Use `--list flat --filter "*GasPayload*"` to discover available scenario names.
+
+Test scenarios are auto-discovered from `tools/gas-benchmarks/eest_tests/testing/`. New tests added to the gas-benchmarks submodule appear automatically after `git submodule update --remote tools/gas-benchmarks`.
