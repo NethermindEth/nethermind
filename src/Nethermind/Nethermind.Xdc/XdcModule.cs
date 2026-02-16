@@ -16,8 +16,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
-using Nethermind.Evm.State;
-using Nethermind.State;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 
@@ -69,15 +67,9 @@ public class XdcModule : Module
         // Register XDC reward calculator for checkpoint block rewards
         builder.Register(ctx =>
         {
-            // Get chain spec from the context resolution
-            var chainSpec = ctx.Resolve<ChainSpec>();
-            var parameters = chainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<XdcChainSpecEngineParameters>();
-            
             var logManager = ctx.Resolve<ILogManager>();
             var blockTree = ctx.Resolve<IBlockTree>();
-            var stateProvider = ctx.Resolve<IWorldState>();
-            return new XdcRewardCalculator(logManager, blockTree, stateProvider);
+            return new XdcRewardCalculator(logManager, blockTree);
         }).As<IRewardCalculator>()
           .As<IRewardCalculatorSource>()
           .SingleInstance();
