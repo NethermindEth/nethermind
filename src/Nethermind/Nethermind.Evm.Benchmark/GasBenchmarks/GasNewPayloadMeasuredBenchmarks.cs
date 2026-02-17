@@ -104,10 +104,8 @@ public class GasNewPayloadMeasuredBenchmarks
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, pragueSpec);
 
         ReceiptConfig receiptConfig = new();
-        IReceiptStorage receiptStorage = receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
-        _newPayloadProcessingOptions = receiptConfig.StoreReceipts
-            ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts
-            : ProcessingOptions.EthereumMerge;
+        IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);
+        _newPayloadProcessingOptions = BlockBenchmarkHelper.GetNewPayloadProcessingOptions(receiptConfig);
 
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
             specProvider, _timedTransactionProcessor, _state, receiptStorage);
@@ -679,4 +677,3 @@ public class GasNewPayloadMeasuredBenchmarks
         public int[] TxExecutionByTypeCount { get; init; }
     }
 }
-

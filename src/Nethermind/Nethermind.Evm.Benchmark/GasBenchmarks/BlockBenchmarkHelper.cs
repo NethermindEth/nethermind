@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -23,6 +24,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
@@ -31,6 +33,28 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 /// </summary>
 internal static class BlockBenchmarkHelper
 {
+    private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account)
+        {
+            account = default;
+            return false;
+        }
+
+        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) => [];
+
+        public byte[] GetCode(Hash256 codeHash) => null;
+
+        public byte[] GetCode(in ValueHash256 codeHash) => null;
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader baseBlock, VisitingOptions visitingOptions = null)
+            where TCtx : struct, INodeContext<TCtx>
+        {
+        }
+
+        public bool HasStateForBlock(BlockHeader baseBlock) => worldState.HasStateForBlock(baseBlock);
+    }
+
     public readonly struct BranchProcessingContext(
         IWorldState state,
         IBlockCachePreWarmer preWarmer,
@@ -109,6 +133,27 @@ internal static class BlockBenchmarkHelper
         {
             StateRoot = PayloadLoader.GenesisStateRoot
         };
+
+    public static IStateReader CreateStateReader(IWorldState worldState) => new WorldStateReaderAdapter(worldState);
+
+    public static IReceiptStorage CreateReceiptStorage(IReceiptConfig receiptConfig) =>
+        receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
+
+    public static ProcessingOptions GetImportProcessingOptions(IReceiptConfig receiptConfig) =>
+        receiptConfig.StoreReceipts ? ProcessingOptions.StoreReceipts : ProcessingOptions.None;
+
+    public static ProcessingOptions GetNewPayloadProcessingOptions(IReceiptConfig receiptConfig) =>
+        receiptConfig.StoreReceipts
+            ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts
+            : ProcessingOptions.EthereumMerge;
+
+    public static ProcessingOptions GetBlockBuildingProcessingOptions(IBlocksConfig blocksConfig) =>
+        blocksConfig.BuildBlocksOnMainState
+            ? ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead
+            : ProcessingOptions.ProducingBlock;
+
+    public static BlockchainProcessor.Options GetBlockBuildingBlockchainProcessorOptions(IBlocksConfig blocksConfig) =>
+        blocksConfig.BuildBlocksOnMainState ? BlockchainProcessor.Options.Default : BlockchainProcessor.Options.NoReceipts;
 
     public static ITransactionProcessor CreateTransactionProcessor(
         IWorldState state,

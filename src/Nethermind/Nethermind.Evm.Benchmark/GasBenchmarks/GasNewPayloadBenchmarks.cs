@@ -39,9 +39,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
@@ -121,7 +119,7 @@ public class GasNewPayloadBenchmarks
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _releaseSpec);
 
         ReceiptConfig receiptConfig = new();
-        IReceiptStorage receiptStorage = receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
+        IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
             _specProvider,
             _timedTransactionProcessor,
@@ -172,7 +170,7 @@ public class GasNewPayloadBenchmarks
             new NoopMergeSyncController(),
             mergeConfig,
             receiptConfig,
-            new WorldStateReaderAdapter(_state),
+            BlockBenchmarkHelper.CreateStateReader(_state),
             LimboLogs.Instance);
 
         ExecuteNewPayload(initialRequest, collectTiming: false);
@@ -1186,25 +1184,4 @@ public class GasNewPayloadBenchmarks
         public bool BeaconPivotExists() => true;
     }
 
-    private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
-    {
-        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account)
-        {
-            account = default;
-            return false;
-        }
-
-        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) => [];
-
-        public byte[] GetCode(Hash256 codeHash) => null;
-
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
-
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader baseBlock, VisitingOptions visitingOptions = null)
-            where TCtx : struct, INodeContext<TCtx>
-        {
-        }
-
-        public bool HasStateForBlock(BlockHeader baseBlock) => worldState.HasStateForBlock(baseBlock);
-    }
 }

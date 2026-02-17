@@ -25,8 +25,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
@@ -80,9 +78,7 @@ public class GasBlockBuildingBenchmarks
             blocksConfig.BuildBlocksOnMainState = buildOnMainState;
         }
 
-        _processingOptions = blocksConfig.BuildBlocksOnMainState
-            ? ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead
-            : ProcessingOptions.ProducingBlock;
+        _processingOptions = BlockBenchmarkHelper.GetBlockBuildingProcessingOptions(blocksConfig);
 
         ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
             _state,
@@ -121,9 +117,9 @@ public class GasBlockBuildingBenchmarks
             new BenchmarkBlockProducerBlockTree(_chainParentHeader),
             _branchProcessor,
             new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance),
-            new WorldStateReaderAdapter(_state),
+            BlockBenchmarkHelper.CreateStateReader(_state),
             LimboLogs.Instance,
-            blocksConfig.BuildBlocksOnMainState ? BlockchainProcessor.Options.Default : BlockchainProcessor.Options.NoReceipts,
+            BlockBenchmarkHelper.GetBlockBuildingBlockchainProcessorOptions(blocksConfig),
             new NoopProcessingStats());
         _chainProcessor = new OneTimeChainProcessor(_state, blockchainProcessor);
 
@@ -322,25 +318,4 @@ public class GasBlockBuildingBenchmarks
         public void RecalculateTreeLevels() { }
     }
 
-    private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
-    {
-        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account)
-        {
-            account = default;
-            return false;
-        }
-
-        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) => [];
-
-        public byte[] GetCode(Hash256 codeHash) => null;
-
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
-
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader baseBlock, VisitingOptions visitingOptions = null)
-            where TCtx : struct, INodeContext<TCtx>
-        {
-        }
-
-        public bool HasStateForBlock(BlockHeader baseBlock) => worldState.HasStateForBlock(baseBlock);
-    }
 }

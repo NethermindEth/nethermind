@@ -57,10 +57,8 @@ public class GasBlockOneBenchmarks
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
 
         ReceiptConfig receiptConfig = new();
-        IReceiptStorage receiptStorage = receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
-        _processingOptions = receiptConfig.StoreReceipts
-            ? ProcessingOptions.StoreReceipts
-            : ProcessingOptions.None;
+        IReceiptStorage receiptStorage = BlockBenchmarkHelper.CreateReceiptStorage(receiptConfig);
+        _processingOptions = BlockBenchmarkHelper.GetImportProcessingOptions(receiptConfig);
 
         _blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(specProvider, txProcessor, _state, receiptStorage);
         _testBlock = PayloadLoader.LoadBlock(Scenario.FilePath);

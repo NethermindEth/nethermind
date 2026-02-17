@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Benchmark;
 using Nethermind.Evm.Benchmark.GasBenchmarks;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -17,7 +18,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Evm.Benchmark;
 
 if (args.Length > 0 && args[0] == "--diag")
 {
@@ -26,24 +26,18 @@ if (args.Length > 0 && args[0] == "--diag")
     return;
 }
 
-int inprocessIdx = Array.IndexOf(args, "--inprocess");
-if (inprocessIdx >= 0)
+int inprocessIndex = Array.IndexOf(args, "--inprocess");
+if (inprocessIndex >= 0)
 {
     GasBenchmarkConfig.InProcess = true;
-    string[] filtered = new string[args.Length - 1];
-    Array.Copy(args, 0, filtered, 0, inprocessIdx);
-    Array.Copy(args, inprocessIdx + 1, filtered, inprocessIdx, args.Length - inprocessIdx - 1);
-    args = filtered;
+    args = RemoveArguments(args, inprocessIndex, 1);
 }
 
-// Handle --mode=* : translates to BDN filter for the corresponding benchmark class
 args = ApplyModeFilter(args);
-
-// Handle --chunk N/M: splits scenarios across runners (e.g. --chunk 2/5 means second of five chunks)
 args = ApplyChunkFilter(args);
 
 ConfigureTimingFilePath();
-BenchmarkSwitcher.FromAssembly(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks).Assembly).Run(args);
+BenchmarkSwitcher.FromAssembly(typeof(EvmBenchmarks).Assembly).Run(args);
 GasNewPayloadMeasuredBenchmarks.PrintFinalTimingBreakdown();
 GasNewPayloadBenchmarks.PrintFinalTimingBreakdown();
 
@@ -65,123 +59,131 @@ static void ConfigureTimingFilePath()
         "BenchmarkDotNet.Artifacts",
         "results",
         $"newpayload-timing-breakdown-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
+
     Environment.SetEnvironmentVariable(GasNewPayloadMeasuredBenchmarks.TimingFileEnvVar, measuredTimingFilePath);
     Environment.SetEnvironmentVariable(GasNewPayloadMeasuredBenchmarks.TimingReportFileEnvVar, measuredTimingReportFilePath);
     Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingFileEnvVar, realTimingFilePath);
     Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingReportFileEnvVar, realTimingReportFilePath);
 }
 
+static string[] RemoveArguments(string[] args, int index, int removeCount)
+{
+    string[] remaining = new string[args.Length - removeCount];
+    Array.Copy(args, 0, remaining, 0, index);
+    Array.Copy(args, index + removeCount, remaining, index, args.Length - index - removeCount);
+    return remaining;
+}
+
+static string[] MergeWithClassFilter(string[] args, string classFilter)
+{
+    int filterIndex = Array.IndexOf(args, "--filter");
+    if (filterIndex >= 0 && filterIndex + 1 < args.Length)
+    {
+        string existingFilter = args[filterIndex + 1].Trim('"');
+        args[filterIndex + 1] = classFilter.TrimEnd('*') + "*" + existingFilter.TrimStart('*');
+        return args;
+    }
+
+    string[] withFilter = new string[args.Length + 2];
+    Array.Copy(args, withFilter, args.Length);
+    withFilter[args.Length] = "--filter";
+    withFilter[args.Length + 1] = classFilter;
+    return withFilter;
+}
+
+static (string Value, int RemoveCount) GetOptionValue(string[] args, int optionIndex, string optionName)
+{
+    string token = args[optionIndex];
+    int separatorIndex = token.IndexOfAny(new[] { '=', ':' });
+    if (separatorIndex >= 0)
+    {
+        return (token[(separatorIndex + 1)..], 1);
+    }
+
+    if (optionIndex + 1 < args.Length)
+    {
+        return (args[optionIndex + 1], 2);
+    }
+
+    throw new ArgumentException($"{optionName} requires a value.");
+}
+
+static (string ClassFilter, bool? BuildBlocksOnMainState) ResolveModeDefinition(string modeValue)
+{
+    switch (modeValue.ToUpperInvariant())
+    {
+        case "EVMEXECUTE":
+            return ("*GasPayloadExecuteBenchmarks*", null);
+        case "EVMBUILDUP":
+            return ("*GasPayloadBenchmarks*", null);
+        case "BLOCKBUILDING":
+            return ("*GasBlockBuildingBenchmarks*", false);
+        case "BLOCKBUILDINGMAINSTATE":
+            return ("*GasBlockBuildingBenchmarks*", true);
+        case "BLOCKONE":
+            return ("*GasBlockOne*", null);
+        case "BLOCK":
+            return ("*GasBlockBenchmarks*", null);
+        case "NEWPAYLOAD":
+            return ("*GasNewPayloadBenchmarks*", null);
+        case "NEWPAYLOADMEASURED":
+            return ("*GasNewPayloadMeasuredBenchmarks*", null);
+        default:
+            throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVMExecute', 'EVMBuildUp', 'BlockBuilding', 'BlockBuildingMainState', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.");
+    }
+}
+
 static string[] ApplyModeFilter(string[] args)
 {
-    int modeIdx = -1;
+    int modeIndex = -1;
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i].StartsWith("--mode=", StringComparison.OrdinalIgnoreCase) || args[i].StartsWith("--mode:", StringComparison.OrdinalIgnoreCase))
+        if (args[i].StartsWith("--mode=", StringComparison.OrdinalIgnoreCase)
+            || args[i].StartsWith("--mode:", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(args[i], "--mode", StringComparison.OrdinalIgnoreCase))
         {
-            modeIdx = i;
+            modeIndex = i;
             break;
         }
     }
 
-    if (modeIdx < 0)
+    if (modeIndex < 0)
+    {
         return args;
-
-    string modeValue = args[modeIdx].Substring(7); // after "--mode=" or "--mode:"
-    string normalizedMode = modeValue.ToUpperInvariant();
-    string classFilter;
-    switch (normalizedMode)
-    {
-        case "EVMEXECUTE":
-            classFilter = "*GasPayloadExecuteBenchmarks*";
-            break;
-        case "EVMBUILDUP":
-            classFilter = "*GasPayloadBenchmarks*";
-            break;
-        case "BLOCKBUILDING":
-            Environment.SetEnvironmentVariable(GasBlockBuildingBenchmarks.BuildBlocksOnMainStateEnvVar, bool.FalseString);
-            classFilter = "*GasBlockBuildingBenchmarks*";
-            break;
-        case "BLOCKBUILDINGMAINSTATE":
-            Environment.SetEnvironmentVariable(GasBlockBuildingBenchmarks.BuildBlocksOnMainStateEnvVar, bool.TrueString);
-            classFilter = "*GasBlockBuildingBenchmarks*";
-            break;
-        case "BLOCKONE":
-            classFilter = "*GasBlockOne*";
-            break;
-        case "BLOCK":
-            classFilter = "*GasBlockBenchmarks*";
-            break;
-        case "NEWPAYLOAD":
-            classFilter = "*GasNewPayloadBenchmarks*";
-            break;
-        case "NEWPAYLOADMEASURED":
-            classFilter = "*GasNewPayloadMeasuredBenchmarks*";
-            break;
-        default:
-            throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVMExecute', 'EVMBuildUp', 'BlockBuilding', 'BlockBuildingMainState', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.");
     }
 
-    // Remove --mode from args
-    string[] remaining = new string[args.Length - 1];
-    Array.Copy(args, 0, remaining, 0, modeIdx);
-    Array.Copy(args, modeIdx + 1, remaining, modeIdx, args.Length - modeIdx - 1);
-
-    // If user already has --filter, combine with mode filter; otherwise add --filter
-    int filterIdx = Array.IndexOf(remaining, "--filter");
-    if (filterIdx >= 0 && filterIdx + 1 < remaining.Length)
+    (string modeValue, int removeCount) = GetOptionValue(args, modeIndex, "--mode");
+    (string classFilter, bool? buildBlocksOnMainStateValue) = ResolveModeDefinition(modeValue);
+    if (buildBlocksOnMainStateValue is bool buildBlocksOnMainState)
     {
-        // Wrap the existing filter with the mode class prefix
-        // e.g. --mode=Block --filter "*MULMOD*" → --filter "*GasBlock*MULMOD*"
-        string existing = remaining[filterIdx + 1].Trim('"');
-        remaining[filterIdx + 1] = classFilter.TrimEnd('*') + "*" + existing.TrimStart('*');
-    }
-    else
-    {
-        // No existing filter — add one
-        string[] withFilter = new string[remaining.Length + 2];
-        Array.Copy(remaining, withFilter, remaining.Length);
-        withFilter[remaining.Length] = "--filter";
-        withFilter[remaining.Length + 1] = classFilter;
-        remaining = withFilter;
+        Environment.SetEnvironmentVariable(
+            GasBlockBuildingBenchmarks.BuildBlocksOnMainStateEnvVar,
+            buildBlocksOnMainState ? bool.TrueString : bool.FalseString);
     }
 
-    return remaining;
+    string[] remaining = RemoveArguments(args, modeIndex, removeCount);
+    return MergeWithClassFilter(remaining, classFilter);
 }
 
 static string[] ApplyChunkFilter(string[] args)
 {
-    int chunkIdx = -1;
+    int chunkIndex = -1;
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i].StartsWith("--chunk", StringComparison.OrdinalIgnoreCase))
+        if (args[i].StartsWith("--chunk", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(args[i], "--chunk", StringComparison.OrdinalIgnoreCase))
         {
-            chunkIdx = i;
+            chunkIndex = i;
             break;
         }
     }
 
-    if (chunkIdx < 0)
+    if (chunkIndex < 0)
+    {
         return args;
-
-    // Support --chunk N/M or --chunk=N/M
-    string chunkValue;
-    int removeCount;
-    if (args[chunkIdx].Contains('=') || args[chunkIdx].Contains(':'))
-    {
-        int sep = args[chunkIdx].IndexOfAny(new[] { '=', ':' });
-        chunkValue = args[chunkIdx].Substring(sep + 1);
-        removeCount = 1;
-    }
-    else if (chunkIdx + 1 < args.Length)
-    {
-        chunkValue = args[chunkIdx + 1];
-        removeCount = 2;
-    }
-    else
-    {
-        throw new ArgumentException("--chunk requires a value in format N/M (e.g. --chunk 2/5)");
     }
 
+    (string chunkValue, int removeCount) = GetOptionValue(args, chunkIndex, "--chunk");
     string[] parts = chunkValue.Split('/');
     if (parts.Length != 2 || !int.TryParse(parts[0], out int n) || !int.TryParse(parts[1], out int m) || n < 1 || n > m)
     {
@@ -190,12 +192,7 @@ static string[] ApplyChunkFilter(string[] args)
 
     GasBenchmarkConfig.ChunkIndex = n;
     GasBenchmarkConfig.ChunkTotal = m;
-
-    // Remove --chunk from args
-    string[] remaining = new string[args.Length - removeCount];
-    Array.Copy(args, 0, remaining, 0, chunkIdx);
-    Array.Copy(args, chunkIdx + removeCount, remaining, chunkIdx, args.Length - chunkIdx - removeCount);
-    return remaining;
+    return RemoveArguments(args, chunkIndex, removeCount);
 }
 
 static void RunDiagnostic(string pattern)
@@ -205,18 +202,7 @@ static void RunDiagnostic(string pattern)
     string genesisPath = Path.Combine(gasBenchmarksRoot, "scripts", "genesisfiles", "nethermind", "zkevmgenesis.json");
     string testingDir = Path.Combine(gasBenchmarksRoot, "eest_tests", "testing");
 
-    // Find first test file matching the pattern
-    string matchedFile = null;
-    foreach (string dir in Directory.GetDirectories(testingDir))
-    {
-        foreach (string file in Directory.GetFiles(dir, $"*{pattern}*"))
-        {
-            matchedFile = file;
-            break;
-        }
-        if (matchedFile is not null) break;
-    }
-
+    string matchedFile = FindFirstMatchingTestFile(testingDir, pattern);
     if (matchedFile is null)
     {
         Console.WriteLine($"ERROR: No test file matching '{pattern}' found");
@@ -240,7 +226,6 @@ static void RunDiagnostic(string pattern)
     };
     IDisposable scope = state.BeginScope(genesisBlock);
 
-    // Load test payload
     (BlockHeader header, Transaction[] txs) = PayloadLoader.LoadPayload(matchedFile);
     Console.WriteLine($"Block: number={header.Number}, gasLimit={header.GasLimit}, gasUsed={header.GasUsed}");
     Console.WriteLine($"Transactions: {txs.Length}");
@@ -280,7 +265,6 @@ static void RunDiagnostic(string pattern)
         }
     }
 
-    // Set up EVM and execute
     TestBlockhashProvider blockhashProvider = new();
     EthereumCodeInfoRepository codeInfoRepo = new(state);
     EthereumVirtualMachine vm = new(blockhashProvider, specProvider, LimboLogs.Instance);
@@ -293,9 +277,7 @@ static void RunDiagnostic(string pattern)
         codeInfoRepo,
         LimboLogs.Instance);
 
-    // Execute setup payload if one exists (e.g. storage pre-population for SLOAD/SSTORE)
-    string setupDir = Path.Combine(gasBenchmarksRoot, "eest_tests", "setup");
-    string setupFile = FindSetupFile(setupDir, Path.GetFileName(matchedFile));
+    string setupFile = GasPayloadBenchmarks.FindSetupFile(Path.GetFileName(matchedFile));
     if (setupFile is not null)
     {
         Console.WriteLine($"\nSetup file: {Path.GetFileName(setupFile)}");
@@ -322,7 +304,6 @@ static void RunDiagnostic(string pattern)
 
     state.Reset();
 
-    // Run once more with CallAndRestore
     Console.WriteLine("\n--- CallAndRestore ---");
     for (int i = 0; i < txs.Length; i++)
     {
@@ -336,16 +317,14 @@ static void RunDiagnostic(string pattern)
     Console.WriteLine("\nDiagnostic complete.");
 }
 
-static string FindSetupFile(string setupDir, string testFileName)
+static string FindFirstMatchingTestFile(string testingDir, string pattern)
 {
-    if (!Directory.Exists(setupDir))
-        return null;
-
-    foreach (string dir in Directory.GetDirectories(setupDir))
+    foreach (string dir in Directory.GetDirectories(testingDir))
     {
-        string candidate = Path.Combine(dir, testFileName);
-        if (File.Exists(candidate))
-            return candidate;
+        foreach (string file in Directory.GetFiles(dir, $"*{pattern}*"))
+        {
+            return file;
+        }
     }
 
     return null;
@@ -357,8 +336,12 @@ static string FindRepoRoot()
     while (dir is not null)
     {
         if (Directory.Exists(Path.Combine(dir, ".git")))
+        {
             return dir;
+        }
+
         dir = Directory.GetParent(dir)?.FullName;
     }
+
     throw new DirectoryNotFoundException("Could not find repository root.");
 }
