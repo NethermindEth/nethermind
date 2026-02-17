@@ -113,8 +113,105 @@ Before creating a pull request:
   ```bash
   dotnet format whitespace src/Nethermind/ --folder
   ```
-- Use [pull_request_template.md](.github/pull_request_template.md)
+- Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
 
 ## Prerequisites
 
 See [global.json](./global.json) for the required .NET SDK version.
+
+## EVM Gas Benchmarks
+
+The [Nethermind.Evm.Benchmark](./src/Nethermind/Nethermind.Evm.Benchmark/) project includes BenchmarkDotNet benchmarks that replay real `engine_newPayloadV4` payload files from the [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) submodule. It is the primary tool for validating performance impact of EVM, block processing, block building, and newPayload path changes.
+
+**When to use:** After any change to the following projects, run the relevant gas benchmarks to verify there is no throughput regression:
+- [Nethermind.Evm](./src/Nethermind/Nethermind.Evm/) - opcode implementations, `VirtualMachine`, instruction handling
+- [Nethermind.Evm.Precompiles](./src/Nethermind/Nethermind.Evm.Precompiles/) - precompiled contracts
+- [Nethermind.State](./src/Nethermind/Nethermind.State/) - world state, storage access, `WorldState`
+- [Nethermind.Trie](./src/Nethermind/Nethermind.Trie/) - Merkle Patricia trie, trie store
+- [Nethermind.Blockchain](./src/Nethermind/Nethermind.Blockchain/) - block processing and transaction processing paths
+- [Nethermind.Merge.Plugin](./src/Nethermind/Nethermind.Merge.Plugin/) - newPayload handler flow
+- [Nethermind.Specs](./src/Nethermind/Nethermind.Specs/) - gas cost changes, hard fork rules
+
+### Setup (one-time)
+
+```bash
+git lfs install && git submodule update --init tools/gas-benchmarks
+```
+
+On Windows, if you get "Filename too long" errors, enable long paths first:
+
+```bash
+git config --global core.longpaths true
+```
+
+If the submodule was already cloned without LFS installed (genesis file shows as ~130 bytes instead of ~53MB):
+
+```bash
+git lfs install && cd tools/gas-benchmarks && git lfs pull
+```
+
+### Benchmark modes (current)
+
+Use `--mode=<ModeName>` to select one path. Do not use legacy `--mode=EVM`.
+
+| Mode | Benchmark class | What it measures | Typical use |
+|---|---|---|---|
+| `EVMExecute` | `GasPayloadExecuteBenchmarks` | Transaction execution via `TransactionProcessor.Execute` | Node-like import tx execution cost |
+| `EVMBuildUp` | `GasPayloadBenchmarks` | Transaction execution via `TransactionProcessor.BuildUp` | Block-building tx execution cost |
+| `BlockOne` | `GasBlockOneBenchmarks` | `BlockProcessor.ProcessOne` | Block-level processing without branch-level overhead |
+| `Block` | `GasBlockBenchmarks` | `BranchProcessor.Process` | Full import branch processing overhead |
+| `BlockBuilding` | `GasBlockBuildingBenchmarks` | Producer path with `ProcessingOptions.ProducingBlock` | Default block production behavior |
+| `BlockBuildingMainState` | `GasBlockBuildingBenchmarks` | Producer path with `BuildBlocksOnMainState=true` | Main-state production behavior |
+| `NewPayload` | `GasNewPayloadBenchmarks` | `NewPayloadHandler` path | Real handler-side newPayload flow |
+| `NewPayloadMeasured` | `GasNewPayloadMeasuredBenchmarks` | Instrumented near-handler path | Detailed stage timing and breakdown |
+
+### Running benchmarks
+
+```bash
+# List all benchmark scenarios
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --list flat --filter "*Gas*"
+
+# Run one mode + one scenario pattern
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=EVMExecute --filter "*MULMOD*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=Block --filter "*a_to_a*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=NewPayloadMeasured --filter "*a_to_a*"
+
+# Run from pre-built executable (no build at all)
+dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
+./src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark --inprocess --mode=EVMExecute --filter "*MULMOD*"
+
+# Run all 8 modes for the same scenario (PowerShell)
+$modes = @('EVMExecute','EVMBuildUp','BlockOne','Block','BlockBuilding','BlockBuildingMainState','NewPayload','NewPayloadMeasured')
+foreach ($mode in $modes) {
+  dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=$mode --filter "*a_to_a*"
+}
+
+# Quick diagnostic mode (single payload, no BDN harness, debuggable)
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --diag "opcode_MULMOD-mod_bits_63"
+```
+
+### Reading results
+
+The output includes custom columns:
+- **MGas/s**: `100M gas / mean_seconds / 1M` - higher is better
+- **CI-Lower / CI-Upper**: 99% confidence interval bounds for MGas/s
+
+A regression is a drop in MGas/s outside the confidence interval. If CI intervals of before/after overlap, the difference is not statistically significant.
+
+For `NewPayload` and `NewPayloadMeasured`, timing breakdown reports are emitted at the end of the run and persisted to files under `BenchmarkDotNet.Artifacts/results/`.
+
+### Workflow for performance changes
+
+1. Pick modes based on the code path you changed:
+`EVMExecute` + `EVMBuildUp` for tx execution changes, `BlockOne` + `Block` for import flow changes, `BlockBuilding*` for producer flow changes, `NewPayload*` for engine API flow changes.
+2. Run baseline using fixed BDN settings for comparability:
+`--inprocess --warmupCount 10 --iterationCount 10 --launchCount 1`.
+3. Apply your change.
+4. Rerun the same command(s) with the same `--mode` and `--filter`.
+5. Compare mean time, MGas/s, and allocations.
+6. Add before/after numbers to your PR description.
+7. Investigate any statistically meaningful drop before merge.
+
+To run only scenarios related to your change, use `--filter` with a pattern matching opcode or scenario name. Use `--list flat --filter "*Gas*"` to discover exact names.
+
+Test scenarios are auto-discovered from `tools/gas-benchmarks/eest_tests/testing/`. New tests added to the gas-benchmarks submodule appear automatically after `git submodule update --remote tools/gas-benchmarks`.
