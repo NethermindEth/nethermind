@@ -41,46 +41,42 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
         {
             _rentedList!.Add(array);
         }
+        
         return rented;
     }
 
-    public void Return(in CappedArray<byte> buffer)
-    {
-    }
+    public void Return(in CappedArray<byte> buffer) { }
 
     public void Dispose()
     {
-        if (!DisposeCustomArrayPool())
+        ArrayPool<byte> arrayPool = pool;
+        if (arrayPool is not null)
         {
-            ConcurrentQueue<byte[]>? rentedQueue = _rentedQueue;
-            if (rentedQueue is not null)
+            DisposeCustomArrayPool(arrayPool);
+            return;
+        }
+
+        ConcurrentQueue<byte[]>? rentedQueue = _rentedQueue;
+        if (rentedQueue is not null)
+        {
+            while (rentedQueue.TryDequeue(out byte[] rentedBuffer))
             {
-                while (rentedQueue.TryDequeue(out byte[] rentedBuffer))
-                {
-                    // Devirtualize the shared array pool by referring directly to it
-                    SafeArrayPool<byte>.Shared.Return(rentedBuffer);
-                }
+                // Devirtualize the shared array pool by referring directly to it
+                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
             }
-            else
+        }
+        else
+        {
+            Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
+            foreach (byte[] rentedBuffer in items)
             {
-                Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
-                foreach (byte[] rentedBuffer in items)
-                {
-                    SafeArrayPool<byte>.Shared.Return(rentedBuffer);
-                }
+                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
             }
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool DisposeCustomArrayPool()
-    {
-        ArrayPool<byte> arrayPool = pool;
-        return arrayPool is not null && DisposeCustomArrayPool(arrayPool);
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool DisposeCustomArrayPool(ArrayPool<byte> arrayPool)
+    private void DisposeCustomArrayPool(ArrayPool<byte> arrayPool)
     {
         if (_rentedQueue is not null)
         {
@@ -97,7 +93,5 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
                 arrayPool.Return(rentedBuffer);
             }
         }
-
-        return true;
     }
 }
