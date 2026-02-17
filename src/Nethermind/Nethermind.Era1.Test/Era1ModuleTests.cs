@@ -186,12 +186,14 @@ public class Era1ModuleTests
         int numOfBlocks = 12;
         await testBlockchain.BuildSomeBlocks(numOfBlocks);
 
-        using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
-        foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
         {
-            await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
+            using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
+            foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
+            {
+                await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
+            }
+            await builder.Finalize();
         }
-        await builder.Finalize();
 
         using SafeFileHandle file = File.OpenHandle(tmpFile.Path, FileMode.Open);
         using E2StoreReader fileReader = new E2StoreReader(tmpFile.Path);
