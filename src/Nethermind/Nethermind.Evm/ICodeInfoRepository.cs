@@ -12,6 +12,7 @@ namespace Nethermind.Evm;
 public interface ICodeInfoRepository
 {
     ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
+    ICodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec);
     ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);

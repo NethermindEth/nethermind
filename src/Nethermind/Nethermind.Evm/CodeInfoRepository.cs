@@ -47,6 +47,16 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    {
+        if (vmSpec.IsPrecompile(codeSource))
+        {
+            return _localPrecompiles[codeSource];
+        }
+
+        return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
+    }
+
     private ICodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
@@ -187,4 +197,3 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 }
-
