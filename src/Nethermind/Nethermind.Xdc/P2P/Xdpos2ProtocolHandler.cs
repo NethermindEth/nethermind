@@ -141,9 +141,9 @@ internal class Xdpos2ProtocolHandler(
 
     private bool ShouldNotifyTimeout(Timeout timeout)
     {
-        if (_notifiedVotes.Contains(timeout.Hash))
+        if (_notifiedTimeouts.Contains(timeout.Hash))
             return false;
-        _notifiedVotes.Set(timeout.Hash);
+        _notifiedTimeouts.Set(timeout.Hash);
         return true;
     }
 }
