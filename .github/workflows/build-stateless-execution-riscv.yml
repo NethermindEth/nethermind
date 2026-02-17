@@ -105,5 +105,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stateless-execution-zisk
-          path: tools/StatelessExecution/Program
+          path: tools/StatelessExecution/Program.patched
           if-no-files-found: error
