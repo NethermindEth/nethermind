@@ -30,10 +30,18 @@ namespace Nethermind.Blockchain.Test.FullPruning;
 [TestFixture(0, 4)]
 [TestFixture(1, 1)]
 [TestFixture(1, 4)]
-[Parallelizable(ParallelScope.All)]
-[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParallelism)
+[Parallelizable(ParallelScope.Children)]
+public class FullPrunerTests
 {
+    private readonly int _fullPrunerMemoryBudgetMb;
+    private readonly int _degreeOfParallelism;
+
+    public FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParallelism)
+    {
+        _fullPrunerMemoryBudgetMb = fullPrunerMemoryBudgetMb;
+        _degreeOfParallelism = degreeOfParallelism;
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task can_prune()
     {
@@ -53,8 +61,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             true,
             false,
             FullPruningCompletionBehavior.None,
-            fullPrunerMemoryBudgetMb,
-            degreeOfParallelism,
+            _fullPrunerMemoryBudgetMb,
+            _degreeOfParallelism,
             currentKeyScheme: currentKeyScheme,
             preferredKeyScheme: newKeyScheme);
 
@@ -184,8 +192,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             successfulPruning,
             clearPrunedDb,
             completionBehavior,
-            fullPrunerMemoryBudgetMb,
-            degreeOfParallelism);
+            _fullPrunerMemoryBudgetMb,
+            _degreeOfParallelism);
 
     private class TestContext
     {

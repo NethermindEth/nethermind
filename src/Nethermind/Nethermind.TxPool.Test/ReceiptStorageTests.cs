@@ -19,8 +19,6 @@ namespace Nethermind.TxPool.Test
 {
     [TestFixture(true)]
     [TestFixture(false)]
-    [Parallelizable(ParallelScope.All)]
-    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class ReceiptStorageTests
     {
         private readonly bool _useEip2718;

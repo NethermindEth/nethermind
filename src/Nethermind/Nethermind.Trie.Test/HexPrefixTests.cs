@@ -7,7 +7,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
-[Parallelizable(ParallelScope.All)]
 public class HexPrefixTests
 {
     [TestCase(false, (byte)3, (byte)19)]

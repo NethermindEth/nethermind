@@ -32,6 +32,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
     {
         private readonly INethermindApi _api = api;
+        private ILogManager _logManager = api.LogManager;
 
         public async Task Execute(CancellationToken _)
         {

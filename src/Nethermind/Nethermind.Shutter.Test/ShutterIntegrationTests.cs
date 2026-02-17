@@ -115,9 +115,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
         }
 
-        // ImproveBlock tasks run in the background and may not have completed yet
-        // when GetPayload returns (it only waits 50ms), so poll until all increments land.
-        Assert.That(() => Metrics.ShutterKeysMissed, Is.EqualTo((ulong)5).After(5000, 50));
+        Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
     }
 
 }

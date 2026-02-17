@@ -10,7 +10,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Nethermind.TurboPForBindings" />
     <PackageReference Include="NonBlocking" />
   </ItemGroup>
 </Project>

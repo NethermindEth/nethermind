@@ -17,6 +17,7 @@ public static class ProtocolParser
     private const uint Shh = 0x686873u; // "shh"
     private const uint Bzz = 0x7A7A62u; // "bzz"
     private const uint Par = 0x726170u; // "par"
+    private const uint Ndm = 0x6D646Eu; // "ndm"
 
     private const uint Snap = 0x70616E73u; // "snap"
     private const ulong Nodedata = 0x6174616465646F6Eul; // "nodedata"
@@ -47,6 +48,8 @@ public static class ProtocolParser
                         protocol = Protocol.Bzz; return true;
                     case Par:
                         protocol = Protocol.Par; return true;
+                    case Ndm:
+                        protocol = Protocol.Ndm; return true;
                 }
                 break;
 

@@ -179,14 +179,12 @@ public class GethStyleTracer(
         //
         // Wild stuff!
         BlockHeader baseBlockHeader = block.Header;
-
         if ((processingOptions & ProcessingOptions.ForceSameBlock) == 0)
         {
             baseBlockHeader = FindParent(block);
         }
 
-        options.BlockOverrides?.ApplyOverrides(block.Header);
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
+        using var scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, scope.Component.WorldState, specProvider);
 
         try

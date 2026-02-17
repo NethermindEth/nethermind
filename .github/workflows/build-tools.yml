@@ -21,7 +21,6 @@ jobs:
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
-          - JitAsm/JitAsm.slnx
           - Kute/Kute.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx

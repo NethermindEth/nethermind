@@ -9,8 +9,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test.Pruning
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+    [Parallelizable(ParallelScope.Self)]
     public class MinBlockInCachePruneStrategyTests
     {
         private IPruningStrategy _baseStrategy;

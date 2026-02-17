@@ -3,7 +3,6 @@
 
 #nullable enable
 using System;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
@@ -28,12 +27,11 @@ public class ValueHash256Converter : JsonConverter<ValueHash256>
         return bytes is null ? null : new ValueHash256(bytes);
     }
 
-    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         ValueHash256 keccak,
         JsonSerializerOptions options)
     {
-        Hash256Converter.WriteHashHex(writer, in keccak);
+        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
     }
 }

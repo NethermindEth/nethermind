@@ -20,8 +20,8 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
     private readonly IRlpStreamDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TxReceipt> receipts, IRlpStreamDecoder<TxReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false, bool canBeParallel = true)
-        : base(null, canBuildProof, bufferPool: bufferPool, canBeParallel)
+    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TxReceipt> receipts, IRlpStreamDecoder<TxReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false)
+        : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(trieDecoder);
@@ -30,7 +30,7 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
         if (receipts.Length > 0)
         {
             Initialize(receipts, spec);
-            UpdateRootHash(canBeParallel);
+            UpdateRootHash();
         }
     }
 
@@ -53,16 +53,14 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TxReceipt> receipts, int index, IRlpStreamDecoder<TxReceipt> decoder)
     {
-        bool canBeParallel = receipts.Length > MinItemsForParallelRootHash;
-        using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4, canBeParallel: canBeParallel);
-        return new ReceiptTrie(spec, receipts, decoder, cappedArrayPool, canBuildProof: true, canBeParallel: canBeParallel).BuildProof(index);
+        using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4);
+        return new ReceiptTrie(spec, receipts, decoder, cappedArrayPool, canBuildProof: true).BuildProof(index);
     }
 
     public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpStreamDecoder<TxReceipt> decoder)
     {
-        bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
-        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);
-        Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool, canBeParallel: canBeParallel).RootHash;
+        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4);
+        Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool).RootHash;
         return receiptsRoot;
     }
 }

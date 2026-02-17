@@ -677,7 +677,7 @@ internal static partial class EvmInstructions
         }
             else
             {
-                CodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
+                ICodeInfo codeInfo = vm.GetExtCodeInfoCached(address, spec);
                 // If the code is EOF, push the EOF-specific hash.
                 if (codeInfo is EofCodeInfo)
                 {

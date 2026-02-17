@@ -328,7 +328,8 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is Rlp rlp)
             {
-                return rlp;
+                RlpStream stream = new(LengthOfSequence(rlp.Length));
+                return new(stream.Data.ToArray());
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();

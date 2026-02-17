@@ -31,7 +31,6 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
-    [Parallelizable(ParallelScope.All)]
     public class TransactionsExecutorTests
     {
         public static IEnumerable ProperTransactionsSelectedTestCases

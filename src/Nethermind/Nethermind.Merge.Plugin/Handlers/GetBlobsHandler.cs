@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -28,41 +27,35 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
             return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
+        return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
+    }
+
+    private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
+    {
         bool allBlobsAvailable = true;
         Metrics.NumberOfRequestedBlobs += request.Length;
 
-        ArrayPoolList<BlobAndProofV1?> response = new(request.Length);
-        try
+        foreach (byte[] requestedBlobVersionedHash in request)
         {
-            foreach (byte[] requestedBlobVersionedHash in request)
+            if (txPool.TryGetBlobAndProofV0(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
             {
-                if (txPool.TryGetBlobAndProofV0(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
-                {
-                    Metrics.NumberOfSentBlobs++;
-                    response.Add(new BlobAndProofV1(blob, proof));
-                }
-                else
-                {
-                    allBlobsAvailable = false;
-                    response.Add(null);
-                }
-            }
-
-            if (allBlobsAvailable)
-            {
-                Metrics.GetBlobsRequestsSuccessTotal++;
+                Metrics.NumberOfSentBlobs++;
+                yield return new BlobAndProofV1(blob, proof);
             }
             else
             {
-                Metrics.GetBlobsRequestsFailureTotal++;
+                allBlobsAvailable = false;
+                yield return null;
             }
-
-            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(response));
         }
-        catch
+
+        if (allBlobsAvailable)
         {
-            response.Dispose();
-            throw;
+            Metrics.GetBlobsRequestsSuccessTotal++;
+        }
+        else
+        {
+            Metrics.GetBlobsRequestsFailureTotal++;
         }
     }
 }

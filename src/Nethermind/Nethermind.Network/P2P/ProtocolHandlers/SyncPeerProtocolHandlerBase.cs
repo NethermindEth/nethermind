@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -49,6 +50,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected Hash256 _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
+        protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
@@ -65,6 +67,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
+            _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
         }

@@ -15,7 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
-[Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
     private readonly Func<EquivalencyAssertionOptions<Block>, EquivalencyAssertionOptions<Block>> _ignoreEncodedSize = options => options.Excluding(b => b.EncodedSize);

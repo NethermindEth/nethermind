@@ -73,17 +73,64 @@ namespace Nethermind.Core.Extensions
 
                 if (x is null)
                 {
-                    return y is null ? 0 : -1;
+                    return y is null ? 0 : 1;
                 }
 
-                if (y is null) return 1;
+                if (y is null)
+                {
+                    return -1;
+                }
 
-                return x.SequenceCompareTo(y);
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return -1;
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? 1 : 0;
             }
 
             public static int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
             {
-                return x.SequenceCompareTo(y);
+                if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                    x.Length == y.Length)
+                {
+                    return 0;
+                }
+
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return -1;
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? 1 : 0;
             }
         }
 

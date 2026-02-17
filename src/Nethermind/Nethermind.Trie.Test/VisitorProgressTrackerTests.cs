@@ -8,7 +8,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
-[Parallelizable(ParallelScope.All)]
 public class VisitorProgressTrackerTests
 {
     [Test]

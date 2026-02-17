@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.P2P.Messages
 {
     /// <summary>
-    /// Serializes P2P capability negotiation messages.
+    /// This is probably used in NDM
     /// </summary>
     public class AddCapabilityMessageSerializer : IZeroMessageSerializer<AddCapabilityMessage>
     {

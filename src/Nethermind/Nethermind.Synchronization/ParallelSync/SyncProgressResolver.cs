@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.SnapSync;
 
@@ -19,6 +20,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly IFullStateFinder _fullStateFinder;
+
+        // ReSharper disable once NotAccessedField.Local
+        private readonly ILogger _logger;
 
         private readonly ISyncFeed<HeadersSyncBatch?> _headersSyncFeed;
         private readonly ISyncFeed<BodiesSyncBatch?> _bodiesSyncFeed;
@@ -32,8 +36,10 @@ namespace Nethermind.Synchronization.ParallelSync
             [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
             ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
             ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
-            ISyncFeed<SnapSyncBatch?> snapSyncFeed)
+            ISyncFeed<SnapSyncBatch?> snapSyncFeed,
+            ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));

@@ -12,8 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.FullPruning
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+    [Parallelizable(ParallelScope.Self)]
     public class PruningTriggerPruningStrategyTests
     {
         private IFullPruningDb _fullPruningDb;

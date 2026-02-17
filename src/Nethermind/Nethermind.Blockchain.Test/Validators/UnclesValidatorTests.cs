@@ -12,8 +12,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[Parallelizable(ParallelScope.All)]
-[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class UnclesValidatorTests
 {
     private Block _greatGrandparent;

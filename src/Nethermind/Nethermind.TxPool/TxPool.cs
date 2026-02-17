@@ -135,7 +135,7 @@ namespace Nethermind.TxPool
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
-            _transactions = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
+            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _transactions.Removed += OnRemovedTx;
 
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
@@ -225,9 +225,8 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[][]? cellProofs)
             => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
-        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs)
-            => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+        public int GetBlobCounts(byte[][] blobVersionedHashes)
+            => _blobTransactions.GetBlobCounts(blobVersionedHashes);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {

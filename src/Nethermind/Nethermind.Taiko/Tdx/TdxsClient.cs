@@ -6,6 +6,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Nethermind.Logging;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -13,8 +14,9 @@ namespace Nethermind.Taiko.Tdx;
 /// Client for communicating with the tdxs daemon via Unix socket.
 /// Protocol: JSON request/response over Unix socket.
 /// </summary>
-public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
+public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsClient
 {
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public byte[] Issue(byte[] userData, byte[] nonce)
     {

@@ -96,26 +96,4 @@ public class TrieStoreScopeProviderTests
 
         codeKv.WritesCount.Should().Be(1);
     }
-
-    [Test]
-    public void Test_NullAccountWithNonEmptyStorageDoesNotThrow()
-    {
-        TestMemDb kv = new TestMemDb();
-        IWorldStateScopeProvider scopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(kv), new MemDb(), LimboLogs.Instance);
-
-        using var scope = scopeProvider.BeginScope(null);
-
-        // Simulates the EIP-161 scenario: storage is flushed for an account that was
-        // then deleted (set to null) during state commit. The write batch Dispose should
-        // skip the storage root update for the deleted account instead of throwing.
-        using (var writeBatch = scope.StartWriteBatch(1))
-        {
-            using (var storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
-            {
-                storageSet.Set(1, [1, 2, 3]);
-            }
-
-            writeBatch.Set(TestItem.AddressA, null);
-        }
-    }
 }

@@ -21,8 +21,6 @@ public class NullBlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results) => 0;
-
     public IEnumerable<LightTransaction> GetAll() => Array.Empty<LightTransaction>();
 
     public void Add(Transaction transaction) { }

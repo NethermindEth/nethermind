@@ -31,7 +31,7 @@ namespace Nethermind.Runner.Ethereum.Modules;
 /// <param name="plugins"></param>
 /// <param name="logManager"></param>
 public class NethermindRunnerModule(
-    EthereumJsonSerializer jsonSerializer,
+    IJsonSerializer jsonSerializer,
     ChainSpec chainSpec,
     IConfigProvider configProvider,
     IProcessExitSource processExitSource,
@@ -75,7 +75,6 @@ public class NethermindRunnerModule(
 
             .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
             .AddSingleton(jsonSerializer)
-            .AddSingleton<IJsonSerializer>(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
 

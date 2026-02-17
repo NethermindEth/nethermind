@@ -17,6 +17,9 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumL1Bridge : IL1Bridge
 {
+    private const int L1EpochSlotSize = 32;
+    private const int L1SlotTimeMilliseconds = 12000;
+    private const int L1EpochTimeMilliseconds = L1EpochSlotSize * L1SlotTimeMilliseconds;
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
     private readonly ILogger _logger;
@@ -219,6 +222,11 @@ public class EthereumL1Bridge : IL1Bridge
             if (result is not null) _unfinalizedL1BlocksQueue.Enqueue(result);
         }
         return _unfinalizedL1BlocksQueue.Count == 0 ? null : _unfinalizedL1BlocksQueue.Dequeue();
+    }
+
+    private void LogReorg()
+    {
+        if (_logger.IsInfo) _logger.Info("L1 reorg detected. Resetting pipeline");
     }
 
     public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token) =>

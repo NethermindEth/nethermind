@@ -17,7 +17,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Db.LogIndex;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
@@ -45,7 +44,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
     private readonly IForkInfo _forkInfo;
-    private readonly ILogIndexConfig _logIndexConfig;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
 
@@ -69,8 +67,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IOptimismSpecHelper opSpecHelper,
         IOptimismConfig config,
         IJsonSerializer jsonSerializer,
-        ITimestamper timestamper,
-        ILogIndexConfig logIndexConfig
+        ITimestamper timestamper
     )
     {
         _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -91,7 +88,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
         _forkInfo = forkInfo;
-        _logIndexConfig = logIndexConfig;
         ILogger logger = logManager.GetClassLogger<OptimismEthModuleFactory>();
         if (config.SequencerUrl is null && logger.IsWarn)
         {
@@ -127,10 +123,10 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _protocolsManager,
             _forkInfo,
             _secondsPerSlot,
+
             _sequencerRpcClient,
             _ecdsa,
             _sealer,
-            _logIndexConfig,
             _opSpecHelper
         );
     }

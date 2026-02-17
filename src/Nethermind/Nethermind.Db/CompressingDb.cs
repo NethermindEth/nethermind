@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -20,55 +18,75 @@ namespace Nethermind.Db
         /// <returns>A wrapped db.</returns>
         public static IDb WithEOACompressed(this IDb @this) => new EOACompressingDb(@this);
 
-        // TODO: consider wrapping IDbWithSpan to make the read with a span, with no alloc for reading?
-        private class EOACompressingDb(IDb wrapped) : IDb, ITunableDb
+        private class EOACompressingDb : IDb, ITunableDb
         {
-            public byte[]? this[ReadOnlySpan<byte> key]
+            private readonly IDb _wrapped;
+
+            public EOACompressingDb(IDb wrapped)
             {
-                get => Decompress(wrapped[key]);
-                set => wrapped[key] = Compress(value);
+                // TODO: consider wrapping IDbWithSpan to make the read with a span, with no alloc for reading?
+                _wrapped = wrapped;
             }
 
-            public IWriteBatch StartWriteBatch() => new WriteBatch(wrapped.StartWriteBatch());
-
-            private class WriteBatch(IWriteBatch wrapped) : IWriteBatch
+            public byte[]? this[ReadOnlySpan<byte> key]
             {
-                public void Dispose() => wrapped.Dispose();
+                get => Decompress(_wrapped[key]);
+                set => _wrapped[key] = Compress(value);
+            }
 
-                public void Clear() => wrapped.Clear();
+            public IWriteBatch StartWriteBatch() => new WriteBatch(_wrapped.StartWriteBatch());
+
+            private class WriteBatch : IWriteBatch
+            {
+                private readonly IWriteBatch _wrapped;
+
+                public WriteBatch(IWriteBatch wrapped) => _wrapped = wrapped;
+
+                public void Dispose() => _wrapped.Dispose();
+
+                public void Clear() => _wrapped.Clear();
 
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                    => wrapped.Set(key, Compress(value), flags);
+                    => _wrapped.Set(key, Compress(value), flags);
 
                 public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-                    => wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+                {
+                    _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+                }
 
                 public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-                    => throw new InvalidOperationException("EOA compressing DB does not support merging");
+                {
+                    throw new InvalidOperationException("EOA compressing DB does not support merging");
+                }
 
-                public bool PreferWriteByArray => wrapped.PreferWriteByArray;
+                public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    set => wrapped[key] = Compress(value);
+                    set => _wrapped[key] = Compress(value);
                 }
             }
+
 
             /// <summary>
             /// The end of rlp of an EOA account, an empty <see cref="Account.CodeHash"/> and an empty <see cref="Account.StorageRoot"/>.
             /// </summary>
-            private static ReadOnlySpan<byte> EmptyCodeHashStorageRoot =>
-            [
+            private static ReadOnlySpan<byte> EmptyCodeHashStorageRoot => new byte[]
+            {
                 160, 86, 232, 31, 23, 27, 204, 85, 166, 255, 131, 69, 230, 146, 192, 248, 110, 91, 72, 224, 27, 153,
                 108, 173, 192, 1, 98, 47, 181, 227, 99, 180, 33, 160, 197, 210, 70, 1, 134, 247, 35, 60, 146, 126,
                 125, 178, 220, 199, 3, 192, 229, 0, 182, 83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112
-            ];
+            };
 
             private const byte PreambleLength = 1;
             private const byte PreambleIndex = 0;
             private const byte PreambleValue = 0;
 
-            private static byte[]? Compress(byte[]? bytes) => bytes is null ? null : Compress(bytes, stackalloc byte[bytes.Length]).ToArray();
+            private static byte[]? Compress(byte[]? bytes)
+            {
+                if (bytes is null) return null;
+                return Compress(bytes, stackalloc byte[bytes.Length]).ToArray();
+            }
 
             private static ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> bytes, Span<byte> compressed)
             {
@@ -107,56 +125,55 @@ namespace Nethermind.Db
                 return decompressed;
             }
 
-            public void Dispose() => wrapped.Dispose();
+            public void Dispose() => _wrapped.Dispose();
 
-            public string Name => wrapped.Name;
+            public string Name => _wrapped.Name;
 
             public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
 
-            public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => wrapped.GetAll(ordered)
+            public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _wrapped.GetAll(ordered)
                 .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
             public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
-                wrapped.GetAllKeys(ordered);
+                _wrapped.GetAllKeys(ordered);
 
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
-                wrapped.GetAllValues(ordered).Select(Decompress);
+                _wrapped.GetAllValues(ordered).Select(Decompress);
 
-            public void Remove(ReadOnlySpan<byte> key) => wrapped.Remove(key);
+            public void Remove(ReadOnlySpan<byte> key) => _wrapped.Remove(key);
 
-            public bool KeyExists(ReadOnlySpan<byte> key) => wrapped.KeyExists(key);
+            public bool KeyExists(ReadOnlySpan<byte> key) => _wrapped.KeyExists(key);
 
-            public void Flush(bool onlyWal) => wrapped.Flush(onlyWal);
+            public void Flush(bool onlyWal) => _wrapped.Flush(onlyWal);
 
-            public void Clear() => wrapped.Clear();
+            public void Clear() => _wrapped.Clear();
 
-            public IDbMeta.DbMetric GatherMetric() => wrapped.GatherMetric();
+            public IDbMeta.DbMetric GatherMetric() => _wrapped.GatherMetric();
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                => wrapped.Set(key, Compress(value), flags);
+                => _wrapped.Set(key, Compress(value), flags);
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-                => Decompress(wrapped.Get(key, flags));
+                => Decompress(_wrapped.Get(key, flags));
 
-            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
-                wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
 
-            public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-                // Can't properly implement span for reading. As the decompressed span is different from the span
-                // from DB, it would crash on DangerouslyReleaseMemory.
-                Decompress(Get(key, flags));
-
-            public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
             {
-                byte[]? data = Decompress(Get(key, flags));
-                return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+                _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
             }
 
-            public bool PreferWriteByArray => wrapped.PreferWriteByArray;
+            public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                // Can't properly implement span for reading. As the decompressed span is different from the span
+                // from DB, it would crash on DangerouslyReleaseMemory.
+                return Decompress(Get(key, flags));
+            }
+
+            public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
             public void Tune(ITunableDb.TuneType type)
             {
-                if (wrapped is ITunableDb tunable)
+                if (_wrapped is ITunableDb tunable)
                     tunable.Tune(type);
             }
         }

@@ -19,11 +19,6 @@ public class Metrics
     private static readonly ZeroContentionCounter _codeDbCache = new();
     [Description("Number of Code DB cache reads on thread.")]
     internal static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
-
-    /// <summary>
-    /// Gets thread-local code DB cache count. Use this for external access.
-    /// </summary>
-    public static long GetThreadLocalCodeDbCache() => _codeDbCache.ThreadLocalValue;
     internal static void IncrementCodeDbCache() => _codeDbCache.Increment();
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
@@ -171,18 +166,6 @@ public class Metrics
                 GasPriceMedian = value;
             }
         }
-    }
-
-    /// <summary>
-    /// Gets block gas price data for external access. Returns (min, estMedian, ave, max).
-    /// Returns null if no gas data available (min is float.MaxValue).
-    /// </summary>
-    public static (float Min, float EstMedian, float Ave, float Max)? GetBlockGasPrices()
-    {
-        if (_blockMinGasPrice == float.MaxValue)
-            return null;
-
-        return (_blockMinGasPrice, _blockEstMedianGasPrice, _blockAveGasPrice, _blockMaxGasPrice);
     }
 
     [GaugeMetric]

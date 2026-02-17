@@ -25,8 +25,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Api.Steps;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Xdc;
 
@@ -90,9 +88,8 @@ public class XdcModule : Module
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
-            // sync
+            // beacon sync strategy
             .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
-            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 

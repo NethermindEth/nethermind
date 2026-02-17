@@ -14,7 +14,6 @@ using Nethermind.Tools.Kute.ResponseTracer;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 using System.CommandLine;
-using System.Net;
 
 namespace Nethermind.Tools.Kute;
 
@@ -57,18 +56,7 @@ public static class Program
 
         collection.AddSingleton<Application>();
         collection.AddSingleton<ISystemClock, RealSystemClock>();
-        collection.AddSingleton<HttpClient>(_ =>
-        {
-            // Disable proxy auto-detection to avoid timeout (~2s) on Windows.
-            // Each Kute invocation is a separate process, so the proxy lookup
-            // would otherwise be paid on every single measured request.
-            var handler = new SocketsHttpHandler
-            {
-                UseProxy = false,
-                AutomaticDecompression = DecompressionMethods.None,
-            };
-            return new HttpClient(handler);
-        });
+        collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(parseResult.GetValue(Config.JwtSecretFilePath)!));
         collection.AddSingleton<IAuth>(provider =>
             new TtlAuth(

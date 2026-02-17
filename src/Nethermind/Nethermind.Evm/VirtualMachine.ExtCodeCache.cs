@@ -41,7 +41,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (_maxExtCodeCacheEntries == 0)
         {
-            CodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            ICodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
             return uncachedCodeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)uncachedCodeInfo.CodeSpan.Length;
         }
 
@@ -54,7 +54,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return entry.CodeSize;
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+        ICodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
         uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
 
         StoreCacheEntry(key, codeHash, codeSize, codeInfo);
@@ -80,11 +80,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal CodeInfo GetExtCodeInfoCached(Address address, IReleaseSpec spec)
+    internal ICodeInfo GetExtCodeInfoCached(Address address, IReleaseSpec spec)
     {
         if (_maxExtCodeCacheEntries == 0)
         {
-            CodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+            ICodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
             return uncachedCodeInfo;
         }
 
@@ -99,14 +99,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return entry.CodeInfo;
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+        ICodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
         uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
         StoreCacheEntry(key, codeHash, codeSize, codeInfo);
         return codeInfo;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void StoreCacheEntry(AddressAsKey key, in ValueHash256 codeHash, uint codeSize, CodeInfo? codeInfo)
+    private void StoreCacheEntry(AddressAsKey key, in ValueHash256 codeHash, uint codeSize, ICodeInfo? codeInfo)
     {
         if (_maxExtCodeCacheEntries == 0)
         {
@@ -120,5 +120,5 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         _extCodeCache[key] = new ExtCodeCacheEntry(codeHash, codeSize, codeInfo);
     }
 
-    private readonly record struct ExtCodeCacheEntry(ValueHash256 CodeHash, uint CodeSize, CodeInfo? CodeInfo);
+    private readonly record struct ExtCodeCacheEntry(ValueHash256 CodeHash, uint CodeSize, ICodeInfo? CodeInfo);
 }

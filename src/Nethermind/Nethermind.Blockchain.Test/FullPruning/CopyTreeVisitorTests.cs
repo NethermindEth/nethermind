@@ -21,11 +21,18 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 [TestFixture(INodeStorage.KeyScheme.HalfPath)]
 [TestFixture(INodeStorage.KeyScheme.Hash)]
-public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
+public class CopyTreeVisitorTests
 {
+    private readonly INodeStorage.KeyScheme _keyScheme;
+
+    public CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
+    {
+        _keyScheme = scheme;
+    }
+
     [TestCase(0, 1)]
     [TestCase(0, 8)]
     [TestCase(1, 1)]
@@ -76,7 +83,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
     private IPruningContext CopyDb(IPruningContext pruningContext, CancellationToken cancellationToken, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
     {
         LimboLogs logManager = LimboLogs.Instance;
-        PatriciaTree trie = Build.A.Trie(new NodeStorage(trieDb, scheme)).WithAccountsByIndex(0, 100).TestObject;
+        PatriciaTree trie = Build.A.Trie(new NodeStorage(trieDb, _keyScheme)).WithAccountsByIndex(0, 100).TestObject;
 
         // Create a custom DbProvider that uses the trieDb from the test
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
@@ -87,16 +94,16 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager);
 
         BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
-        if (scheme == INodeStorage.KeyScheme.Hash)
+        if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {
-            NodeStorage nodeStorage = new NodeStorage(pruningContext, scheme);
+            NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
             using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
         else
         {
-            NodeStorage nodeStorage = new NodeStorage(pruningContext, scheme);
+            NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
             using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();

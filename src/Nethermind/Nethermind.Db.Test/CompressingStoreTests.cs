@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -72,15 +71,7 @@ public class CompressingStoreTests
         ctx.Compressed.PutSpan(Key, encoded.Bytes);
 
         Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
-        Span<byte> span = ctx.Compressed.GetSpan(Key);
-        try
-        {
-            Assert.That(encoded.Bytes, Is.EqualTo(span.ToArray()).AsCollection);
-        }
-        finally
-        {
-            ctx.Compressed.DangerousReleaseMemory(span);
-        }
+        Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed.GetSpan(Key).ToArray()).AsCollection);
         ctx.Wrapped[Key]!.Length.Should().Be(5);
     }
 

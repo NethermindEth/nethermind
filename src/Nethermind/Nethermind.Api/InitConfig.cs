@@ -38,7 +38,7 @@ namespace Nethermind.Api
         public long? ExitOnBlockNumber { get; set; } = null;
         public bool ExitOnInvalidBlock { get; set; } = false;
         public int BackgroundTaskConcurrency { get; set; } = 2;
-        public int BackgroundTaskMaxNumber { get; set; } = 2048;
+        public int BackgroundTaskMaxNumber { get; set; } = 1024;
         public bool InRunnerTest { get; set; } = false;
         public string? DataDir { get; set; }
 

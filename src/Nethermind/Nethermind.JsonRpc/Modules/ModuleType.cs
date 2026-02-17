@@ -14,7 +14,6 @@ namespace Nethermind.JsonRpc.Modules
         public const string Debug = nameof(Debug);
         public const string Erc20 = nameof(Erc20);
         public const string Eth = nameof(Eth);
-        public const string LogIndex = nameof(LogIndex);
         public const string Evm = nameof(Evm);
         public const string Flashbots = nameof(Flashbots);
         public const string Net = nameof(Net);
@@ -26,6 +25,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Trace = nameof(Trace);
         public const string TxPool = nameof(TxPool);
         public const string Web3 = nameof(Web3);
+        public const string Vault = nameof(Vault);
         public const string Deposit = nameof(Deposit);
         public const string Health = nameof(Health);
         public const string Rpc = nameof(Rpc);

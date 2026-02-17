@@ -57,16 +57,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
-            SingleReader = true,
-            // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
-            AllowSynchronousContinuations = true,
+            SingleReader = true
         });
 
     private bool _recoveryComplete = false;
     private int _queueCount;
     private bool _disposed;
 
-    private readonly IProcessingStats _stats;
+    private readonly ProcessingStats _stats;
 
     private CancellationTokenSource? _loopCancellationSource;
     private Task? _recoveryTask;
@@ -91,15 +89,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
-    /// <param name="processingStats"></param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
         IBlockPreprocessorStep recoveryStep,
         IStateReader stateReader,
         ILogManager logManager,
-        Options options,
-        IProcessingStats processingStats)
+        Options options)
     {
         _logger = logManager.GetClassLogger();
         _blockTree = blockTree;
@@ -108,7 +104,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stateReader = stateReader;
         _options = options;
 
-        _stats = processingStats;
+        _stats = new ProcessingStats(stateReader, logManager.GetClassLogger<ProcessingStats>());
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }

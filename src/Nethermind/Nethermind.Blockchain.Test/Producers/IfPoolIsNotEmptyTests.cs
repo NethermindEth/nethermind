@@ -9,7 +9,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
-[Parallelizable(ParallelScope.All)]
 public class IfPoolIsNotEmptyTests
 {
     [MaxTime(Timeout.MaxTestTime)]

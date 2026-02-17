@@ -19,27 +19,27 @@ namespace Nethermind.Consensus.Processing
 {
     public class BlockStatistics
     {
-        public long BlockCount { get; set; }
-        public long BlockFrom { get; set; }
-        public long BlockTo { get; set; }
-        public double ProcessingMs { get; set; }
-        public double SlotMs { get; set; }
+        public long BlockCount { get; internal set; }
+        public long BlockFrom { get; internal set; }
+        public long BlockTo { get; internal set; }
+        public double ProcessingMs { get; internal set; }
+        public double SlotMs { get; internal set; }
         [JsonPropertyName("mgasPerSecond")]
-        public double MGasPerSecond { get; set; }
-        public float MinGas { get; set; }
-        public float MedianGas { get; set; }
-        public float AveGas { get; set; }
-        public float MaxGas { get; set; }
-        public long GasLimit { get; set; }
+        public double MGasPerSecond { get; internal set; }
+        public float MinGas { get; internal set; }
+        public float MedianGas { get; internal set; }
+        public float AveGas { get; internal set; }
+        public float MaxGas { get; internal set; }
+        public long GasLimit { get; internal set; }
     }
     //TODO Consult on disabling of such metrics from configuration
-    public class ProcessingStats : IProcessingStats
+    internal class ProcessingStats
     {
         private static readonly DefaultObjectPool<BlockData> _dataPool = new(new BlockDataPolicy(), 16);
         private readonly Action<BlockData> _executeFromThreadPool;
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-        protected readonly IStateReader _stateReader;
-        protected readonly ILogger _logger;
+        private readonly IStateReader _stateReader;
+        private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
 
         private bool _showBlobs;
@@ -69,12 +69,12 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogManager logManager)
+        public ProcessingStats(IStateReader stateReader, ILogger logger)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logManager.GetClassLogger();
+            _logger = logger;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        protected virtual void GenerateReport(BlockData data)
+        private void GenerateReport(BlockData data)
         {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
@@ -443,7 +443,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        protected class BlockData
+        private class BlockData
         {
             public Block Block;
             public BlockHeader? BaseBlock;

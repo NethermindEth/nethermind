@@ -32,7 +32,7 @@ namespace Nethermind.Api
         IDbProvider DbProvider { get; }
         IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
-        EthereumJsonSerializer EthereumJsonSerializer { get; }
+        IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; }
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]

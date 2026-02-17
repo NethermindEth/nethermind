@@ -26,9 +26,12 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[Parallelizable(ParallelScope.All)]
 public class TxValidatorTests
 {
+    [SetUp]
+    public void Setup()
+    {
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()

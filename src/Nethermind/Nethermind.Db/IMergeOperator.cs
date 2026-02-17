@@ -3,16 +3,12 @@
 
 using System;
 using Nethermind.Core.Collections;
-using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Db;
 
 public interface IMergeOperator
 {
     string Name { get; }
-    LogIndexUpdateStats Stats { get; }
-    LogIndexUpdateStats GetAndResetStats();
-
     ArrayPoolList<byte>? FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator);
     ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator);
 }

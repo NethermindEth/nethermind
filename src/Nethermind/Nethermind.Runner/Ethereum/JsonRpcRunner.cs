@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IConfigProvider _configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogManager _logManager;
-        private readonly JsonRpcProcessor _jsonRpcProcessor;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager;
         private WebHost? _webApp;
@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IMainProcessingContext _mainProcessingContext;
 
         public JsonRpcRunner(
-            JsonRpcProcessor jsonRpcProcessor,
+            IJsonRpcProcessor jsonRpcProcessor,
             IJsonRpcUrlCollection jsonRpcUrlCollection,
             IWebSocketsManager webSocketsManager,
             IConfigProvider configurationProvider,

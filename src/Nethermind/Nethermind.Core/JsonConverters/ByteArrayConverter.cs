@@ -185,69 +185,16 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         Convert(writer, bytes, skipLeadingZeros: false);
     }
 
-    /// <summary>
-    /// Writes bytes as a hex string value (e.g. "0xabcd") using WriteRawValue.
-    /// </summary>
     [SkipLocalsInit]
     public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true, bool addHexPrefix = true)
     {
-        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
-        int nibblesCount = bytes.Length * 2;
-
-        if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
-        {
-            WriteZeroValue(writer);
-            return;
-        }
-
-        int prefixLength = addHexPrefix ? 2 : 0;
-        // +2 for surrounding quotes: "0xABCD..."
-        int rawLength = nibblesCount - leadingNibbleZeros + prefixLength + 2;
-
-        byte[]? array = null;
-        Unsafe.SkipInit(out HexBuffer256 buffer);
-        Span<byte> hex = rawLength <= 256
-            ? MemoryMarshal.CreateSpan(ref Unsafe.As<HexBuffer256, byte>(ref buffer), 256)
-            : (array = ArrayPool<byte>.Shared.Rent(rawLength));
-        hex = hex[..rawLength];
-
-        // Build the JSON string value directly: "0x<hex>"
-        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
-        hexRef = (byte)'"';
-        int start = 1;
-        if (addHexPrefix)
-        {
-            Unsafe.As<byte, ushort>(ref Unsafe.Add(ref hexRef, 1)) = HexPrefix;
-            start = 3;
-        }
-        Unsafe.Add(ref hexRef, rawLength - 1) = (byte)'"';
-
-        int offset = leadingNibbleZeros >>> 1;
-        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), offset), bytes.Length - offset)
-            .OutputBytesToByteHex(
-                MemoryMarshal.CreateSpan(ref Unsafe.Add(ref hexRef, start), rawLength - 1 - start),
-                extraNibble: (leadingNibbleZeros & 1) != 0);
-        // Hex chars (0-9, a-f) never need JSON escaping — bypass encoder entirely
-        writer.WriteRawValue(hex, skipInputValidation: true);
-
-        if (array is not null)
-            ArrayPool<byte>.Shared.Return(array);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void WriteZeroValue(Utf8JsonWriter writer) => writer.WriteStringValue("0x0"u8);
-
-    [InlineArray(256)]
-    private struct HexBuffer256
-    {
-        private byte _element0;
+        Convert(writer,
+            bytes,
+            static (w, h) => w.WriteRawValue(h, skipInputValidation: true), skipLeadingZeros, addHexPrefix: addHexPrefix);
     }
 
     public delegate void WriteHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hex);
 
-    /// <summary>
-    /// Writes bytes as hex using a custom write action (e.g. for property names).
-    /// </summary>
     [SkipLocalsInit]
     public static void Convert(
         Utf8JsonWriter writer,
@@ -257,56 +204,50 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         bool addQuotations = true,
         bool addHexPrefix = true)
     {
-        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
-        int nibblesCount = bytes.Length * 2;
+        const int maxStackLength = 128;
+        const int stackLength = 256;
+
+        var leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+        var nibblesCount = bytes.Length * 2;
 
         if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
         {
-            WriteZeroValue(writer, writeAction, addQuotations);
+            writer.WriteStringValue(Bytes.ZeroHexValue);
             return;
         }
 
-        int prefixLength = addHexPrefix ? 2 : 0;
-        int quotesLength = addQuotations ? 2 : 0;
-        int length = nibblesCount - leadingNibbleZeros + prefixLength + quotesLength;
+        var prefixLength = addHexPrefix ? 2 : 0;
+        var length = nibblesCount - leadingNibbleZeros + prefixLength + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
-        Unsafe.SkipInit(out HexBuffer256 buffer);
-        Span<byte> hex = length <= 256
-            ? MemoryMarshal.CreateSpan(ref Unsafe.As<HexBuffer256, byte>(ref buffer), 256)
-            : (array = ArrayPool<byte>.Shared.Rent(length));
-        hex = hex[..length];
+        if (length > maxStackLength)
+            array = ArrayPool<byte>.Shared.Rent(length);
 
-        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
-        int start = 0;
-        int endPad = 0;
+        Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
+        var start = 0;
+        Index end = ^0;
         if (addQuotations)
         {
-            hexRef = (byte)'"';
-            Unsafe.Add(ref hexRef, length - 1) = (byte)'"';
-            start = 1;
-            endPad = 1;
+            end = ^1;
+            hex[^1] = (byte)'"';
+            hex[start++] = (byte)'"';
         }
 
         if (addHexPrefix)
         {
-            Unsafe.As<byte, ushort>(ref Unsafe.Add(ref hexRef, start)) = HexPrefix;
-            start += 2;
+            hex[start++] = (byte)'0';
+            hex[start++] = (byte)'x';
         }
 
-        ReadOnlySpan<byte> input = bytes[(leadingNibbleZeros >>> 1)..];
-        input.OutputBytesToByteHex(
-            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref hexRef, start), length - start - endPad),
-            extraNibble: (leadingNibbleZeros & 1) != 0);
+        Span<byte> output = hex[start..end];
+
+        ReadOnlySpan<byte> input = bytes[(leadingNibbleZeros / 2)..];
+        input.OutputBytesToByteHex(output, extraNibble: (leadingNibbleZeros & 1) != 0);
         writeAction(writer, hex);
 
         if (array is not null)
             ArrayPool<byte>.Shared.Return(array);
     }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void WriteZeroValue(Utf8JsonWriter writer, WriteHex writeAction, bool addQuotations)
-        => writeAction(writer, addQuotations ? "\"0x0\""u8 : "0x0"u8);
 
     public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {

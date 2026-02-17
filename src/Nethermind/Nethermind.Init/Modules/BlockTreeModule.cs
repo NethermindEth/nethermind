@@ -15,16 +15,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
-using Nethermind.Logging;
 using Nethermind.History;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIndexConfig) : Autofac.Module
+public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -39,34 +37,16 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
-                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
-            )
+                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
+
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
+            .AddSingleton<ILogFinder, LogFinder>()
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
 
-        builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
-            .AddDecorator<ILogIndexConfig>((ctx, config) =>
-            {
-                IPruningConfig pruningConfig = ctx.Resolve<IPruningConfig>();
-                config.MaxReorgDepth ??= pruningConfig.PruningBoundary;
-                return config;
-            });
-
-        if (logIndexConfig.Enabled)
-        {
-            builder
-                .AddSingleton<ILogIndexStorage, LogIndexStorage>()
-                .AddSingleton<ILogFinder, IndexedLogFinder>();
-        }
-        else
-        {
-            builder
-                .AddSingleton<ILogIndexStorage, DisabledLogIndexStorage>()
-                .AddSingleton<ILogFinder, LogFinder>();
-        }
+            ;
 
         if (!receiptConfig.StoreReceipts)
         {

@@ -27,7 +27,6 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
     public class PruningScenariosTests
     {
         private ILogger _logger;
@@ -1223,7 +1222,7 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountMoreThan(275);
+                .AssertThatCachedNodeCountMoreThan(280);
         }
 
         [Test]

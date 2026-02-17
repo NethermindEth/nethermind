@@ -15,7 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[Parallelizable(ParallelScope.All)]
 public class ShardBlobBlockValidatorTests
 {
     [TestCaseSource(nameof(BlobGasFieldsPerForkTestCases))]

@@ -34,6 +34,10 @@ public static class Protocol
     /// </summary>
     public const string Par = "par";
     /// <summary>
+    /// Nethermind Data Marketplace
+    /// </summary>
+    public const string Ndm = "ndm";
+    /// <summary>
     /// Account Abstraction
     /// </summary>
     public const string AA = "aa";

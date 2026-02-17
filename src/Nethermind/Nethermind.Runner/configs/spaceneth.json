@@ -46,6 +46,7 @@
       "Subscribe",
       "Trace",
       "TxPool",
+      "Vault",
       "Web3"
     ]
   },

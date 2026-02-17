@@ -11,7 +11,6 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Filters;
 
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
 public class AddressFilterTests
 {
     [Test]

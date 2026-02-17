@@ -45,7 +45,7 @@ namespace Nethermind.Api
         // A simple class to prevent having to modify subclass of NethermindApi many times
         public record Dependencies(
             IConfigProvider ConfigProvider,
-            EthereumJsonSerializer JsonSerializer,
+            IJsonSerializer JsonSerializer,
             ILogManager LogManager,
             ChainSpec ChainSpec,
             ISpecProvider SpecProvider,
@@ -78,7 +78,7 @@ namespace Nethermind.Api
             new BuildBlocksWhenRequested();
 
         public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
-        public EthereumJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
+        public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();

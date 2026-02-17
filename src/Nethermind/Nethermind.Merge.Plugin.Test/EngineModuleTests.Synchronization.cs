@@ -1054,7 +1054,8 @@ public partial class EngineModuleTests
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
             Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
-            Substitute.For<ISyncFeed<SnapSyncBatch?>>());
+            Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
+            LimboLogs.Instance);
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,

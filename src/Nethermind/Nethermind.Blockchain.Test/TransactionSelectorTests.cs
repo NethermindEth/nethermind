@@ -28,7 +28,6 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Blockchain.Test
 {
-    [Parallelizable(ParallelScope.All)]
     public class TransactionSelectorTests
     {
         public static IEnumerable ProperTransactionsSelectedTestCases

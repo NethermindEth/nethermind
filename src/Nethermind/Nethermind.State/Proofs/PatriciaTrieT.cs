@@ -17,13 +17,12 @@ namespace Nethermind.State.Trie;
 /// <typeparam name="T">The type of the elements in the collection used to build the trie.</typeparam>
 public abstract class PatriciaTrie<T> : PatriciaTree
 {
-    protected const int MinItemsForParallelRootHash = 64;
     /// <param name="list">The collection to build the trie of.</param>
     /// <param name="canBuildProof">
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    protected PatriciaTrie(ReadOnlySpan<T> list, bool canBuildProof, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
+    protected PatriciaTrie(ReadOnlySpan<T> list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
         : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
@@ -32,8 +31,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
         {
             // ReSharper disable once VirtualMemberCallInConstructor
             Initialize(list);
-            // Parallel root hashing adds scheduling overhead for small tries.
-            UpdateRootHash(canBeParallel);
+            UpdateRootHash();
         }
     }
 

@@ -246,16 +246,6 @@ namespace Nethermind.Core.Test
             Assert.That(rlpBigInt.Bytes, Is.EqualTo(rlpLong.Bytes));
         }
 
-        [Test]
-        public void Encode_generic_with_Rlp_input_preserves_original_bytes()
-        {
-            Rlp original = Rlp.Encode(255L);
-            Rlp reEncoded = Rlp.Encode<Rlp>(original);
-
-            Assert.That(reEncoded.Bytes, Is.EqualTo(original.Bytes));
-            Assert.That(reEncoded, Is.SameAs(original));
-        }
-
         [TestCase(true)]
         [TestCase(false)]
         public void RlpContextWithSliceMemory_shouldNotCopyUnderlyingData(bool sliceValue)

@@ -11,7 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs;
 
-[Parallelizable(ParallelScope.All)]
 public class WithdrawalTrieTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

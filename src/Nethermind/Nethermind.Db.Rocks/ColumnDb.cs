@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -34,34 +31,52 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
-    public void Dispose() => _iteratorManager.Dispose();
-    public string Name { get; }
-
-    byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
-
-    Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
-
-    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
+    public void Dispose()
     {
-        Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
-        return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
+        _iteratorManager.Dispose();
     }
 
+    public string Name { get; }
 
-    int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => _reader.Get(key, output, flags);
+    byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags)
+    {
+        return _reader.Get(key, flags);
+    }
 
-    bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key) => _reader.KeyExists(key);
+    Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+    {
+        return _reader.GetSpan(key, flags);
+    }
 
-    void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> key) => _reader.DangerousReleaseMemory(key);
+    int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags)
+    {
+        return _reader.Get(key, output, flags);
+    }
 
-    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
+    bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key)
+    {
+        return _reader.KeyExists(key);
+    }
+
+    void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> key)
+    {
+        _reader.DangerousReleaseMemory(key);
+    }
+
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
+    }
 
-    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None) =>
+    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+    {
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, writeFlags);
+    }
 
-    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None) =>
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+    {
         _mainDb.MergeWithColumnFamily(key, _columnFamily, value, writeFlags);
+    }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
     {
@@ -91,48 +106,77 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         return _mainDb.GetAllValuesCore(iterator);
     }
 
-    public IWriteBatch StartWriteBatch() => new ColumnsDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());
-
-    private class ColumnsDbWriteBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbWriteBatch underlyingWriteBatch)
-        : IWriteBatch
+    public IWriteBatch StartWriteBatch()
     {
-        public void Dispose() => underlyingWriteBatch.Dispose();
+        return new ColumnsDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());
+    }
 
-        public void Clear() => underlyingWriteBatch.Clear();
+    private class ColumnsDbWriteBatch : IWriteBatch
+    {
+        private readonly ColumnDb _columnDb;
+        private readonly DbOnTheRocks.RocksDbWriteBatch _underlyingWriteBatch;
+
+        public ColumnsDbWriteBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbWriteBatch underlyingWriteBatch)
+        {
+            _columnDb = columnDb;
+            _underlyingWriteBatch = underlyingWriteBatch;
+        }
+
+        public void Dispose()
+        {
+            _underlyingWriteBatch.Dispose();
+        }
+
+        public void Clear()
+        {
+            _underlyingWriteBatch.Clear();
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)
             {
-                underlyingWriteBatch.Delete(key, columnDb._columnFamily);
+                _underlyingWriteBatch.Delete(key, _columnDb._columnFamily);
             }
             else
             {
-                underlyingWriteBatch.Set(key, value, columnDb._columnFamily, flags);
+                _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
             }
         }
 
-        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
-            underlyingWriteBatch.Set(key, value, columnDb._columnFamily, flags);
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
+        }
 
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
-            underlyingWriteBatch.Merge(key, value, columnDb._columnFamily, flags);
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _underlyingWriteBatch.Merge(key, value, _columnDb._columnFamily, flags);
+        }
     }
 
-    public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+    public void Remove(ReadOnlySpan<byte> key)
+    {
+        Set(key, null);
+    }
 
-    public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
+    public void Flush(bool onlyWal)
+    {
+        _mainDb.FlushWithColumnFamily(_columnFamily);
+    }
 
-    public void Compact() =>
+    public void Compact()
+    {
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    }
 
     /// <summary>
     /// Not sure how to handle delete of the columns DB
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
-    public void Clear() => throw new NotSupportedException();
+    public void Clear() { throw new NotSupportedException(); }
 
-    // Maybe it should be column-specific metric?
+    // Maybe it should be column specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
     public byte[]? FirstKey
@@ -155,8 +199,10 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
-        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        return _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {

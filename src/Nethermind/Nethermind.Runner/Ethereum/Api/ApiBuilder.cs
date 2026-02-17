@@ -20,7 +20,7 @@ namespace Nethermind.Runner.Ethereum.Api;
 public class ApiBuilder
 {
     private readonly IConfigProvider _configProvider;
-    private readonly EthereumJsonSerializer _jsonSerializer;
+    private readonly IJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
@@ -64,7 +64,7 @@ public class ApiBuilder
         return container.Resolve<EthereumRunner>();
     }
 
-    private ChainSpec LoadChainSpec(EthereumJsonSerializer ethereumJsonSerializer)
+    private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
     {
         if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 

@@ -58,6 +58,7 @@ namespace Nethermind.Trie
         }
 
         public byte Level { get; internal set; }
+        private byte _branchChildIndex = 255;
         private byte _flags = 0;
 
         private const byte StorageFlag = 1;

@@ -666,7 +666,7 @@ public class SyncServerTests
         int count = 0;
         remoteServer
             .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
-            .Do(_ => Interlocked.Increment(ref count));
+            .Do(_ => count++);
         PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
             .Select(_ => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
             .ToArray();

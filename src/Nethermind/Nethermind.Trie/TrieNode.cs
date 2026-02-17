@@ -32,6 +32,7 @@ namespace Nethermind.Trie
 #endif
 
         private static readonly object _nullNode = new();
+        private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
 
         private const byte _dirtyMask = 0b001;

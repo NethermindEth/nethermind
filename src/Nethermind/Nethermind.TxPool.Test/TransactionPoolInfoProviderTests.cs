@@ -13,8 +13,6 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TxPoolInfoProviderTests
     {
         private Address _address;

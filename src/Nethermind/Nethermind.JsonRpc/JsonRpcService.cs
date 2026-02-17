@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -25,7 +24,7 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService : IJsonRpcService
+public class JsonRpcService : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
@@ -345,7 +344,7 @@ public sealed class JsonRpcService : IJsonRpcService
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase"
+                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount).Info?.Name == "passphrase"
                         ? "{passphrase}"
                         : param.GetRawText();
 
@@ -404,7 +403,6 @@ public sealed class JsonRpcService : IJsonRpcService
         }
         else
         {
-            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out JsonTypeInfo? typeInfo);
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
@@ -414,15 +412,11 @@ public sealed class JsonRpcService : IJsonRpcService
 
                 executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                    : typeInfo is not null
-                        ? providedParameter.Deserialize(typeInfo)
-                        : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {
-                executionParam = typeInfo is not null
-                    ? providedParameter.Deserialize(typeInfo)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
         }
 

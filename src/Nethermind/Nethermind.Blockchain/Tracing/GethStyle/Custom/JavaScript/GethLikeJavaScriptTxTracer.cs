@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
@@ -109,7 +108,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
-        _log.pc = pc + (env.CodeInfo is EofCodeInfo eof ? eof.PcOffset() : 0);
+        _log.pc = pc + env.CodeInfo.PcOffset();
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();

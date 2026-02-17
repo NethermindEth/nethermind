@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,7 @@ namespace Nethermind.Trie
     public partial class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
+        private readonly static byte[][] _singleByteKeys = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15]];
 
         private readonly ILogger _logger;
 
@@ -1001,5 +1003,25 @@ namespace Nethermind.Trie
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowReadOnlyTrieException() => throw new TrieException("Commits are not allowed on this trie.");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidDataException(TrieNode originalNode)
+        {
+            throw new InvalidDataException(
+                $"Extension {originalNode.Keccak} has no child.");
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowMissingChildException(TrieNode node)
+        {
+            throw new TrieException(
+                $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowMissingPrefixException()
+        {
+            throw new InvalidDataException("An attempt to visit a node without a prefix path.");
+        }
     }
 }

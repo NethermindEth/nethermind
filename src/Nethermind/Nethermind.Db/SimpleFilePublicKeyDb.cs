@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -24,11 +23,12 @@ namespace Nethermind.Db
 
         private readonly ILogger _logger;
         private bool _hasPendingChanges;
-        private readonly ConcurrentDictionary<byte[], byte[]> _cache = new(Bytes.EqualityComparer);
-        private readonly ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
+        private ConcurrentDictionary<byte[], byte[]> _cache;
+        private ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
 
-        private string DbPath { get; }
+        public string DbPath { get; }
         public string Name { get; }
+        public string Description { get; }
 
         public ICollection<byte[]> Keys => _cache.Keys.ToArray();
         public ICollection<byte[]> Values => _cache.Values;
@@ -40,27 +40,26 @@ namespace Nethermind.Db
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
+            Description = $"{Name}|{DbPath}";
 
             if (!Directory.Exists(dbDirectoryPath))
             {
                 Directory.CreateDirectory(dbDirectoryPath);
             }
 
-            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
-
-            if (File.Exists(DbPath))
-            {
-                LoadData();
-            }
+            LoadData();
         }
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => Get(key);
-            set => Set(key, value);
+            get => Get(key, ReadFlags.None);
+            set => Set(key, value, WriteFlags.None);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _cacheSpan[key];
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _cacheSpan[key];
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -99,7 +98,10 @@ namespace Nethermind.Db
             }
         }
 
-        public bool KeyExists(ReadOnlySpan<byte> key) => _cacheSpan.ContainsKey(key);
+        public bool KeyExists(ReadOnlySpan<byte> key)
+        {
+            return _cacheSpan.ContainsKey(key);
+        }
 
         public void Flush(bool onlyWal = false) { }
 
@@ -115,7 +117,10 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
-        public IWriteBatch StartWriteBatch() => this.LikeABatch(CommitBatch);
+        public IWriteBatch StartWriteBatch()
+        {
+            return this.LikeABatch(CommitBatch);
+        }
 
         private void CommitBatch()
         {
@@ -214,6 +219,14 @@ namespace Nethermind.Db
         {
             const int maxLineLength = 2048;
 
+            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
+
+            if (!File.Exists(DbPath))
+            {
+                return;
+            }
+
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
             using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
@@ -293,6 +306,24 @@ namespace Nethermind.Db
             }
         }
 
-        public void Dispose() { }
+        private byte[] Update(byte[] oldValue, byte[] newValue)
+        {
+            if (!Bytes.AreEqual(oldValue, newValue))
+            {
+                _hasPendingChanges = true;
+            }
+
+            return newValue;
+        }
+
+        private byte[] Add(byte[] value)
+        {
+            _hasPendingChanges = true;
+            return value;
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }

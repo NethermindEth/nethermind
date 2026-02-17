@@ -75,46 +75,20 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    public virtual int TryGetBlobsAndProofsV1(
-        byte[][] requestedBlobVersionedHashes,
-        byte[]?[] blobs,
-        ReadOnlyMemory<byte[]>[] proofs)
+    public int GetBlobCounts(byte[][] requestedBlobVersionedHashes)
     {
-        using McsLock.Disposable lockRelease = Lock.Acquire();
-        int found = 0;
+        using var lockRelease = Lock.Acquire();
+        int count = 0;
 
-        for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+        foreach (byte[] requestedBlobVersionedHash in requestedBlobVersionedHashes)
         {
-            byte[] requestedBlobVersionedHash = requestedBlobVersionedHashes[i];
-            if (!BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
-                continue;
-
-            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
+            if (BlobIndex.ContainsKey(requestedBlobVersionedHash))
             {
-                if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
-                    || blobTx.BlobVersionedHashes is not { Length: > 0 })
-                    continue;
-
-                bool matched = false;
-                for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
-                {
-                    if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
-                        && blobTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
-                    {
-                        blobs[i] = wrapper.Blobs[indexOfBlob];
-                        proofs[i] = new ReadOnlyMemory<byte[]>(
-                            wrapper.Proofs,
-                            Ckzg.CellsPerExtBlob * indexOfBlob,
-                            Ckzg.CellsPerExtBlob);
-                        found++;
-                        matched = true;
-                        break;
-                    }
-                }
-                if (matched) break;
+                count += 1;
             }
         }
-        return found;
+
+        return count;
     }
 
     protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)

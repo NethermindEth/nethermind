@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Test.Ethereum
         {
             NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
                 Substitute.For<IConfigProvider>(),
-                new EthereumJsonSerializer(),
+                Substitute.For<IJsonSerializer>(),
                 LimboLogs.Instance,
                 new ChainSpec { Parameters = new ChainParameters(), },
                 Substitute.For<ISpecProvider>(),

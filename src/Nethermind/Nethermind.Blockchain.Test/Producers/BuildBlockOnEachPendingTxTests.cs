@@ -10,7 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
-[Parallelizable(ParallelScope.All)]
 public class BuildBlockOnEachPendingTxTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

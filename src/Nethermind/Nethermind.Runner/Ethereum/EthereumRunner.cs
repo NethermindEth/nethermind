@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -38,6 +39,20 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
         {
             _logger.Info("All DBs closed");
             _logger.Info("Ethereum runner stopped");
+        }
+    }
+
+    private Task Stop(Func<Task?> stopAction, string description)
+    {
+        try
+        {
+            if (_logger.IsInfo) _logger.Info(description);
+            return stopAction() ?? Task.CompletedTask;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
+            return Task.CompletedTask;
         }
     }
 }

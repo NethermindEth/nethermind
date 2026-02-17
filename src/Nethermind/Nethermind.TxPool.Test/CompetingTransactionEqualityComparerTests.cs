@@ -9,7 +9,6 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
 {
-    [Parallelizable(ParallelScope.All)]
     public class CompetingTransactionEqualityComparerTests
     {
         public static IEnumerable TestCases

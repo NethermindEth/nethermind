@@ -11,7 +11,6 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
     public class NullSealEngineTests
     {
         [Test, MaxTime(Timeout.MaxTestTime)]

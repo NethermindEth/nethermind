@@ -19,8 +19,6 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-[Parallelizable(ParallelScope.All)]
-[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class NonceManagerTests
 {
     private ISpecProvider _specProvider;

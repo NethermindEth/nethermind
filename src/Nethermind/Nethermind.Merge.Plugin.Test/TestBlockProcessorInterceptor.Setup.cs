@@ -14,12 +14,9 @@ public class TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor,
 {
     public int DelayMs { get; set; } = delayMs;
     public Exception? ExceptionToThrow { get; set; }
-    public ManualResetEventSlim? ProcessingStarted { get; set; }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
     {
-        ProcessingStarted?.Set();
-
         if (DelayMs > 0)
         {
             Thread.Sleep(DelayMs);

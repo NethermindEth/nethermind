@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -53,7 +52,6 @@ public class OptimismEthRpcModule(
     IJsonRpcClient? sequencerRpcClient,
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
-    ILogIndexConfig? logIndexConfig,
     IOptimismSpecHelper opSpecHelper)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
@@ -70,7 +68,6 @@ public class OptimismEthRpcModule(
         feeHistoryOracle,
         protocolsManager,
         forkInfo,
-        logIndexConfig,
         secondsPerSlot), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Db
 {
@@ -22,14 +21,6 @@ namespace Nethermind.Db
             InMemoryWriteBatch writeBatch = new InMemoryWriteBatch(_columnsDb.GetColumnDb(key));
             _underlyingBatch.Add(writeBatch);
             return writeBatch;
-        }
-
-        public void Clear()
-        {
-            foreach (IWriteBatch batch in _underlyingBatch)
-            {
-                batch.Clear();
-            }
         }
 
         public void Dispose()

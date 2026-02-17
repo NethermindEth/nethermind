@@ -11,7 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts
 {
-    [Parallelizable(ParallelScope.All)]
     public class ReceiptsRootTests
     {
         public static IEnumerable ReceiptsRootTestCases

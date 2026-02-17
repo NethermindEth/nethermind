@@ -86,21 +86,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             else
             {
-                // TrySetCanceled first: if it succeeds we own the TCS and need to
-                // dispose any late-arriving response. If it fails, the response was
-                // already set by Handle() and the caller owns the data — registering
-                // a disposal continuation would dispose data the caller still holds.
-                if (request.CompletionSource.TrySetCanceled(cancellationToken))
+                _ = task.ContinueWith(static t =>
                 {
-                    _ = task.ContinueWith(static t =>
+                    if (t.IsCompletedSuccessfully)
                     {
-                        if (t.IsCompletedSuccessfully)
-                        {
-                            t.Result.TryDispose();
-                        }
-                    });
-                }
+                        t.Result.TryDispose();
+                    }
+                });
 
+                request.CompletionSource.TrySetCanceled(cancellationToken);
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
 
                 if (Logger.IsDebug) Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");

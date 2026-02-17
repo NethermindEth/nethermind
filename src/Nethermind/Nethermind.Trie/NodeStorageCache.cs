@@ -1,13 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
 public sealed class NodeStorageCache
 {
-    private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
+    private ConcurrentDictionary<NodeKey, byte[]> _cache = new();
 
     private volatile bool _enabled = false;
 
@@ -17,18 +19,17 @@ public sealed class NodeStorageCache
         set => _enabled = value;
     }
 
-    public byte[]? GetOrAdd(in NodeKey nodeKey, SeqlockCache<NodeKey, byte[]>.ValueFactory tryLoadRlp)
+    public byte[]? GetOrAdd(NodeKey nodeKey, Func<NodeKey, byte[]> tryLoadRlp)
     {
         if (!_enabled)
         {
-            return tryLoadRlp(in nodeKey);
+            return tryLoadRlp(nodeKey);
         }
-        return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
+        return _cache.GetOrAdd(nodeKey, tryLoadRlp);
     }
 
     public bool ClearCaches()
     {
-        _cache.Clear();
-        return true;
+        return _cache.NoResizeClear();
     }
 }

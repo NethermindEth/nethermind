@@ -14,7 +14,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus;
 
-[Parallelizable(ParallelScope.All)]
 public class CompositeTxSourceTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

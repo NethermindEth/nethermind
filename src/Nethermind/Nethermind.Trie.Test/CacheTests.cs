@@ -10,7 +10,6 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
     public class CacheTests
     {
         [Test]

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -193,14 +194,10 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account))
-                    account = scope.Get(key);
-
-                // Account may be null when EIP-161 deletes an empty account that had storage
-                // changes in the same block. Skip the storage root update since the account
-                // will not exist in the state trie.
-                if (account is null) continue;
-                account = account.WithChangedStorageRoot(storageRoot);
+                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
+                if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
+                account ??= ThrowNullAccount(key);
+                account = account!.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
                 OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                 if (logger.IsTrace) Trace(key, storageRoot, account);
@@ -220,6 +217,10 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowNullAccount(Address address)
+                => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
     }
 

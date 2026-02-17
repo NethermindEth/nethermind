@@ -9,12 +9,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
-public readonly record struct TxLookupKey(ValueHash256 Hash, Address Sender, UInt256 Timestamp);
-
 public interface ITxStorage
 {
     bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
-    int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results);
     IEnumerable<LightTransaction> GetAll();
     void Add(Transaction transaction);
     void Delete(in ValueHash256 hash, in UInt256 timestamp);

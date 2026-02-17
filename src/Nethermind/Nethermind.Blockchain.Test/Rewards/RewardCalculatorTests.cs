@@ -9,7 +9,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Rewards;
 
-[Parallelizable(ParallelScope.All)]
 public class RewardCalculatorTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

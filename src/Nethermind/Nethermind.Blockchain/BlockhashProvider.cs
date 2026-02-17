@@ -25,7 +25,6 @@ namespace Nethermind.Blockchain
         private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private Hash256[]? _hashes;
-        private long _prefetchVersion;
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
@@ -40,7 +39,7 @@ namespace Nethermind.Blockchain
             }
 
             long depth = currentBlock.Number - number;
-            Hash256[]? hashes = Volatile.Read(ref _hashes);
+            Hash256[]? hashes = _hashes;
 
             return depth switch
             {
@@ -61,8 +60,7 @@ namespace Nethermind.Blockchain
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
-            long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
-            Volatile.Write(ref _hashes, null);
+            _hashes = null;
             Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
 
             // This leverages that branch processing is single threaded
@@ -71,9 +69,9 @@ namespace Nethermind.Blockchain
             // This allows us to avoid await on Prefetch in BranchProcessor
             lock (_blockhashStore)
             {
-                if (!token.IsCancellationRequested && prefetchVersion == Interlocked.Read(ref _prefetchVersion))
+                if (!token.IsCancellationRequested)
                 {
-                    Volatile.Write(ref _hashes, hashes);
+                    _hashes = hashes;
                 }
             }
         }

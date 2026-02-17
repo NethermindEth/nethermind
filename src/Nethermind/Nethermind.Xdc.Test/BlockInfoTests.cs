@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
+[Parallelizable(ParallelScope.All)]
 internal class BlockInfoTests
 {
     [Test]
