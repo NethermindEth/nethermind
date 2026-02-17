@@ -88,6 +88,7 @@ namespace Nethermind.Network
 
             if (syncPeerArgs.GenesisHash != _blockTree.Genesis.Hash)
             {
+                if (_logger.IsWarn) _logger.Warn($"Genesis mismatch: peer={syncPeerArgs.GenesisHash}, ours={_blockTree.Genesis.Hash}");
                 return Disconnect(session, DisconnectReason.InvalidGenesis, CompatibilityValidationType.DifferentGenesis, "invalid genesis",
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }

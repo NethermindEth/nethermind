@@ -32,6 +32,18 @@ public class XdcGenesisBuilder(
     {
         Block genesis = chainSpec.Genesis;
         genesis = genesis.WithReplacedHeader(XdcBlockHeader.FromBlockHeader(genesis.Header));
+        
+        // Set XDC header fields for genesis - must match geth-xdc genesis encoding
+        // geth genesis has empty Validators/Validator/Penalties (default zero values in Go struct)
+        if (genesis.Header is XdcBlockHeader xdcHeader)
+        {
+            // In Go, unset []byte fields are nil, which RLP-encodes as empty string (0x80)
+            // We need to match this exactly
+            xdcHeader.Validators ??= Array.Empty<byte>();
+            xdcHeader.Validator ??= Array.Empty<byte>();
+            xdcHeader.Penalties ??= Array.Empty<byte>();
+        }
+        
         Preallocate(genesis);
 
         foreach (IGenesisPostProcessor postProcessor in postProcessors)
@@ -48,15 +60,7 @@ public class XdcGenesisBuilder(
 
         genesis.Header.Hash = genesis.Header.CalculateHash();
 
-        // Debug: print XDC header fields
-        if (genesis.Header is XdcBlockHeader xdcHeader)
-        {
-            // Console.WriteLine($"[GENESIS-DEBUG] XDC Header fields:");
-            // Console.WriteLine($"[GENESIS-DEBUG]   Validators: {(xdcHeader.Validators == null ? "null" : $"len={xdcHeader.Validators.Length}")}");
-            // Console.WriteLine($"[GENESIS-DEBUG]   Validator: {(xdcHeader.Validator == null ? "null" : $"len={xdcHeader.Validator.Length}")}");
-            // Console.WriteLine($"[GENESIS-DEBUG]   Penalties: {(xdcHeader.Penalties == null ? "null" : $"len={xdcHeader.Penalties.Length}")}");
-            // Console.WriteLine($"[GENESIS-DEBUG]   Hash: {genesis.Header.Hash}");
-        }
+        // Genesis hash verified: XDC fields (Validators, Validator, Penalties) must be empty arrays, not null
 
         // Store genesis snapshot if XDC spec provider is available
         if (specProvider.GetFinalSpec() is IXdcReleaseSpec finalSpec)

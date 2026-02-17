@@ -730,7 +730,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // we need to dig deeper to go all the way to the false (reorg boundary) head
             // otherwise some nodes would be missing
             // we also need to go deeper if we already pruned state for that block
-            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
+            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!, throwOnMissingHash: false);
             bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition =
