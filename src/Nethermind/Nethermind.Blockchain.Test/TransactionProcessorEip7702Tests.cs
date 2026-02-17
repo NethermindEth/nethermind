@@ -25,6 +25,8 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 internal class TransactionProcessorEip7702Tests
 {
     private ISpecProvider _specProvider;
@@ -489,7 +491,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTransactions(tx1, tx2)
             .WithGasLimit(10000000).TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
@@ -942,7 +944,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         _stateProvider.CommitTree(block.Number);
 
@@ -1014,6 +1016,111 @@ internal class TransactionProcessorEip7702Tests
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.ReturnValue, Is.EquivalentTo(new byte[] { Convert.ToByte(!isDelegated) }));
+    }
+
+    [Test]
+    public void Execute_EXTCODESIZE_WhenCodeChangesWithinBlock_ReturnsUpdatedSize()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        Address inspectedAddress = TestItem.AddressB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        byte[] initialInspectedCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] updatedInspectedCode = Prepare.EvmCode
+            .Op(Instruction.ADD)
+            .Op(Instruction.STOP)
+            .Done;
+        DeployCode(inspectedAddress, initialInspectedCode);
+
+        byte[] extcodesizeReaderCode = Prepare.EvmCode
+            .PushData(inspectedAddress)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.RETURN)
+            .Done;
+        DeployCode(codeSource, extcodesizeReaderCode);
+        _stateProvider.Commit(Prague.Instance, true);
+
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+
+        CallOutputTracer firstTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 0);
+        Assert.That(firstTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)initialInspectedCode.Length }));
+
+        DeployCode(inspectedAddress, updatedInspectedCode);
+        _stateProvider.Commit(Prague.Instance, true);
+
+        CallOutputTracer secondTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 1);
+        Assert.That(secondTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)updatedInspectedCode.Length }));
+    }
+
+    [Test]
+    public void Execute_EXTCODECOPY_WhenCodeChangesWithinBlock_ReturnsUpdatedBytes()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        Address inspectedAddress = TestItem.AddressB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        byte[] initialInspectedCode = Prepare.EvmCode
+            .Op(Instruction.ADD)
+            .Done;
+        byte[] updatedInspectedCode = Prepare.EvmCode
+            .Op(Instruction.MUL)
+            .Done;
+        DeployCode(inspectedAddress, initialInspectedCode);
+
+        byte[] extcodecopyReaderCode = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .PushData(inspectedAddress)
+            .Op(Instruction.EXTCODECOPY)
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.RETURN)
+            .Done;
+        DeployCode(codeSource, extcodecopyReaderCode);
+        _stateProvider.Commit(Prague.Instance, true);
+
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+
+        CallOutputTracer firstTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 0);
+        Assert.That(firstTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)Instruction.ADD }));
+
+        DeployCode(inspectedAddress, updatedInspectedCode);
+        _stateProvider.Commit(Prague.Instance, true);
+
+        CallOutputTracer secondTracer = ExecuteCallWithOutput(sender, codeSource, blkCtx, 1);
+        Assert.That(secondTracer.ReturnValue?.ToArray(), Is.EquivalentTo(new byte[] { (byte)Instruction.MUL }));
+    }
+
+    private CallOutputTracer ExecuteCallWithOutput(PrivateKey sender, Address to, BlockExecutionContext blockExecutionContext, ulong nonce)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithNonce(nonce)
+            .WithTo(to)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+
+        CallOutputTracer tracer = new();
+        _ = _transactionProcessor.Execute(tx, blockExecutionContext, tracer);
+        return tracer;
     }
 
     private void DeployCode(Address codeSource, byte[] code)

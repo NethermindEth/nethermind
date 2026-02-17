@@ -36,6 +36,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -117,12 +117,24 @@ public class RewardTests
         long current = chain.BlockTree.Head!.Number;
         await chain.AddBlocks((int)(targetIncludingBlockForSecondSign - current - 1)); // move so AddBlockMayHaveExtraTx produces the target
 
+        // For 4E reward calculation, the masternodes come from the second epoch switch found
+        // when walking backwards from 4E. The signed header (3E - mergeSignRange) is in the
+        // range [2E+1, 3E), so its epoch switch info provides the relevant masternodes.
+        // Use a masternode from that epoch to ensure the signature is counted.
+        EpochSwitchInfo? epochSwitchInfoFor2E = chain.EpochSwitchManager.GetEpochSwitchInfo(signedHeader3EMinusMerge);
+        Assert.That(epochSwitchInfoFor2E, Is.Not.Null);
+        PrivateKey signerForPart2 = chain.MasterNodeCandidates.First(k => k.Address == epochSwitchInfoFor2E!.Masternodes[0]);
+
+        // Set the chain's signer to our chosen masternode - required because
+        // SignTransactionFilter rejects signing txs from non-current-signers
+        chain.Signer.SetSigner(signerForPart2);
+
         await chain.AddBlock(BuildSigningTx(
             spec,
             signedHeader3EMinusMerge.Number,
             signedHeader3EMinusMerge.Hash ?? signedHeader3EMinusMerge.CalculateHash().ToHash256(),
-            chain.Signer.Key!,
-            (long)chain.ReadOnlyState.GetNonce(chain.Signer.Address)));
+            signerForPart2,
+            (long)chain.ReadOnlyState.GetNonce(signerForPart2.Address)));
 
         // --- Evaluate rewards at checkpoint (4E) ---
         long checkpoint4E = 4 * epochLength;
