@@ -19,6 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.FastSync;
 
 [Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 {
     [Test]
