@@ -313,7 +313,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Continue with the next iteration of the execution loop.
             continue;
 
-            // Failure handling: attempts to process and possibly finalize the transaction after an error.
+        // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
@@ -349,7 +349,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (previousState.IsPrecompile)
         {
             // parity induced if else for vmtrace
-           if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive)
             {
                 _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
             }
@@ -636,7 +636,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
         {
             txTracer.ReportOperationRemainingGas(0);
             txTracer.ReportOperationError(errorType);
@@ -1106,7 +1106,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
 
             // Report the remaining gas if tracing instructions are enabled.
-           if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
             }
@@ -1227,8 +1227,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
 
                 // If tracing is enabled, start an instruction trace.
-               //if (TTracingInst.IsActive)
-               if (TTracingInst.IsActive)
+                //if (TTracingInst.IsActive)
+                if (TTracingInst.IsActive)
                     StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
 
                 // Advance the program counter to point to the next instruction.
@@ -1264,7 +1264,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     break;
 
                 // If tracing is enabled, complete the trace for the current instruction.
-               if (TTracingInst.IsActive)
+                if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
                 // If return data has been set, exit the loop to process the returned value.
@@ -1278,7 +1278,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
             // If tracing is enabled, complete the trace for the current instruction.
-           if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             UpdateCurrentState(programCounter, in gas, stack.Head);
         }

@@ -232,9 +232,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!opts.HasFlag(ExecutionOptions.Warmup))
                 tx.SpentGas = spentGas.SpentGas;
 
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                header.GasUsed += spentGas.SpentGas;
-
             // Finalize
             if (restore)
             {
@@ -246,7 +243,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     if (!senderReservedGasPayment.IsZero)
+                    {
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
+                    }
+
                     DecrementNonce(tx);
 
                     WorldState.Commit(spec, commitRoots: false);

@@ -111,17 +111,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
-
-    // Forwarders for members that were previously provided as default interface members on IReleaseSpec
-    public virtual bool DepositsEnabled => spec.DepositsEnabled;
-    public virtual bool WithdrawalRequestsEnabled => spec.WithdrawalRequestsEnabled;
-    public virtual bool ConsolidationRequestsEnabled => spec.ConsolidationRequestsEnabled;
-    public virtual bool RequestsEnabled => spec.RequestsEnabled;
-    public virtual ProofVersion BlobProofVersion => spec.BlobProofVersion;
-    public virtual bool CLZEnabled => spec.CLZEnabled;
-
-    public virtual bool IsPrecompile(Address address) => spec.IsPrecompile(address);
-
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;

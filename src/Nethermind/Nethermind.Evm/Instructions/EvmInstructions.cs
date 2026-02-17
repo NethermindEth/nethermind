@@ -7,10 +7,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
-[assembly: InternalsVisibleTo("StatelessExecution")]
 namespace Nethermind.Evm;
 
-public static unsafe partial class EvmInstructions
+internal static unsafe partial class EvmInstructions
 {
     /// <summary>
     /// Generates the opcode lookup table for the Ethereum Virtual Machine.

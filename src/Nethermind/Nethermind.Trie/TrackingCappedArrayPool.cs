@@ -41,7 +41,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
         {
             _rentedList!.Add(array);
         }
-        
+
         return rented;
     }
 

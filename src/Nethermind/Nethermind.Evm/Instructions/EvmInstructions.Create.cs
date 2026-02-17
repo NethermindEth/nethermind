@@ -17,7 +17,7 @@ namespace Nethermind.Evm;
 /// <summary>
 /// Contains implementations for EVM instructions including contract creation (CREATE and CREATE2).
 /// </summary>
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>
@@ -164,7 +164,7 @@ public static partial class EvmInstructions
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // End tracing if enabled, prior to switching to the new call frame.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
         // Calculate gas available for the contract creation call.
@@ -250,7 +250,7 @@ public static partial class EvmInstructions
             snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

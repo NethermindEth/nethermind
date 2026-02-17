@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Provides a mechanism to retrieve a code segment for code copy operations.
@@ -84,14 +84,14 @@ public static partial class EvmInstructions
             if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
 
             // If tracing is enabled, report the memory change.
-           if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -191,14 +191,14 @@ public static partial class EvmInstructions
             if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
 
             // Report memory changes if tracing is enabled.
-           if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -308,7 +308,7 @@ public static partial class EvmInstructions
             stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         }
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

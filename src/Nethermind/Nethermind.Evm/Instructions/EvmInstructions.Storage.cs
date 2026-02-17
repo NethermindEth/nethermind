@@ -16,7 +16,7 @@ using Int256;
 /// <summary>
 /// Implements various EVM instruction handlers for transient storage, memory, and persistent storage operations.
 /// </summary>
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
 
     /// <summary>
@@ -62,7 +62,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -117,7 +117,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -161,11 +161,11 @@ public static partial class EvmInstructions
         }
 
         // Report memory changes if tracing is active.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -208,11 +208,11 @@ public static partial class EvmInstructions
         }
 
         // Report the memory change if tracing is active.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(result, data);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -252,14 +252,14 @@ public static partial class EvmInstructions
         }
 
         // Report the memory load if tracing is active.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(result, bytes);
 
         // Push the loaded bytes onto the stack.
         stack.PushBytes<TTracingInst>(bytes);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -304,18 +304,18 @@ public static partial class EvmInstructions
         }
 
         // Report the memory change at the source if tracing is active.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(b, bytes);
 
         // Write the bytes into memory at the destination offset.
         if (!vmState.Memory.TrySave(in a, bytes)) goto OutOfGas;
 
         // Report the memory change at the destination if tracing is active.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(a, bytes);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -403,7 +403,7 @@ public static partial class EvmInstructions
         }
 
         // Report storage changes for tracing if enabled.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
         {
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
@@ -414,7 +414,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -565,7 +565,7 @@ public static partial class EvmInstructions
         }
 
         // Report storage changes for tracing if enabled.
-       if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive)
         {
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
@@ -576,7 +576,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -642,7 +642,7 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -668,7 +668,7 @@ public static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
