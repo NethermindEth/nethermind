@@ -1,0 +1,30 @@
+{
+  "Init": {
+    "ChainSpecPath": "chainspec/xdc-testnet.json",
+    "BaseDbPath": "xdc-testnet",
+    "LogFileName": "xdc-testnet.log",
+    "MemoryHint": 2048000000
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false,
+    "DownloadReceiptsInFastSync": false,
+    "DownloadBodiesInFastSync": false,
+    "NonValidatorNode": true
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 20000,
+    "Host": "0.0.0.0",
+    "Port": 8545,
+    "EnabledModules": ["Eth", "Net", "Web3", "Admin"]
+  },
+  "Merge": { "Enabled": false },
+  "Pruning": { "Mode": "None" },
+  "Network": {
+    "P2PPort": 30303,
+    "DiscoveryPort": 30303,
+    "StaticPeers": "enode://7524db6718828c2c7663e6585a5b1e066457b8b0235034b69358b36e584fea776666d36ed4fc43d0f8bf2a5c3b2a960b5600689b6c8f0c207e5a76f8b0ca432d@157.173.120.219:30304,enode://729d763db071595bacbbf33037a8e7639d8e9a97bfcfcda3afe963435d919cb95634f27375f0aadf6494dad47e506c888bf15cb5633d5f81dbb793b05b27e676@207.90.192.100:30304",
+    "MaxActivePeers": 50
+  }
+}
