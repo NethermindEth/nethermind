@@ -4,10 +4,12 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System;
@@ -16,7 +18,7 @@ using System.Text;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum)
     {
@@ -107,11 +109,95 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<ulong[]>.Success(epochSwitchNumbers);
     }
 
-    public ResultWrapper<PoolStatus> GetLatestPoolStatus()
+    private static IDictionary<(ulong Round, Hash256 Hash), SignerTypes> CalculateSigners<T>(
+        IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> pool,
+        Address[] masternodes,
+        Func<T, Address?> getSignerFunc)
     {
-        throw new NotImplementedException();
+        var message = new Dictionary<(ulong Round, Hash256 Hash), SignerTypes>();
+
+        foreach (var (key, objs) in pool)
+        {
+            List<Address> currentSigners = new List<Address>();
+            List<Address> missingSigners = new List<Address>(masternodes);
+
+            int num = objs.Count;
+            foreach (var obj in objs)
+            {
+                Address? signer = getSignerFunc(obj);
+                if (signer != null)
+                {
+                    currentSigners.Add(signer);
+                    missingSigners.Remove(signer);
+                }
+            }
+
+            message[key] = new SignerTypes
+            {
+                CurrentNumber = num,
+                CurrentSigners = currentSigners.ToArray(),
+                MissingSigners = missingSigners.ToArray()
+            };
+        }
+
+        return message;
     }
 
+    public ResultWrapper<PoolStatus> GetLatestPoolStatus()
+    {
+        BlockHeader? header = tree.Head?.Header;
+        if (header == null)
+        {
+            return ResultWrapper<PoolStatus>.Fail("Cannot get current block header");
+        }
+
+        XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
+        if (xdcHeader == null)
+        {
+            return ResultWrapper<PoolStatus>.Fail("Current header is not an XDC block header");
+        }
+
+        EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
+        if (epochSwitchInfo == null)
+        {
+            return ResultWrapper<PoolStatus>.Fail($"Cannot get epoch switch info for current block {header.Number}");
+        }
+
+        Address[] masternodes = epochSwitchInfo.Masternodes;
+
+        var receivedVotes = voteManager.GetReceivedVotes();
+        var receivedTimeouts = timeoutCertificateManager.GetReceivedTimeouts();
+        var receivedSyncInfo = syncInfoManager.GetReceivedSyncInfos();
+
+        PoolStatus info = new PoolStatus();
+
+        info.Timeout = CalculateSigners(receivedTimeouts, masternodes, timeout => timeout.Signer);
+        info.Vote = CalculateSigners(receivedVotes, masternodes, vote => vote.Signer);
+
+        foreach (var (name, objList) in receivedSyncInfo)
+        {
+            foreach (var syncInfo in objList)
+            {
+                (ulong round, Hash256 hash) key = syncInfo.PoolKey();
+
+                int qcSigners = syncInfo.HighestQuorumCert?.Signatures?.Length ?? 0;
+                int tcSigners = 0;
+                if (syncInfo.HighestTimeoutCert != null)
+                {
+                    tcSigners = syncInfo.HighestTimeoutCert.Signatures?.Length ?? 0;
+                }
+
+                info.SyncInfo[key] = new SyncInfoTypes
+                {
+                    Hash = key.hash,
+                    QCSigners = qcSigners,
+                    TCSigners = tcSigners
+                };
+            }
+        }
+
+        return ResultWrapper<PoolStatus>.Success(info);
+    }
     public ResultWrapper<MasternodesStatus> GetMasternodesByNumber(BlockParameter blockNumber)
     {
         BlockHeader? header;

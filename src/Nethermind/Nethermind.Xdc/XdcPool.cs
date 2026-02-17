@@ -71,6 +71,8 @@ public class XdcPool<T> where T : IXdcPoolItem
             return 0;
         }
     }
+
+    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> Items => _items;
 }
 
 public interface IXdcPoolItem

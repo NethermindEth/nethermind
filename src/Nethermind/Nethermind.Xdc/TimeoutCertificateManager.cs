@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -261,4 +262,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return _timeouts.GetCount(timeout);
     }
 
+    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Timeout>> GetReceivedTimeouts()
+    {
+        return _timeouts.Items;
+    }
 }
