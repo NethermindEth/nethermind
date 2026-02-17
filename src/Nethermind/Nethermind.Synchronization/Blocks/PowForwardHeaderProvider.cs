@@ -73,7 +73,7 @@ public class PowForwardHeaderProvider(
             IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
             if (headers is not null)
             {
-                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[1].ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[^1].ToString(BlockHeader.Format.Short)}");
                 return headers;
             }
 
@@ -172,6 +172,12 @@ public class PowForwardHeaderProvider(
             }
             catch (TimeoutException)
             {
+                syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
+                return null;
+            }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+                // Request was cancelled due to timeout in protocol handler, not because the sync was cancelled
                 syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
                 return null;
             }

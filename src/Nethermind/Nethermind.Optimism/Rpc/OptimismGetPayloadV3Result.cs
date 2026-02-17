@@ -9,7 +9,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismGetPayloadV3Result
 {
-    public OptimismGetPayloadV3Result(GetPayloadV3Result result)
+    public OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result)
     {
         ExecutionPayload = result.ExecutionPayload;
         BlockValue = result.BlockValue;

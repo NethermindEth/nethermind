@@ -39,7 +39,7 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);
-        AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
+        AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
         Transaction? GetBestTx();
@@ -53,7 +53,8 @@ namespace Nethermind.TxPool
         bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs);
-        int GetBlobCounts(byte[][] blobVersionedHashes);
+        int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
@@ -62,5 +63,11 @@ namespace Nethermind.TxPool
         public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
+
+        /// <summary>
+        /// Resets txpool state by clearing all caches (hash cache, account cache) 
+        /// and removing all pending transactions. Used for integration testing after chain reorgs.
+        /// </summary>
+        void ResetTxPoolState();
     }
 }

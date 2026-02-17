@@ -301,7 +301,7 @@ public abstract class MerkleTree : IMerkleList
     {
         if (leafIndex >= Count)
         {
-            throw new InvalidOperationException("Unpexected query for a proof for a value beyond Count");
+            throw new InvalidOperationException("Unexpected query for a proof for a value beyond Count");
         }
 
         Index index = new Index(LeafRow, leafIndex);

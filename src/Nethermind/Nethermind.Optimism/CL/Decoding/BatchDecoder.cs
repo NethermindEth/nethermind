@@ -89,12 +89,12 @@ public static class BatchDecoder
             tos[i] = new Address(reader.Take(Address.Size).Span);
         }
 
-        var datas = new ReadOnlyMemory<byte>[(int)totalTxCount];
+        var data = new ReadOnlyMemory<byte>[(int)totalTxCount];
         var types = new TxType[(int)totalTxCount];
         ulong legacyTxCnt = 0;
         for (var i = 0; i < (int)totalTxCount; ++i)
         {
-            (datas[i], types[i]) = reader.Read(TxParser.Data);
+            (data[i], types[i]) = reader.Read(TxParser.Data);
             if (types[i] == TxType.Legacy)
             {
                 legacyTxCnt++;
@@ -130,7 +130,7 @@ public static class BatchDecoder
                 YParityBits = yParityBits,
                 Signatures = signatures,
                 Tos = tos,
-                Datas = datas,
+                Data = data,
                 Types = types,
                 TotalLegacyTxCount = legacyTxCnt,
                 Nonces = nonces,

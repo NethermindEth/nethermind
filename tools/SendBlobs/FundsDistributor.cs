@@ -12,8 +12,11 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace SendBlobs;
+
 internal class FundsDistributor
 {
+    private static readonly TxDecoder TxDecoderInstance = TxDecoder.Instance;
+
     private readonly IJsonRpcClient _rpcClient;
     private readonly ulong _chainId;
     private readonly string? _keyFilePath;
@@ -36,27 +39,19 @@ internal class FundsDistributor
     /// <param name="maxPriorityFee"></param>
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
     /// <exception cref="AccountException"></exception>
-    public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
+    public async Task<IEnumerable<string>> DistributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
         if (keysToMake == 0)
             throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
 
-        string? balanceString = await _rpcClient.Post<string>("eth_getBalance", distributeFrom.Address, "latest");
-        if (balanceString is null)
-            throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
-        string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
-        if (nonceString is null)
-            throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
+        string balanceString = await _rpcClient.GetBalanceAsync(distributeFrom.Address);
+        ulong nonce = await _rpcClient.GetTransactionCountAsync(distributeFrom.Address);
+        UInt256 gasPrice = await _rpcClient.GetGasPriceAsync();
 
-        string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "0x1";
-        UInt256 gasPrice = UInt256.Parse(gasPriceRes);
-
-        string? maxPriorityFeePerGasRes;
         UInt256 maxPriorityFeePerGas = maxPriorityFee;
         if (maxPriorityFee == 0)
         {
-            maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "0x1";
-            maxPriorityFeePerGas = UInt256.Parse(maxPriorityFeePerGasRes);
+            maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
         }
 
         UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
@@ -64,9 +59,8 @@ internal class FundsDistributor
         if (balance == 0)
             throw new AccountException($"Balance on provided signer {distributeFrom.Address} is 0.");
 
-        ulong nonce = HexConvert.ToUInt64(nonceString);
-
-        UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
+        UInt256 maxFeePerGas = maxFee != 0 ? maxFee : gasPrice;
+        UInt256 approxGasFee = maxFeePerGas * GasCostOf.Transaction;
 
         //Leave 10% of the balance as buffer in case of gas spikes
         UInt256 balanceMinusBuffer = (balance * 900) / 1000;
@@ -82,9 +76,8 @@ internal class FundsDistributor
         using PrivateKeyGenerator generator = new();
         IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate());
 
-        List<string> txHash = new List<string>();
+        List<string> txHash = [];
 
-        TxDecoder txDecoder = TxDecoder.Instance;
         StreamWriter? keyWriter = null;
 
         if (!string.IsNullOrWhiteSpace(_keyFilePath))
@@ -100,26 +93,18 @@ internal class FundsDistributor
             {
                 if (maxFee == 0)
                 {
-                    gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "0x1";
-                    gasPrice = UInt256.Parse(gasPriceRes);
-
-                    maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "0x1";
-                    maxPriorityFeePerGas = UInt256.Parse(maxPriorityFeePerGasRes);
+                    gasPrice = await _rpcClient.GetGasPriceAsync();
+                    maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
                 }
 
                 Transaction tx = CreateTx(_chainId,
                                           key.Address,
-                                          maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
+                                          maxFee != 0 ? maxFee : gasPrice,
                                           nonce,
                                           maxPriorityFeePerGas,
                                           perKeyToSend);
 
-                await distributeFrom.Sign(tx);
-
-                string txRlp = Convert.ToHexStringLower(txDecoder
-                    .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
-
-                string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
+                string? result = await SignAndSendAsync(distributeFrom, tx);
                 if (result is not null)
                     txHash.Add(result);
 
@@ -147,33 +132,26 @@ internal class FundsDistributor
             : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
         ILogger log = _logManager.GetClassLogger();
-        List<string> txHashes = new List<string>();
-        TxDecoder txDecoder = TxDecoder.Instance;
-
+        List<string> txHashes = [];
         foreach (var signer in privateSigners)
         {
-            string? balanceString = await _rpcClient.Post<string>("eth_getBalance", signer.Address, "latest");
-            if (balanceString is null)
-                continue;
-            string? nonceString = await _rpcClient.Post<string>("eth_getTransactionCount", signer.Address, "latest");
-            if (nonceString is null)
-                continue;
+            string balanceString = await _rpcClient.GetBalanceAsync(signer.Address);
+            ulong nonce = await _rpcClient.GetTransactionCountAsync(signer.Address);
 
             UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
 
-            ulong nonce = HexConvert.ToUInt64(nonceString);
+            ulong nonceValue = nonce;
 
-            string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "0x1";
-            UInt256 gasPrice = UInt256.Parse(gasPriceRes);
+            UInt256 gasPrice = await _rpcClient.GetGasPriceAsync();
 
             UInt256 maxPriorityFeePerGas = maxPriorityFee;
             if (maxPriorityFee == 0)
             {
-                string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "0x1";
-                maxPriorityFeePerGas = UInt256.Parse(maxPriorityFeePerGasRes);
+                maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
             }
 
-            UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
+            UInt256 maxFeePerGas = maxFee != 0 ? maxFee : gasPrice;
+            UInt256 approxGasFee = maxFeePerGas * GasCostOf.Transaction;
 
             if (balance < approxGasFee)
             {
@@ -185,34 +163,39 @@ internal class FundsDistributor
 
             Transaction tx = CreateTx(_chainId,
                                       beneficiary,
-                                      maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
-                                      nonce,
+                                      maxFee != 0 ? maxFee : gasPrice,
+                                      nonceValue,
                                       maxPriorityFeePerGas,
                                       toSend);
-            await signer.Sign(tx);
+            string? result = await SignAndSendAsync(signer, tx);
 
-            string txRlp = Convert.ToHexStringLower(txDecoder
-                .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
-
-            string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
             if (result is not null)
+            {
                 txHashes.Add(result);
+            }
         }
         return txHashes;
     }
 
-    private static Transaction CreateTx(ulong chainId, Address beneficiary, UInt256 maxFee, ulong nonce, UInt256 maxPriorityFeePerGas, UInt256 toSend)
+    private async Task<string?> SignAndSendAsync(Signer signer, Transaction tx)
     {
-        return new()
-        {
-            Type = TxType.EIP1559,
-            ChainId = chainId,
-            Nonce = nonce,
-            GasLimit = GasCostOf.Transaction,
-            GasPrice = maxPriorityFeePerGas,
-            DecodedMaxFeePerGas = maxFee,
-            Value = toSend,
-            To = beneficiary,
-        };
+        await signer.Sign(tx);
+
+        string txRlp = Convert.ToHexStringLower(TxDecoderInstance
+            .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
+
+        return await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
     }
+
+    private static Transaction CreateTx(ulong chainId, Address beneficiary, UInt256 maxFee, ulong nonce, UInt256 maxPriorityFeePerGas, UInt256 toSend) => new()
+    {
+        Type = TxType.EIP1559,
+        ChainId = chainId,
+        Nonce = nonce,
+        GasLimit = GasCostOf.Transaction,
+        GasPrice = maxPriorityFeePerGas,
+        DecodedMaxFeePerGas = maxFee,
+        Value = toSend,
+        To = beneficiary,
+    };
 }

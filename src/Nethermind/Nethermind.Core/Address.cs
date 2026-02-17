@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -20,7 +20,7 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public class Address : IEquatable<Address>, IComparable<Address>
+    public sealed class Address : IEquatable<Address>, IComparable<Address>
     {
         public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
@@ -271,9 +271,11 @@ namespace Nethermind.Core
 
             return result;
         }
+
+        internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetArrayDataReference(Bytes));
     }
 
-    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
+    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
         public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
         private readonly Address _key = key;
@@ -288,6 +290,10 @@ namespace Nethermind.Core
         {
             return _key?.ToString() ?? "<null>";
         }
+
+        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
+
+        public bool Equals(in AddressAsKey other) => _key == other._key;
     }
 
     public ref struct AddressStructRef

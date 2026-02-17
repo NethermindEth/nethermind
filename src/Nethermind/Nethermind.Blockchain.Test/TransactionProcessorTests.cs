@@ -11,9 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -22,21 +20,20 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
 [TestFixture(true)]
 [TestFixture(false)]
 [Todo(Improve.Refactor, "Check why fixture test cases did not work")]
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class TransactionProcessorTests
 {
     private readonly bool _isEip155Enabled;
@@ -469,7 +466,7 @@ public class TransactionProcessorTests
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        estimate.Should().Be(59307);
+        estimate.Should().Be(54225);
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -477,32 +474,19 @@ public class TransactionProcessorTests
 
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
     {
+        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
-        TestContext.Out.WriteLine(tx.GasLimit);
-
-        GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
-        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-        string traceEnoughGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
-        traceEnoughGas.Should().NotContain("OutOfGas");
+        outputTracer.StatusCode.Should().Be(StatusCode.Success,
+            $"transaction should succeed at the estimate ({estimate})");
 
         outputTracer = new CallOutputTracer();
         tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
-        TestContext.Out.WriteLine(tx.GasLimit);
-
-        gethTracer = new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default);
-        _transactionProcessor.CallAndRestore(tx, blkCtx, gethTracer);
-
-        string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
-        TestContext.Out.WriteLine(traceOutOfGas);
-
         _transactionProcessor.CallAndRestore(tx, blkCtx, outputTracer);
-
-        bool failed = traceEnoughGas.Contains("failed") || traceEnoughGas.Contains("OutOfGas");
-        failed.Should().BeTrue();
+        outputTracer.StatusCode.Should().Be(StatusCode.Failure,
+            $"transaction should fail below the estimate ({tx.GasLimit})");
     }
 
     [TestCase]

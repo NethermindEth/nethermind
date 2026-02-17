@@ -11,7 +11,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 

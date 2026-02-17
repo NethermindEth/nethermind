@@ -26,8 +26,7 @@ public static class DictionaryExtensions
         /// </summary>
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => dictionary.Remove(key, out value);
 
-        public ref TValue GetOrAdd(TKey key, Func<TKey, TValue> factory,
-            out bool exists)
+        public ref TValue GetOrAdd(TKey key, Func<TKey, TValue> factory, out bool exists)
         {
             ref TValue? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, key, out exists);
 
@@ -57,30 +56,32 @@ public static class DictionaryExtensions
         }
     }
 
-    /// <summary>
-    /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,
-    /// then clears the dictionary.
-    /// </summary>
+    /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary, which must implement <see cref="IReturnable"/>.</typeparam>
-    /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
-    /// <remarks>
-    /// Use this method when you need to both return pooled objects and clear the dictionary in one operation.
-    /// </remarks>
-    public static void ResetAndClear<TKey, TValue>(this IDictionary<TKey, TValue> dictionary)
-        where TValue : class, IReturnable
+    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary) where TValue : class, IReturnable
     {
-        foreach (TValue value in dictionary.Values)
+        /// <summary>
+        /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,
+        /// then clears the dictionary.
+        /// </summary>
+        /// <remarks>
+        /// Use this method when you need to both return pooled objects and clear the dictionary in one operation.
+        /// </remarks>
+        public void ResetAndClear()
         {
-            value.Return();
+            foreach (TValue value in dictionary.Values)
+            {
+                value.Return();
+            }
+            dictionary.Clear();
         }
-        dictionary.Clear();
     }
 
     extension<TKey, TValue, TAlternateKey>(Dictionary<TKey, TValue>.AlternateLookup<TAlternateKey> dictionary)
-        where TKey : notnull
-        where TAlternateKey : notnull, allows ref struct
+        where TKey : notnull where TAlternateKey : notnull, allows ref struct
     {
-        public bool TryRemove(TAlternateKey key, [MaybeNullWhen(false)] out TValue value) => dictionary.Remove(key, out _, out value);
+        public bool TryRemove(TAlternateKey key, [MaybeNullWhen(false)] out TValue value) =>
+            dictionary.Remove(key, out _, out value);
     }
 }

@@ -72,4 +72,7 @@ public interface IMergeConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
     bool SimulateBlockProduction { get; set; }
+
+    [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`.", DefaultValue = null, HiddenFromDocs = true)]
+    int? PostBlockGcDelayMs { get; set; }
 }

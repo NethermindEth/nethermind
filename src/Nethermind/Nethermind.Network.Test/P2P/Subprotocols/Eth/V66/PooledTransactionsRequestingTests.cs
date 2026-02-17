@@ -31,9 +31,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
-using System;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
@@ -77,11 +75,10 @@ public class PooledTransactionsRequestingTests
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
-            new TxPoolConfig(),
+            new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
-
         ISyncServer syncManager = Substitute.For<ISyncServer>();
         syncManager.Head.Returns(_genesisBlock.Header);
         syncManager.Genesis.Returns(_genesisBlock.Header);
