@@ -1227,7 +1227,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
 
                 // If tracing is enabled, start an instruction trace.
-                //if (TTracingInst.IsActive)
                 if (TTracingInst.IsActive)
                     StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
 
