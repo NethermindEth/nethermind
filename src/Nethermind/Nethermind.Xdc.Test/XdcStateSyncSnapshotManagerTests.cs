@@ -37,7 +37,8 @@ internal class XdcStateSyncSnapshotManagerTests
     )
     {
         XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create(pivotNumber);
-        xdcTestBlockchain.ChangeReleaseSpec(spec => {
+        xdcTestBlockchain.ChangeReleaseSpec(spec =>
+        {
             spec.EpochLength = epochLength;
             spec.Gap = gap;
         });
