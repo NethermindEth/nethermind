@@ -29,12 +29,7 @@ namespace Nethermind.State
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
-#if ZKVM
-            // Avoid generic logger instantiation under NativeAOT/ZKVM (can trigger GVM lookup / type loader paths).
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-#else
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
-#endif
         }
 
         /// <summary>

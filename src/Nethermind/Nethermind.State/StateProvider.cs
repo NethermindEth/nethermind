@@ -56,13 +56,7 @@ namespace Nethermind.State
         public StateProvider(
             ILogManager logManager)
         {
-#if ZKVM
-            // Avoid generic interface dispatch (ILogManager.GetClassLogger<T>) under ZKVM/bflat AOT:
-            // it can trigger a GVM lookup failure at runtime.
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-#else
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-#endif
         }
 
         public void RecalculateStateRoot()
