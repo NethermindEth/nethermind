@@ -7,9 +7,6 @@ using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 using Nethermind.Xdc.TxPool;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
