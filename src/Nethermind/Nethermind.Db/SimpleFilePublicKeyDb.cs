@@ -76,7 +76,7 @@ namespace Nethermind.Db
             bool setValue = true;
             if (_cacheSpan.TryGetValue(key, out var existingValue))
             {
-                if (!Bytes.AreEqual(existingValue, value))
+                if (Bytes.AreEqual(existingValue, value))
                 {
                     setValue = false;
                 }
