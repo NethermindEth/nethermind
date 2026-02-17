@@ -19,7 +19,7 @@ public class TaikoTransactionProcessor(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
-    EthereumVirtualMachine virtualMachine,
+    IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
     ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)

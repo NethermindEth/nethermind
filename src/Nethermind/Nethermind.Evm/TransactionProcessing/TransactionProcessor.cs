@@ -23,15 +23,14 @@ using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public sealed class TransactionProcessor<TVirtualMachine, TGasPolicy>(
+    public sealed class TransactionProcessor<TGasPolicy>(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
-        TVirtualMachine? virtualMachine,
+        IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : TransactionProcessorBase<TVirtualMachine, TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
-        where TVirtualMachine : IVirtualMachine<TGasPolicy>
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
 
     /// <summary>
@@ -41,7 +40,7 @@ namespace Nethermind.Evm.TransactionProcessing
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
-        EthereumVirtualMachine? virtualMachine,
+        IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
         : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
@@ -55,17 +54,16 @@ namespace Nethermind.Evm.TransactionProcessing
             BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
     }
 
-    public abstract class TransactionProcessorBase<TVirtualMachine, TGasPolicy> : ITransactionProcessor
-        where TVirtualMachine : IVirtualMachine<TGasPolicy>
+    public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         protected EthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
         protected IWorldState WorldState { get; }
-        protected TVirtualMachine VirtualMachine { get; }
+        protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
-        private SystemTransactionProcessor<TVirtualMachine, TGasPolicy>? _systemTransactionProcessor;
+        private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
 
@@ -107,7 +105,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
             ISpecProvider? specProvider,
             IWorldState? worldState,
-            TVirtualMachine? virtualMachine,
+            IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager)
         {
@@ -164,7 +162,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor<TVirtualMachine, TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
@@ -706,7 +704,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
-                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+                substate = !TTracingInst.IsActive
+                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM for ZK
+                    : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
+
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.Gas;
 
@@ -961,10 +962,10 @@ namespace Nethermind.Evm.TransactionProcessing
         ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
-        EthereumVirtualMachine? virtualMachine,
+        IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : TransactionProcessorBase<EthereumVirtualMachine, EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {

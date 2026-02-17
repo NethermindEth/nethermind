@@ -324,6 +324,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
+        ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
+
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ZeroPaddedSpan previousCallOutput)
     {
         _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
