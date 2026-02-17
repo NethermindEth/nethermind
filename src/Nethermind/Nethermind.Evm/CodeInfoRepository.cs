@@ -162,7 +162,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount);
+                _caches[i] = new ClockCache<ValueHash256, ICodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, comparer: ValueHash256.EqualityComparer);
             }
         }
 
