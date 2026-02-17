@@ -254,13 +254,13 @@ namespace Nethermind.Synchronization.SnapSync
         {
             int respLength = response.Count;
             IScopedTrieStore stateStore = _stateTrieStore;
-            for (int reqi = 0; reqi < request.Paths.Count; reqi++)
+            for (int reqIndex = 0; reqIndex < request.Paths.Count; reqIndex++)
             {
-                var requestedPath = request.Paths[reqi];
+                var requestedPath = request.Paths[reqIndex];
 
-                if (reqi < respLength)
+                if (reqIndex < respLength)
                 {
-                    byte[] nodeData = response[reqi];
+                    byte[] nodeData = response[reqIndex];
 
                     if (nodeData.Length == 0)
                     {

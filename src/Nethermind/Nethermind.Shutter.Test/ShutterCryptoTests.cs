@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Shutter.Test;
@@ -18,6 +17,7 @@ using GT = Bls.PT;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterCryptoTests
 {
     [Test]

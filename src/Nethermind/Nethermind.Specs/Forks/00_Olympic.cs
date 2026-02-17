@@ -19,7 +19,7 @@ namespace Nethermind.Specs.Forks
             MaxCodeSize = long.MaxValue;
             MinGasLimit = 5000;
             GasLimitBoundDivisor = 0x0400;
-            BlockReward = UInt256.Parse("5000000000000000000");
+            BlockReward = new UInt256(5000000000000000000ul);
             DifficultyBoundDivisor = 0x0800;
             IsEip3607Enabled = true;
             MaximumUncleCount = 2;

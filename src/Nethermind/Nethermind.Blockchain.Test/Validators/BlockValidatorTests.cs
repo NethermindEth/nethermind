@@ -18,6 +18,8 @@ using FluentAssertions;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockValidatorTests
 {
     private static BlockValidator _blockValidator = null!;
@@ -200,6 +202,44 @@ public class BlockValidatorTests
             processedBlock, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidStateRoot"));
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_ReceiptCountMismatch_DoesNotThrow()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(2, specProvider)
+            .TestObject;
+
+        Assert.DoesNotThrow(() => sut.ValidateProcessedBlock(
+            processedBlock,
+            [],
+            suggestedBlock));
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(3, specProvider)
+            .TestObject;
+
+        bool result = sut.ValidateProcessedBlock(
+            processedBlock,
+            [Build.A.Receipt.TestObject],
+            suggestedBlock);
+
+        Assert.That(result, Is.False);
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()

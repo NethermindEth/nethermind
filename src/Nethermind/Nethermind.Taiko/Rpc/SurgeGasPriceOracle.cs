@@ -110,9 +110,16 @@ public class SurgeGasPriceOracle : GasPriceOracle
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
 
         // Adjust the gas price estimate with the config values.
-        UInt256 adjustedGasPriceEstimate = gasPriceEstimate + gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
-        adjustedGasPriceEstimate = adjustedGasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
-
+        UInt256 adjustedGasPriceEstimate;
+        if (_surgeConfig.SharingPercentage == 0)
+        {
+            adjustedGasPriceEstimate = default;
+        }
+        else
+        {
+            adjustedGasPriceEstimate = gasPriceEstimate + gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
+            adjustedGasPriceEstimate = adjustedGasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
+        }
         // Update the cache and timestamp
         _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
         _lastGasPriceCalculation = DateTime.UtcNow;

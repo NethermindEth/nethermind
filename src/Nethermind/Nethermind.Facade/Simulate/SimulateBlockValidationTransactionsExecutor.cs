@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -37,7 +36,7 @@ public class SimulateBlockValidationTransactionsExecutor(
         long startingGasLeft = simulateState.TotalGasLeft;
         if (!simulateState.Validate)
         {
-            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
         var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);

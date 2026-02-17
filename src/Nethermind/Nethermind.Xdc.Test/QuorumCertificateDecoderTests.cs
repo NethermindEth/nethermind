@@ -9,6 +9,8 @@ using NUnit.Framework;
 using System.Collections;
 
 namespace Nethermind.Xdc.Test;
+
+[Parallelizable(ParallelScope.All)]
 internal class QuorumCertificateDecoderTests
 {
 

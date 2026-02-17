@@ -18,6 +18,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -211,6 +212,11 @@ namespace Nethermind.Serialization.Rlp
                 result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
             }
 
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                rlpStream.Check(checkPosition);
+            }
+
             return result;
         }
 
@@ -222,7 +228,7 @@ namespace Nethermind.Serialization.Rlp
                 : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
             int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
@@ -231,6 +237,11 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < length; i++)
             {
                 result.Add(rlpDecoder.Decode(rlpStream, rlpBehaviors));
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                rlpStream.Check(checkPosition);
             }
 
             return result;
@@ -317,8 +328,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is Rlp rlp)
             {
-                RlpStream stream = new(LengthOfSequence(rlp.Length));
-                return new(stream.Data.ToArray());
+                return rlp;
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
@@ -1535,13 +1545,16 @@ namespace Nethermind.Serialization.Rlp
                     return [];
                 }
 
-                int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+                int checkPosition = Position + length;
+                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
                 byte[][] result = new byte[itemsCount][];
 
                 for (int i = 0; i < itemsCount; i++)
                 {
                     result[i] = DecodeByteArray();
                 }
+
+                Check(checkPosition);
 
                 return result;
             }
@@ -1596,6 +1609,11 @@ namespace Nethermind.Serialization.Rlp
                     {
                         result[i] = decoder.Decode(ref this);
                     }
+                }
+
+                if (checkPositions)
+                {
+                    Check(positionCheck);
                 }
 
                 return result;
@@ -1836,21 +1854,27 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
+        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
+
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
             if (count > bytesLeft || count > l.Limit)
+            {
                 ThrowCountOverLimit(count, bytesLeft, l);
+            }
         }
 
         [DoesNotReturn]
         [StackTraceHidden]
         private static void ThrowCountOverLimit(int count, int bytesLeft, RlpLimit limit)
         {
-            throw new RlpLimitException(string.IsNullOrEmpty(limit.CollectionExpression)
+            string message = string.IsNullOrEmpty(limit.CollectionExpression)
                 ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
-                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left");
+                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR: {message}; {new StackTrace()}");
+            throw new RlpLimitException(message);
         }
     }
 

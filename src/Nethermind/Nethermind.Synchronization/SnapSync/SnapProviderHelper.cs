@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
             List<ValueHash256> codeHashes = new();
             bool hasExtraStorage = false;
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(accounts.Count);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -78,13 +78,10 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                var account_ = account.Account;
-                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
-                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
-                if (account is not null)
-                {
-                    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
-                }
+                Account accountValue = account.Account;
+                Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
+                Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
             }
 
             tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
@@ -97,7 +94,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (hasExtraStorage)
             {
-                // The server will always give one node extra after limitpath if it can fit in the response.
+                // The server will always give one node extra after the limit path if it can fit in the response.
                 // When we have extra storage, the extra storage must not be re-stored as it may have already been set
                 // by another top level partition. If the sync pivot moved and the storage was modified, it must not be saved
                 // here along with updated ancestor so that healing can detect that the storage need to be healed.
@@ -156,7 +153,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(slots.Count);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
             for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
@@ -172,9 +169,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
-            // If this is not true, StorageRange request should be extended with a lock object.
-            // That lock object should be shared between all other StorageRange requests for same account.
+            // This will work if all StorageRange requests share the same AccountWithPath object, which seems to be the case.
+            // If this is not true, the StorageRange request should be extended with a lock object.
+            // That lock object should be shared between all other StorageRange requests for the same account.
             lock (account.Account)
             {
                 StitchBoundaries(sortedBoundaryList, tree.TrieStore);
@@ -201,7 +198,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             ArgumentNullException.ThrowIfNull(tree);
 
-            ValueHash256 effectiveStartingHAsh = startingHash ?? ValueKeccak.Zero;
+            ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
             List<(TrieNode, TreePath)> sortedBoundaryList = new();
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
@@ -222,7 +219,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
+            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHash.Bytes);
             TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
             TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
 

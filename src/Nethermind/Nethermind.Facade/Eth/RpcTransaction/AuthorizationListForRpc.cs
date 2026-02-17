@@ -19,8 +19,10 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
 {
     private readonly IEnumerable<RpcAuthTuple> _tuples;
 
-    [JsonConstructor]
-    public AuthorizationListForRpc() { }
+    public AuthorizationListForRpc()
+    {
+        _tuples = Array.Empty<RpcAuthTuple>();
+    }
 
     private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples)
     {
@@ -36,7 +38,6 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         public UInt256 S { get; set; }
         public UInt256 R { get; set; }
 
-        [JsonConstructor]
         public RpcAuthTuple() { }
 
         public RpcAuthTuple(UInt256 chainId, ulong nonce, Address address, ulong yParity, UInt256 s, UInt256 r)
@@ -79,7 +80,7 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         return GetEnumerator();
     }
 
-    private class JsonConverter : JsonConverter<AuthorizationListForRpc>
+    public class JsonConverter : JsonConverter<AuthorizationListForRpc>
     {
         public override AuthorizationListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

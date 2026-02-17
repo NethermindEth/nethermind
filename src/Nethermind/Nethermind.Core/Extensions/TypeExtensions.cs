@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Extensions;
 
@@ -22,9 +23,16 @@ public static class TypeExtensions
 
         foreach (Type implementation in implementations)
         {
-            List<Type> interfaces = implementation.GetInterfaces().ToList();
+            Type[] allInterfaces = implementation.GetInterfaces();
+            using ArrayPoolListRef<Type> interfaces = new(allInterfaces.Length);
 
-            interfaces.RemoveAll(i => baseInterfaces.Contains(i));
+            foreach (Type iface in allInterfaces)
+            {
+                if (!baseInterfaces.Contains(iface))
+                {
+                    interfaces.Add(iface);
+                }
+            }
 
             if (interfaces.Contains(interfaceType))
             {
@@ -35,18 +43,17 @@ public static class TypeExtensions
         throw new InvalidOperationException($"Couldn't find direct implementation of {interfaceType} interface");
     }
 
-    private static readonly HashSet<Type> _valueTupleTypes = new HashSet<Type>(
-        new Type[] {
-            typeof(ValueTuple<>),
-            typeof(ValueTuple<,>),
-            typeof(ValueTuple<,,>),
-            typeof(ValueTuple<,,,>),
-            typeof(ValueTuple<,,,,>),
-            typeof(ValueTuple<,,,,,>),
-            typeof(ValueTuple<,,,,,,>),
-            typeof(ValueTuple<,,,,,,,>)
-        }
-    );
+    private static readonly HashSet<Type> _valueTupleTypes =
+    [
+        typeof(ValueTuple<>),
+        typeof(ValueTuple<,>),
+        typeof(ValueTuple<,,>),
+        typeof(ValueTuple<,,,>),
+        typeof(ValueTuple<,,,,>),
+        typeof(ValueTuple<,,,,,>),
+        typeof(ValueTuple<,,,,,,>),
+        typeof(ValueTuple<,,,,,,,>)
+    ];
 
     public static bool IsValueTuple(this Type type) =>
         type.IsGenericType && _valueTupleTypes.Contains(type.GetGenericTypeDefinition());
@@ -54,8 +61,7 @@ public static class TypeExtensions
     public static bool CanBeAssignedNull(this Type type) =>
         !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 
-    public static bool CannotBeAssignedNull(this Type type) =>
-        type.IsValueType && Nullable.GetUnderlyingType(type) is null;
+    public static bool CannotBeAssignedNull(this Type type) => !CanBeAssignedNull(type);
 
     /// <summary>
     /// Returns the type name. If this is a generic type, appends

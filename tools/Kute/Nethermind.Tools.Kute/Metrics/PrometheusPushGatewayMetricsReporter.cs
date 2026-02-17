@@ -97,17 +97,23 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        _batchDuration
-            .WithLabels(batch.Id)
-            .Observe(elapsed.TotalSeconds);
+        if (batch.Id is not null)
+        {
+            _batchDuration
+                .WithLabels(batch.Id)
+                .Observe(elapsed.TotalSeconds);
+        }
         return Task.CompletedTask;
     }
 
     public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
-        _singleDuration
-            .WithLabels(single.Id, single.MethodName)
-            .Observe(elapsed.TotalSeconds);
+        if (single.Id is not null && single.MethodName is not null)
+        {
+            _singleDuration
+                .WithLabels(single.Id, single.MethodName)
+                .Observe(elapsed.TotalSeconds);
+        }
         return Task.CompletedTask;
     }
 
@@ -119,7 +125,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     private static string GetMetricName(string name)
     {
-        var lowerName = name.ToLower();
+        var lowerName = name.ToLowerInvariant();
         var sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
         return $"{JobName}_{sanitizedName}";
     }

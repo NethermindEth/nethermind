@@ -27,6 +27,8 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
         private ILogger _logger;
@@ -753,16 +755,22 @@ namespace Nethermind.Trie.Test
                     ? No.Pruning
                     : Prune.WhenCacheReaches(dirtyNodeSize);
 
-                return new TrieStore(
+                IPruningConfig pruningConfig = new PruningConfig()
+                {
+                    TrackPastKeys = TrackPastKeys,
+                    PruningBoundary = LookupLimit,
+                };
+                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+                TrieStore trieStore = new TrieStore(
                     new NodeStorage(new MemDb()),
                     pruneStrategy,
                     Persist.EveryNBlock(PersistEveryN),
-                    new PruningConfig()
-                    {
-                        TrackPastKeys = TrackPastKeys,
-                        PruningBoundary = LookupLimit,
-                    },
+                    finalizedStateProvider,
+                    pruningConfig,
                     LimboLogs.Instance);
+                finalizedStateProvider.TrieStore = trieStore;
+
+                return trieStore;
             }
             public override string ToString()
             {
@@ -1075,6 +1083,8 @@ namespace Nethermind.Trie.Test
         }
 
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
+        [Retry(3)]
+        [NonParallelizable]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
                 int accountsCount,
@@ -1113,7 +1123,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    accounts[i] = TestItem.GenerateRandomAccount();
+                    accounts[i] = TestItem.GenerateRandomAccount(_random);
                 }
 
                 addresses[i] = TestItem.GetRandomAddress(_random);
@@ -1229,13 +1239,17 @@ namespace Nethermind.Trie.Test
             int itemCount = 1024;
             int repetition = 100;
 
+            PruningConfig pruningConfig = new PruningConfig();
+            TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             using TrieStore trieStore = new TrieStore(
                 new NodeStorage(new MemDb()),
                 new TestPruningStrategy(shouldPrune: true),
                 Persist.EveryBlock,
-                new PruningConfig(),
+                finalizedStateProvider,
+                pruningConfig,
                 LimboLogs.Instance
             );
+            finalizedStateProvider.TrieStore = trieStore;
 
             PatriciaTree tree = new PatriciaTree(trieStore, LimboLogs.Instance);
 

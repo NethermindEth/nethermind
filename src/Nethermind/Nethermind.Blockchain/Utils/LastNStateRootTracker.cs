@@ -11,8 +11,8 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Utils;
 
-// TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager store more than 128 blocks
-// of state, that would be out of spec for snap and it would fail hive test.
+// TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager stores more blocks
+// of state than configured, that would require updating the snap serving configuration (ISyncConfig.SnapServingMaxDepth).
 public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
     private readonly IBlockTree _blockTree;

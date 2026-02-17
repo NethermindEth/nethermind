@@ -6,11 +6,6 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <PropertyGroup Label="DotnetTest">
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
-  </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="NUnit" />
@@ -21,9 +16,9 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
 
-  <!-- Must be removed when https://youtrack.jetbrains.com/issue/RSRP-498837 is fixed -->
+  <!-- See https://youtrack.jetbrains.com/issue/RSRP-498837 -->
   <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true' AND $(BuildingInsideVisualStudio) != 'true'">
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
-  
+
 </Project>

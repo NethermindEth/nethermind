@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -240,6 +240,19 @@ namespace Nethermind.Core.Test.Caching
             cache.Delete(_addresses[0]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(null);
             cache.Delete(_addresses[0]).Should().BeFalse();
+        }
+
+        [Test]
+        public void Delete_returns_value()
+        {
+            Cache cache = Create();
+            cache.Set(_addresses[0], _accounts[0]);
+
+            cache.Delete(_addresses[0], out Account? value).Should().BeTrue();
+            value.Should().Be(_accounts[0]);
+
+            cache.Delete(_addresses[0], out Account? noValue).Should().BeFalse();
+            noValue.Should().BeNull();
         }
 
         [Test]

@@ -53,10 +53,7 @@ namespace Nethermind.Core.Caching
                 return value;
             }
 
-#pragma warning disable 8603
-            // fixed C# 9
-            return default;
-#pragma warning restore 8603
+            return default!;
         }
 
         public bool TryGet(TKey key, out TValue value)
@@ -70,10 +67,7 @@ namespace Nethermind.Core.Caching
                 return true;
             }
 
-#pragma warning disable 8601
-            // fixed C# 9
-            value = default;
-#pragma warning restore 8601
+            value = default!;
             return false;
         }
 

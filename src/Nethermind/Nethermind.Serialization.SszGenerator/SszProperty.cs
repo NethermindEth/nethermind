@@ -39,9 +39,9 @@ class SszProperty
             return array.ElementType!;
         }
 
-        INamedTypeSymbol? ienumerableOfT = compilation.GetTypeByMetadataName("System.Collections.Generic.IList`1");
-        INamedTypeSymbol? enumerable = typeSymbol.AllInterfaces.FirstOrDefault(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, ienumerableOfT));
-        if (ienumerableOfT != null && enumerable is not null)
+        INamedTypeSymbol? iListOfT = compilation.GetTypeByMetadataName("System.Collections.Generic.IList`1");
+        INamedTypeSymbol? enumerable = typeSymbol.AllInterfaces.FirstOrDefault(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, iListOfT));
+        if (iListOfT != null && enumerable is not null)
         {
             return enumerable.TypeArguments.First();
         }
@@ -81,16 +81,13 @@ class SszProperty
             {
                 return 4;
             }
-            try
+
+            return Kind switch
             {
-                return Kind switch
-                {
-                    Kind.Vector => Length!.Value * Type.StaticLength,
-                    Kind.BitVector => (Length!.Value + 7) / 8,
-                    _ => Type.StaticLength,
-                };
-            }
-            catch { throw; }
+                Kind.Vector => Length!.Value * Type.StaticLength,
+                Kind.BitVector => (Length!.Value + 7) / 8,
+                _ => Type.StaticLength,
+            };
         }
     }
 

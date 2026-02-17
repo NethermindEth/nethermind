@@ -2,88 +2,84 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
-public static class BlsExtensions
+internal static class BlsExtensions
 {
     // decodes and checks point is on curve
-    public static bool TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
+    public static Result TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != BlsConst.LenG1)
         {
-            return false;
+            return Errors.InvalidFieldLength;
         }
 
-        if (!ValidRawFp(raw[..BlsConst.LenFp]) || !ValidRawFp(raw[BlsConst.LenFp..]))
+        Result result = ValidRawFp(raw[..BlsConst.LenFp]) &&
+                        ValidRawFp(raw[BlsConst.LenFp..]);
+
+        if (result)
         {
-            return false;
+            // set to infinity point by default
+            p.Zero();
+
+            ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
+            ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..];
+
+            bool isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
+            if (isInfinity)
+            {
+                return Result.Success;
+            }
+
+            p.Decode(fp0, fp1);
+            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
         }
 
-        // set to infinity point by default
-        p.Zero();
-
-        ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
-        ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..];
-
-        bool isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
-        if (isInfinity)
-        {
-            return true;
-        }
-
-        p.Decode(fp0, fp1);
-        if (!p.OnCurve())
-        {
-            return false;
-        }
-
-        return true;
+        return result;
     }
 
+
     // decodes and checks point is on curve
-    public static bool TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
+    public static Result TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != BlsConst.LenG2)
         {
-            return false;
+            return Errors.InvalidFieldLength;
         }
 
-        if (!ValidRawFp(raw[..BlsConst.LenFp]) ||
-            !ValidRawFp(raw[BlsConst.LenFp..(2 * BlsConst.LenFp)]) ||
-            !ValidRawFp(raw[(2 * BlsConst.LenFp)..(3 * BlsConst.LenFp)]) ||
-            !ValidRawFp(raw[(3 * BlsConst.LenFp)..]))
+        Result result = ValidRawFp(raw[..BlsConst.LenFp]) &&
+                        ValidRawFp(raw[BlsConst.LenFp..(2 * BlsConst.LenFp)]) &&
+                        ValidRawFp(raw[(2 * BlsConst.LenFp)..(3 * BlsConst.LenFp)]) &&
+                        ValidRawFp(raw[(3 * BlsConst.LenFp)..]);
+        if (result)
         {
-            return false;
+            // set to infinity point by default
+            p.Zero();
+
+            ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
+            ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..(2 * BlsConst.LenFp)];
+            ReadOnlySpan<byte> fp2 = raw[(2 * BlsConst.LenFp + BlsConst.LenFpPad)..(3 * BlsConst.LenFp)];
+            ReadOnlySpan<byte> fp3 = raw[(3 * BlsConst.LenFp + BlsConst.LenFpPad)..];
+
+            bool isInfinity = !fp0.ContainsAnyExcept((byte)0)
+                              && !fp1.ContainsAnyExcept((byte)0)
+                              && !fp2.ContainsAnyExcept((byte)0)
+                              && !fp3.ContainsAnyExcept((byte)0);
+
+            if (isInfinity)
+            {
+                return Result.Success;
+            }
+
+            p.Decode(fp0, fp1, fp2, fp3);
+            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
         }
 
-        // set to infinity point by default
-        p.Zero();
-
-        ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
-        ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..(2 * BlsConst.LenFp)];
-        ReadOnlySpan<byte> fp2 = raw[(2 * BlsConst.LenFp + BlsConst.LenFpPad)..(3 * BlsConst.LenFp)];
-        ReadOnlySpan<byte> fp3 = raw[(3 * BlsConst.LenFp + BlsConst.LenFpPad)..];
-
-        bool isInfinity = !fp0.ContainsAnyExcept((byte)0)
-            && !fp1.ContainsAnyExcept((byte)0)
-            && !fp2.ContainsAnyExcept((byte)0)
-            && !fp3.ContainsAnyExcept((byte)0);
-
-        if (isInfinity)
-        {
-            return true;
-        }
-
-        p.Decode(fp0, fp1, fp2, fp3);
-        if (!p.OnCurve())
-        {
-            return false;
-        }
-
-        return true;
+        return result;
     }
 
     public static byte[] EncodeRaw(this G1 p)
@@ -118,42 +114,50 @@ public static class BlsExtensions
         return raw;
     }
 
-    public static bool ValidRawFp(ReadOnlySpan<byte> fp)
+    public static Result ValidRawFp(ReadOnlySpan<byte> fp)
     {
         if (fp.Length != BlsConst.LenFp)
         {
-            return false;
+            return Errors.InvalidFieldLength;
         }
 
         // check that padding bytes are zeroes
         if (fp[..BlsConst.LenFpPad].ContainsAnyExcept((byte)0))
         {
-            return false;
+            return Errors.InvalidFieldElementTopBytes;
         }
 
         // check that fp < base field order
-        return fp[BlsConst.LenFpPad..].SequenceCompareTo(BlsConst.BaseFieldOrder.AsSpan()) < 0;
+        return fp[BlsConst.LenFpPad..].SequenceCompareTo(BlsConst.BaseFieldOrder.AsSpan()) < 0
+            ? Result.Success
+            : Errors.G1PointSubgroup;
     }
 
-    public static bool TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
+    public static Result TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
         => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckSubgroupG1);
 
-    public static bool TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
+    public static Result TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
         => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckSubgroupG2);
 
-    private static bool DecodeAndCheckSubgroupG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
+    private static Result DecodeAndCheckSubgroupG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
         G1 p = new(pointBuffer.Span[(dest * G1.Sz)..]);
-        return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
+        Result result = p.TryDecodeRaw(rawPoint.Span);
+        return result
+            ? BlsConst.DisableSubgroupChecks || p.InGroup() ? Result.Success : Errors.G1PointSubgroup
+            : result;
     }
 
-    private static bool DecodeAndCheckSubgroupG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
+    private static Result DecodeAndCheckSubgroupG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
         G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
-        return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
+        Result result = p.TryDecodeRaw(rawPoint.Span);
+        return result
+            ? BlsConst.DisableSubgroupChecks || p.InGroup() ? Result.Success : Errors.G1PointSubgroup
+            : result;
     }
 
-    private static bool TryDecodePointToBuffer(
+    private static Result TryDecodePointToBuffer(
         ReadOnlyMemory<byte> inputData,
         Memory<long> pointBuffer,
         Memory<byte> scalarBuffer,
@@ -161,26 +165,25 @@ public static class BlsExtensions
         int index,
         int pointLen,
         int itemSize,
-        Func<ReadOnlyMemory<byte>, Memory<long>, int, bool> decodeAndCheckPoint)
+        Func<ReadOnlyMemory<byte>, Memory<long>, int, Result> decodeAndCheckPoint)
     {
         // skip points at infinity
         if (dest == -1)
         {
-            return true;
+            return Result.Success;
         }
 
         int offset = index * itemSize;
         ReadOnlyMemory<byte> rawPoint = inputData[offset..(offset + pointLen)];
         ReadOnlyMemory<byte> reversedScalar = inputData[(offset + pointLen)..(offset + itemSize)];
 
-        if (!decodeAndCheckPoint(rawPoint, pointBuffer, dest))
-        {
-            return false;
-        }
+        Result result = decodeAndCheckPoint(rawPoint, pointBuffer, dest);
+        if (!result) return result;
 
         int destOffset = dest * 32;
         reversedScalar.CopyTo(scalarBuffer[destOffset..]);
         scalarBuffer[destOffset..(destOffset + 32)].Span.Reverse();
-        return true;
+        return Result.Success;
+
     }
 }

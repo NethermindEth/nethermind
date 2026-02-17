@@ -40,16 +40,19 @@ namespace Nethermind.Synchronization.FastSync
         private decimal _lastSyncProgress;
         private uint _maxStorageRightness; // for priority calculation (prefer left)
         private uint _maxRightness; // for priority calculation (prefer left)
+        private readonly bool _isSnapSync;
 
         public byte MaxStorageLevel { get; set; }
         public byte MaxStateLevel { get; set; }
 
-        public PendingSyncItems()
+        public PendingSyncItems(bool isSnapSync)
         {
             for (int i = 0; i < _allStacks.Length; i++)
             {
                 _allStacks[i] = new ConcurrentStack<StateSyncItem>();
             }
+
+            _isSnapSync = isSnapSync;
         }
 
         public void PushToSelectedStream(StateSyncItem stateSyncItem, decimal progress)
@@ -158,10 +161,23 @@ namespace Nethermind.Synchronization.FastSync
 
         public List<StateSyncItem> TakeBatch(int maxSize)
         {
-            // the limitation is to prevent an early explosion of request sizes with low level nodes
-            // the moment we find the first leaf we will know something more about the tree structure and hence
-            // prevent lot of Stream2 entries to stay in memory for a long time
-            int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
+            int length;
+
+            if (!_isSnapSync)
+            {
+                // the limitation is to prevent an early explosion of request sizes with low level nodes
+                // the moment we find the first leaf we will know something more about the tree structure and hence
+                // prevent lot of Stream2 entries to stay in memory for a long time
+                length = MaxStateLevel == 64
+                    ? maxSize
+                    : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
+            }
+            else
+            {
+                // With snap sync, we want the top-level nodes. Low-level nodes are mostly snap-synced.
+                length = maxSize;
+            }
+
             List<StateSyncItem> requestItems = new(length);
 
             // Codes have priority over State Nodes

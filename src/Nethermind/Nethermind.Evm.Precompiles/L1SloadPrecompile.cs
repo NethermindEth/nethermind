@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -40,38 +36,25 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.FixedGasCost;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        inputData.Length != L1PrecompileConstants.ExpectedInputLength ? 0L : L1PrecompileConstants.PerLoadGasCost;
+
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
-        {
-            return 0L;
-        }
+        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength) return Errors.InvalidInputLength;
 
-        return L1PrecompileConstants.PerLoadGasCost;
-    }
-
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
-
-        Address contractAddress = new Address(inputData.Span[..L1PrecompileConstants.AddressBytes]);
-        UInt256 storageKey = new UInt256(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
-        UInt256 blockNumber = new UInt256(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
+        Address contractAddress = new(inputData.Span[..L1PrecompileConstants.AddressBytes]);
+        UInt256 storageKey = new(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
+        UInt256 blockNumber = new(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
 
         UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
-        if (storageValue == null)
-        {
-            return IPrecompile.Failure; // L1 storage access failed
-        }
+        if (storageValue is null) return Errors.L1StorageAccessFailed;
 
         // Convert storage value to output bytes
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
-        return (output, true);
+        return output;
     }
 
     /// <summary>

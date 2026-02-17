@@ -7,11 +7,9 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -24,61 +22,51 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
         IReceiptConfig receiptConfig,
-        IBlocksConfig blocksConfig,
         IInitConfig initConfig,
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
-        IPrecompileProvider precompileProvider,
         ILogManager logManager)
     {
 
-        IWorldState mainWorldState = worldStateManager.GlobalWorldState;
+        IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
+        if (logManager.GetClassLogger<WorldStateScopeOperationLogger>().IsTrace)
+        {
+            worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
+        }
+
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
                 // These are main block processing specific
-                .AddSingleton<IWorldState>(mainWorldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddModule(blockValidationModules)
-                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
-                    blockTree,
-                    branchProcessor,
-                    compositeBlockPreprocessorStep,
-                    worldStateManager.GlobalStateReader,
-                    logManager,
-                    new BlockchainProcessor.Options
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                    new BlockchainProcessor(
+                        blockTree,
+                        branchProcessor,
+                        compositeBlockPreprocessorStep,
+                        worldStateManager.GlobalStateReader,
+                        logManager,
+                        new BlockchainProcessor.Options
+                        {
+                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                            DumpOptions = initConfig.AutoDump
+                        },
+                        processingStats)
                     {
-                        StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                        DumpOptions = initConfig.AutoDump
+                        IsMainProcessor = true // Manual construction because of this flag
                     })
-                {
-                    IsMainProcessor = true // Manual construction because of this flag
-                })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.
                 .AddScoped<Components>()
                 ;
-
-            if (blocksConfig.PreWarmStateOnBlockProcessing)
-            {
-                builder
-                    .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
-                    .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
-                    {
-                        PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
-                        // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                        return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository, preBlockCaches?.PrecompileCache);
-                    })
-                    ;
-            }
         });
 
         _components = innerScope.Resolve<Components>();

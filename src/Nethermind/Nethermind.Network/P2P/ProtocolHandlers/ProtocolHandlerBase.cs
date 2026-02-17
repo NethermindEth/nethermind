@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,7 +16,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -90,6 +89,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
                 if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
+                if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
+
                 return result;
             }
             catch (RlpLimitException e)
@@ -171,20 +172,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void ReportIn(string messageInfo, int size)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {messageInfo}");
+                Logger.Trace($"IN {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
-            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
-            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
-            BackgroundTaskScheduler.ScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {

@@ -30,6 +30,7 @@ public sealed class SimulateTxTracer : TxTracer
     private readonly ulong _txIndex;
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
+    private readonly bool _isTracingTransfers;
 
     public SimulateTxTracer(bool isTracingTransfers, Transaction tx, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong currentBlockTimestamp, ulong txIndex)
@@ -40,9 +41,10 @@ public sealed class SimulateTxTracer : TxTracer
         _currentBlockHash = currentBlockHash;
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
+        _isTracingTransfers = isTracingTransfers;
         IsTracingReceipt = true;
         IsTracingLogs = true;
-        IsTracingActions = isTracingTransfers;
+        IsTracingActions = true;
         _logs = new();
     }
 
@@ -50,7 +52,9 @@ public sealed class SimulateTxTracer : TxTracer
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
+        if (!_isTracingTransfers) return;
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        if (callType == ExecutionType.DELEGATECALL) return;
         if (value > UInt256.Zero)
         {
             var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, AbiTransferSignature, value);
@@ -86,7 +90,7 @@ public sealed class SimulateTxTracer : TxTracer
                 Address = entry.Address,
                 Topics = entry.Topics,
                 Data = entry.Data,
-                LogIndex = (ulong)i,
+                LogIndex = _txIndex + (ulong)i,
                 TransactionHash = _tx.Hash!,
                 TransactionIndex = _txIndex,
                 BlockHash = _currentBlockHash,
@@ -103,10 +107,20 @@ public sealed class SimulateTxTracer : TxTracer
             GasUsed = (ulong)gasSpent.SpentGas,
             Error = new Error
             {
-                Message = error
+                Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
+                EvmException = _exceptionType,
+                Data = output
             },
-            ReturnData = output,
+            ReturnData = [],
             Status = StatusCode.Failure
         };
+    }
+
+    private EvmExceptionType _exceptionType = EvmExceptionType.None;
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        _exceptionType = evmExceptionType;
     }
 }

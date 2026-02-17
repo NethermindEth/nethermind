@@ -5,14 +5,19 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class KeccakDecoder : IRlpValueDecoder<Hash256>
+    public sealed class KeccakDecoder : RlpValueDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
 
-        public Hash256? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
+        protected override Hash256? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 
-        public static Rlp Encode(Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
+        protected override Hash256? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => rlpStream.DecodeKeccak();
 
-        public int GetLength(Hash256 item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
+        public override int GetLength(Hash256 item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
+
+        public override void Encode(RlpStream stream, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            stream.Encode(item);
+        }
     }
 }

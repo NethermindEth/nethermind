@@ -666,7 +666,7 @@ public class SyncServerTests
         int count = 0;
         remoteServer
             .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
-            .Do(_ => count++);
+            .Do(_ => Interlocked.Increment(ref count));
         PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
             .Select(_ => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
             .ToArray();
@@ -775,6 +775,14 @@ public class SyncServerTests
 
         stateDb.KeyExists(nodeKey).Should().BeFalse();
         ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
+    }
+
+    [Test]
+    public void Correctly_clips_lowestBlock()
+    {
+        Context ctx = new();
+        ctx.BlockTree.GetLowestBlock().Returns(5);
+        ctx.SyncServer.LowestBlock.Should().Be(0);
     }
 
     private class Context

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
@@ -16,6 +17,8 @@ namespace Nethermind.Precompiles.Benchmark
 {
     public abstract class PrecompileBenchmarkBase
     {
+        private const int Operations = 25;
+
         protected abstract IEnumerable<IPrecompile> Precompiles { get; }
 
         protected abstract string InputsDirectory { get; }
@@ -50,14 +53,14 @@ namespace Nethermind.Precompiles.Benchmark
                         // take only first line from each file
                         inputs.AddRange(File.ReadAllLines(file)
                             .Select(LineToTestInput).Take(1).ToArray()
-                            .Select(i => new Param(precompile, file, i, null)));
+                            .Select(i => new Param(precompile, Path.GetFileName(file), i, null)));
                     }
 
                     foreach (string file in Directory.GetFiles(inputsDir, "*.json", SearchOption.TopDirectoryOnly))
                     {
                         EthereumJsonSerializer jsonSerializer = new();
                         JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
-                        IEnumerable<Param> parameters = jsonInputs.Select(i => new Param(precompile, i.Name!, i.Input!, i.Expected));
+                        IEnumerable<Param> parameters = jsonInputs.Select(i => new Param(precompile, Path.GetFileName(i.Name!), i.Input!, i.Expected));
                         inputs.AddRange(parameters);
                     }
 
@@ -75,8 +78,16 @@ namespace Nethermind.Precompiles.Benchmark
         private static byte[] LineToTestInput(string line)
             => Bytes.FromHexString(line.Split(',')[0]);
 
-        [Benchmark(Baseline = true)]
-        public (ReadOnlyMemory<byte>, bool) Baseline()
-            => Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+        [Benchmark(Baseline = true, OperationsPerInvoke = Operations)]
+        public bool Baseline()
+        {
+            bool overallResult = true;
+            for (var i = 0; i < Operations; i++)
+            {
+                Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+                overallResult &= result;
+            }
+            return overallResult;
+        }
     }
 }

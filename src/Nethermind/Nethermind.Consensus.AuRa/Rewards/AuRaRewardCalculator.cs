@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         private static BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
         {
-            (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
+            (Address[] beneficiaries, ushort[] kinds) GetBeneficiaries()
             {
                 var length = block.Uncles.Length + 1;
 

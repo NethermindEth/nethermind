@@ -39,10 +39,13 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
     string? GenesisHash { get; set; }
 
-    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
+    [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null", HiddenFromDocs = true)]
+    ulong? NetworkId { get; set; }
+
+    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json")]
     string StaticNodesPath { get; set; }
 
-    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "Data/trusted-nodes.json")]
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json")]
     string TrustedNodesPath { get; set; }
 
     [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
@@ -69,6 +72,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
 
+    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? DataDir { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }
 
@@ -87,7 +93,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "1024", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "2048", HiddenFromDocs = true)]
     int BackgroundTaskMaxNumber { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]

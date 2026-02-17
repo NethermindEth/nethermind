@@ -27,7 +27,7 @@ public class ChainLevelInfoRepositoryTests
             repository.PersistLevel(10, level10);
         }
 
-        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel([1, 10]);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<long>(2, 1, 10));
         levels[0].Should().BeEquivalentTo(level1);
         levels[1].Should().BeEquivalentTo(level10);
     }

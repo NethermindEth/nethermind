@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
 
-            blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
             IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
 

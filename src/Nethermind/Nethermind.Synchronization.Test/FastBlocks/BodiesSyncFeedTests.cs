@@ -66,7 +66,7 @@ public class BodiesSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number.ToString(),
+            PivotNumber = _pivotBlock.Number,
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
@@ -182,23 +182,23 @@ public class BodiesSyncFeedTests
     [TestCase(1, 99, false, null, false)]
     [TestCase(1, 99, true, null, false)]
     [TestCase(1, 99, false, 0, false)]
-    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+    public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
             long AncientBarrierInConfig,
             long lowestInsertedBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
-            bool shouldfinish)
+            bool shouldFinish)
     {
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
-        _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
+        _syncConfig.PivotNumber = AncientBarrierInConfig + 1_000_000;
         _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
         _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
-        _feed.IsFinished.Should().Be(shouldfinish);
+        _feed.IsFinished.Should().Be(shouldFinish);
     }
 
     [Test]

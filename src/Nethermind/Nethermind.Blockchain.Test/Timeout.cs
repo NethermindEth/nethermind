@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Blockchain.Test;
+
 internal class Timeout
 {
     public const int LongTestTime = 60_000;

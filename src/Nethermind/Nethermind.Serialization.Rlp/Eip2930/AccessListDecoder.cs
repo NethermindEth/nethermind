@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
-    public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
+    public sealed class AccessListDecoder : RlpValueDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         /// RLP serializable item and keep it as a compiled call available at runtime.
         /// It would be slightly slower but still much faster than what we would get from using dynamic serializers.
         /// </summary>
-        public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override AccessList? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -78,7 +78,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         /// Question to Lukasz here -> would it be fine to always use ValueDecoderContext only?
         /// I believe it cannot be done for the network items decoding and is only relevant for the DB loads.
         /// </summary>
-        public AccessList? Decode(
+        protected override AccessList? DecodeInternal(
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -132,7 +132,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -166,7 +166,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
         }
 
-        public int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
+        public override int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
         {
             if (accessList is null)
             {

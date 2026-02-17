@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
+
 internal class E2StoreWriterTests
 {
     byte[] TestBytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
@@ -42,7 +43,7 @@ internal class E2StoreWriterTests
     [TestCase(1)]
     [TestCase(5)]
     [TestCase(12)]
-    public async Task WriteEntry_WritingAnEntry_ReturnCorrectNumberofBytesWritten(int length)
+    public async Task WriteEntry_WritingAnEntry_ReturnCorrectNumberOfBytesWritten(int length)
     {
         using MemoryStream stream = new MemoryStream();
         using E2StoreWriter sut = new E2StoreWriter(stream);

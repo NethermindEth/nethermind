@@ -19,7 +19,7 @@ public static class TypeDiscovery
 
     public static void Initialize(Type? pluginType = null)
     {
-        // Early return if initialised
+        // Early return if initialized
         if (Volatile.Read(ref _allLoaded) == 1) return;
 
         if (pluginType is not null)
@@ -34,7 +34,7 @@ public static class TypeDiscovery
     {
         lock (_lock)
         {
-            // Early return if initialised while waiting for lock
+            // Early return if initialized while waiting for lock
             if (Volatile.Read(ref _allLoaded) == 1) return;
 
             List<Assembly> loadedAssemblies = new(capacity: 48);
@@ -78,7 +78,7 @@ public static class TypeDiscovery
                 _assembliesWithNethermindTypes.Add(kv.Value);
             }
 
-            // Mark initialised before releasing lock
+            // Mark initialized before releasing lock
             Volatile.Write(ref _allLoaded, 1);
         }
     }

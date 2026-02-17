@@ -29,7 +29,7 @@ public sealed class HttpJsonRpcSubmitter : IJsonRpcSubmitter
             Content = new StringContent(rpc.ToJsonString(), Encoding.UTF8, MediaTypeNames.Application.Json),
         };
 
-        var httpResponse = await _httpClient.SendAsync(request, token);
+        using HttpResponseMessage httpResponse = await _httpClient.SendAsync(request, token);
         return await JsonRpc.Response.FromHttpResponseAsync(httpResponse, token);
     }
 }

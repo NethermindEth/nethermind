@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -85,10 +86,9 @@ namespace Nethermind.Network.Discovery.Test
             //receiving ping
             IPEndPoint address = new(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) { FarAddress = address });
-            await Task.Delay(500);
 
             // expecting to send pong
-            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            Assert.That(() => _msgSender.ReceivedCallsMatching(s => s.SendMsg(Arg.Is<PongMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port))), Is.True.After(500, 10));
 
             // send pings to  new node
             await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
@@ -179,8 +179,7 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManager.OnIncomingMsg(msg);
 
             //expecting to send 3 pings to both nodes
-            await Task.Delay(600);
-            await _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
+            Assert.That(() => _msgSender.ReceivedCallsMatching(s => s.SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port)), 3), Is.True.After(600, 10));
             await _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
         }
 

@@ -148,6 +148,7 @@ public class ChainSpecParamsJson
     public Address Eip4788ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
+    public long? Eip2935RingBufferSize { get; set; }
     public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }

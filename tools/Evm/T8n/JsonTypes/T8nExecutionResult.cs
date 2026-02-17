@@ -39,7 +39,7 @@ public class T8nExecutionResult
             .SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>())
             .ToArray();
         var bloom = new Bloom(logEntries);
-        var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
+        var gasUsed = blockReceiptsTracer.TxReceipts.Length == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
         ulong? blobGasUsed = test.Spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray()) : null;
 
         var postState = new PostState

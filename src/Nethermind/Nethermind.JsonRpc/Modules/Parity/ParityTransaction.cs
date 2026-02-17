@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -31,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public byte[] Raw { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address Creates { get; set; }
+        [JsonConverter(typeof(PublicKeyConverter))]
         public PublicKey PublicKey { get; set; }
         public ulong? ChainId { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]

@@ -1,21 +1,31 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class BlockCommitSet(long blockNumber)
+    public class BlockCommitSet(long blockNumber) : IComparable<BlockCommitSet>
     {
         public long BlockNumber { get; } = blockNumber;
 
         public TrieNode? Root { get; private set; }
+        public Hash256 StateRoot => Root?.Keccak ?? Keccak.EmptyTreeHash;
 
-        public bool IsSealed => Root is not null;
+        private bool _isSealed;
+
+        /// <summary>
+        /// A commit set is sealed once <see cref="Seal"/> has been called, regardless of whether the root is null.
+        /// A null root is valid for an empty state trie (e.g., genesis blocks with no allocations).
+        /// </summary>
+        public bool IsSealed => _isSealed;
 
         public void Seal(TrieNode? root)
         {
             Root = root;
+            _isSealed = true;
         }
 
         public override string ToString() => $"{BlockNumber}({Root})";
@@ -37,5 +47,13 @@ namespace Nethermind.Trie.Pruning
             Metrics.DeepPruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
 
+        public int CompareTo(BlockCommitSet? other)
+        {
+            if (ReferenceEquals(this, other)) return 0;
+            if (other is null) return 1;
+            int comp = BlockNumber.CompareTo(other.BlockNumber);
+            if (comp != 0) return comp;
+            return StateRoot.CompareTo(other.StateRoot);
+        }
     }
 }

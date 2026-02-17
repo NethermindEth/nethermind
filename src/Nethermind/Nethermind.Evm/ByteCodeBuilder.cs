@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -209,7 +208,10 @@ namespace Nethermind.Evm
             PushData(0);
             PushData(input is not null ? input.Length : 32);
             PushData(0);
-            PushData(0);
+            if (callType == Instruction.CALL)
+            {
+                PushData(0);
+            }
             PushData(address);
             PushData(gasLimit);
             Op(callType);

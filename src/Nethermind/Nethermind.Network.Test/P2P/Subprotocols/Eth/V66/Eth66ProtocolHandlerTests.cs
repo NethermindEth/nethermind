@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -41,7 +40,6 @@ using BlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 using GetBlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
 using GetNodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage;
-using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
 using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
 using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
@@ -56,7 +54,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private IMessageSerializationService _svc = null!;
         private ISyncServer _syncManager = null!;
         private ITxPool _transactionPool = null!;
-        private IPooledTxsRequestor _pooledTxsRequestor = null!;
         private IGossipPolicy _gossipPolicy = null!;
         private ITimerFactory _timerFactory = null!;
         private ISpecProvider _specProvider = null!;
@@ -78,7 +75,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
-            _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _specProvider = Substitute.For<ISpecProvider>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -92,7 +88,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                _pooledTxsRequestor,
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);
@@ -204,8 +199,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            using var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
-            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
+            using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
@@ -322,7 +316,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
-                new PooledTxsRequestor(_transactionPool, new TxPoolConfig(), _specProvider),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);

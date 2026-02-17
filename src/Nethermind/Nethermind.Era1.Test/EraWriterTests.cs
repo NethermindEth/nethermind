@@ -6,11 +6,11 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
 
 namespace Nethermind.Era1.Test;
+
 internal class EraWriterTests
 {
     [Test]

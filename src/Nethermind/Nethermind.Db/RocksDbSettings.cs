@@ -1,21 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+
 namespace Nethermind.Db
 {
-    public class DbSettings
+    public class DbSettings(string name, string path)
     {
-        public DbSettings(string name, string path)
-        {
-            DbName = name;
-            DbPath = path;
-        }
-
-        public string DbName { get; private set; }
-        public string DbPath { get; private set; }
+        public string DbName { get; private set; } = name;
+        public string DbPath { get; private set; } = path;
 
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;
+
+        public IMergeOperator? MergeOperator { get; set; }
+        public Dictionary<string, IMergeOperator>? ColumnsMergeOperators { get; set; }
 
         public DbSettings Clone(string name, string path)
         {

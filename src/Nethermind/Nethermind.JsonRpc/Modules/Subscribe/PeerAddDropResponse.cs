@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 
@@ -19,7 +18,6 @@ public class PeerAddDropResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string Type { get; set; }
 
-    [JsonConverter(typeof(PublicKeyHashedConverter))]
     public PublicKey Peer { get; set; }
 
     public string Local { get; set; }

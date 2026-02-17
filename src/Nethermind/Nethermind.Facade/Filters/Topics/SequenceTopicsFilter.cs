@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -9,16 +10,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class SequenceTopicsFilter : TopicsFilter, IEquatable<SequenceTopicsFilter>
+    public class SequenceTopicsFilter(params TopicExpression[] expressions)
+        : TopicsFilter, IEquatable<SequenceTopicsFilter>
     {
         public static readonly SequenceTopicsFilter AnyTopic = new();
 
-        private readonly TopicExpression[] _expressions;
+        private readonly TopicExpression[] _expressions = expressions;
 
-        public SequenceTopicsFilter(params TopicExpression[] expressions)
-        {
-            _expressions = expressions;
-        }
+        public override IEnumerable<TopicExpression> Expressions => _expressions;
+        public override bool AcceptsAnyBlock => _expressions.Length == 0 || _expressions.All(static e => e.AcceptsAnyBlock);
 
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 

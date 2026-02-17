@@ -10,7 +10,6 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.PortableExecutable;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -29,15 +28,15 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             Address.Zero,
             UInt256.One,
             1,
-            30_000_000,
+            XdcConstants.TargetGasLimit,
             1_700_000_000,
-            new byte[] { 1, 2, 3 })
+            [])
         {
             StateRoot = Keccak.EmptyTreeHash,
             TxRoot = Keccak.EmptyTreeHash,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             Bloom = Bloom.Empty,
-            GasUsed = 21_000,
+            GasUsed = Transaction.BaseTxGasCost,
             MixHash = Keccak.Compute("mix_hash"),
             Nonce = 0,
             Validators = new byte[20 * 2],
@@ -84,9 +83,21 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
+    public new XdcBlockHeaderBuilder WithParentHash(Hash256 parentHash)
+    {
+        XdcTestObjectInternal.ParentHash = parentHash;
+        return this;
+    }
+
     public new XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
     {
         TestObjectInternal.BaseFeePerGas = baseFee;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        TestObjectInternal.Number = blockNumber;
         return this;
     }
 

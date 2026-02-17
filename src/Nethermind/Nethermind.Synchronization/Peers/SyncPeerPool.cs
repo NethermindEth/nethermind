@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -61,6 +62,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
 
+        [UseConstructorForDependencyInjection]
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
@@ -446,7 +448,6 @@ namespace Nethermind.Synchronization.Peers
             }
 
             if (_logger.IsInfo) _logger.Info("Exiting sync peer refresh loop");
-            await Task.CompletedTask;
         }
 
         private void StartUpgradeTimer()
@@ -540,7 +541,12 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            worstPeer?.SyncPeer.Disconnect(DisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
+            if (worstPeer is null)
+            {
+                return 0;
+            }
+
+            worstPeer.SyncPeer.Disconnect(DisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
             return 1;
         }
 

@@ -1,17 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeout>
+public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
 {
-    public Timeout Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -38,7 +36,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         return new Timeout(round, signature, gapNumber);
     }
 
-    public Timeout Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -51,7 +49,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             if (rlpStream.PeekNextRlpLength() != Signature.Size)
-                throw new RlpException($"Invalid signature length in {nameof(Vote)}");
+                throw new RlpException($"Invalid signature length in {nameof(Timeout)}");
             signature = new(rlpStream.DecodeByteArray());
         }
 
@@ -76,7 +74,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -100,7 +98,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

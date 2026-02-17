@@ -553,15 +553,10 @@ namespace Nethermind.Network.P2P
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
             string key = string.Join(":", _protocols.Select(static p => p.Value.Name).OrderBy(static x => x));
-            if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver value))
-            {
-                value = _resolvers.AddOrUpdate(
-                    key,
-                    addValueFactory: (k) => new AdaptiveCodeResolver(_protocols),
-                    updateValueFactory: (k, v) => v);
-            }
-
-            return value;
+            return _resolvers.GetOrAdd(
+                key,
+                static (_, protocols) => new AdaptiveCodeResolver(protocols),
+                _protocols);
         }
 
         public override string ToString()

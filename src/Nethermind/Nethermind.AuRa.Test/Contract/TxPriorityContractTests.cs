@@ -314,12 +314,13 @@ namespace Nethermind.AuRa.Test.Contract
                 );
             }
 
-            public override async Task AddBlock(params Transaction[] transactions)
+            public override async Task<Block> AddBlock(params Transaction[] transactions)
             {
-                await base.AddBlock(transactions);
+                var b = await base.AddBlock(transactions);
 
                 // ContractDataStore track item from block async.
                 await Task.Delay(100);
+                return b;
             }
 
             private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, UInt256 baseNonce, params Transaction[] transactions)

@@ -68,7 +68,7 @@ namespace Nethermind.Db.Blooms
             long Get(Hash256 key, long defaultValue) => bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(_bloomInfoDb));
+            _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(bloomDb));
             _fileStoreFactory = fileStoreFactory;
             _storageLevels = CreateStorageLevels(config);
             Levels = (byte)_storageLevels.Length;

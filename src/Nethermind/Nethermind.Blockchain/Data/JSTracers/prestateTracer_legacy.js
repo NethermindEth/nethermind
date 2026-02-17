@@ -67,7 +67,7 @@
 		// Decrement the caller's nonce, and remove empty create targets
 		this.prestate[toHex(ctx.from)].nonce--;
 		if (ctx.type == 'CREATE') {
-			// We can blibdly delete the contract prestate, as any existing state would
+			// We can blindly delete the contract prestate, as any existing state would
 			// have caused the transaction to be rejected as invalid in the first place.
 			delete this.prestate[toHex(ctx.to)];
 		}

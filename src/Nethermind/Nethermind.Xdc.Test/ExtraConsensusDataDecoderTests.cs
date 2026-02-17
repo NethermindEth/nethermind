@@ -10,6 +10,8 @@ using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
+
+[Parallelizable(ParallelScope.All)]
 internal class ExtraConsensusDataDecoderTests
 {
     [TestCase("0xec01eae5a02671d34ee512c8a06f194dca9801ecfa8eb6a3590d1b73e50666b07f53b8958180820384c08201c2")]
@@ -49,6 +51,19 @@ internal class ExtraConsensusDataDecoderTests
         }
 
         decodedExtraData.Should().BeEquivalentTo(extraFields);
+    }
+
+    [Test]
+    public void Decode_QCIsNull_CanDecodeNormally()
+    {
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, null!);
+        ExtraConsensusDataDecoder decoder = new();
+
+        Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
+
+        ExtraFieldsV2 unencoded = decoder.Decode(new RlpStream(encodedExtraData.Bytes));
+
+        unencoded.Should().BeEquivalentTo(extraFieldsV2);
     }
 
 }

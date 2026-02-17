@@ -20,27 +20,27 @@ namespace Nethermind.Network.P2P.Utils;
 /// <param name="backgroundTaskScheduler"></param>
 public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
 {
-    internal void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        ScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender);
+    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage =>
+        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender);
 
-    internal void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        ScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
+    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
+        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
 
-    internal void ScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
-        backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
+    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
+        backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
 
     // I just don't want to create a closure... so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc(input.Request, cancellationToken);
+        TRes response = await input.FulfillFunc(input.Request, cancellationToken);
         handler.Send(response);
     }
 
     private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FulfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc(input.Request, cancellationToken);
+        TRes response = await input.FulfillFunc(input.Request, cancellationToken);
         handler.Send(response);
     }
 

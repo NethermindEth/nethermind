@@ -90,16 +90,19 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static long DataGasCostInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
         (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData);
-        if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-        {
-            return long.MaxValue;
-        }
-
         ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
         uint expLengthUpTo32 = Math.Min(LengthSize, expLength);
-        uint startIndex = LengthsLengths + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-        UInt256 exp = new(inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), isBigEndian: true);
+
+        ReadOnlySpan<byte> data = [];
+
+        if (baseLength < uint.MaxValue - LengthsLengths)
+        {
+            uint startIndex = LengthsLengths + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
+            data = inputData.SliceWithZeroPaddingEmptyOnError(startIndex, expLengthUpTo32);
+        }
+
+        UInt256 exp = new(data, isBigEndian: true);
         UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
 
         bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
@@ -118,7 +121,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         return releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 | expLength > ModExpMaxInputSizeEip7823 | modulusLength > ModExpMaxInputSizeEip7823)
-            : (baseLength | modulusLength) > int.MaxValue;
+            : (baseLength | modulusLength) >= uint.MaxValue;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -135,7 +138,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengths(ReadOnlySpan<byte> inputData)
     {
         // Test if too high
-        if (Vector256<byte>.IsSupported)
+        if (Vector256.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             Vector256<byte> mask = ~Vector256.Create(0, 0, 0, 0, 0, 0, 0, uint.MaxValue).AsByte();
@@ -150,7 +153,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 return GetInputLengthsMayOverflow(inputData);
             }
         }
-        else if (Vector128<byte>.IsSupported)
+        else if (Vector128.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             Vector128<byte> mask = ~Vector128.Create(0, 0, 0, uint.MaxValue).AsByte();
@@ -189,7 +192,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsMayOverflow(ReadOnlySpan<byte> inputData)
     {
         // Only valid if baseLength and modulusLength are zero; when expLength doesn't matter
-        if (Vector256<byte>.IsSupported)
+        if (Vector256.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             if (Vector256.BitwiseOr(
@@ -201,7 +204,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 return (uint.MaxValue, uint.MaxValue, uint.MaxValue);
             }
         }
-        else if (Vector128<byte>.IsSupported)
+        else if (Vector128.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             if (Vector128.BitwiseOr(
@@ -227,7 +230,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return (0, uint.MaxValue, 0);
     }
 
-    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public unsafe Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.ModExpPrecompile++;
 
@@ -237,11 +240,11 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 : GetInputLengthsShort(inputSpan);
 
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-            return IPrecompile.Failure;
+            return "one or more of base/exponent/modulus length exceeded 1024 bytes";
 
         // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
         if (baseLength == 0 && modulusLength == 0)
-            return (Bytes.Empty, true);
+            return Bytes.Empty;
 
         using var modulusInt = mpz_t.Create();
 
@@ -253,7 +256,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
 
         if (Gmp.mpz_sgn(modulusInt) == 0)
-            return (new byte[modulusLength], true);
+            return new byte[modulusLength];
 
         using var baseInt = mpz_t.Create();
         using var expInt = mpz_t.Create();
@@ -282,7 +285,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
             Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
 
-        return (result, true);
+        return result;
     }
 
     /// <summary>
@@ -294,7 +297,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <returns></returns>
     private static ulong MultComplexity(uint baseLength, uint modulusLength, bool isEip7883Enabled)
     {
-        // Pick the larger of the two  
+        // Pick the larger of the two
         uint max = baseLength > modulusLength ? baseLength : modulusLength;
 
         // Compute ceil(max/8) via a single add + shift

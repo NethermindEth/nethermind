@@ -61,7 +61,7 @@ public static class BlockTraceDumper
             {
                 fileName = $"receipts_{blockHash}_{state}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
-                IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
+                TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of {logCondition} block {blockHash} in file {diagnosticFile.Name}");

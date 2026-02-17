@@ -170,7 +170,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_mixed_bundles_preserves_order()
     {
         using Context ctx = await CreateContext();
-        TransactionBundle simple = CreateBundle(CreateTransaction(gas: 25_000_000));
+        TransactionBundle simple = CreateBundle(CreateTransaction(gas: 4_000_000));
         TransactionBundle withOverride = CreateBundle(CreateTransaction(gas: 25_000_000));
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
         var result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);

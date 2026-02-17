@@ -4,10 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -27,7 +24,7 @@ public interface IForensicsProcessor
 
     Task ProcessVoteEquivocation(Vote incomingVote);
 
-    Task DetectEquivocationInVotePool(Vote vote, List<Vote> votePool);
+    Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool);
 
     Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer);
 }

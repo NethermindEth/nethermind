@@ -24,6 +24,7 @@ namespace Ethereum.Test.Base
 
         public TestBlockJson[]? Blocks { get; set; }
         public TestBlockHeaderJson? GenesisBlockHeader { get; set; }
+        public TestEngineNewPayloadsJson[]? EngineNewPayloads { get; set; }
 
         public Dictionary<Address, AccountState>? Pre { get; set; }
         public Dictionary<Address, AccountState>? PostState { get; set; }

@@ -8,14 +8,6 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "holesky",
-    "cl": "lodestar",
-    "cl_image": "chainsafe/lodestar:latest",
-    "checkpoint-sync-url": "https://checkpoint-sync.holesky.ethpandaops.io/",
-    "timeout": 180,
-    "agent": "g6-standard-6"
-  },
-  {
     "network": "chiado",
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
@@ -61,7 +53,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "agent": "g6-standard-8"
   },
   {
     "network": "world-sepolia",
@@ -104,7 +96,7 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "taiko-hekla",
+    "network": "taiko-hoodi",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
@@ -121,22 +113,6 @@
   },
   {
     "network": "joc-testnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "agent": "g6-standard-6"
-  },
-  {
-    "network": "linea-mainnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 360,
-    "agent": "g6-standard-6"
-  },
-  {
-    "network": "linea-sepolia",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

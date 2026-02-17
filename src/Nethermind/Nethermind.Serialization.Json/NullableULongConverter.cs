@@ -2,41 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Serialization.Json;
+
+public class NullableULongConverter : JsonConverter<ulong?>
 {
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
+    private readonly ULongConverter _converter = new();
 
-    public class NullableULongConverter : JsonConverter<ulong?>
+    public override ulong? Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
     {
-        private readonly ULongConverter _converter = new();
-
-        public override ulong? Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        if (reader.TokenType == JsonTokenType.Null)
         {
-            if (reader.TokenType == JsonTokenType.Null)
-            {
-                return null;
-            }
-
-            return _converter.Read(ref reader, typeToConvert, options);
+            return null;
         }
 
-        public override void Write(
-            Utf8JsonWriter writer,
-            ulong? value,
-            JsonSerializerOptions options)
-        {
-            if (!value.HasValue)
-            {
-                writer.WriteNullValue();
-                return;
-            }
+        return _converter.Read(ref reader, typeToConvert, options);
+    }
 
-            _converter.Write(writer, value.GetValueOrDefault(), options);
+    public override void Write(
+        Utf8JsonWriter writer,
+        ulong? value,
+        JsonSerializerOptions options)
+    {
+        if (!value.HasValue)
+        {
+            writer.WriteNullValue();
+            return;
         }
+
+        _converter.Write(writer, value.GetValueOrDefault(), options);
     }
 }

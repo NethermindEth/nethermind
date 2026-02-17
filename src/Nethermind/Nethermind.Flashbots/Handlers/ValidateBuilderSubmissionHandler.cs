@@ -8,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -20,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.State.OverridableEnv;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -71,7 +69,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid("Parent beacon block root must be set in the request");
         }
 
-        payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
+        payload.ParentBeaconBlockRoot = request.ParentBeaconBlockRoot;
 
         BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
@@ -152,7 +150,7 @@ public class ValidateSubmissionHandler
 
         IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
 
-        using ArrayPoolList<byte[]> hashes = new(blobs.Blobs.Length);
+        using ArrayPoolListRef<byte[]> hashes = new(blobs.Blobs.Length);
 
         foreach (Transaction tx in transactions)
         {
@@ -344,9 +342,9 @@ public class ValidateSubmissionHandler
         return false;
     }
 
-    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, IReadOnlyList<TxReceipt> receipts, out string? error)
+    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, ReadOnlySpan<TxReceipt> receipts, out string? error)
     {
-        if (receipts.Count == 0)
+        if (receipts.Length == 0)
         {
             error = "No proposer payment receipt";
             return false;

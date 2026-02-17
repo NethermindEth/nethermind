@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -35,7 +33,7 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            IntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             gasCost.FloorGas.Should().Be(0);
             gasCost.Standard.Should().BeLessThan(21000 + 9600);
         }

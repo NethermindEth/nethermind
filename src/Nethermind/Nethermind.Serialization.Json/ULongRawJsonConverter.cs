@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -15,23 +14,7 @@ public class ULongRawJsonConverter : JsonConverter<ulong>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Number)
-        {
-            return reader.GetUInt64();
-        }
-        else if (reader.TokenType == JsonTokenType.String)
-        {
-            if (!reader.HasValueSequence)
-            {
-                return ULongConverter.FromString(reader.ValueSpan);
-            }
-            else
-            {
-                return ULongConverter.FromString(reader.ValueSequence.ToArray());
-            }
-        }
-
-        throw new JsonException();
+        return ULongConverter.ReadCore(ref reader);
     }
 
     public override void Write(

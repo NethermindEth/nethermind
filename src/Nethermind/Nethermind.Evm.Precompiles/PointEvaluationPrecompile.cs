@@ -8,7 +8,6 @@ using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
@@ -30,7 +29,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -56,7 +55,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
         Metrics.PointEvaluationPrecompile++;
         return IsValid(inputData)
-            ? (PointEvaluationSuccessfulResponse, true)
-            : IPrecompile.Failure;
+            ? PointEvaluationSuccessfulResponse
+            : Errors.Failed;
     }
 }
