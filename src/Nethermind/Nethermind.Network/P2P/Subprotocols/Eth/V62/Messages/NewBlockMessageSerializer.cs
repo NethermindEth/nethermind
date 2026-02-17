@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.Block);
+            _blockDecoder.Encode(rlpStream, message.Block);
             rlpStream.Encode(message.TotalDifficulty);
         }
 

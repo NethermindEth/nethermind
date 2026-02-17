@@ -3,6 +3,8 @@
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
@@ -14,6 +16,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Types;
 using System;
 
 namespace Nethermind.Xdc.P2P;
@@ -35,6 +38,8 @@ internal class Xdpos2ProtocolHandler(
 {
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
     private readonly IVotesManager _votesManager = votesManager;
+    private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
+    private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
     public override string Name => "xdpos2";
 
@@ -42,7 +47,7 @@ internal class Xdpos2ProtocolHandler(
 
     public override string ProtocolCode => "eth";
 
-    public override int MessageIdSpaceSize => base.MessageIdSpaceSize;
+    public override int MessageIdSpaceSize => Xdpos2MessageCode.SyncInfoMsg + 1;
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
@@ -90,20 +95,55 @@ internal class Xdpos2ProtocolHandler(
 
     private void Handle(VoteMsg voteMsg)
     {
-        _votesManager.HandleVote(voteMsg.Vote);
+        _votesManager.OnReceiveVote(voteMsg.Vote);
     }
     private void Handle(TimeoutMsg timeoutMsg)
     {
-        _timeoutCertificateManager.HandleTimeoutVote(timeoutMsg.Timeout);
+        _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     }
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
         if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
         {
             //TODO Disconnect peer?
-            if (Logger.IsDebug) Logger.Debug($"Received invalid SyncInfo from peer {Session.RemoteNodeId}: {error}");
+            if (Logger.IsDebug) Logger.Debug($"Received useless SyncInfo from peer {Session.RemoteNodeId}: {error}");
             return;
         }
         syncInfoManager.ProcessSyncInfo(syncInfoMsg.SyncInfo);
+    }
+
+    public void SendVote(Vote vote)
+    {
+        if (!ShouldNotifyVote(vote))
+            return;
+        Send(new VoteMsg() { Vote = vote });
+    }
+
+    public void SendTimeout(Timeout timeout)
+    {
+        if (!ShouldNotifyTimeout(timeout))
+            return;
+        Send(new TimeoutMsg() { Timeout = timeout });
+    }
+
+    public void SendSyncinfo(SyncInfo syncInfo)
+    {
+        Send(new SyncInfoMsg() { SyncInfo = syncInfo });
+    }
+
+    private bool ShouldNotifyVote(Vote vote)
+    {
+        if (_notifiedVotes.Contains(vote.Hash))
+            return false;
+        _notifiedVotes.Set(vote.Hash);
+        return true;
+    }
+
+    private bool ShouldNotifyTimeout(Timeout timeout)
+    {
+        if (_notifiedTimeouts.Contains(timeout.Hash))
+            return false;
+        _notifiedTimeouts.Set(timeout.Hash);
+        return true;
     }
 }

@@ -51,6 +51,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long BlackListHFNumber { get; set; }
     public long TipXDCX { get; set; }
     public long TIPXDCXMinerDisable { get; set; }
+    public long DynamicGasLimitBlock { get; set; }
 
     private static void CheckConfig(List<V2ConfigParams> list)
     {

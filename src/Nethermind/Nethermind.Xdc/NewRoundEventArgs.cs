@@ -5,9 +5,10 @@ using System;
 
 namespace Nethermind.Xdc;
 
-public class NewRoundEventArgs(ulong round, ulong previous, int previousRoundTimeouts) : EventArgs
+public class NewRoundEventArgs(ulong round, ulong previous, int previousRoundTimeouts, TimeSpan lastDuration) : EventArgs
 {
     public ulong NewRound { get; } = round;
     public ulong PreviousRound { get; } = previous;
     public int PreviousRoundTimeouts { get; } = previousRoundTimeouts;
+    public TimeSpan LastRoundDuration { get; } = lastDuration;
 }

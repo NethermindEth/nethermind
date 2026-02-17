@@ -29,13 +29,6 @@ public static class IntExtensions
         return (uint)@this * Unit.GWei;
     }
 
-    public static byte[] ToByteArray(this int value)
-    {
-        byte[] bytes = new byte[sizeof(int)];
-        BinaryPrimitives.WriteInt32BigEndian(bytes, value);
-        return bytes;
-    }
-
     public static byte[] ToBigEndianByteArray(this uint value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
@@ -49,4 +42,14 @@ public static class IntExtensions
 
     public static byte[] ToBigEndianByteArray(this int value)
         => ToBigEndianByteArray((uint)value);
+
+    public static byte[] ToLittleEndianByteArray(this uint value)
+    {
+        byte[] bytes = new byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
+        return bytes;
+    }
+
+    public static byte[] ToLittleEndianByteArray(this int value)
+        => ToLittleEndianByteArray((uint)value);
 }

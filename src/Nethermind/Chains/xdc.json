@@ -64,6 +64,7 @@
 
         "MergeSignRange": 15,
 
+        "DynamicGasLimitBlock": 9999999999999999999999,
         "tip2019Block": 1,
         "BlackListHFNumber": 38383838,
         "blackListedAddresses": [
@@ -148,7 +149,8 @@
     "eip155Block": 3,
     "eip158Block": 3,
     "byzantiumBlock": 4,
-    "depositContractAddress": "0x0000000000000000000000000000000000000088"
+    "depositContractAddress": "0x0000000000000000000000000000000000000088",
+    "eip1559ElasticityMultiplier": "0x1"
   },
   "genesis": {
     "nonce": "0x0",

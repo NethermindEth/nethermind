@@ -10,25 +10,26 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
+using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Xdc.Contracts;
-using Nethermind.Xdc.P2P;
-using Nethermind.Xdc.Spec;
-using Nethermind.TxPool;
-using Nethermind.Logging;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
@@ -111,7 +112,9 @@ public class XdcModule : Module
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
-
+            .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncinfoMsgSerializer>()
+            .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
 
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
@@ -119,6 +122,8 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
 
             //Sync
             .AddSingleton<CreateSnapshotOnStateSyncFinished>()

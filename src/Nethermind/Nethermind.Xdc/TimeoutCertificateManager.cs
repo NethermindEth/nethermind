@@ -8,7 +8,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Errors;
+using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -25,6 +27,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
+    private readonly ISyncPeerPool _syncPeerPool;
     private readonly ISnapshotManager _snapshotManager;
     private readonly IEpochSwitchManager _epochSwitchManager;
     private readonly ISpecProvider _specProvider;
@@ -32,9 +35,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
+    public TimeoutCertificateManager(IXdcConsensusContext context, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
     {
         _consensusContext = context;
+        this._syncPeerPool = syncPeerPool;
         this._snapshotManager = snapshotManager;
         this._epochSwitchManager = epochSwitchManager;
         this._specProvider = specProvider;
@@ -61,6 +65,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             return Task.CompletedTask;
         }
 
+        BroadcastTimeout(timeout);
+
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
         var CertificateThreshold = spec.CertificateThreshold;
         if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
@@ -70,7 +76,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return Task.CompletedTask;
     }
 
-
+    private void BroadcastTimeout(Timeout timeout)
+    {
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
+        {
+            if (peer.SyncPeer is Xdpos2ProtocolHandler xdpos2Protocol)
+                xdpos2Protocol.SendTimeout(timeout);
+        }
+    }
 
     private void OnTimeoutPoolThresholdReached(IEnumerable<Timeout> timeouts, Timeout timeout)
     {
@@ -168,7 +181,11 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
         {
             SyncInfo syncInfo = GetSyncInfo();
-            //TODO: Broadcast syncInfo
+            foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+            {
+                if (peerInfo.SyncPeer is Xdpos2ProtocolHandler xdpos2ProtocolHandler)
+                    xdpos2ProtocolHandler.SendSyncinfo(syncInfo);
+            }
         }
     }
 
