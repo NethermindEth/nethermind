@@ -10,7 +10,7 @@ zisk: build-tool-local build-zisk execute-zisk
 
 build-tool-local:
 	rm -rf nethermind; \
-	dotnet build -c release '-p:DefineConstants=ZKVM' .
+	dotnet build -c release '-p:EnableZkvm=true' .
 
 run-docker:
 	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk  /bin/bash
