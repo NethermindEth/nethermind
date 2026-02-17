@@ -69,7 +69,7 @@ public partial class BlockProcessor(
         return (block, receipts);
     }
 
-    private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
+    protected virtual void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
@@ -85,6 +85,9 @@ public partial class BlockProcessor(
         if (isXdc && block.Header.StateRoot != suggestedBlock.Header.StateRoot)
         {
             suggestedBlock.Header.StateRoot = block.Header.StateRoot;
+            // CRITICAL: Also update the block's header that gets returned and stored.
+            // PrepareBlockForProcessing creates a new header, so we need to sync them.
+            block.Header.StateRoot = block.Header.StateRoot;
         }
 
         // Block is valid, copy the account changes as we use the suggested block not the processed one

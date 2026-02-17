@@ -65,6 +65,7 @@ public class XdcModule : Module
             .InstancePerLifetimeScope();
 
         // Register XDC block processor that preserves XdcBlockHeader during processing
+        // IHeaderStore is auto-resolved by Autofac from BlockTreeModule registration
         builder.RegisterType<XdcBlockProcessor>()
             .As<IBlockProcessor>()
             .InstancePerLifetimeScope();
