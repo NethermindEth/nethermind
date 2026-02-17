@@ -11,14 +11,6 @@ namespace Nethermind.Core.Collections;
 
 public static class DictionaryExtensions
 {
-    /// <summary>
-    /// Mirrors <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey,TValue}.TryRemove(TKey, out TValue)"/>
-    /// so that <see cref="Dictionary{TKey,TValue}"/> can be used with the same API.
-    /// </summary>
-    public static bool TryRemove<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key, [MaybeNullWhen(false)] out TValue value)
-        where TKey : notnull
-        => dictionary.Remove(key, out value);
-
     public static void Increment<TKey>(this Dictionary<TKey, int> dictionary, TKey key) where TKey : notnull
     {
         ref int res = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, key, out bool _);
@@ -27,6 +19,12 @@ public static class DictionaryExtensions
 
     extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull
     {
+        /// <summary>
+        /// Mirrors <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey,TValue}.TryRemove(TKey, out TValue)"/>
+        /// so that <see cref="Dictionary{TKey,TValue}"/> can be used with the same API.
+        /// </summary>
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => dictionary.Remove(key, out value);
+
         public ref TValue GetOrAdd(TKey key, Func<TKey, TValue> factory,
             out bool exists)
         {

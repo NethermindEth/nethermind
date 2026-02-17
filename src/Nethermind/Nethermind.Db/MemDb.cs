@@ -19,10 +19,10 @@ namespace Nethermind.Db
         public long WritesCount { get; private set; }
 
 #if ZKVM
-        private readonly Dictionary<byte[], byte[]?> _db;
+        private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
         private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #else
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
+        private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
         private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #endif
 
@@ -35,7 +35,7 @@ namespace Nethermind.Db
 
         public static MemDb CopyFrom(IDb anotherDb)
         {
-            MemDb newDb = new MemDb();
+            MemDb newDb = new();
             foreach (KeyValuePair<byte[], byte[]> kv in anotherDb.GetAll())
             {
                 newDb[kv.Key] = kv.Value;
@@ -52,11 +52,6 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-#if ZKVM
-            _db = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
-#else
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
-#endif
             _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
 
@@ -84,18 +79,11 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount += keys.Length;
-                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.TryGetValue(k, out var value) ? value : null)).ToArray();
+                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.GetValueOrDefault(k))).ToArray();
             }
         }
 
-        public virtual void Remove(ReadOnlySpan<byte> key)
-        {
-#if ZKVM
-            _spanDb.Remove(key);
-#else
-            _spanDb.TryRemove(key, out _);
-#endif
-        }
+        public virtual void Remove(ReadOnlySpan<byte> key) => _spanDb.TryRemove(key, out _);
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _spanDb.ContainsKey(key);
 
