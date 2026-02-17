@@ -16,7 +16,7 @@ namespace Nethermind.Trie;
 /// <summary>
 /// Track every rented CappedArray<byte> and return them all at once
 /// </summary>
-public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? pool = null, bool canBeParallel = true) : ICappedArrayPool, IDisposable
+public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? arrayPool = null, bool canBeParallel = true) : ICappedArrayPool, IDisposable
 {
     private readonly ConcurrentQueue<byte[]>? _rentedQueue = canBeParallel ? new() : null;
     private readonly List<byte[]>? _rentedList = canBeParallel ? null : new(initialCapacity);
@@ -30,7 +30,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
             return CappedArray<byte>.Empty;
         }
 
-        byte[] array = pool?.Rent(size) ?? SafeArrayPool<byte>.Shared.Rent(size);
+        byte[] array = arrayPool?.Rent(size) ?? SafeArrayPool<byte>.Shared.Rent(size);
         CappedArray<byte> rented = new(array, size);
         array.AsSpan().Clear();
         if (_rentedQueue is not null)
@@ -49,10 +49,10 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
 
     public void Dispose()
     {
-        ArrayPool<byte> arrayPool = pool;
-        if (arrayPool is not null)
+        ArrayPool<byte> pool = arrayPool;
+        if (pool is not null)
         {
-            DisposeCustomArrayPool(arrayPool);
+            DisposeCustomArrayPool(pool);
             return;
         }
 

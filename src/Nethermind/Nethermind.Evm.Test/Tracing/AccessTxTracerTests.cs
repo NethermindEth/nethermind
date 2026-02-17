@@ -89,7 +89,8 @@ namespace Nethermind.Evm.Test.Tracing
         public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AddressAAndBIsInTheAccessList()
         {
             JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
-            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer) { new StorageCell(TestItem.AddressA, 0) }; AccessTxTracer sut = new(TestItem.AddressA);
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer) { new StorageCell(TestItem.AddressA, 0) };
+            AccessTxTracer sut = new(TestItem.AddressA);
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 

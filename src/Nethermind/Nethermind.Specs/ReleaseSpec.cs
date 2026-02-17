@@ -14,9 +14,6 @@ namespace Nethermind.Specs;
 
 public class ReleaseSpec : IReleaseSpec
 {
-    // Compiling of IReleaseSpec is very slow when these members are Default
-    // Interface Members, therefore, we reintroduce them as concrete members.
-
     public string Name { get; set; } = "Custom";
     public long MaximumExtraDataSize { get; set; }
     public long MaxCodeSize { get; set; }

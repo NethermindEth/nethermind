@@ -30,9 +30,7 @@ public partial class Rlp
         return _decodersSnapshot ??= _decoderBuilder.ToFrozenDictionary();
     }
 
-    public static partial void RegisterDecoders(
-        Assembly assembly,
-        bool canOverrideExistingDecoders)
+    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
     {
         foreach (Type? type in assembly.GetExportedTypes())
         {

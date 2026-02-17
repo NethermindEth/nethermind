@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Frozen;
-using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs;

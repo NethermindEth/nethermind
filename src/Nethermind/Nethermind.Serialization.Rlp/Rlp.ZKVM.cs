@@ -33,9 +33,7 @@ public partial class Rlp
         return _decodersSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
     }
 
-    public static partial void RegisterDecoders(
-        Assembly assembly,
-        bool canOverrideExistingDecoders)
+    public static partial void RegisterDecoders(Assembly assembly,bool canOverrideExistingDecoders)
     {
         // Under ZKVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
