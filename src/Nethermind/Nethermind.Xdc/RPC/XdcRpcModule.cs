@@ -174,6 +174,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         info.Timeout = CalculateSigners(receivedTimeouts, masternodes, timeout => timeout.Signer);
         info.Vote = CalculateSigners(receivedVotes, masternodes, vote => vote.Signer);
 
+
+        var syncInfoMessage = new Dictionary<(ulong Round, Hash256 Hash), SyncInfoTypes>();
+
         foreach (var (name, objList) in receivedSyncInfo)
         {
             foreach (var syncInfo in objList)
@@ -187,7 +190,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                     tcSigners = syncInfo.HighestTimeoutCert.Signatures?.Length ?? 0;
                 }
 
-                info.SyncInfo[key] = new SyncInfoTypes
+                syncInfoMessage[key] = new SyncInfoTypes
                 {
                     Hash = key.hash,
                     QCSigners = qcSigners,
@@ -195,6 +198,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 };
             }
         }
+
+        info.SyncInfo = syncInfoMessage;
 
         return ResultWrapper<PoolStatus>.Success(info);
     }
