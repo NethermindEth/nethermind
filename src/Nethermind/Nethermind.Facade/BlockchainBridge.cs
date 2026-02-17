@@ -415,9 +415,9 @@ namespace Nethermind.Facade
             // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
             if (baseBlock is not null && pruningConfig.Mode != PruningMode.None)
             {
-                long? bestPersistedState = blockTree.BestPersistedState;
-                if (bestPersistedState.HasValue &&
-                    baseBlock.Number < bestPersistedState.Value - Reorganization.MaxDepth)
+                long? headNumber = blockTree.Head?.Number;
+                if (headNumber.HasValue &&
+                    baseBlock.Number < headNumber.Value - pruningConfig.PruningBoundary)
                 {
                     return false;
                 }

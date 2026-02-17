@@ -689,30 +689,30 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void HasStateForBlock_returns_false_when_block_older_than_BestPersistedState()
+    public void HasStateForBlock_returns_false_when_block_older_than_head_minus_pruning_boundary()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
-        _blockTree.BestPersistedState.Returns(300L);
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(300).TestObject);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
     }
 
     [Test]
-    public void HasStateForBlock_returns_true_when_block_within_BestPersistedState_range()
+    public void HasStateForBlock_returns_true_when_block_within_head_minus_pruning_boundary()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(280).WithStateRoot(TestItem.KeccakA).TestObject;
 
-        _blockTree.BestPersistedState.Returns(300L);
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(300).TestObject);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
     }
 
     [Test]
-    public void HasStateForBlock_returns_true_when_BestPersistedState_is_null()
+    public void HasStateForBlock_returns_true_when_head_is_null()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
 
-        _blockTree.BestPersistedState.Returns((long?)null);
+        _blockTree.Head.Returns((Block?)null);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
     }
@@ -723,7 +723,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
 
         _stateReader.HasStateForBlock(header).Returns(false);
-        _blockTree.BestPersistedState.Returns(300L);
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(300).TestObject);
 
         _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
     }
@@ -732,7 +732,6 @@ public class BlockchainBridgeTests
     public void HasStateForBlock_returns_true_for_old_block_on_archive_node()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
-        _blockTree.BestPersistedState.Returns(300L);
 
         IContainer archiveContainer = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
