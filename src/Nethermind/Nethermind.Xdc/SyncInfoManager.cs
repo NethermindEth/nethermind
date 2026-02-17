@@ -12,23 +12,17 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal class SyncInfoManager : ISyncInfoManager
 {
-    public SyncInfoManager(XdcConsensusContext context, IQuorumCertificateManager quorumCertificateManager, ITimeoutCertificateManager timeoutCertificateProcessor, ILogger logger)
+    public SyncInfoManager(XdcConsensusContext context, IQuorumCertificateManager quorumCertificateManager, ITimeoutCertificateManager timeoutCertificateProcessor)
     {
         _context = context;
         _quorumCertificateManager = quorumCertificateManager;
         _timeoutCertificateManager = timeoutCertificateProcessor;
-        _logger = logger;
     }
 
     private XdcConsensusContext _context { get; }
     private IQuorumCertificateManager _quorumCertificateManager { get; }
     private ITimeoutCertificateManager _timeoutCertificateManager { get; }
-    public ILogger _logger { get; }
-
-    public SyncInfo GetSyncInfo()
-{
-        return new SyncInfo(_context.HighestQC, _context.HighestTC);
-    }
+    public SyncInfo GetSyncInfo() => new SyncInfo(_context.HighestQC, _context.HighestTC);
 
     public void ProcessSyncInfo(SyncInfo syncInfo)
     {
@@ -42,15 +36,10 @@ internal class SyncInfoManager : ISyncInfoManager
             && (_context.HighestTC.Round >= syncInfo.HighestTimeoutCert.Round))
         {
             return false;
-    }
-        var result = _quorumCertificateManager.VerifyCertificate(syncInfo.HighestQuorumCert, null, out string error) &&
-            _timeoutCertificateManager.VerifyTimeoutCertificate(syncInfo.HighestTimeoutCert, out error);
-
-        if (!result)
-    {
-            _logger.Error($"SyncInfo verification failed: {error}");
         }
 
+        var result = _quorumCertificateManager.VerifyCertificate(syncInfo.HighestQuorumCert, null, out string error) &&
+            _timeoutCertificateManager.VerifyTimeoutCertificate(syncInfo.HighestTimeoutCert, out error);
 
         return result;
     }
