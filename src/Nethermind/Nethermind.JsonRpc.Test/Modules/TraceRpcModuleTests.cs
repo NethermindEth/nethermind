@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
@@ -28,9 +27,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Evm.State;
 using Newtonsoft.Json.Linq;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;

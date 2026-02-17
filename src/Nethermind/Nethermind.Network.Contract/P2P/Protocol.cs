@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Network.Contract.P2P;
 
 public static class Protocol
@@ -35,10 +33,6 @@ public static class Protocol
     /// Parity Warp Sync
     /// </summary>
     public const string Par = "par";
-    /// <summary>
-    /// Nethermind Data Marketplace
-    /// </summary>
-    public const string Ndm = "ndm";
     /// <summary>
     /// Account Abstraction
     /// </summary>

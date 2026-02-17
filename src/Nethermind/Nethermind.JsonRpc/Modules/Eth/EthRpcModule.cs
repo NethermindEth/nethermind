@@ -1,15 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -18,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
@@ -41,6 +33,15 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -65,6 +66,7 @@ public partial class EthRpcModule(
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
+    ILogIndexConfig? logIndexConfig,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
@@ -292,7 +294,12 @@ public partial class EthRpcModule(
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
-        Transaction tx = rpcTx.ToTransaction();
+        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction tx, out string error))
+        {
+            return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));
+        }
+
         tx.ChainId = _blockchainBridge.GetChainId();
 
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
@@ -386,25 +393,28 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
-        RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee, _specProvider.ChainId);
+        RecoverTxSenderIfNeeded(transactionResult.Value.Transaction);
+        TransactionForRpcContext extraData = transactionResult.Value.ExtraData;
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transactionResult.Value.Transaction,
+            extraData: extraData);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
     public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
     {
-        Transaction? transaction = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true).Transaction;
-        if (transaction is null)
+        if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
         {
             return ResultWrapper<string?>.Success(null);
         }
+
+        Transaction transaction = transactionResult.Value.Transaction;
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
@@ -420,7 +430,7 @@ public partial class EthRpcModule(
         {
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, chainId: _specProvider.ChainId);
+            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, new(_specProvider.ChainId));
             transactionsModels[i].BlockHash = Keccak.Zero;
         }
 
@@ -459,7 +469,15 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas, _specProvider.ChainId);
+        TransactionForRpcContext extraData = new(
+            chainId: _specProvider.ChainId,
+            blockHash: block.Hash,
+            blockNumber: block.Number,
+            txIndex: (int)positionIndex,
+            blockTimestamp: block.Timestamp,
+            baseFee: block.BaseFeePerGas,
+            receipt: null);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, extraData);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
@@ -569,10 +587,8 @@ public partial class EthRpcModule(
                 timeout.Dispose();
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
-            else
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, timeout));
-            }
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, timeout));
         }
         catch (ResourceNotFoundException exception)
         {
@@ -631,6 +647,10 @@ public partial class EthRpcModule(
         {
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
+            if (logFilter is not null && filter is not null)
+                logFilter.UseIndex = filter.UseIndex;
+
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
@@ -646,6 +666,9 @@ public partial class EthRpcModule(
                     return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
                 }
             }
+
+            if (logIndexConfig?.VerifyRpcResponse is true && logFilter.UseIndex)
+                VerifyLogsResponse(logs, logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
         }
@@ -825,4 +848,28 @@ public partial class EthRpcModule(
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
+
+    private void VerifyLogsResponse(IList<FilterLog> response, LogFilter filter, BlockHeader from, BlockHeader to, CancellationToken cancellation)
+    {
+        filter.UseIndex = false;
+        IEnumerable<FilterLog>? expectedResponse = _blockchainBridge.GetLogs(filter, from, to, cancellation);
+
+        using IEnumerator<FilterLog> expectedEnum = expectedResponse.GetEnumerator();
+
+        var i = -1;
+        while (++i < response.Count | expectedEnum.MoveNext())
+        {
+            FilterLog? actual = i < response.Count ? response[i] : null;
+            FilterLog? expected = expectedEnum.Current;
+
+            if ((actual?.BlockNumber, actual?.LogIndex) != (expected?.BlockNumber, expected?.LogIndex))
+            {
+                throw new LogIndexStateException(
+                    $"Incorrect result from log index at position #{i}. " +
+                    $"Expected: block {expected?.BlockNumber}, log #{expected?.LogIndex}. " +
+                    $"Actual: block {actual?.BlockNumber}, log #{actual?.LogIndex}."
+                );
+            }
+        }
+    }
 }

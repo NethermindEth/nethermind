@@ -12,6 +12,11 @@ public static class BuildExtensions
         return new XdcBlockHeaderBuilder();
     }
 
+    public static XdcSubnetBlockHeaderBuilder XdcSubnetBlockHeader(this Build build)
+    {
+        return new XdcSubnetBlockHeaderBuilder();
+    }
+
     public static QuorumCertificateBuilder QuorumCertificate(this Build build)
     {
         return new QuorumCertificateBuilder();

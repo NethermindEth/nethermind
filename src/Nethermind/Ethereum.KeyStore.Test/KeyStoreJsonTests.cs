@@ -9,7 +9,6 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;

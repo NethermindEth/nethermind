@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie;
 
 namespace Nethermind.Blockchain
 {

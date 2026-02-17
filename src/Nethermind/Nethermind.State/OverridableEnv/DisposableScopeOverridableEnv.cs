@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
 namespace Nethermind.State.OverridableEnv;
