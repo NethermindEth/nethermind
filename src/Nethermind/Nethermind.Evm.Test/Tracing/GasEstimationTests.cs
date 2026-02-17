@@ -1002,7 +1002,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_estimate_gas_consistently_across_repeated_calls()
         {
             // Tests that repeated gas estimation on the same contract yields consistent results.
-            // The EstimateGasTracer is reused across binary search iterations - state must reset properly.
+            // Each call creates a fresh EstimateGasTracer; this guards against non-deterministic estimation behavior across runs.
             using TestEnvironment testEnvironment = new();
 
             Address reverterAddress = TestItem.AddressB;
