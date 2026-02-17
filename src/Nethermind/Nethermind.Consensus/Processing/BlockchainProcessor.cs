@@ -690,7 +690,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             iterations++;
             if (iterations > MaxBranchSize)
             {
-                ThrowMaxBranchSizeReached();
+                if (_logger.IsWarn) WarnMaxBranchSizeReached(suggestedBlock, toBeProcessed);
+                break;
             }
 
             if (!options.ContainsFlag(ProcessingOptions.Trace))
@@ -810,9 +811,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void TraceStateRootLookup(Hash256? stateRoot)
             => _logger.Trace($"State root lookup: {stateRoot}");
 
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowMaxBranchSizeReached()
-            => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnMaxBranchSizeReached(Block suggestedBlock, Block toBeProcessed)
+            => _logger.Warn($"Maximum branch size ({MaxBranchSize}) reached while preparing branch for {suggestedBlock.ToString(Block.Format.Short)}. Stopped at {toBeProcessed.ToString(Block.Format.Short)}. This may indicate missing state or corrupted chain metadata.");
     }
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
