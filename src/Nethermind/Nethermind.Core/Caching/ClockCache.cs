@@ -17,7 +17,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 {
 #if ZKVM
     private readonly int? _lockPartition = lockPartition;
-    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw ArgumentNullException.Create(nameof(comparer)));
+    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
     private readonly MockLock _lock = new();
 #else
     private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, comparer);
