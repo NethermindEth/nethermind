@@ -51,7 +51,6 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         ulong parentRound = qc.ProposedBlockInfo.Round;
         ulong epochStartRound = round - (round % (ulong)xdcSpec.EpochLength);
-        ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + round / (ulong)xdcSpec.EpochLength;
 
         if (qc.ProposedBlockInfo.BlockNumber == xdcSpec.SwitchBlock)
         {
