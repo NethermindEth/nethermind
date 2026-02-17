@@ -1,23 +1,21 @@
 ## Changes
 
-Refresh and extend the BenchmarkDotNet gas benchmark harness to align modes with real Nethermind execution paths, add a measured NewPayload mode, and improve reporting.
+This PR introduces the BenchmarkDotNet gas benchmark framework in Nethermind with mode-based coverage from direct transaction execution up to full `engine_newPayload` processing.
 
-- Added explicit mode split for EVM execution paths.
+- Introduces EVM transaction execution modes.
 - `--mode=EVMExecute`: tx execution via `TransactionProcessor.Execute` (import-like path).
 - `--mode=EVMBuildUp`: tx execution via `TransactionProcessor.BuildUp` (block-building path).
-- Added block-building mode split.
-- `--mode=BlockBuilding`: producer-default behavior (`BuildBlocksOnMainState=false`, `ProcessingOptions.ProducingBlock`).
-- `--mode=BlockBuildingMainState`: main-state producer behavior (`BuildBlocksOnMainState=true`).
-- Kept block import path modes.
+- Introduces block processing modes.
 - `--mode=BlockOne`: `BlockProcessor.ProcessOne`.
 - `--mode=Block`: `BranchProcessor.Process`.
-- Kept newPayload path modes.
+- Introduces block-building modes.
+- `--mode=BlockBuilding`: producer-default behavior (`BuildBlocksOnMainState=false`, `ProcessingOptions.ProducingBlock`).
+- `--mode=BlockBuildingMainState`: main-state producer behavior (`BuildBlocksOnMainState=true`).
+- Introduces newPayload modes.
 - `--mode=NewPayload`: `NewPayloadHandler` flow.
 - `--mode=NewPayloadMeasured`: instrumented near-handler flow with detailed timing breakdown.
-- Updated `Block` and `BlockOne` benchmark processing options to node-aligned defaults.
-- Removed hardcoded `NoValidation | ForceProcessing`.
-- Use `StoreReceipts` only when `ReceiptConfig.StoreReceipts=true`.
-- Added/kept timing breakdown reporting with file output and console suppression for larger runs.
+- Uses node-aligned processing defaults for `Block` and `BlockOne` (no forced `NoValidation | ForceProcessing`).
+- Includes timing breakdown reporting with file output and console suppression for larger runs.
 
 ### Mode Architecture
 
