@@ -15,9 +15,9 @@ namespace Nethermind.Core.Extensions
     public static class SpanExtensions
     {
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
+        // one node, they will not be the same on another node or across a restart so hash collision cannot be used to degrade
         // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom =
+        public static readonly uint InstanceRandom =
 #if ZKVM
             2098026241U;
 #else
@@ -246,7 +246,7 @@ namespace Nethermind.Core.Extensions
             // Seed with an instance-random value so attackers cannot trivially
             // engineer lots of same-bucket keys. Mixing in length makes "same prefix,
             // different length" less correlated (CRC alone can be length-sensitive).
-            uint seed = s_instanceRandom + (uint)len;
+            uint seed = InstanceRandom + (uint)len;
 
             // Small: 1-7 bytes.
             // Using the tail routine here avoids building a synthetic

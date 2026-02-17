@@ -90,8 +90,6 @@ namespace Nethermind.Db
         public static int StateDbPruning { get; set; }
 
 #if ZKVM
-        // Under NativeAOT/ZKVM we avoid initializing NonBlocking dictionaries (can trigger runtime generic type construction).
-        // Provide no-op placeholders so callers still compile.
         public static Dictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
         public static Dictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
         public static Dictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
