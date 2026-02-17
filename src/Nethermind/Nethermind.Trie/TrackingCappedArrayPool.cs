@@ -49,16 +49,12 @@ public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
 
     public void Dispose()
     {
-#if ZKVM
-        // NativeAOT/ZKVM: ArrayPool<T>.Shared.Return may throw in constrained runtimes (e.g. missing CPU/threading features).
-        // We intentionally skip returning buffers to avoid bringing down the process during disposal paths.
-        return;
-#else
+#if !ZKVM
         if (_arrayPool is null)
         {
             foreach (byte[] rentedBuffer in CollectionsMarshal.AsSpan(_rentedBuffers))
             {
-                // Devirtualize shared array pool by referring directly to it
+                // Devirtualize the shared array pool by referring directly to it
                 ArrayPool<byte>.Shared.Return(rentedBuffer);
             }
         }

@@ -705,7 +705,7 @@ namespace Nethermind.Evm.TransactionProcessing
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
                 substate = !TTracingInst.IsActive
-                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM for ZK
+                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
