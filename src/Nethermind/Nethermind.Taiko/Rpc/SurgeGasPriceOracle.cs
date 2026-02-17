@@ -22,7 +22,7 @@ namespace Nethermind.Taiko.Rpc;
 public class SurgeGasPriceOracle : GasPriceOracle
 {
     private const string ClassName = nameof(SurgeGasPriceOracle);
-    private const int BlobGasPerBlob = 131072;
+    private const ulong BlobGasPerBlob = Eip4844Constants.GasPerBlob;
 
     // ABI signatures and encoded function selectors for TaikoInbox contract.
     private static readonly AbiSignature GetCoreStateSignature = new("getCoreState");
@@ -97,7 +97,6 @@ public class SurgeGasPriceOracle : GasPriceOracle
                 await UpdateInboxRingBufferFullAsync();
             }
         }
-
 
         // Get the fee history from the L1 client with RPC
         L1FeeHistoryResults? feeHistory = await GetL1FeeHistory();

@@ -22,7 +22,7 @@ public interface ISurgeConfig : IConfig
     [ConfigItem(Description = "L1 gas for batch proposal.", DefaultValue = "75000")]
     ulong FixedProposalGas { get; set; }
 
-    [ConfigItem(Description = "L1 gas for batch proposal with full storage buffer.", DefaultValue = "50000")]
+    [ConfigItem(Description = "L1 gas for batch proposal with full inbox buffer.", DefaultValue = "50000")]
     ulong FixedProposalGasWithFullInboxBuffer { get; set; }
 
     [ConfigItem(Description = "L1 gas for proof verification.", DefaultValue = "30000")]
