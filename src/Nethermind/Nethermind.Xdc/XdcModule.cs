@@ -18,6 +18,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 
@@ -32,6 +33,13 @@ public class XdcModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        // Register XDC header decoder so HeaderStore uses it for DB read/write
+        // Without this, headers are stored/loaded with standard 15-field encoding
+        // instead of XDC 18-field encoding (Validators, Validator, Penalties)
+        builder.RegisterType<XdcHeaderDecoder>()
+            .As<IHeaderDecoder>()
+            .SingleInstance();
 
         // Register penalty handler for masternode penalties
         builder.RegisterType<PenaltyHandler>()

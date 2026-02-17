@@ -184,6 +184,13 @@ public class BlockValidator(
                     if (_logger.IsInfo) _logger.Info(
                         $"[XDC] Block {suggestedBlock.Number}: state root mismatch (computed={processedBlock.Header.StateRoot}, network={suggestedBlock.Header.StateRoot}) — accepted (known XDC divergence)");
                 }
+
+                // CRITICAL: Update the suggested block's state root to match what Nethermind computed.
+                // Without this, the block is stored with geth's state root, but the trie only has
+                // Nethermind's root. Later block processing tries to load state from the stored root
+                // and gets MissingTrieNodeException.
+                suggestedBlock.Header.StateRoot = processedBlock.Header.StateRoot;
+
                 error = null;
                 return true;
             }
