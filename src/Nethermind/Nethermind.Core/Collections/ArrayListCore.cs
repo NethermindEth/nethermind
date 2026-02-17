@@ -266,9 +266,7 @@ internal static class ArrayPoolListCore<T>
         if (localArray is not null)
         {
             ClearToCount(localArray, count);
-#if !ZKVM
             pool.Return(localArray);
-#endif
         }
 
         count = 0;

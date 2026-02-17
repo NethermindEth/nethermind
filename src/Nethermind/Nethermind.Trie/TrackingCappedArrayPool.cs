@@ -7,25 +7,20 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
 /// <summary>
 /// Track every rented CappedArray<byte> and return them all at once
 /// </summary>
-public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
+public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? arrayPool = null)
+    : ICappedArrayPool, IDisposable
 {
-    private readonly List<byte[]> _rentedBuffers;
-    private readonly ArrayPool<byte>? _arrayPool;
+    private readonly List<byte[]> _rentedBuffers = new(initialCapacity);
 
     public TrackingCappedArrayPool() : this(0)
     {
-    }
-
-    public TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte> arrayPool = null)
-    {
-        _rentedBuffers = new List<byte[]>(initialCapacity);
-        _arrayPool = arrayPool;
     }
 
     public CappedArray<byte> Rent(int size)
@@ -35,9 +30,8 @@ public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
             return CappedArray<byte>.Empty;
         }
 
-        // Devirtualize shared array pool by referring directly to it
-        byte[] array = _arrayPool?.Rent(size) ?? ArrayPool<byte>.Shared.Rent(size);
-        CappedArray<byte> rented = new CappedArray<byte>(array, size);
+        byte[] array = arrayPool?.Rent(size) ?? SafeArrayPool<byte>.Shared.Rent(size);
+        CappedArray<byte> rented = new(array, size);
         array.AsSpan().Clear();
         lock (_rentedBuffers) _rentedBuffers.Add(array);
         return rented;
@@ -49,22 +43,19 @@ public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
 
     public void Dispose()
     {
-#if !ZKVM
-        if (_arrayPool is null)
+        if (arrayPool is null)
         {
             foreach (byte[] rentedBuffer in CollectionsMarshal.AsSpan(_rentedBuffers))
             {
-                // Devirtualize the shared array pool by referring directly to it
-                ArrayPool<byte>.Shared.Return(rentedBuffer);
+                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
             }
         }
         else
         {
             foreach (byte[] rentedBuffer in CollectionsMarshal.AsSpan(_rentedBuffers))
             {
-                _arrayPool.Return(rentedBuffer);
+                arrayPool.Return(rentedBuffer);
             }
         }
-#endif
     }
 }
