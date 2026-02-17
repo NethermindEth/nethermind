@@ -745,7 +745,6 @@ namespace Nethermind.Evm.Test.Tracing
             // CALL(gas, addr_from_create2, value=0, ...)
             byte[] factoryCode = Prepare.EvmCode
                 .Create2(initCode, new byte[] { 0x01 }, 0) // CREATE2 with salt=1
-                // Stack now has the deployed address (or 0 if failed)
                 .Op(Instruction.DUP1)       // duplicate address for CALL
                 .PushData(0x00)             // retSize
                 .PushData(0x00)             // retOffset
