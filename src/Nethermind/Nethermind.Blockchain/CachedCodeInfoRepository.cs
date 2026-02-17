@@ -36,6 +36,16 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
+    public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    {
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo))
+        {
+            return cachedCodeInfo;
+        }
+
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
+    }
+
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
     {
         return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);

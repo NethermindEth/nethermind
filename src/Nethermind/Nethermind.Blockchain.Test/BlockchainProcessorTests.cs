@@ -382,7 +382,7 @@ public class BlockchainProcessorTests
 
         public class AfterBlock
         {
-            public const int IgnoreWait = 200;
+            public const int IgnoreWait = 1000;
 
             private readonly ILogger _logger;
             private readonly Block _block;

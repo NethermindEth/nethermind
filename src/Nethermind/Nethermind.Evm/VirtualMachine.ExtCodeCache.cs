@@ -54,7 +54,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return entry.CodeSize;
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, in codeHash, spec);
         uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
 
         StoreCacheEntry(key, codeHash, codeSize, codeInfo);
@@ -99,7 +99,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return entry.CodeInfo;
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, in codeHash, spec);
         uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
         StoreCacheEntry(key, codeHash, codeSize, codeInfo);
         return codeInfo;
@@ -113,10 +113,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return;
         }
 
+        // Under high-cardinality workloads, clearing the whole dictionary causes avoidable churn.
+        // Once capacity is reached, keep current hot set and skip admitting new entries.
         if (_extCodeCache!.Count >= _maxExtCodeCacheEntries)
         {
-            _extCodeCache.Clear();
+            return;
         }
+
         _extCodeCache[key] = new ExtCodeCacheEntry(codeHash, codeSize, codeInfo);
     }
 

@@ -179,7 +179,7 @@ internal static partial class EvmInstructions
             }
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
-            if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
+            if (spec.IsEofEnabled && codeInfo is EofCodeInfo)
             {
                 externalCode = EofValidator.MAGIC;
             }

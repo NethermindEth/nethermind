@@ -29,13 +29,15 @@ public class E2StoreWriter : IDisposable
     {
         // See https://github.com/google/snappy/blob/main/framing_format.txt
         using RecyclableMemoryStream bufferedStream = RecyclableStream.GetStream(nameof(E2StoreWriter));
-        using SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true);
-
-        await compressor!.WriteAsync(bytes, cancellation);
-        await compressor.FlushAsync();
+        using (SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true))
+        {
+            await compressor.WriteAsync(bytes, cancellation);
+            await compressor.FlushAsync(cancellation);
+        }
 
         bool canGetBuffer = bufferedStream!.TryGetBuffer(out ArraySegment<byte> arraySegment);
         Debug.Assert(canGetBuffer);
+        arraySegment = new ArraySegment<byte>(arraySegment.Array!, arraySegment.Offset, (int)bufferedStream.Length);
 
         return await WriteEntry(type, arraySegment, cancellation);
     }

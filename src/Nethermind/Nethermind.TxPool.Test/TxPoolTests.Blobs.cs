@@ -669,7 +669,7 @@ namespace Nethermind.TxPool.Test
 
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(txs).TestObject;
 
-            await RaiseBlockAddedToMainAndWaitForTransactions(txs.Length, block);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);

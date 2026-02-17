@@ -107,44 +107,48 @@ public class EraExporter(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
-            using EraWriter eraWriter = new EraWriter(fileSystem.File.Create(filePath), specProvider);
-
-            for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
+            ValueHash256 accumulator;
+            ValueHash256 sha256;
+            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                if (block is null)
+                for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
                 {
-                    throw new EraException($"Could not find a block with number {y}.");
+                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                    if (block is null)
+                    {
+                        throw new EraException($"Could not find a block with number {y}.");
+                    }
+
+                    TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
+                    if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
+                    {
+                        throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
+                    }
+
+                    if (block.TotalDifficulty is null)
+                    {
+                        throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
+                    }
+
+                    await eraWriter.Add(block, receipts, cancellation);
+
+                    bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
+                    if (shouldLog)
+                    {
+                        progress.Update(totalProcessed);
+                        progress.LogProgress();
+                    }
                 }
 
-                TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
-                if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
-                {
-                    throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {receiptStorage.GetHashCode()}");
-                }
-
-                if (block.TotalDifficulty is null)
-                {
-                    throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
-                }
-
-                await eraWriter.Add(block, receipts, cancellation);
-
-                bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
-                if (shouldLog)
-                {
-                    progress.Update(totalProcessed);
-                    progress.LogProgress();
-                }
+                (accumulator, sha256) = await eraWriter.Finalize(cancellation);
             }
 
-            (ValueHash256 accumulator, ValueHash256 sha256) = await eraWriter.Finalize(cancellation);
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
-            fileNames[(int)epochIdx] = Path.GetFileName(filePath);
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
+            fileNames[(int)epochIdx] = Path.GetFileName(rename);
             fileSystem.File.Move(
                 filePath,
                 rename, true);
