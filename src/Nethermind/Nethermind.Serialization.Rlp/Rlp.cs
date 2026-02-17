@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -27,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
     ///
     ///     Note: Prefer RlpStream to encode instead, which does not create a new byte array on each call.
     /// </summary>
-    public class Rlp
+    public partial class Rlp
     {
         public const int LengthOfKeccakRlp = 33;
 
@@ -52,11 +51,7 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
         static Rlp()
         {
-#if ZKVM
-            RegisterDecodersZkvm();
-#else
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
-#endif
         }
 
         /// <summary>
@@ -64,7 +59,7 @@ namespace Nethermind.Serialization.Rlp
         /// </summary>
         private Rlp(byte singleByte)
         {
-            Bytes = new[] { singleByte };
+            Bytes = [singleByte];
         }
 
         public Rlp(byte[] bytes)
@@ -82,69 +77,13 @@ namespace Nethermind.Serialization.Rlp
         public int Length => Bytes.Length;
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
-#if !ZKVM
-        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-#endif
         private static Lock _decoderLock = new();
-
-#if ZKVM
-        // Under NativeAOT/ZKVM, `FrozenDictionary` creation can pull in runtime paths that may fail due to
-        // missing generic method bodies / type loader behavior. Use a plain snapshot instead.
-        private static Dictionary<RlpDecoderKey, IRlpDecoder>? _decodersZkvmSnapshot;
-
-        public static IReadOnlyDictionary<RlpDecoderKey, IRlpDecoder> Decoders
-        {
-            get
-            {
-                Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersZkvmSnapshot;
-                if (snapshot is not null)
-                {
-                    return snapshot;
-                }
-
-                return CreateDecodersZkvmSnapshot();
-            }
-        }
-
-        private static IReadOnlyDictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersZkvmSnapshot()
-        {
-            using Lock.Scope _ = _decoderLock.EnterScope();
-            return _decodersZkvmSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
-        }
-#else
-        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
-        {
-            get
-            {
-                FrozenDictionary<RlpDecoderKey, IRlpDecoder> decoders = _decoders;
-                if (decoders is not null)
-                {
-                    // Already exists no need for lock
-                    return decoders;
-                }
-
-                return CreateDecoders();
-            }
-        }
-
-        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
-        {
-            using Lock.Scope _ = _decoderLock.EnterScope();
-            // Recreate, if not already recreated
-            return _decoders ??= _decoderBuilder.ToFrozenDictionary();
-        }
-#endif
 
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
-#if !ZKVM
-            _decoders = null;
-#endif
-#if ZKVM
-            _decodersZkvmSnapshot = null;
-#endif
+            _decodersSnapshot = null;
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -153,122 +92,13 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            // Mark cached decoders as null to force re-creation
-#if !ZKVM
-            _decoders = null;
-#endif
-#if ZKVM
-            _decodersZkvmSnapshot = null;
-#endif
+            _decodersSnapshot = null;
         }
 
-#if ZKVM
-        private static void RegisterDecodersZkvm()
-        {
-            // Under ZKVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
-            // (CustomAttribute instantiation can trigger TypeLoader failures).
-            // Register the required decoders explicitly instead.
-            RegisterDecoder(typeof(Account), new AccountDecoder());
-            RegisterDecoder(typeof(BlockBody), new BlockBodyDecoder());
-            RegisterDecoder(typeof(Block), new BlockDecoder());
-            RegisterDecoder(typeof(BlockInfo), new BlockInfoDecoder());
-            RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder());
-            RegisterDecoder(typeof(LogEntry), new LogEntryDecoder());
-            RegisterDecoder(typeof(Hash256), new KeccakDecoder());
-            RegisterDecoder(typeof(BlockHeader), new HeaderDecoder());
-            RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder());
-
-            // Receipt decoders with explicit keys.
-            RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), new CompactReceiptStorageDecoder());
-            RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptArrayStorageDecoder());
-            RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
-
-            // TxDecoder.Instance is still registered by ResetDecoders() for Transaction,
-            // but we keep this registration for completeness in ZKVM startup.
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
-        }
-#endif
-
-        public static void RegisterDecoders(
-            [DynamicallyAccessedMembers(
-                DynamicallyAccessedMemberTypes.PublicConstructors |
-                DynamicallyAccessedMemberTypes.Interfaces)]
+        public static partial void RegisterDecoders(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)]
             Assembly assembly,
-            bool canOverrideExistingDecoders = false)
-        {
-#if ZKVM
-            // Do not use reflection-based registration under ZKVM.
-            RegisterDecodersZkvm();
-            return;
-#else
-            foreach (Type? type in assembly.GetExportedTypes())
-            {
-                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
-                {
-                    continue;
-                }
-
-                if (type.GetCustomAttribute<SkipGlobalRegistration>() is not null)
-                {
-                    continue;
-                }
-
-                Type[]? implementedInterfaces = type.GetInterfaces();
-                foreach (Type? implementedInterface in implementedInterfaces)
-                {
-                    if (!implementedInterface.IsGenericType)
-                    {
-                        continue;
-                    }
-
-                    Type? interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
-                    if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
-                    {
-                        bool isSetForAnyAttribute = false;
-                        IRlpDecoder? instance = null;
-
-                        foreach (DecoderAttribute rlpDecoderAttr in type.GetCustomAttributes<DecoderAttribute>())
-                        {
-                            RlpDecoderKey key = new(implementedInterface.GenericTypeArguments[0], rlpDecoderAttr.Key);
-                            AddEncoder(key);
-
-                            isSetForAnyAttribute = true;
-                        }
-
-                        if (!isSetForAnyAttribute)
-                        {
-                            AddEncoder(new(implementedInterface.GenericTypeArguments[0]));
-                        }
-
-                        void AddEncoder(RlpDecoderKey key)
-                        {
-                            using Lock.Scope _ = _decoderLock.EnterScope();
-                            if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
-                            {
-                                try
-                                {
-                                    _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                        Activator.CreateInstance(type) :
-                                        Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
-                                }
-                                catch (Exception)
-                                {
-                                    throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
-                                }
-                            }
-                            else
-                            {
-                                throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {value}.");
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Mark FrozenDictionary as null to force re-creation
-            _decoders = null;
-#endif
-        }
+            bool canOverrideExistingDecoders = false);
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => Decode<T>(oldRlp.Bytes.AsRlpStream(), rlpBehaviors);
@@ -1960,7 +1790,7 @@ namespace Nethermind.Serialization.Rlp
         }
     }
 
-    public readonly struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
+    public readonly partial struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
     {
         public const string Default = "default";
         public const string Storage = "storage";
@@ -1975,18 +1805,7 @@ namespace Nethermind.Serialization.Rlp
         public static implicit operator Type(RlpDecoderKey key) => key._type;
         public static implicit operator RlpDecoderKey(Type key) => new(key);
 
-        public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
-
-        public override int GetHashCode() => (int)
-#if ZKVM
-            HashCode.Combine
-#else
-            BitOperations.Crc32C
-#endif
-            (
-                (uint)_type.GetHashCode(),
-                (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash()
-            );
+        public bool Equals(RlpDecoderKey other) => _type == other._type && _key.Equals(other._key);
 
         public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
 

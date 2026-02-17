@@ -15,12 +15,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
 
-    private static readonly IRlpStreamDecoder<TxReceipt> _decoder =
-#if ZKVM
-        new ReceiptMessageDecoder();
-#else
-        Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Trie)!;
-#endif
+    private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Trie)!;
 
     private static readonly IRlpStreamDecoder<TxReceipt> _skipStateDecoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
 
