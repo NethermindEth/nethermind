@@ -116,13 +116,9 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool DepositsEnabled => spec.DepositsEnabled;
     public virtual bool WithdrawalRequestsEnabled => spec.WithdrawalRequestsEnabled;
     public virtual bool ConsolidationRequestsEnabled => spec.ConsolidationRequestsEnabled;
-    public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool RequestsEnabled => spec.RequestsEnabled;
     public virtual ProofVersion BlobProofVersion => spec.BlobProofVersion;
     public virtual bool CLZEnabled => spec.CLZEnabled;
-
-    // This member is non-public on the interface; implement explicitly.
-    bool IReleaseSpec.IsAuthorizationListEnabled => ((IReleaseSpec)spec).IsAuthorizationListEnabled;
 
     public virtual bool IsPrecompile(Address address) => spec.IsPrecompile(address);
 

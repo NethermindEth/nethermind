@@ -17,6 +17,7 @@ namespace Nethermind.Core
     public readonly struct StorageCell : IEquatable<StorageCell>, IHash64bit<StorageCell>
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
+        private readonly AddressAsKey _address;
         private readonly UInt256 _index;
         private readonly bool _isHash;
 

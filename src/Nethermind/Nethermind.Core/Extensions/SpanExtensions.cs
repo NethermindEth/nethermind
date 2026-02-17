@@ -28,49 +28,37 @@ namespace Nethermind.Core.Extensions
 #endif
         internal static uint ComputeSeed(int len) => InstanceRandom + (uint)len;
 
-        public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false)
+        public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false) =>
+            memory.Span.ToHexString(withZeroX, false, false);
+
+        public static string ToHexString(this in ReadOnlyMemory<byte> memory, bool withZeroX = false) =>
+            memory.Span.ToHexString(withZeroX, false, false);
+
+        extension(in ReadOnlySpan<byte> span)
         {
-            return ToHexString(memory.Span, withZeroX, false, false);
+            public string ToHexString(bool withZeroX) =>
+                span.ToHexString(withZeroX, false, false);
+
+            public string ToHexString(bool withZeroX, bool noLeadingZeros) =>
+                ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
+
+            public string ToHexString() =>
+                span.ToHexString(false, false, false);
+
+            public string ToHexString(bool withZeroX, bool noLeadingZeros, bool withEip55Checksum) =>
+                ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
-        public static string ToHexString(this in ReadOnlyMemory<byte> memory, bool withZeroX = false)
+        extension(in Span<byte> span)
         {
-            return ToHexString(memory.Span, withZeroX, false, false);
-        }
+            public string ToHexString(bool withZeroX) =>
+                ToHexViaLookup(span, withZeroX, false, false);
 
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
-        {
-            return ToHexString(span, withZeroX, false, false);
-        }
+            public string ToHexString() =>
+                ToHexViaLookup(span, false, false, false);
 
-        public static string ToHexString(this in Span<byte> span, bool withZeroX)
-        {
-            return ToHexViaLookup(span, withZeroX, false, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
-        {
-            return ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span)
-        {
-            return ToHexString(span, false, false, false);
-        }
-
-        public static string ToHexString(this in Span<byte> span)
-        {
-            return ToHexViaLookup(span, false, false, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
-        {
-            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
-        }
-
-        public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
-        {
-            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
+            public string ToHexString(bool withZeroX, bool noLeadingZeros, bool withEip55Checksum) =>
+                ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
         [DebuggerStepThrough]
@@ -542,7 +530,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long FastHash64For32Bytes(ref byte start)
         {
-            uint seed = s_instanceRandom + 32;
+            uint seed = InstanceRandom + 32;
 
             if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {
@@ -574,7 +562,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long FastHash64For20Bytes(ref byte start)
         {
-            uint seed = s_instanceRandom + 20;
+            uint seed = InstanceRandom + 20;
 
             if (x64.Aes.IsSupported || Arm.Aes.IsSupported)
             {

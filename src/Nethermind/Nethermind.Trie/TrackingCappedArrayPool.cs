@@ -16,14 +16,13 @@ namespace Nethermind.Trie;
 /// <summary>
 /// Track every rented CappedArray<byte> and return them all at once
 /// </summary>
-public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? arrayPool = null, bool canBeParallel = true) : ICappedArrayPool, IDisposable
+public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? pool = null, bool canBeParallel = true) : ICappedArrayPool, IDisposable
 {
     private readonly ConcurrentQueue<byte[]>? _rentedQueue = canBeParallel ? new() : null;
     private readonly List<byte[]>? _rentedList = canBeParallel ? null : new(initialCapacity);
-    private readonly ArrayPool<byte>? _arrayPool = arrayPool;
 
-    public TrackingCappedArrayPool() : this(0)
-    {
+    public TrackingCappedArrayPool() : this(0) { }
+
     public CappedArray<byte> Rent(int size)
     {
         if (size == 0)
@@ -31,7 +30,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
             return CappedArray<byte>.Empty;
         }
 
-        byte[] array = arrayPool?.Rent(size) ?? SafeArrayPool<byte>.Shared.Rent(size);
+        byte[] array = pool?.Rent(size) ?? SafeArrayPool<byte>.Shared.Rent(size);
         CappedArray<byte> rented = new(array, size);
         array.AsSpan().Clear();
         if (_rentedQueue is not null)
@@ -40,7 +39,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
         }
         else
         {
-            _rentedList.Add(array);
+            _rentedList!.Add(array);
         }
         return rented;
     }
@@ -51,38 +50,41 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
 
     public void Dispose()
     {
-        if (_arrayPool is null)
+        if (!DisposeCustomArrayPool())
         {
-            DisposeCustomArrayPool();
-            return;
-        }
-
-        ConcurrentQueue<byte[]>? rentedQueue = _rentedQueue;
-        if (rentedQueue is not null)
-        {
-            while (rentedQueue.TryDequeue(out byte[]? rentedBuffer))
+            ConcurrentQueue<byte[]>? rentedQueue = _rentedQueue;
+            if (rentedQueue is not null)
             {
-                // Devirtualize shared array pool by referring directly to it
-                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
+                while (rentedQueue.TryDequeue(out byte[] rentedBuffer))
+                {
+                    // Devirtualize the shared array pool by referring directly to it
+                    SafeArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
             }
-        }
-        else
-        {
-            Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
-            foreach (byte[] rentedBuffer in items)
+            else
             {
-                SafeArrayPool<byte>.Shared.Return(rentedBuffer);
+                Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
+                foreach (byte[] rentedBuffer in items)
+                {
+                    SafeArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
             }
         }
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void DisposeCustomArrayPool()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool DisposeCustomArrayPool()
     {
-        ArrayPool<byte> arrayPool = _arrayPool;
+        ArrayPool<byte> arrayPool = pool;
+        return arrayPool is not null && DisposeCustomArrayPool(arrayPool);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool DisposeCustomArrayPool(ArrayPool<byte> arrayPool)
+    {
         if (_rentedQueue is not null)
         {
-            while (_rentedQueue.TryDequeue(out byte[]? rentedBuffer))
+            while (_rentedQueue.TryDequeue(out byte[] rentedBuffer))
             {
                 arrayPool.Return(rentedBuffer);
             }
@@ -95,5 +97,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
                 arrayPool.Return(rentedBuffer);
             }
         }
+
+        return true;
     }
 }
