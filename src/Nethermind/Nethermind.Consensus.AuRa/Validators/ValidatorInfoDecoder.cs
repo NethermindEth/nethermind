@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfNullOrZero;
             }
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));

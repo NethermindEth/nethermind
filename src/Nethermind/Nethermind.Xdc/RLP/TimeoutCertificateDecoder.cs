@@ -14,13 +14,17 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
     protected override TimeoutCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
         ulong round = decoderContext.DecodeULong();
 
         byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
+
         if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
             throw new RlpException("One or more invalid signature lengths in timeout certificate.");
         Signature[]? signatures = null;
@@ -46,13 +50,17 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
     protected override TimeoutCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
+        {
+            rlpStream.ReadByte();
             return null;
+        }
         int sequenceLength = rlpStream.ReadSequenceLength();
         int endPosition = rlpStream.Position + sequenceLength;
 
         ulong round = rlpStream.DecodeULong();
 
         byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
+
         if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
             throw new RlpException("One or more invalid signature lengths in timeout certificate.");
         Signature[]? signatures = null;
@@ -78,7 +86,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
     public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfNullOrZero;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);

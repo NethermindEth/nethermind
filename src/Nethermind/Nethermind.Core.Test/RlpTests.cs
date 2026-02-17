@@ -101,9 +101,52 @@ namespace Nethermind.Core.Test
             byte[] bytes = [];
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
-            Rlp expectedResult = new(new byte[] { 128 });
+            Rlp expectedResult = new([0x80]);
             Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
             Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+        }
+
+        [Test]
+        public void Empty_item_checks_use_correct_rlp()
+        {
+            Assert.That(Rlp.OfNullOrZero[0], Is.EqualTo(Rlp.NullOrZeroByte));
+            Assert.That(Rlp.OfEmptyArray[0], Is.EqualTo(Rlp.EmptyArrayByte));
+
+            RlpStream emptyArrayStream = new(Rlp.OfEmptyArray.Bytes);
+            Assert.That(emptyArrayStream.IsNextItemEmptyArray(), Is.True);
+            Assert.That(emptyArrayStream.IsNextItemNull(), Is.False);
+
+            RlpStream emptyStringStream = new(Rlp.OfNullOrZero.Bytes);
+            Assert.That(emptyStringStream.IsNextItemNull(), Is.True);
+            Assert.That(emptyStringStream.IsNextItemEmptyArray(), Is.False);
+
+            Rlp.ValueDecoderContext emptyArrayContext = new(Rlp.OfEmptyArray.Bytes);
+            Assert.That(emptyArrayContext.IsNextItemEmptyArray(), Is.True);
+            Assert.That(emptyArrayContext.IsNextItemNull(), Is.False);
+
+            Rlp.ValueDecoderContext emptystringContext = new(Rlp.OfNullOrZero.Bytes);
+            Assert.That(emptystringContext.IsNextItemNull(), Is.True);
+            Assert.That(emptystringContext.IsNextItemEmptyArray(), Is.False);
+        }
+
+        [Test]
+        public void Decode_byte_arrays_returns_null_for_null_item()
+        {
+            RlpStream stream = new(Rlp.OfNullOrZero.Bytes);
+            Rlp.ValueDecoderContext context = new(Rlp.OfNullOrZero.Bytes);
+
+            Assert.That(stream.DecodeByteArrays(), Is.Null);
+            Assert.That(context.DecodeByteArrays(), Is.Null);
+        }
+
+        [Test]
+        public void Decode_byte_arrays_returns_empty_for_empty_list()
+        {
+            RlpStream stream = new(Rlp.OfEmptyArray.Bytes);
+            Rlp.ValueDecoderContext context = new(Rlp.OfEmptyArray.Bytes);
+
+            Assert.That(stream.DecodeByteArrays(), Is.Empty);
+            Assert.That(context.DecodeByteArrays(), Is.Empty);
         }
 
         [TestCase(0)]

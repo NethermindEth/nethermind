@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
-            Hash256[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false, limit: RlpLimit);
+            Hash256[] hashes = rlpStream.DecodeEnsureArray(ctx => rlpStream.DecodeKeccak(), false, limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

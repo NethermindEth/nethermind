@@ -35,6 +35,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
     {
         if (decoderContext.IsNextItemNull())
         {
+            decoderContext.ReadByte();
             return null;
         }
 
@@ -169,7 +170,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : IHeaderDecoder where TH : XdcBl
     {
         if (item is null)
         {
-            return Rlp.OfEmptySequence;
+            return Rlp.OfNullOrZero;
         }
 
         if (item is not TH header)

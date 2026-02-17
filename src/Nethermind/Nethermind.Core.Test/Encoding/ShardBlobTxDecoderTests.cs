@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -26,6 +27,7 @@ public partial class ShardBlobTxDecoderTests
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
         TxDecoderTests.TestCaseSource().Select(static tos => (Build.A.Transaction.From(tos.Item1)
             .WithChainId(TestBlockchainIds.ChainId)
+            .WithAccessList(AccessList.Empty)
             .WithShardBlobTxTypeAndFields(2, false)
             .SignedAndResolved()
             .TestObject, tos.Item2));

@@ -56,7 +56,7 @@ public partial class FlashbotsModuleTests
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
         result.Should().NotBeNull();
 
-        Assert.That(result.Result.Error, Is.EqualTo("Invalid blob proofs"));
+        Assert.That(result.Result.Error, Does.StartWith("InvalidHeaderHash: Header hash does not match."));
         Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
 
         string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);

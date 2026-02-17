@@ -127,7 +127,7 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactionsCount().Should().Be(0);
-            result.Should().Be(AcceptTxResult.Invalid); ;
+            result.Should().Be(AcceptTxResult.Invalid);
         }
 
         [Test]

@@ -21,6 +21,7 @@ using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
+using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -238,7 +239,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
 
         if (transaction.SupportsBlobs && transaction.BlobVersionedHashes is null) transaction.BlobVersionedHashes = [];
-        if (transaction.AccessList is not null && transaction.AccessList.IsEmpty) transaction.AccessList = null;
+        if (transaction.SupportsAccessList && transaction.AccessList is null) transaction.AccessList = AccessList.Empty;
         transaction.Hash ??= transaction.CalculateHash();
 
         return transaction;

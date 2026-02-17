@@ -21,7 +21,7 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder);
+        transaction.AuthorizationList = decoderContext.DecodeEnsureArray(_authTupleDecoder);
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

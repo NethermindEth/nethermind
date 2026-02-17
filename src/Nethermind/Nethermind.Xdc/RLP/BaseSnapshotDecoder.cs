@@ -14,7 +14,10 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
     protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemNull())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
 
         decoderContext.ReadSequenceLength();
         long number = decoderContext.DecodeLong();
@@ -47,7 +50,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfNullOrZero;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
@@ -57,7 +60,10 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
     protected TResult DecodeBase<TResult>(RlpStream rlpStream, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (rlpStream.IsNextItemNull())
+        {
+            rlpStream.ReadByte();
             return null;
+        }
 
         rlpStream.ReadSequenceLength();
 

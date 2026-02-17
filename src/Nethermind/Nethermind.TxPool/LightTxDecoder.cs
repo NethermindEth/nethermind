@@ -59,7 +59,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             rlpStream.DecodeUInt256(),
             rlpStream.DecodeUInt256(),
             rlpStream.DecodeUInt256(),
-            rlpStream.DecodeByteArrays(),
+            rlpStream.DecodeEnsureByteArrays(),
             rlpStream.DecodeUlong(),
             rlpStream.DecodeInt(),
             rlpStream.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)rlpStream.ReadByte() : default);

@@ -178,7 +178,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
     {
         if (item is null)
         {
-            stream.WriteByte(Rlp.NullObjectByte);
+            stream.WriteByte(Rlp.NullOrZeroByte);
             return;
         }
 

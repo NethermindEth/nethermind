@@ -16,5 +16,8 @@ namespace Nethermind.Serialization.Rlp
             : base(message)
         {
         }
+
+        public static RlpException NoNullAllowed()
+            => new("Null value is not allowed");
     }
 }

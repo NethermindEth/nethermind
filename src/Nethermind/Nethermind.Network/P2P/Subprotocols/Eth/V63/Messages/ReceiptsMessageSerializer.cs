@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             {
                 if (txReceipts is null)
                 {
-                    stream.Encode(Rlp.OfEmptySequence);
+                    stream.Encode(Rlp.OfNullOrZero);
                     continue;
                 }
 
@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 {
                     if (txReceipt is null)
                     {
-                        stream.Encode(Rlp.OfEmptySequence);
+                        stream.Encode(Rlp.OfNullOrZero);
                         continue;
                     }
 
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 return ReceiptsMessage.Empty;
             }
 
-            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0])
+            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.EmptyArrayByte)
             {
                 byteBuffer.ReadByte();
                 return ReceiptsMessage.Empty;
@@ -89,7 +89,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeEnsureArrayPoolList(_decodeArrayFunc);
             ReceiptsMessage message = new(data);
 
             return message;
@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 TxReceipt?[]? txReceipts = message.TxReceipts[i];
                 if (txReceipts is null)
                 {
-                    contentLength += Rlp.OfEmptySequence.Length;
+                    contentLength += Rlp.OfEmptyArray.Length;
                 }
                 else
                 {
@@ -132,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
                 if (receipt is null)
                 {
-                    contentLength += Rlp.OfEmptySequence.Length;
+                    contentLength += Rlp.OfEmptyArray.Length;
                     continue;
                 }
 

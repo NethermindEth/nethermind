@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         {
             if (item is null)
             {
-                stream.WriteByte(Rlp.NullObjectByte);
+                stream.EncodeNullObject();
                 return;
             }
 

@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test
         public void Empty_byte_array()
         {
             string result = Keccak.Compute([]).ToString();
-            Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
+            Assert.That(result, Is.EqualTo(KeccakZero));
         }
 
         [Test]

@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             // Capture closures once
             _decodeSlot = DecodeSlot;
-            _decodeSlotArray = s => s.DecodeArrayPoolList(_decodeSlot);
+            _decodeSlotArray = s => s.DecodeEnsureArrayPoolList(_decodeSlot);
         }
 
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             if (message.Slots is null || message.Slots.Count == 0)
             {
-                stream.EncodeNullObject();
+                stream.EncodeEmptyArray();
             }
             else
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             if (message.Proofs is null || message.Proofs.Count == 0)
             {
-                stream.EncodeNullObject();
+                stream.EncodeEmptyArray();
             }
             else
             {
@@ -83,8 +83,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.ReadSequenceLength();
 
             message.RequestId = stream.DecodeLong();
-            message.Slots = stream.DecodeArrayPoolList(_decodeSlotArray);
-            message.Proofs = stream.DecodeArrayPoolList(static s => s.DecodeByteArray());
+            message.Slots = stream.DecodeEnsureArrayPoolList(_decodeSlotArray);
+            EnsureNoNullElements(message.Slots, nameof(StorageRangeMessage.Slots));
+
+            message.Proofs = stream.DecodeEnsureArrayPoolList(static s => s.DecodeByteArray());
+            EnsureNoNullElements(message.Proofs, nameof(StorageRangeMessage.Proofs));
 
             return message;
         }
@@ -105,7 +108,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int allSlotsLength = 0;
-            int[] accountSlotsLengths = new int[message.Slots.Count];
+            int[] accountSlotsLengths = new int[message.Slots?.Count ?? 0];
 
             if (message.Slots is null || message.Slots.Count == 0)
             {
@@ -150,6 +153,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
 
             return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
+        }
+
+        private static void EnsureNoNullElements<T>(IOwnedReadOnlyList<T> values, string fieldName) where T : class
+        {
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (values[i] is null)
+                {
+                    throw RlpException.NoNullAllowed();
+                }
+            }
         }
     }
 }

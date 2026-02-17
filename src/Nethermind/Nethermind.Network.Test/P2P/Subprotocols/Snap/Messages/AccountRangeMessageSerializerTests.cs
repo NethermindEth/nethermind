@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
 
@@ -114,6 +115,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, msg);
+        }
+
+        [Test]
+        public void Deserialize_NullPathsWithAccounts_IsRejected()
+        {
+            AccountRangeMessageSerializer serializer = new();
+            byte[] payload = { 0xc3, 0x01, 0x80, 0xc0 };
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+        }
+
+        [Test]
+        public void Deserialize_NullProofs_IsRejected()
+        {
+            AccountRangeMessageSerializer serializer = new();
+            byte[] payload = { 0xc3, 0x01, 0xc0, 0x80 };
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
         }
     }
 }

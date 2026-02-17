@@ -20,6 +20,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (decoderContext.IsNextItemNull())
             {
+                decoderContext.ReadByte();
                 return null;
             }
 
@@ -219,7 +220,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfNullOrZero;
             }
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));

@@ -42,18 +42,11 @@ public class NeighborsMsgSerializer(
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
-        if (msg.Nodes.Count != 0)
+        stream.StartSequence(nodesContentLength);
+        for (int i = 0; i < msg.Nodes.Count; i++)
         {
-            stream.StartSequence(nodesContentLength);
-            for (int i = 0; i < msg.Nodes.Count; i++)
-            {
-                Node node = msg.Nodes[i];
-                SerializeNode(stream, node.Address, node.Id.Bytes);
-            }
-        }
-        else
-        {
-            stream.Encode(Rlp.OfEmptySequence);
+            Node node = msg.Nodes[i];
+            SerializeNode(stream, node.Address, node.Id.Bytes);
         }
 
         stream.Encode(msg.ExpirationTime);
@@ -68,16 +61,11 @@ public class NeighborsMsgSerializer(
 
         NettyRlpStream rlp = new(Data);
         rlp.ReadSequenceLength();
-        Node[] nodes = DeserializeNodes(rlp);
+        Node[] nodes = rlp.DecodeEnsureArray<Node>(_decodeItem);
 
         long expirationTime = rlp.DecodeLong();
         NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
-    }
-
-    private static Node[] DeserializeNodes(RlpStream rlpStream)
-    {
-        return rlpStream.DecodeArray<Node>(_decodeItem);
     }
 
     private static int GetNodesLength(ArraySegment<Node> nodes, out int contentLength)
@@ -101,14 +89,7 @@ public class NeighborsMsgSerializer(
     {
         int nodesContentLength = 0;
         int contentLength = 0;
-        if (msg.Nodes.Count != 0)
-        {
-            contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
-        }
-        else
-        {
-            contentLength += Rlp.OfEmptySequence.Bytes.Length;
-        }
+        contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
 

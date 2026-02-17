@@ -92,5 +92,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
+
+        [Test]
+        public void Deserialize_NullSlots_IsRejected()
+        {
+            StorageRangesMessageSerializer serializer = new();
+            byte[] payload = { 0xc3, 0x01, 0x80, 0xc0 };
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+        }
+
+        [Test]
+        public void Deserialize_NullProofs_IsRejected()
+        {
+            StorageRangesMessageSerializer serializer = new();
+            byte[] payload = { 0xc3, 0x01, 0xc0, 0x80 };
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+        }
     }
 }

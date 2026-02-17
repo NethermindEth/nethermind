@@ -87,7 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         }
 
         [Test]
-        public void NullPathGroup()
+        public void NullPathGroup_IsRejected()
         {
             byte[] data =
             {

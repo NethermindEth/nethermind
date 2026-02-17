@@ -53,7 +53,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                stream.Encode(Rlp.OfEmptySequence);
+                stream.Encode(Rlp.OfNullOrZero);
                 return;
             }
 
@@ -118,7 +118,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Length;
+                return Rlp.OfNullOrZero.Length;
             }
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
@@ -130,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence.Length;
+                return Rlp.OfNullOrZero.Length;
             }
 
             int contLength = GetContentLength(item, rlpBehaviors);
