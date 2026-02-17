@@ -904,7 +904,7 @@ namespace Nethermind.Evm.Test.Tracing
         [TestCase(1_000, false)]
         public void Should_estimate_gas_with_gas_sensitive_branching(long gasThreshold, bool shouldSucceed)
         {
-            // Contract that checks gasleft() and branches: if gasleft >= threshold, SSTORE; else REVERT.
+            // Contract that checks gasLeft() and branches: if gasLeft >= threshold, SSTORE; else REVERT.
             // Tests that the binary search correctly handles gas-dependent execution paths.
             using TestEnvironment testEnvironment = new();
 
