@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -23,17 +22,15 @@ internal class XdcBlockProcessor : BlockProcessor
 {
     private readonly ILogger _logger;
     private readonly XdcCoinbaseResolver _coinbaseResolver;
-    private readonly IHeaderStore _headerStore;
     private readonly ISpecProvider _specProvider;
 
     // Store expected state root from suggested block before PrepareBlockForProcessing replaces it
     private Nethermind.Core.Crypto.Hash256? _expectedStateRoot;
 
-    public XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor, IHeaderStore headerStore) : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
+    public XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor) : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
     {
         _logger = logManager.GetClassLogger();
         _coinbaseResolver = new XdcCoinbaseResolver(logManager);
-        _headerStore = headerStore;
         _specProvider = specProvider;
     }
 
@@ -149,18 +146,15 @@ internal class XdcBlockProcessor : BlockProcessor
 
     protected override void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
+        var originalRoot = suggestedBlock.Header.StateRoot;
+        
         base.ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-
-        // XDC: After validation (and state root bypass), update the stored header in the DB.
-        // The header was stored during download with the original (geth) state root.
-        // We need to update it to our computed state root so HasStateForBlock can find it.
+        
+        // XDC: Cache our computed state root so BeginScope can use it
         bool isXdc = _specProvider.ChainId == 50 || _specProvider.ChainId == 51;
-        if (isXdc && suggestedBlock.Header.StateRoot != _expectedStateRoot)
+        if (isXdc && originalRoot != suggestedBlock.Header.StateRoot)
         {
-            // State root was updated during validation (XDC bypass)
-            // Update the stored header to match
-            _headerStore.Insert(suggestedBlock.Header);
-            if (_logger.IsDebug) _logger.Debug($"[XDC] Updated stored header for block {suggestedBlock.Number} with computed state root {suggestedBlock.Header.StateRoot}");
+            XdcStateRootCache.SetComputedStateRoot(suggestedBlock.Number, suggestedBlock.Header.StateRoot!);
         }
     }
 }

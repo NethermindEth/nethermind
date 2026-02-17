@@ -642,7 +642,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (!firstBlock.IsGenesis)
             {
                 BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
-                if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
+                // XDC: Override parent state root with our computed root and skip HasStateForBlock
+                bool isXdc = _blockTree.ChainId == 50 || _blockTree.ChainId == 51;
+                if (isXdc)
+                {
+                    var parentComputedRoot = XdcStateRootCache.GetComputedStateRoot(parentOfFirstBlock.Number);
+                    if (parentComputedRoot is not null)
+                    {
+                        parentOfFirstBlock.StateRoot = parentComputedRoot;
+                    }
+                }
+                if (!isXdc && !_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     ThrowOrphanedBlock(firstBlock);
                 }
@@ -731,7 +741,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // otherwise some nodes would be missing
             // we also need to go deeper if we already pruned state for that block
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!, throwOnMissingHash: false);
-            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
+            // XDC: Always report hasState=true — stored headers have geth's state root, not our computed root
+            bool isXdcChain = _blockTree.ChainId == 50 || _blockTree.ChainId == 51;
+            bool hasState = isXdcChain || toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition =
                 (notFoundTheBranchingPointYet || !hasState)
@@ -751,6 +763,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (blocksToBeAddedToMain.Count > 1)
             blocksToBeAddedToMain.Reverse();
+
+        // XDC: Override branchingPoint's state root with our computed root if available.
+        // Stored headers have geth's state root which doesn't exist in our trie.
+        // Our computed state root was cached during block processing.
+        bool isXdcBranch = _blockTree.ChainId == 50 || _blockTree.ChainId == 51;
+        if (isXdcBranch && branchingPoint is not null)
+        {
+            var computedRoot = XdcStateRootCache.GetComputedStateRoot(branchingPoint.Number);
+            if (computedRoot is not null)
+            {
+                branchingPoint.StateRoot = computedRoot;
+            }
+        }
 
         return new ProcessingBranch(branchingPoint, blocksToBeAddedToMain);
 
