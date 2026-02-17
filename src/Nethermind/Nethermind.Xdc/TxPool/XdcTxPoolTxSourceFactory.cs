@@ -10,9 +10,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.TxPool;
 
