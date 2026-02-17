@@ -11,6 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFilterTests
 {
     private int _filterCounter;

@@ -11,6 +11,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus
 {
+    [Parallelizable(ParallelScope.All)]
     public class SinglePendingTxSelectorTests
     {
         private readonly BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
