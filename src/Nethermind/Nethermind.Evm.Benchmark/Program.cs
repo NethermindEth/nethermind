@@ -44,20 +44,31 @@ args = ApplyChunkFilter(args);
 
 ConfigureTimingFilePath();
 BenchmarkSwitcher.FromAssembly(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks).Assembly).Run(args);
+GasNewPayloadMeasuredBenchmarks.PrintFinalTimingBreakdown();
 GasNewPayloadBenchmarks.PrintFinalTimingBreakdown();
 
 static void ConfigureTimingFilePath()
 {
-    string timingFilePath = Path.Combine(
+    string measuredTimingFilePath = Path.Combine(
         Path.GetTempPath(),
         $"nethermind-newpayload-timing-{Guid.NewGuid():N}.jsonl");
-    string timingReportFilePath = Path.Combine(
+    string measuredTimingReportFilePath = Path.Combine(
+        Directory.GetCurrentDirectory(),
+        "BenchmarkDotNet.Artifacts",
+        "results",
+        $"newpayload-measured-timing-breakdown-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
+    string realTimingFilePath = Path.Combine(
+        Path.GetTempPath(),
+        $"nethermind-newpayload-real-timing-{Guid.NewGuid():N}.jsonl");
+    string realTimingReportFilePath = Path.Combine(
         Directory.GetCurrentDirectory(),
         "BenchmarkDotNet.Artifacts",
         "results",
         $"newpayload-timing-breakdown-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
-    Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingFileEnvVar, timingFilePath);
-    Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingReportFileEnvVar, timingReportFilePath);
+    Environment.SetEnvironmentVariable(GasNewPayloadMeasuredBenchmarks.TimingFileEnvVar, measuredTimingFilePath);
+    Environment.SetEnvironmentVariable(GasNewPayloadMeasuredBenchmarks.TimingReportFileEnvVar, measuredTimingReportFilePath);
+    Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingFileEnvVar, realTimingFilePath);
+    Environment.SetEnvironmentVariable(GasNewPayloadBenchmarks.TimingReportFileEnvVar, realTimingReportFilePath);
 }
 
 static string[] ApplyModeFilter(string[] args)
@@ -81,8 +92,9 @@ static string[] ApplyModeFilter(string[] args)
         "EVM" => "*GasPayload*",
         "BLOCKONE" => "*GasBlockOne*",
         "BLOCK" => "*GasBlockBenchmarks*",
-        "NEWPAYLOAD" => "*GasNewPayload*",
-        _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM', 'BlockOne', 'Block', or 'NewPayload'.")
+        "NEWPAYLOAD" => "*GasNewPayloadBenchmarks*",
+        "NEWPAYLOADMEASURED" => "*GasNewPayloadMeasuredBenchmarks*",
+        _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.")
     };
 
     // Remove --mode from args

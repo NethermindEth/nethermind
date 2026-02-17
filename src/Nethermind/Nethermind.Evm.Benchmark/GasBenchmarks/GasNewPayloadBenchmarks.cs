@@ -5,62 +5,85 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 /// <summary>
-/// Benchmarks that replay gas-benchmark payload files through the full newPayload path:
-/// JSON deserialization → ExecutionPayloadV3 → TryGetBlock → BranchProcessor.Process.
-/// Each iteration re-deserializes JSON from memory, measuring the overhead of payload
-/// decoding, RLP transaction decoding, and block construction on top of block processing.
+/// Benchmarks that replay payload files through NewPayloadHandler flow to mirror
+/// production newPayload processing (request decode + payload validation + handler + queue processing).
 /// </summary>
 [Config(typeof(GasBenchmarkConfig))]
 public class GasNewPayloadBenchmarks
 {
-    internal const string TimingFileEnvVar = "NETHERMIND_NEWPAYLOAD_TIMING_FILE";
-    internal const string TimingReportFileEnvVar = "NETHERMIND_NEWPAYLOAD_TIMING_REPORT_FILE";
+    internal const string TimingFileEnvVar = "NETHERMIND_NEWPAYLOAD_REAL_TIMING_FILE";
+    internal const string TimingReportFileEnvVar = "NETHERMIND_NEWPAYLOAD_REAL_TIMING_REPORT_FILE";
     private const int MaxConsoleScenarioCount = 10;
-
-    private IWorldState _state;
-    private BranchProcessor _branchProcessor;
-    private BlockHeader _preBlockHeader;
-    private byte[] _rawJsonBytes;
-    private TimedTransactionProcessor _timedTransactionProcessor;
-    private IBlockCachePreWarmer _preWarmer;
-    private IDisposable _preWarmerLifetime;
     private static readonly JsonSerializerOptions s_jsonOptions = EthereumJsonSerializer.JsonOptions;
     private static readonly EthereumEcdsa s_ecdsa = new(1);
     private static readonly object s_timingFileLock = new();
 
-    // Timing breakdown accumulators (captured in ticks for sub-millisecond precision).
+    private IReleaseSpec _releaseSpec;
+    private ISpecProvider _specProvider;
+    private IWorldState _state;
+    private BranchProcessor _branchProcessor;
+    private BlockHeader _preBlockHeader;
+    private byte[] _rawJsonBytes;
+    private BenchmarkNewPayloadBlockTree _blockTree;
+    private BenchmarkProcessingQueue _processingQueue;
+    private NewPayloadHandler _newPayloadHandler;
+    private TimedTransactionProcessor _timedTransactionProcessor;
+    private IBlockCachePreWarmer _preWarmer;
+    private IDisposable _preWarmerLifetime;
+
     private long _jsonParseTicks;
     private long _payloadDeserializeTicks;
     private long _optionalParamsTicks;
-    private long _tryGetBlockTicks;
+    private long _validateForkTicks;
+    private long _validateParamsTicks;
+    private long _handlerTicks;
+    private long _queueTotalTicks;
     private long _senderRecoveryTicks;
     private long _blockProcessTicks;
     private long _txExecutionTicks;
     private int _iterationCount;
     private int _txExecutionCount;
-
     private readonly long[] _senderRecoveryByTypeTicks = new long[256];
     private readonly int[] _senderRecoveryByTypeCount = new int[256];
     private readonly long[] _txExecutionByTypeTicks = new long[256];
@@ -74,61 +97,258 @@ public class GasNewPayloadBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
-        IReleaseSpec pragueSpec = Prague.Instance;
-        ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
+        _releaseSpec = Prague.Instance;
+        _specProvider = new SingleReleaseSpecProvider(_releaseSpec, 1, 1);
 
-        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
+        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, _releaseSpec);
 
         TestBlockhashProvider blockhashProvider = new();
-        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(specProvider, blockhashProvider);
+        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(_specProvider, blockhashProvider);
         _state = branchProcessingContext.State;
         _preWarmer = branchProcessingContext.PreWarmer;
         _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
         _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
+        _preBlockHeader.TotalDifficulty = UInt256.Zero;
+
         ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
             _state,
             blockhashProvider,
-            specProvider,
+            _specProvider,
             branchProcessingContext.PreBlockCaches,
             branchProcessingContext.CachePrecompiles);
         _timedTransactionProcessor = new TimedTransactionProcessor(txProcessor, this);
 
-        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, pragueSpec);
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _timedTransactionProcessor, _preBlockHeader, Scenario, _releaseSpec);
 
+        ReceiptConfig receiptConfig = new();
+        IReceiptStorage receiptStorage = receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
-            specProvider, _timedTransactionProcessor, _state);
+            _specProvider,
+            _timedTransactionProcessor,
+            _state,
+            receiptStorage);
 
         _branchProcessor = new BranchProcessor(
-            blockProcessor, specProvider, _state,
+            blockProcessor,
+            _specProvider,
+            _state,
             new BeaconBlockRootHandler(_timedTransactionProcessor, _state),
-            blockhashProvider, LimboLogs.Instance, _preWarmer);
+            blockhashProvider,
+            LimboLogs.Instance,
+            _preWarmer);
 
-        // Store raw JSON bytes for deserialization in each iteration
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);
-        _rawJsonBytes = System.Text.Encoding.UTF8.GetBytes(rawJson);
+        _rawJsonBytes = Encoding.UTF8.GetBytes(rawJson);
+        ExecutionPayloadParams<ExecutionPayloadV3> initialRequest = DeserializeRequest(collectTiming: false);
 
-        // Warm up: deserialize + process once, then verify correctness
-        Block block = DeserializeAndBuildBlock();
-        Block[] result = _branchProcessor.Process(
-            _preBlockHeader, [block],
-            ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
-            NullBlockTracer.Instance);
-        PayloadLoader.VerifyProcessedBlock(result[0], Scenario.ToString(), Scenario.FilePath);
+        _preBlockHeader.Hash = initialRequest.ExecutionPayload.ParentHash;
+        long parentNumber = (long)initialRequest.ExecutionPayload.BlockNumber - 1;
+        _preBlockHeader.Number = parentNumber >= 0 ? parentNumber : 0;
+
+        _blockTree = new BenchmarkNewPayloadBlockTree(_preBlockHeader);
+        _processingQueue = new BenchmarkProcessingQueue(
+            _branchProcessor,
+            _preBlockHeader,
+            _specProvider,
+            this);
+
+        MergeConfig mergeConfig = new()
+        {
+            // Benchmark iterations replay the same block hash, so cache must be disabled.
+            NewPayloadCacheSize = 0,
+            SimulateBlockProduction = false,
+        };
+
+        _newPayloadHandler = new NewPayloadHandler(
+            new NoopPayloadPreparationService(),
+            Always.Valid,
+            _blockTree,
+            AlwaysPoS.Instance,
+            Nethermind.Synchronization.No.BeaconSync,
+            new StaticBeaconPivot(_preBlockHeader),
+            new BlockCacheService(),
+            _processingQueue,
+            new NoopInvalidChainTracker(),
+            new NoopMergeSyncController(),
+            mergeConfig,
+            receiptConfig,
+            new WorldStateReaderAdapter(_state),
+            LimboLogs.Instance);
+
+        ExecuteNewPayload(initialRequest, collectTiming: false);
+
+        Block processedBlock = _processingQueue.LastProcessedBlock;
+        if (processedBlock is null)
+        {
+            throw new InvalidOperationException("Warmup did not produce a processed block.");
+        }
+
+        PayloadLoader.VerifyProcessedBlock(processedBlock, Scenario.ToString(), Scenario.FilePath);
         ResetTimingAccumulators();
     }
 
     [Benchmark]
     public void ProcessBlock()
     {
-        Block block = DeserializeAndBuildBlock(collectTiming: true);
-
-        long processStart = Stopwatch.GetTimestamp();
-        _branchProcessor.Process(
-            _preBlockHeader, [block],
-            ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
-            NullBlockTracer.Instance);
-        _blockProcessTicks += Stopwatch.GetTimestamp() - processStart;
+        ExecutionPayloadParams<ExecutionPayloadV3> request = DeserializeRequest(collectTiming: true);
+        ExecuteNewPayload(request, collectTiming: true);
         _iterationCount++;
+    }
+
+    private void ExecuteNewPayload(ExecutionPayloadParams<ExecutionPayloadV3> request, bool collectTiming)
+    {
+        ExecutionPayload executionPayload = request.ExecutionPayload;
+        long start = Stopwatch.GetTimestamp();
+        if (!executionPayload.ValidateFork(_specProvider))
+        {
+            throw new InvalidOperationException("Payload fork validation failed.");
+        }
+        if (collectTiming)
+        {
+            _validateForkTicks += Stopwatch.GetTimestamp() - start;
+        }
+
+        start = Stopwatch.GetTimestamp();
+        IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+        Nethermind.Merge.Plugin.Data.ValidationResult validationResult = request.ValidateParams(releaseSpec, EngineApiVersions.Prague, out string validationError);
+        if (validationResult != Nethermind.Merge.Plugin.Data.ValidationResult.Success)
+        {
+            throw new InvalidOperationException($"Payload parameter validation failed: {validationError}");
+        }
+        if (collectTiming)
+        {
+            _validateParamsTicks += Stopwatch.GetTimestamp() - start;
+        }
+
+        _processingQueue.CollectTiming = collectTiming;
+        start = Stopwatch.GetTimestamp();
+        ResultWrapper<PayloadStatusV1> result = _newPayloadHandler.HandleAsync(executionPayload).GetAwaiter().GetResult();
+        if (collectTiming)
+        {
+            _handlerTicks += Stopwatch.GetTimestamp() - start;
+        }
+        if (result.ErrorCode != ErrorCodes.None)
+        {
+            throw new InvalidOperationException($"NewPayload handler returned error code {result.ErrorCode} ({result.Result.Error})");
+        }
+
+        if (result.Data is null || result.Data.Status != PayloadStatus.Valid)
+        {
+            string status = result.Data is null ? "<null>" : result.Data.Status;
+            string error = result.Data is null ? "" : result.Data.ValidationError;
+            throw new InvalidOperationException($"NewPayload handler returned status {status}. {error}");
+        }
+    }
+
+    private ExecutionPayloadParams<ExecutionPayloadV3> DeserializeRequest(bool collectTiming)
+    {
+        long start = Stopwatch.GetTimestamp();
+        using JsonDocument doc = JsonDocument.Parse(_rawJsonBytes);
+        JsonElement paramsArray = doc.RootElement.GetProperty("params");
+        if (collectTiming)
+        {
+            _jsonParseTicks += Stopwatch.GetTimestamp() - start;
+        }
+
+        start = Stopwatch.GetTimestamp();
+        ExecutionPayloadV3 payload = JsonSerializer.Deserialize<ExecutionPayloadV3>(
+            paramsArray[0].GetRawText(),
+            s_jsonOptions);
+        if (collectTiming)
+        {
+            _payloadDeserializeTicks += Stopwatch.GetTimestamp() - start;
+        }
+
+        start = Stopwatch.GetTimestamp();
+        byte[][] blobVersionedHashes = Array.Empty<byte[]>();
+        if (paramsArray.GetArrayLength() > 1 && paramsArray[1].ValueKind == JsonValueKind.Array)
+        {
+            blobVersionedHashes = JsonSerializer.Deserialize<byte[][]>(
+                paramsArray[1].GetRawText(),
+                s_jsonOptions);
+            if (blobVersionedHashes is null)
+            {
+                blobVersionedHashes = Array.Empty<byte[]>();
+            }
+        }
+
+        Hash256 parentBeaconBlockRoot = null;
+        if (paramsArray.GetArrayLength() > 2 && paramsArray[2].ValueKind == JsonValueKind.String)
+        {
+            parentBeaconBlockRoot = JsonSerializer.Deserialize<Hash256>(
+                paramsArray[2].GetRawText(),
+                s_jsonOptions);
+            payload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        }
+
+        byte[][] executionRequests = null;
+        if (paramsArray.GetArrayLength() > 3 && paramsArray[3].ValueKind == JsonValueKind.Array)
+        {
+            executionRequests = JsonSerializer.Deserialize<byte[][]>(
+                paramsArray[3].GetRawText(),
+                s_jsonOptions);
+            payload.ExecutionRequests = executionRequests;
+        }
+        if (collectTiming)
+        {
+            _optionalParamsTicks += Stopwatch.GetTimestamp() - start;
+        }
+
+        return new ExecutionPayloadParams<ExecutionPayloadV3>(
+            payload,
+            blobVersionedHashes,
+            parentBeaconBlockRoot,
+            executionRequests);
+    }
+
+    private void AddQueueTiming(Block block, long senderRecoveryTicks, long blockProcessTicks, long queueTotalTicks)
+    {
+        _senderRecoveryTicks += senderRecoveryTicks;
+        _blockProcessTicks += blockProcessTicks;
+        _queueTotalTicks += queueTotalTicks;
+        AddSenderRecoveryTypeBreakdown(block, senderRecoveryTicks);
+    }
+
+    private void AddSenderRecoveryTypeBreakdown(Block block, long elapsedTicks)
+    {
+        int txCount = block.Transactions.Length;
+        if (txCount == 0)
+        {
+            return;
+        }
+
+        int[] countsPerType = new int[_senderRecoveryByTypeCount.Length];
+        int firstTypeIndex = -1;
+        for (int i = 0; i < txCount; i++)
+        {
+            int txTypeIndex = (int)block.Transactions[i].Type;
+            if (firstTypeIndex == -1)
+            {
+                firstTypeIndex = txTypeIndex;
+            }
+
+            countsPerType[txTypeIndex]++;
+            _senderRecoveryByTypeCount[txTypeIndex]++;
+        }
+
+        long allocatedTicks = 0;
+        for (int txTypeIndex = 0; txTypeIndex < countsPerType.Length; txTypeIndex++)
+        {
+            int count = countsPerType[txTypeIndex];
+            if (count == 0)
+            {
+                continue;
+            }
+
+            long typeTicks = elapsedTicks * count / txCount;
+            _senderRecoveryByTypeTicks[txTypeIndex] += typeTicks;
+            allocatedTicks += typeTicks;
+        }
+
+        if (firstTypeIndex >= 0 && allocatedTicks != elapsedTicks)
+        {
+            _senderRecoveryByTypeTicks[firstTypeIndex] += elapsedTicks - allocatedTicks;
+        }
     }
 
     private void AddTxExecutionTiming(TxType txType, long elapsedTicks)
@@ -145,7 +365,10 @@ public class GasNewPayloadBenchmarks
         _jsonParseTicks = 0;
         _payloadDeserializeTicks = 0;
         _optionalParamsTicks = 0;
-        _tryGetBlockTicks = 0;
+        _validateForkTicks = 0;
+        _validateParamsTicks = 0;
+        _handlerTicks = 0;
+        _queueTotalTicks = 0;
         _senderRecoveryTicks = 0;
         _blockProcessTicks = 0;
         _txExecutionTicks = 0;
@@ -155,88 +378,6 @@ public class GasNewPayloadBenchmarks
         Array.Clear(_senderRecoveryByTypeCount, 0, _senderRecoveryByTypeCount.Length);
         Array.Clear(_txExecutionByTypeTicks, 0, _txExecutionByTypeTicks.Length);
         Array.Clear(_txExecutionByTypeCount, 0, _txExecutionByTypeCount.Length);
-    }
-
-    /// <summary>
-    /// Deserializes the raw JSON-RPC payload into an ExecutionPayloadV3, extracts additional
-    /// parameters (parentBeaconBlockRoot, executionRequests), and converts to a Block via TryGetBlock.
-    /// </summary>
-    private Block DeserializeAndBuildBlock(bool collectTiming = false)
-    {
-        long start = Stopwatch.GetTimestamp();
-        using JsonDocument doc = JsonDocument.Parse(_rawJsonBytes);
-        JsonElement paramsArray = doc.RootElement.GetProperty("params");
-        if (collectTiming)
-        {
-            _jsonParseTicks += Stopwatch.GetTimestamp() - start;
-        }
-
-        // Deserialize ExecutionPayloadV3 from the first parameter
-        start = Stopwatch.GetTimestamp();
-        ExecutionPayloadV3 payload = JsonSerializer.Deserialize<ExecutionPayloadV3>(
-            paramsArray[0].GetRawText(), s_jsonOptions);
-        if (collectTiming)
-        {
-            _payloadDeserializeTicks += Stopwatch.GetTimestamp() - start;
-        }
-
-        start = Stopwatch.GetTimestamp();
-        // Extract parentBeaconBlockRoot (params[2]) — separate JSON-RPC parameter
-        if (paramsArray.GetArrayLength() > 2 && paramsArray[2].ValueKind == JsonValueKind.String)
-        {
-            payload.ParentBeaconBlockRoot = JsonSerializer.Deserialize<Hash256>(
-                paramsArray[2].GetRawText(), s_jsonOptions);
-        }
-
-        // Extract executionRequests (params[3]) — Prague V4 parameter
-        if (paramsArray.GetArrayLength() > 3 && paramsArray[3].ValueKind == JsonValueKind.Array)
-        {
-            payload.ExecutionRequests = JsonSerializer.Deserialize<byte[][]>(
-                paramsArray[3].GetRawText(), s_jsonOptions);
-        }
-        if (collectTiming)
-        {
-            _optionalParamsTicks += Stopwatch.GetTimestamp() - start;
-        }
-
-        start = Stopwatch.GetTimestamp();
-        BlockDecodingResult decodingResult = payload.TryGetBlock();
-        if (decodingResult.Block is null)
-        {
-            throw new InvalidOperationException(
-                $"Failed to decode block from payload: {decodingResult.Error}");
-        }
-        if (collectTiming)
-        {
-            _tryGetBlockTicks += Stopwatch.GetTimestamp() - start;
-        }
-
-        // Recover sender addresses — in production this happens during block validation
-        Block block = decodingResult.Block;
-        if (collectTiming)
-        {
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                Transaction transaction = block.Transactions[i];
-                start = Stopwatch.GetTimestamp();
-                transaction.SenderAddress = s_ecdsa.RecoverAddress(transaction);
-                long elapsedTicks = Stopwatch.GetTimestamp() - start;
-                _senderRecoveryTicks += elapsedTicks;
-                int txTypeIndex = (int)transaction.Type;
-                _senderRecoveryByTypeTicks[txTypeIndex] += elapsedTicks;
-                _senderRecoveryByTypeCount[txTypeIndex]++;
-            }
-        }
-        else
-        {
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                Transaction transaction = block.Transactions[i];
-                transaction.SenderAddress = s_ecdsa.RecoverAddress(transaction);
-            }
-        }
-
-        return block;
     }
 
     [GlobalCleanup]
@@ -250,7 +391,10 @@ public class GasNewPayloadBenchmarks
                 _jsonParseTicks,
                 _payloadDeserializeTicks,
                 _optionalParamsTicks,
-                _tryGetBlockTicks,
+                _validateForkTicks,
+                _validateParamsTicks,
+                _handlerTicks,
+                _queueTotalTicks,
                 _senderRecoveryTicks,
                 _blockProcessTicks,
                 _txExecutionTicks,
@@ -262,11 +406,15 @@ public class GasNewPayloadBenchmarks
             AppendSummaryToFile(summary);
         }
 
+        _newPayloadHandler?.Dispose();
         _preWarmer?.ClearCaches();
         _preWarmerLifetime?.Dispose();
-        _state = null;
-        _branchProcessor = null;
+        _newPayloadHandler = null;
+        _processingQueue = null;
+        _blockTree = null;
         _rawJsonBytes = null;
+        _branchProcessor = null;
+        _state = null;
         _timedTransactionProcessor = null;
         _preWarmer = null;
         _preWarmerLifetime = null;
@@ -334,7 +482,10 @@ public class GasNewPayloadBenchmarks
         long totalJsonParseTicks = 0;
         long totalPayloadDeserializeTicks = 0;
         long totalOptionalParamsTicks = 0;
-        long totalTryGetBlockTicks = 0;
+        long totalValidateForkTicks = 0;
+        long totalValidateParamsTicks = 0;
+        long totalHandlerTicks = 0;
+        long totalQueueTotalTicks = 0;
         long totalSenderRecoveryTicks = 0;
         long totalBlockProcessTicks = 0;
         long totalTxExecutionTicks = 0;
@@ -348,12 +499,33 @@ public class GasNewPayloadBenchmarks
         for (int i = 0; i < summaries.Count; i++)
         {
             TimingBreakdownSummary summary = summaries[i];
-            PrintSummary(writer, summary.Name, summary.Iterations, summary.JsonParseTicks, summary.PayloadDeserializeTicks, summary.OptionalParamsTicks, summary.TryGetBlockTicks, summary.SenderRecoveryTicks, summary.BlockProcessTicks, summary.TxExecutionTicks, summary.TxExecutionCount, summary.SenderRecoveryByTypeTicks, summary.SenderRecoveryByTypeCount, summary.TxExecutionByTypeTicks, summary.TxExecutionByTypeCount);
+            PrintSummary(
+                writer,
+                summary.Name,
+                summary.Iterations,
+                summary.JsonParseTicks,
+                summary.PayloadDeserializeTicks,
+                summary.OptionalParamsTicks,
+                summary.ValidateForkTicks,
+                summary.ValidateParamsTicks,
+                summary.HandlerTicks,
+                summary.QueueTotalTicks,
+                summary.SenderRecoveryTicks,
+                summary.BlockProcessTicks,
+                summary.TxExecutionTicks,
+                summary.TxExecutionCount,
+                summary.SenderRecoveryByTypeTicks,
+                summary.SenderRecoveryByTypeCount,
+                summary.TxExecutionByTypeTicks,
+                summary.TxExecutionByTypeCount);
 
             totalJsonParseTicks += summary.JsonParseTicks;
             totalPayloadDeserializeTicks += summary.PayloadDeserializeTicks;
             totalOptionalParamsTicks += summary.OptionalParamsTicks;
-            totalTryGetBlockTicks += summary.TryGetBlockTicks;
+            totalValidateForkTicks += summary.ValidateForkTicks;
+            totalValidateParamsTicks += summary.ValidateParamsTicks;
+            totalHandlerTicks += summary.HandlerTicks;
+            totalQueueTotalTicks += summary.QueueTotalTicks;
             totalSenderRecoveryTicks += summary.SenderRecoveryTicks;
             totalBlockProcessTicks += summary.BlockProcessTicks;
             totalTxExecutionTicks += summary.TxExecutionTicks;
@@ -367,7 +539,25 @@ public class GasNewPayloadBenchmarks
 
         if (summaries.Count > 1 && totalIterations > 0)
         {
-            PrintSummary(writer, "ALL SCENARIOS", totalIterations, totalJsonParseTicks, totalPayloadDeserializeTicks, totalOptionalParamsTicks, totalTryGetBlockTicks, totalSenderRecoveryTicks, totalBlockProcessTicks, totalTxExecutionTicks, totalTxExecutionCount, totalSenderRecoveryByTypeTicks, totalSenderRecoveryByTypeCount, totalTxExecutionByTypeTicks, totalTxExecutionByTypeCount);
+            PrintSummary(
+                writer,
+                "ALL SCENARIOS",
+                totalIterations,
+                totalJsonParseTicks,
+                totalPayloadDeserializeTicks,
+                totalOptionalParamsTicks,
+                totalValidateForkTicks,
+                totalValidateParamsTicks,
+                totalHandlerTicks,
+                totalQueueTotalTicks,
+                totalSenderRecoveryTicks,
+                totalBlockProcessTicks,
+                totalTxExecutionTicks,
+                totalTxExecutionCount,
+                totalSenderRecoveryByTypeTicks,
+                totalSenderRecoveryByTypeCount,
+                totalTxExecutionByTypeTicks,
+                totalTxExecutionByTypeCount);
         }
     }
 
@@ -381,7 +571,7 @@ public class GasNewPayloadBenchmarks
 
         return Path.Combine(
             Path.GetTempPath(),
-            $"nethermind-newpayload-timing-breakdown-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
+            $"nethermind-newpayload-real-timing-breakdown-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.txt");
     }
 
     private static void AppendSummaryToFile(TimingBreakdownSummary summary)
@@ -406,7 +596,10 @@ public class GasNewPayloadBenchmarks
         long jsonParseTicks,
         long payloadDeserializeTicks,
         long optionalParamsTicks,
-        long tryGetBlockTicks,
+        long validateForkTicks,
+        long validateParamsTicks,
+        long handlerTicks,
+        long queueTotalTicks,
         long senderRecoveryTicks,
         long blockProcessTicks,
         long txExecutionTicks,
@@ -419,10 +612,25 @@ public class GasNewPayloadBenchmarks
         double jsonParseMs = TicksToMs(jsonParseTicks);
         double payloadDeserializeMs = TicksToMs(payloadDeserializeTicks);
         double optionalParamsMs = TicksToMs(optionalParamsTicks);
-        double tryGetBlockMs = TicksToMs(tryGetBlockTicks);
+        double validateForkMs = TicksToMs(validateForkTicks);
+        double validateParamsMs = TicksToMs(validateParamsTicks);
+        double handlerMs = TicksToMs(handlerTicks);
+        double queueTotalMs = TicksToMs(queueTotalTicks);
         double senderRecoveryMs = TicksToMs(senderRecoveryTicks);
         double blockProcessMs = TicksToMs(blockProcessTicks);
         double txExecutionMs = TicksToMs(txExecutionTicks);
+        double handlerNonQueueMs = handlerMs - queueTotalMs;
+        if (handlerNonQueueMs < 0)
+        {
+            handlerNonQueueMs = 0;
+        }
+
+        double queueNonStagedMs = queueTotalMs - senderRecoveryMs - blockProcessMs;
+        if (queueNonStagedMs < 0)
+        {
+            queueNonStagedMs = 0;
+        }
+
         double nonTxBlockMs = blockProcessMs - txExecutionMs;
         if (nonTxBlockMs < 0)
         {
@@ -430,16 +638,23 @@ public class GasNewPayloadBenchmarks
         }
 
         int senderRecoveryCount = GetTotalCount(senderRecoveryByTypeCount);
-        double totalMs = jsonParseMs + payloadDeserializeMs + optionalParamsMs + tryGetBlockMs + senderRecoveryMs + blockProcessMs;
+        double totalMs = jsonParseMs + payloadDeserializeMs + optionalParamsMs + validateForkMs + validateParamsMs + handlerMs;
 
         writer.WriteLine($"--- {name} ({iterations} iterations) ---");
         PrintLine(writer, "JSON parse", jsonParseMs, totalMs, iterations);
         PrintLine(writer, "Payload deserialize", payloadDeserializeMs, totalMs, iterations);
         PrintLine(writer, "Optional params", optionalParamsMs, totalMs, iterations);
-        PrintLine(writer, "TryGetBlock", tryGetBlockMs, totalMs, iterations);
-        PrintLine(writer, "Sender recovery", senderRecoveryMs, totalMs, iterations);
-        PrintLine(writer, "Block processing", blockProcessMs, totalMs, iterations);
+        PrintLine(writer, "Validate fork", validateForkMs, totalMs, iterations);
+        PrintLine(writer, "Validate params", validateParamsMs, totalMs, iterations);
+        PrintLine(writer, "Handler total", handlerMs, totalMs, iterations);
         writer.WriteLine($"  {"Total",-20} {totalMs,9:F3} ms                 avg {totalMs / iterations:F3} ms/iter");
+        writer.WriteLine("  Handler detail:");
+        writer.WriteLine($"    {"Queue total",-18} {queueTotalMs,9:F3} ms  ({GetShare(queueTotalMs, handlerMs),5:F1}% of handler)");
+        writer.WriteLine($"    {"Handler non-queue",-18} {handlerNonQueueMs,9:F3} ms  ({GetShare(handlerNonQueueMs, handlerMs),5:F1}% of handler)");
+        writer.WriteLine("  Queue detail:");
+        writer.WriteLine($"    {"Sender recovery",-18} {senderRecoveryMs,9:F3} ms  ({GetShare(senderRecoveryMs, queueTotalMs),5:F1}% of queue)  avg {GetAverage(senderRecoveryMs, senderRecoveryCount):F3} ms/tx");
+        writer.WriteLine($"    {"Block processing",-18} {blockProcessMs,9:F3} ms  ({GetShare(blockProcessMs, queueTotalMs),5:F1}% of queue)");
+        writer.WriteLine($"    {"Queue non-staged",-18} {queueNonStagedMs,9:F3} ms  ({GetShare(queueNonStagedMs, queueTotalMs),5:F1}% of queue)");
         writer.WriteLine("  Block processing detail:");
         writer.WriteLine($"    {"Tx execution",-18} {txExecutionMs,9:F3} ms  ({GetShare(txExecutionMs, blockProcessMs),5:F1}% of block)  avg {GetAverage(txExecutionMs, txExecutionCount):F3} ms/tx");
         writer.WriteLine($"    {"Non-tx overhead",-18} {nonTxBlockMs,9:F3} ms  ({GetShare(nonTxBlockMs, blockProcessMs),5:F1}% of block)");
@@ -485,7 +700,7 @@ public class GasNewPayloadBenchmarks
             TxType.Blob => "Blob",
             TxType.SetCode => "SetCode",
             TxType.DepositTx => "DepositTx",
-            _ => $"Type(0x{(byte)txType:X2})"
+            _ => $"Type(0x{(byte)txType:X2})",
         };
     }
 
@@ -530,6 +745,99 @@ public class GasNewPayloadBenchmarks
 
     private static double TicksToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
 
+    private sealed class BenchmarkProcessingQueue : IBlockProcessingQueue
+    {
+        private readonly BranchProcessor _branchProcessor;
+        private readonly BlockHeader _parentHeader;
+        private readonly RecoverSignatures _recoverSignatures;
+        private readonly GasNewPayloadBenchmarks _owner;
+        private int _count;
+
+        public BenchmarkProcessingQueue(
+            BranchProcessor branchProcessor,
+            BlockHeader parentHeader,
+            ISpecProvider specProvider,
+            GasNewPayloadBenchmarks owner)
+        {
+            _branchProcessor = branchProcessor;
+            _parentHeader = parentHeader;
+            _recoverSignatures = new RecoverSignatures(s_ecdsa, specProvider, LimboLogs.Instance);
+            _owner = owner;
+        }
+
+        public bool CollectTiming { get; set; }
+
+        public Block LastProcessedBlock { get; private set; }
+
+        public event EventHandler ProcessingQueueEmpty;
+        public event EventHandler<BlockEventArgs> BlockAdded;
+        public event EventHandler<BlockRemovedEventArgs> BlockRemoved;
+
+        public int Count => _count;
+
+        public ValueTask Enqueue(Block block, ProcessingOptions processingOptions)
+        {
+            Interlocked.Increment(ref _count);
+            long queueStart = 0;
+            long senderRecoveryTicks = 0;
+            long blockProcessTicks = 0;
+            try
+            {
+                BlockAdded?.Invoke(this, new BlockEventArgs(block));
+                if (CollectTiming)
+                {
+                    queueStart = Stopwatch.GetTimestamp();
+                    long senderStart = Stopwatch.GetTimestamp();
+                    _recoverSignatures.RecoverData(block);
+                    senderRecoveryTicks = Stopwatch.GetTimestamp() - senderStart;
+
+                    long processStart = Stopwatch.GetTimestamp();
+                    Block[] processedWithTiming = _branchProcessor.Process(
+                        _parentHeader,
+                        [block],
+                        processingOptions,
+                        NullBlockTracer.Instance);
+                    blockProcessTicks = Stopwatch.GetTimestamp() - processStart;
+                    LastProcessedBlock = processedWithTiming[0];
+                }
+                else
+                {
+                    _recoverSignatures.RecoverData(block);
+                    Block[] processed = _branchProcessor.Process(
+                        _parentHeader,
+                        [block],
+                        processingOptions,
+                        NullBlockTracer.Instance);
+                    LastProcessedBlock = processed[0];
+                }
+
+                Hash256 blockHash = block.GetOrCalculateHash();
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.Success));
+            }
+            catch (Exception ex)
+            {
+                Hash256 blockHash = block.GetOrCalculateHash();
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.Exception, ex));
+                throw;
+            }
+            finally
+            {
+                if (CollectTiming && queueStart != 0)
+                {
+                    long queueTotalTicks = Stopwatch.GetTimestamp() - queueStart;
+                    _owner.AddQueueTiming(block, senderRecoveryTicks, blockProcessTicks, queueTotalTicks);
+                }
+
+                if (Interlocked.Decrement(ref _count) == 0)
+                {
+                    ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
+                }
+            }
+
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class TimedTransactionProcessor(ITransactionProcessor inner, GasNewPayloadBenchmarks owner) : ITransactionProcessor
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
@@ -568,7 +876,10 @@ public class GasNewPayloadBenchmarks
             long jsonParseTicks,
             long payloadDeserializeTicks,
             long optionalParamsTicks,
-            long tryGetBlockTicks,
+            long validateForkTicks,
+            long validateParamsTicks,
+            long handlerTicks,
+            long queueTotalTicks,
             long senderRecoveryTicks,
             long blockProcessTicks,
             long txExecutionTicks,
@@ -583,7 +894,10 @@ public class GasNewPayloadBenchmarks
             JsonParseTicks = jsonParseTicks;
             PayloadDeserializeTicks = payloadDeserializeTicks;
             OptionalParamsTicks = optionalParamsTicks;
-            TryGetBlockTicks = tryGetBlockTicks;
+            ValidateForkTicks = validateForkTicks;
+            ValidateParamsTicks = validateParamsTicks;
+            HandlerTicks = handlerTicks;
+            QueueTotalTicks = queueTotalTicks;
             SenderRecoveryTicks = senderRecoveryTicks;
             BlockProcessTicks = blockProcessTicks;
             TxExecutionTicks = txExecutionTicks;
@@ -599,7 +913,10 @@ public class GasNewPayloadBenchmarks
         public long JsonParseTicks { get; init; }
         public long PayloadDeserializeTicks { get; init; }
         public long OptionalParamsTicks { get; init; }
-        public long TryGetBlockTicks { get; init; }
+        public long ValidateForkTicks { get; init; }
+        public long ValidateParamsTicks { get; init; }
+        public long HandlerTicks { get; init; }
+        public long QueueTotalTicks { get; init; }
         public long SenderRecoveryTicks { get; init; }
         public long BlockProcessTicks { get; init; }
         public long TxExecutionTicks { get; init; }
@@ -608,5 +925,286 @@ public class GasNewPayloadBenchmarks
         public int[] SenderRecoveryByTypeCount { get; init; }
         public long[] TxExecutionByTypeTicks { get; init; }
         public int[] TxExecutionByTypeCount { get; init; }
+    }
+
+    private sealed class BenchmarkNewPayloadBlockTree : IBlockTree
+    {
+        private readonly BlockHeader _parentHeader;
+        private readonly Block _head;
+        private readonly BlockInfo _parentInfo;
+
+        public BenchmarkNewPayloadBlockTree(BlockHeader parentHeader)
+        {
+            _parentHeader = parentHeader;
+            _head = new Block(parentHeader, new BlockBody(Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
+            _parentInfo = new BlockInfo(parentHeader.Hash, parentHeader.TotalDifficulty ?? UInt256.Zero)
+            {
+                WasProcessed = true,
+                BlockNumber = parentHeader.Number,
+            };
+            BestSuggestedHeader = parentHeader;
+            SyncPivot = (0, Keccak.Zero);
+        }
+
+        public Block Head => _head;
+        public BlockHeader BestSuggestedHeader { get; set; }
+
+        public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain { add { } remove { } }
+        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock { add { } remove { } }
+        public event EventHandler<BlockEventArgs> NewSuggestedBlock { add { } remove { } }
+        public event EventHandler<BlockEventArgs> NewHeadBlock { add { } remove { } }
+        public event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain { add { } remove { } }
+        public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> OnForkChoiceUpdated { add { } remove { } }
+
+        public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader;
+
+        public Hash256 HeadHash => _head.Hash;
+        public Hash256 GenesisHash => Keccak.Zero;
+        public Hash256 PendingHash => null;
+        public Hash256 FinalizedHash => null;
+        public Hash256 SafeHash => null;
+        public long? BestPersistedState { get; set; }
+
+        public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+        {
+            if (blockHash == _parentHeader.Hash)
+            {
+                return _head;
+            }
+
+            return null;
+        }
+
+        public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
+        {
+            if (blockNumber == _parentHeader.Number)
+            {
+                return _head;
+            }
+
+            return null;
+        }
+
+        public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+            blockNumber == _parentHeader.Number && blockHash == _parentHeader.Hash;
+
+        public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+        {
+            if (blockHash == _parentHeader.Hash)
+            {
+                return _parentHeader;
+            }
+
+            return null;
+        }
+
+        public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
+        {
+            if (blockNumber == _parentHeader.Number)
+            {
+                return _parentHeader;
+            }
+
+            return null;
+        }
+
+        public Hash256 FindBlockHash(long blockNumber)
+        {
+            if (blockNumber == _parentHeader.Number)
+            {
+                return _parentHeader.Hash;
+            }
+
+            return null;
+        }
+
+        public bool IsMainChain(BlockHeader blockHeader) => blockHeader?.Hash == _parentHeader.Hash;
+
+        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => blockHash == _parentHeader.Hash;
+
+        public long GetLowestBlock() => _parentHeader.Number;
+
+        public ulong NetworkId => 1;
+        public ulong ChainId => 1;
+        public BlockHeader Genesis => _parentHeader;
+        public Block BestSuggestedBody => _head;
+        public BlockHeader BestSuggestedBeaconHeader => _parentHeader;
+        public BlockHeader LowestInsertedHeader { get; set; }
+        public BlockHeader LowestInsertedBeaconHeader { get; set; }
+        public long BestKnownNumber => _parentHeader.Number;
+        public long BestKnownBeaconNumber => _parentHeader.Number;
+        public bool CanAcceptNewBlocks => true;
+        public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        public bool IsProcessingBlock { get; set; }
+
+        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
+            => AddBlockResult.Added;
+
+        public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) { }
+
+        public AddBlockResult Insert(
+            Block block,
+            BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
+            WriteFlags bodiesWriteFlags = WriteFlags.None)
+            => AddBlockResult.Added;
+
+        public void UpdateHeadBlock(Hash256 blockHash) { }
+
+        public void NewOldestBlock(long oldestBlock) { }
+
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
+            => AddBlockResult.Added;
+
+        public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
+            => ValueTask.FromResult(AddBlockResult.Added);
+
+        public AddBlockResult SuggestHeader(BlockHeader header) => AddBlockResult.Added;
+
+        public bool IsKnownBlock(long number, Hash256 blockHash) =>
+            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
+
+        public bool IsKnownBeaconBlock(long number, Hash256 blockHash) =>
+            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
+
+        public bool WasProcessed(long number, Hash256 blockHash) =>
+            number == _parentHeader.Number && blockHash == _parentHeader.Hash;
+
+        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) { }
+
+        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) { }
+
+        public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash)
+        {
+            if (number == _parentHeader.Number && blockHash == _parentHeader.Hash)
+            {
+                return (_parentInfo, null);
+            }
+
+            return (null, null);
+        }
+
+        public ChainLevelInfo FindLevel(long number) => null;
+
+        public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _parentInfo;
+
+        public Hash256 FindHash(long blockNumber)
+        {
+            if (blockNumber == _parentHeader.Number)
+            {
+                return _parentHeader.Hash;
+            }
+
+            return null;
+        }
+
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+            => new ArrayPoolList<BlockHeader>(0);
+
+        public void DeleteInvalidBlock(Block invalidBlock) { }
+
+        public void DeleteOldBlock(long blockNumber, Hash256 blockHash) { }
+
+        public void ForkChoiceUpdated(Hash256 finalizedBlockHash, Hash256 safeBlockBlockHash) { }
+
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) => 0;
+
+        public bool IsBetterThanHead(BlockHeader header) => false;
+
+        public void UpdateBeaconMainChain(BlockInfo[] blockInfos, long clearBeaconMainChainStartPoint) { }
+
+        public void RecalculateTreeLevels() { }
+    }
+
+#nullable enable
+    private sealed class NoopPayloadPreparationService : IPayloadPreparationService
+    {
+        public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes) => null;
+
+        public ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
+            => ValueTask.FromResult<IBlockProductionContext?>(null);
+
+        public void CancelBlockProduction(string payloadId) { }
+    }
+#nullable disable
+
+    private sealed class NoopMergeSyncController : IMergeSyncController
+    {
+        public void StopSyncing() { }
+
+        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader) => false;
+
+        public void StopBeaconModeControl() { }
+    }
+
+    private sealed class NoopInvalidChainTracker : IInvalidChainTracker
+    {
+        public void SetChildParent(Hash256 child, Hash256 parent) { }
+
+        public void OnInvalidBlock(Hash256 failedBlock, Hash256 parent) { }
+
+        public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256 lastValidHash)
+        {
+            lastValidHash = null;
+            return false;
+        }
+
+        public void Dispose() { }
+    }
+
+    private sealed class StaticBeaconPivot : IBeaconPivot
+    {
+        private readonly BlockHeader _pivot;
+
+        public StaticBeaconPivot(BlockHeader pivot)
+        {
+            _pivot = pivot;
+            ProcessDestination = pivot;
+        }
+
+        public long PivotNumber => _pivot.Number;
+        public Hash256 PivotHash => _pivot.Hash;
+        public Hash256 PivotParentHash => _pivot.ParentHash;
+        public long PivotDestinationNumber => _pivot.Number;
+
+        public BlockHeader ProcessDestination { get; set; }
+
+        public bool ShouldForceStartNewSync { get; set; }
+
+        public void EnsurePivot(BlockHeader blockHeader, bool updateOnlyIfNull = false)
+        {
+            if (!updateOnlyIfNull || ProcessDestination is null)
+            {
+                ProcessDestination = blockHeader;
+            }
+        }
+
+        public void RemoveBeaconPivot() { }
+
+        public bool BeaconPivotExists() => true;
+    }
+
+    private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account)
+        {
+            account = default;
+            return false;
+        }
+
+        public ReadOnlySpan<byte> GetStorage(BlockHeader baseBlock, Address address, in UInt256 index) => [];
+
+        public byte[] GetCode(Hash256 codeHash) => null;
+
+        public byte[] GetCode(in ValueHash256 codeHash) => null;
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader baseBlock, VisitingOptions visitingOptions = null)
+            where TCtx : struct, INodeContext<TCtx>
+        {
+        }
+
+        public bool HasStateForBlock(BlockHeader baseBlock) => worldState.HasStateForBlock(baseBlock);
     }
 }

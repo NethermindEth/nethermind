@@ -133,14 +133,14 @@ internal static class BlockBenchmarkHelper
     }
 
     public static BlockProcessor CreateBlockProcessor(
-        ISpecProvider specProvider, ITransactionProcessor txProcessor, IWorldState state) =>
+        ISpecProvider specProvider, ITransactionProcessor txProcessor, IWorldState state, IReceiptStorage receiptStorage = null) =>
         new(specProvider,
             Always.Valid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor), state),
             state,
-            NullReceiptStorage.Instance,
+            receiptStorage ?? NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(txProcessor, state),
             new BlockhashStore(state),
             LimboLogs.Instance,
