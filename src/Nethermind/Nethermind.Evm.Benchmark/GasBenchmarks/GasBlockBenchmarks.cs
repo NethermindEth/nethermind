@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -34,6 +36,7 @@ public class GasBlockBenchmarks
     private BlockHeader _preBlockHeader;
     private IBlockCachePreWarmer _preWarmer;
     private IDisposable _preWarmerLifetime;
+    private ProcessingOptions _processingOptions;
 
     [ParamsSource(nameof(GetTestCases))]
     public GasPayloadBenchmarks.TestCase Scenario { get; set; }
@@ -63,8 +66,14 @@ public class GasBlockBenchmarks
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
 
+        ReceiptConfig receiptConfig = new();
+        IReceiptStorage receiptStorage = receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
+        _processingOptions = receiptConfig.StoreReceipts
+            ? ProcessingOptions.StoreReceipts
+            : ProcessingOptions.None;
+
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
-            specProvider, txProcessor, _state);
+            specProvider, txProcessor, _state, receiptStorage);
 
         _branchProcessor = new BranchProcessor(
             blockProcessor, specProvider, _state,
@@ -76,7 +85,7 @@ public class GasBlockBenchmarks
         // Warm up and verify correctness
         Block[] result = _branchProcessor.Process(
             _preBlockHeader, _blocksToProcess,
-            ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
+            _processingOptions,
             NullBlockTracer.Instance);
         PayloadLoader.VerifyProcessedBlock(result[0], Scenario.ToString(), Scenario.FilePath);
     }
@@ -86,7 +95,7 @@ public class GasBlockBenchmarks
     {
         _branchProcessor.Process(
             _preBlockHeader, _blocksToProcess,
-            ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
+            _processingOptions,
             NullBlockTracer.Instance);
     }
 
@@ -100,5 +109,6 @@ public class GasBlockBenchmarks
         _blocksToProcess = null;
         _preWarmer = null;
         _preWarmerLifetime = null;
+        _processingOptions = ProcessingOptions.None;
     }
 }

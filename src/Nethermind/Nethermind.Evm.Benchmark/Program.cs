@@ -36,7 +36,7 @@ if (inprocessIdx >= 0)
     args = filtered;
 }
 
-// Handle --mode=EVM or --mode=Block: translates to BDN filter for the corresponding benchmark class
+// Handle --mode=* : translates to BDN filter for the corresponding benchmark class
 args = ApplyModeFilter(args);
 
 // Handle --chunk N/M: splits scenarios across runners (e.g. --chunk 2/5 means second of five chunks)
@@ -87,15 +87,39 @@ static string[] ApplyModeFilter(string[] args)
         return args;
 
     string modeValue = args[modeIdx].Substring(7); // after "--mode=" or "--mode:"
-    string classFilter = modeValue.ToUpperInvariant() switch
+    string normalizedMode = modeValue.ToUpperInvariant();
+    string classFilter;
+    switch (normalizedMode)
     {
-        "EVM" => "*GasPayload*",
-        "BLOCKONE" => "*GasBlockOne*",
-        "BLOCK" => "*GasBlockBenchmarks*",
-        "NEWPAYLOAD" => "*GasNewPayloadBenchmarks*",
-        "NEWPAYLOADMEASURED" => "*GasNewPayloadMeasuredBenchmarks*",
-        _ => throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVM', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.")
-    };
+        case "EVMEXECUTE":
+            classFilter = "*GasPayloadExecuteBenchmarks*";
+            break;
+        case "EVMBUILDUP":
+            classFilter = "*GasPayloadBenchmarks*";
+            break;
+        case "BLOCKBUILDING":
+            Environment.SetEnvironmentVariable(GasBlockBuildingBenchmarks.BuildBlocksOnMainStateEnvVar, bool.FalseString);
+            classFilter = "*GasBlockBuildingBenchmarks*";
+            break;
+        case "BLOCKBUILDINGMAINSTATE":
+            Environment.SetEnvironmentVariable(GasBlockBuildingBenchmarks.BuildBlocksOnMainStateEnvVar, bool.TrueString);
+            classFilter = "*GasBlockBuildingBenchmarks*";
+            break;
+        case "BLOCKONE":
+            classFilter = "*GasBlockOne*";
+            break;
+        case "BLOCK":
+            classFilter = "*GasBlockBenchmarks*";
+            break;
+        case "NEWPAYLOAD":
+            classFilter = "*GasNewPayloadBenchmarks*";
+            break;
+        case "NEWPAYLOADMEASURED":
+            classFilter = "*GasNewPayloadMeasuredBenchmarks*";
+            break;
+        default:
+            throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVMExecute', 'EVMBuildUp', 'BlockBuilding', 'BlockBuildingMainState', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.");
+    }
 
     // Remove --mode from args
     string[] remaining = new string[args.Length - 1];

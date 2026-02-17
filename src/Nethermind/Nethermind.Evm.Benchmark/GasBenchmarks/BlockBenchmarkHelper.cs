@@ -147,6 +147,24 @@ internal static class BlockBenchmarkHelper
             new WithdrawalProcessor(state, LimboLogs.Instance),
             new ExecutionRequestsProcessor(txProcessor));
 
+    public static BlockProcessor CreateBlockBuildingProcessor(
+        ISpecProvider specProvider, ITransactionProcessor txProcessor, IWorldState state, IReceiptStorage receiptStorage = null) =>
+        new(specProvider,
+            Always.Valid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockProductionTransactionsExecutor(
+                new BuildUpTransactionProcessorAdapter(txProcessor),
+                state,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                LimboLogs.Instance),
+            state,
+            receiptStorage ?? NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(txProcessor, state),
+            new BlockhashStore(state),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(state, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(txProcessor));
+
     public static void ExecuteSetupPayload(
         IWorldState state, ITransactionProcessor txProcessor,
         BlockHeader preBlockHeader, GasPayloadBenchmarks.TestCase scenario,

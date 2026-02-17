@@ -21,7 +21,8 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 
 /// <summary>
-/// Benchmarks that replay gas-benchmark payload files via TransactionProcessor.
+/// Benchmarks that replay gas-benchmark payload files via TransactionProcessor.BuildUp.
+/// This models block-building style execution (uncommitted per-transaction flow).
 /// Test cases are auto-discovered from the gas-benchmarks submodule.
 /// </summary>
 [Config(typeof(GasBenchmarkConfig))]

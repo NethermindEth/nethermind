@@ -1,260 +1,169 @@
 ## Changes
 
-Add BenchmarkDotNet gas benchmarks with four modes (**EVM**, **BlockOne**, **Block**, **NewPayload**) that replay [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) `engine_newPayloadV4` payload files, plus a GitHub Actions workflow for automated CI regression detection.
+Refresh and extend the BenchmarkDotNet gas benchmark harness to align modes with real Nethermind execution paths, add a measured NewPayload mode, and improve reporting.
 
-- **EVM mode** (`--mode=EVM`): Injects transactions directly into `TransactionProcessor.BuildUp` — measures pure EVM + transaction processing throughput
-- **BlockOne mode** (`--mode=BlockOne`): Runs `BlockProcessor.ProcessOne` directly with manual state scope — includes all consensus-critical block-level processing
-- **Block mode** (`--mode=Block`): Runs `BranchProcessor.Process` — adds state scope management, CommitTree, Reset, and TxHashCalculator on top of BlockOne
-- **NewPayload mode** (`--mode=NewPayload`): Full `engine_newPayloadV4` path — JSON deserialization, `ExecutionPayloadV3`, `TryGetBlock()`, ECDSA sender recovery, `BranchProcessor.Process`
-- **`--chunk N/M`**: Splits 910 test scenarios across M parallel runners for CI
-- **GitHub Action** (`gas-benchmarks-bdn.yml`): Runs on master push and PR label, caches baselines, posts comparison comments
-- Auto-discovers test scenarios from `tools/gas-benchmarks/eest_tests/`
-- Reports **MGas/s** with 99% confidence intervals
-- Verifies both **state root** and **block hash** match expected values from payload during warmup
+- Added explicit mode split for EVM execution paths.
+- `--mode=EVMExecute`: tx execution via `TransactionProcessor.Execute` (import-like path).
+- `--mode=EVMBuildUp`: tx execution via `TransactionProcessor.BuildUp` (block-building path).
+- Added block-building mode split.
+- `--mode=BlockBuilding`: producer-default behavior (`BuildBlocksOnMainState=false`, `ProcessingOptions.ProducingBlock`).
+- `--mode=BlockBuildingMainState`: main-state producer behavior (`BuildBlocksOnMainState=true`).
+- Kept block import path modes.
+- `--mode=BlockOne`: `BlockProcessor.ProcessOne`.
+- `--mode=Block`: `BranchProcessor.Process`.
+- Kept newPayload path modes.
+- `--mode=NewPayload`: `NewPayloadHandler` flow.
+- `--mode=NewPayloadMeasured`: instrumented near-handler flow with detailed timing breakdown.
+- Updated `Block` and `BlockOne` benchmark processing options to node-aligned defaults.
+- Removed hardcoded `NoValidation | ForceProcessing`.
+- Use `StoreReceipts` only when `ReceiptConfig.StoreReceipts=true`.
+- Added/kept timing breakdown reporting with file output and console suppression for larger runs.
 
-### Architecture: what each mode measures
+### Mode Architecture
 
-```
-                                    NewPayload mode
-                              ┌──────────────────────┐
-                              │  JSON deserialization │
-                              │  ExecutionPayloadV3   │
-                              │  TryGetBlock (RLP)    │
-                              │  ECDSA sender recovery│
-                              └──────────┬───────────┘
-                                         │
-                                         ▼
-                                  Block mode
-                              ┌──────────────────────┐
-                              │  BranchProcessor      │
-                              │  ├─ BeginScope        │
-                              │  ├─ CommitTree        │
-                              │  ├─ Reset             │
-                              │  └─ TxHashCalculator  │
-                              └──────────┬───────────┘
-                                         │
-                                         ▼
-                                BlockOne mode
-                              ┌──────────────────────┐
-                              │  BlockProcessor       │
-                              │  .ProcessOne()        │
-                              │  ├─ EIP-4788 beacon   │
-                              │  ├─ EIP-2935 blockhash│
-                              │  ├─ Tx execution      │
-                              │  ├─ Bloom filters     │
-                              │  ├─ Receipts root     │
-                              │  ├─ EIP-4895 withdraw │
-                              │  ├─ EIP-7685 requests │
-                              │  ├─ State root calc   │
-                              │  └─ Block hash calc   │
-                              └──────────┬───────────┘
-                                         │
-                                         ▼
-                                  EVM mode
-                              ┌──────────────────────┐
-                              │  TransactionProcessor │
-                              │  .BuildUp()           │
-                              │  ├─ EVM execution     │
-                              │  └─ State changes     │
-                              └──────────────────────┘
+```mermaid
+flowchart LR
+  subgraph TX["Transaction Execution Core"]
+    TP["EthereumTransactionProcessor"]
+  end
+
+  TP --> EVMB["EVMBuildUp<br/>BuildUp()"]
+  TP --> EVME["EVMExecute<br/>Execute()"]
+
+  EVME --> B1["BlockOne<br/>BlockProcessor.ProcessOne"]
+  B1 --> B["Block<br/>BranchProcessor.Process"]
+
+  B1 --> BB["BlockBuilding<br/>ProducingBlock"]
+  BB --> BBMS["BlockBuildingMainState<br/>BuildBlocksOnMainState=true"]
+
+  B --> NPM["NewPayloadMeasured<br/>Decode + recover + process (timed)"]
+  NPM --> NP["NewPayload<br/>NewPayloadHandler"]
 ```
 
-### What each mode is for
+### NewPayload vs Measured Flow
 
-| Mode | Class | Use case | What it measures |
-|------|-------|----------|-----------------|
-| **EVM** | `GasPayloadBenchmarks` | Opcode optimization, EVM changes | Pure EVM + tx processing throughput |
-| **BlockOne** | `GasBlockOneBenchmarks` | Block processing changes, state/trie work | `BlockProcessor.ProcessOne` with all consensus steps |
-| **Block** | `GasBlockBenchmarks` | BranchProcessor overhead analysis | ProcessOne + scope management + tree commits |
-| **NewPayload** | `GasNewPayloadBenchmarks` | End-to-end newPayload overhead | JSON deser + RLP decode + ECDSA recovery + block processing |
+```mermaid
+flowchart TD
+  A["Raw engine_newPayloadV4 JSON"] --> B["Deserialize payload params"]
+  B --> C["TryGetBlock + decode txs"]
+  C --> D["Sender recovery"]
+  D --> E["Branch/Block processing"]
 
-### Benchmark results
-
-#### ether_transfer (4,761 txs per block — shows overhead clearly)
-
-| Mode | Scenario | Mean | MGas/s | Allocated |
-|------|----------|------|--------|-----------|
-| **EVM** | block_ether_transfer_to_a | 11.99 ms | 8,338 | 17.88 MB |
-| **EVM** | block_ether_transfer_to_b | 11.79 ms | 8,481 | 17.28 MB |
-| **BlockOne** | block_ether_transfer_to_a | 29.67 ms | 3,370 | 34.14 MB |
-| **BlockOne** | block_ether_transfer_to_b | 29.56 ms | 3,384 | 33.72 MB |
-| **Block** | block_ether_transfer_to_a | 32.00 ms | 3,125 | 34.24 MB |
-| **Block** | block_ether_transfer_to_b | 31.97 ms | 3,128 | 33.72 MB |
-| **NewPayload** | block_ether_transfer_to_a | 332.3 ms | 301 | 50.1 MB |
-| **NewPayload** | block_ether_transfer_to_b | 308.6 ms | 324 | 47.5 MB |
-
-**Key insight**: For transaction-heavy blocks (4,761 txs), the overhead hierarchy is clear:
-- EVM to BlockOne: ~2.5x slower (block-level consensus: state root, receipts root, bloom, EIP-4788/2935/4895/7685)
-- BlockOne to Block: ~5% slower (BranchProcessor scope management overhead)
-- Block to NewPayload: ~10x slower (JSON deserialization + ECDSA sender recovery for 4,761 txs dominates)
-
-#### MULMOD (1 tx per block — compute-heavy, overhead is negligible)
-
-| Mode | Scenario | Mean | MGas/s |
-|------|----------|------|--------|
-| **EVM** | mod_bits_63 | 400.3 ms | 249.79 |
-| **EVM** | mod_bits_127 | 710.4 ms | 140.76 |
-| **EVM** | mod_bits_255 | 835.8 ms | 119.65 |
-| **BlockOne** | mod_bits_63 | 395.8 ms | 252.68 |
-| **BlockOne** | mod_bits_127 | 738.3 ms | 135.44 |
-| **BlockOne** | mod_bits_255 | 850.8 ms | 117.54 |
-| **Block** | mod_bits_63 | 350.6 ms | 285.24 |
-| **Block** | mod_bits_127 | 701.7 ms | 142.52 |
-| **Block** | mod_bits_255 | 768.5 ms | 130.13 |
-| **NewPayload** | mod_bits_63 | 375.8 ms | 266.12 |
-| **NewPayload** | mod_bits_127 | 671.3 ms | 148.96 |
-| **NewPayload** | mod_bits_255 | 788.7 ms | 126.79 |
-
-**Key insight**: For 1-tx compute-heavy blocks, EVM execution dominates and all modes are within noise. The overhead of block-level processing, JSON deserialization, and sender recovery is negligible compared to the MULMOD computation.
-
-#### NewPayload timing breakdown (mod_bits_127, 23 iterations)
-
-```
-  JSON parse:                0 ms  (0.0%)  avg 0.0 ms/iter
-  Payload deserialize:       0 ms  (0.0%)  avg 0.0 ms/iter
-  TryGetBlock:               0 ms  (0.0%)  avg 0.0 ms/iter
-  Sender recovery:           0 ms  (0.0%)  avg 0.0 ms/iter
-  Block processing:      15460 ms  (100.0%)  avg 672.2 ms/iter
+  E --> F["NewPayloadMeasured: explicit stage timing"]
+  E --> G["NewPayload: wrapped by NewPayloadHandler pipeline"]
 ```
 
-For 1-tx blocks, all NewPayload-specific overhead rounds to 0ms. For high-tx-count blocks like ether_transfer, sender recovery and JSON deserialization become the dominant cost.
+### What Each Mode Measures
 
-### Architecture diagram: Native vs BDN modes
+| Mode | Benchmark class | Primary purpose | Includes |
+|---|---|---|---|
+| `EVMBuildUp` | `GasPayloadBenchmarks` | Block-building tx-path throughput | Tx execution via `BuildUp()` + state reset |
+| `EVMExecute` | `GasPayloadExecuteBenchmarks` | Import-like tx-path throughput | Tx execution via `Execute()` + state reset |
+| `BlockOne` | `GasBlockOneBenchmarks` | Direct block processing cost | `BlockProcessor.ProcessOne` |
+| `Block` | `GasBlockBenchmarks` | Branch processing overhead | `BranchProcessor.Process` on top of BlockOne work |
+| `BlockBuilding` | `GasBlockBuildingBenchmarks` | Producer path (default) | `ProducingBlock` options, producer transaction executor |
+| `BlockBuildingMainState` | `GasBlockBuildingBenchmarks` | Producer on global/main state | Main-state config path |
+| `NewPayload` | `GasNewPayloadBenchmarks` | Real handler path | JSON/payload checks + handler + queue + processing |
+| `NewPayloadMeasured` | `GasNewPayloadMeasuredBenchmarks` | Detailed breakdown | Stage-level timings around decode/recovery/process |
 
-#### Native gas-benchmarks (Nethermind node via HTTP)
+## Benchmark Snapshot (2026-02-17)
 
-```
-┌──────────────┐         ┌──────────────────────────────────────────────────┐
-│  Kute tool   │  HTTP   │  Nethermind Node                                │
-│              │────────▸│                                                  │
-│  payload.txt │         │  engine_newPayloadV4                            │
-│              │         │    ├─ JSON-RPC deserialization                   │
-│              │         │    ├─ SemaphoreSlim lock acquisition             │
-│              │         │    ├─ GC.TryStartNoGCRegion(512MB)              │
-│              │         │    ├─ ExecutionPayload to Block conversion       │
-│              │         │    │    ├─ RLP transaction decoding              │
-│              │         │    │    ├─ TxTrie.CalculateRoot                  │
-│              │         │    │    └─ WithdrawalsTrie root                  │
-│              │         │    ├─ Header hash validation                     │
-│              │         │    ├─ Invalid chain tracker check                │
-│              │         │    ├─ Parent header lookup (RocksDB read)        │
-│              │         │    ├─ ShouldProcessBlock decision                │
-│              │         │    │    └─ HasStateForBlock (RocksDB read)       │
-│              │         │    ├─ ValidateSuggestedBlock                     │
-│              │         │    ├─ BlockTree.SuggestBlock                     │
-│              │         │    │    ├─ IsKnownBlock (RocksDB read)           │
-│              │         │    │    ├─ blockStore.Insert (RocksDB write)     │
-│              │         │    │    ├─ headerStore.Insert (RocksDB write)    │
-│              │         │    │    └─ UpdateOrCreateLevel (RocksDB write)   │
-│              │         │    ├─ Enqueue to BlockchainProcessor             │
-│              │         │    │    └─ Channel + TaskCompletionSource        │
-│              │         │    │                                             │
-│              │         │    ├─ ┌─────────────────────────────────┐        │
-│              │         │    │  │  BlockProcessor.ProcessOne()    │        │
-│              │         │    │  │  (same work as BDN Block mode)  │        │
-│              │         │    │  └─────────────────────────────────┘        │
-│              │         │    │                                             │
-│              │         │    ├─ GC.EndNoGCRegion()                         │
-│              │         │    ├─ Scheduled Gen2 GC with compaction          │
-│              │         │    ├─ SemaphoreSlim release                      │
-│              │         │    └─ JSON response serialization                │
-│              │◂────────│                                                  │
-│              │         │  engine_forkchoiceUpdatedV3                      │
-│              │────────▸│    ├─ JSON-RPC deserialization                   │
-│              │         │    ├─ SemaphoreSlim lock acquisition             │
-│              │         │    ├─ GetBlock (RocksDB read)                    │
-│              │         │    ├─ TryGetBranch (chain traversal)             │
-│              │         │    │    └─ Multiple FindParent (RocksDB reads)   │
-│              │         │    ├─ UpdateMainChain (RocksDB writes)           │
-│              │         │    ├─ MarkFinalized                              │
-│              │         │    ├─ ForkChoiceUpdated (RocksDB writes)         │
-│              │         │    ├─ SemaphoreSlim release                      │
-│              │         │    └─ JSON response serialization                │
-│              │◂────────│                                                  │
-└──────────────┘         └──────────────────────────────────────────────────┘
-                                        │
-                              RocksDB ◂──┘ all state reads/writes
+Command shape used:
+- `--inprocess --warmupCount 10 --iterationCount 10 --launchCount 1`
+
+Scenario filters:
+- `a_to_a`: `*a_to_a*` (matches 2 scenarios: `balance_0` and `balance_1`)
+- `mulmod_63_bits`: `*opcode_MULMOD-mod_bits_63*`
+
+### a_to_a (mean across 2 matched scenarios)
+
+| Mode | Mean ms (avg) | MGas/s (avg) | Allocated |
+|---|---:|---:|---:|
+| `EVMBuildUp` | 11.05 | 9054.39 | 17.88 MB |
+| `EVMExecute` | 13.06 | 7659.47 | 26.88 MB |
+| `BlockOne` | 32.15 | 3114.70 | 34.02 MB |
+| `Block` | 39.28 | 2547.67 | 53.2 MB |
+| `BlockBuilding` | 53.21 | 1886.87 | 48.04 MB |
+| `BlockBuildingMainState` | 55.30 | 1817.72 | 47.98 MB |
+| `NewPayload` | 104.75 | 955.44 | 69.34 MB |
+| `NewPayloadMeasured` | 107.10 | 933.49 | 69.32 MB |
+
+```mermaid
+pie showData
+  title a_to_a mean time split by mode (lower is better)
+  "EVMBuildUp" : 11.05
+  "EVMExecute" : 13.06
+  "BlockOne" : 32.15
+  "Block" : 39.28
+  "BlockBuilding" : 53.21
+  "BlockBuildingMainState" : 55.30
+  "NewPayload" : 104.75
+  "NewPayloadMeasured" : 107.10
 ```
 
-### Files
+### MULMOD mod_bits_63
+
+| Mode | Mean ms | MGas/s | Allocated |
+|---|---:|---:|---:|
+| `BlockBuildingMainState` | 350.50 | 285.33 | 258.63 KB |
+| `BlockOne` | 350.70 | 285.16 | 175.2 KB |
+| `NewPayloadMeasured` | 354.10 | 282.44 | 198.76 KB |
+| `BlockBuilding` | 358.30 | 279.07 | 259.68 KB |
+| `EVMBuildUp` | 366.10 | 273.15 | 4.19 KB |
+| `NewPayload` | 373.70 | 267.59 | 203.22 KB |
+| `EVMExecute` | 375.10 | 266.60 | 5.69 KB |
+| `Block` | 405.00 | 246.89 | 177.68 KB |
+
+Note: for this scenario, one transaction consumes ~100M gas, so CPU time is dominated by opcode compute; allocation mostly reflects pipeline scaffolding, not opcode cost.
+
+Artifacts:
+- `BenchmarkDotNet.Artifacts/results/mode-verification-a_to_a-20260217-125034.csv`
+- `BenchmarkDotNet.Artifacts/results/mode-verification-mulmod_63_bits-20260217-125250.csv`
+
+## Files
 
 | File | Purpose |
-|------|---------|
-| `GasPayloadBenchmarks.cs` | EVM mode — injects txs via `TransactionProcessor.BuildUp` |
-| `GasBlockOneBenchmarks.cs` | **NEW** — BlockOne mode — runs `BlockProcessor.ProcessOne` directly |
-| `GasBlockBenchmarks.cs` | Block mode — runs `BranchProcessor.Process` |
-| `GasNewPayloadBenchmarks.cs` | **NEW** — NewPayload mode — JSON deser + TryGetBlock + sender recovery + BranchProcessor |
-| `BlockBenchmarkHelper.cs` | **NEW** — Shared setup code for block-level benchmarks |
-| `PayloadLoader.cs` | Parses `engine_newPayloadV4` JSON; `LoadPayload()`, `LoadBlock()`, `ReadRawJson()`, `VerifyProcessedBlock()` |
-| `GasBenchmarkColumnProvider.cs` | Custom BDN columns: MGas/s, CI-Lower, CI-Upper |
-| `GasBenchmarkConfig.cs` | BDN config + `ChunkIndex`/`ChunkTotal` for CI splitting |
-| `Program.cs` | Entry point with `--mode`, `--chunk`, `--diag`, `--inprocess` flag handling |
-| `gas-benchmarks-bdn.yml` | GitHub Actions workflow for CI benchmark regression detection |
-| `merge_bdn_results.py` | Merges BDN JSON results from chunked CI runners |
-| `compare_bdn_results.py` | Compares master vs PR results, outputs Markdown table |
+|---|---|
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasPayloadBenchmarks.cs` | EVM BuildUp mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasPayloadExecuteBenchmarks.cs` | EVM Execute mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasBlockOneBenchmarks.cs` | BlockOne mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasBlockBenchmarks.cs` | Block mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasBlockBuildingBenchmarks.cs` | BlockBuilding + BlockBuildingMainState mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasNewPayloadBenchmarks.cs` | Handler-based NewPayload mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/GasNewPayloadMeasuredBenchmarks.cs` | Instrumented NewPayloadMeasured mode |
+| `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/BlockBenchmarkHelper.cs` | Shared setup/wiring for block-level modes |
+| `src/Nethermind/Nethermind.Evm.Benchmark/Program.cs` | `--mode`, `--chunk`, diagnostic routing |
 
-### Prerequisites
+## Usage
 
 ```bash
-# Ensure Git LFS is installed (one-time), then initialize the submodule
-git lfs install && git submodule update --init tools/gas-benchmarks
+# EVM execute path
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=EVMExecute --filter "*MULMOD*"
+
+# EVM buildup path
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=EVMBuildUp --filter "*MULMOD*"
+
+# Block import-like paths
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=BlockOne --filter "*a_to_a*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=Block --filter "*a_to_a*"
+
+# Producer paths
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=BlockBuilding --filter "*a_to_a*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=BlockBuildingMainState --filter "*a_to_a*"
+
+# NewPayload paths
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=NewPayload --filter "*a_to_a*"
+dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=NewPayloadMeasured --filter "*a_to_a*"
 ```
 
-If the submodule was already cloned without LFS installed (genesis file shows as ~130 bytes instead of ~53MB):
-```bash
-git lfs install && cd tools/gas-benchmarks && git lfs pull
-```
-
-### Usage
-
-```bash
-# EVM mode — pure EVM throughput
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=EVM --filter "*MULMOD*"
-
-# BlockOne mode — BlockProcessor.ProcessOne directly
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=BlockOne --filter "*MULMOD*"
-
-# Block mode — BranchProcessor.Process
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=Block --filter "*MULMOD*"
-
-# NewPayload mode — full engine_newPayloadV4 path
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=NewPayload --filter "*ether_transfer*"
-
-# All gas benchmarks (all modes)
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --filter "*Gas*"
-
-# Split across 5 runners (for CI)
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=Block --chunk 2/5
-
-# Diagnostic mode (quick debugging, no BDN harness)
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --diag
-
-# List all available scenarios
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --list flat --filter "*Gas*"
-```
-
-### CI Workflow
-
-The `gas-benchmarks-bdn.yml` workflow:
-- **Triggers**: master push (paths: `src/Nethermind/**`), PR with `benchmark` label, `workflow_dispatch`
-- **Runs**: 5 parallel self-hosted benchmark runners via `--chunk N/5`
-- **On master**: Merges chunk results, caches as baseline (`gas-benchmark-bdn-{sha}`)
-- **On PR**: Restores master baseline, compares with `compare_bdn_results.py`, posts sticky PR comment with regression/improvement table
-
-### Correctness verification
-
-All block-level modes (BlockOne, Block, NewPayload) verify during warmup that both **state root** and **block hash** match expected values from the payload file. This confirms all consensus-critical steps produce identical results to a real Nethermind node.
-
-## Types of changes
-
-#### What types of changes does your code introduce?
+## Types of Changes
 
 - [ ] Bugfix (a non-breaking change that fixes an issue)
 - [x] New feature (a non-breaking change that adds functionality)
 - [ ] Breaking change (a change that causes existing functionality not to work as expected)
-- [ ] Optimization
+- [x] Optimization
 - [ ] Refactoring
-- [ ] Documentation update
+- [x] Documentation update
 - [x] Build-related changes
 - [ ] Other: _Description_
 
@@ -272,19 +181,17 @@ All block-level modes (BlockOne, Block, NewPayload) verify during warmup that bo
 
 #### Notes on testing
 
-Benchmarks are self-verifying:
-- Block-level modes verify state root and block hash match expected values for every scenario
-- Tested with MULMOD, selfbalance, ether_transfer (4,761 txs per block) — all pass across all 4 modes
-- EVM mode preserves existing behavior (no changes to `GasPayloadBenchmarks`)
-- `--chunk N/M` verified: splitting across 5 chunks covers all 910 scenarios
-- `--mode` + `--filter` combination verified (e.g. `--mode=Block --filter "*MULMOD*"`)
+- Built benchmark project in Release.
+- Ran all 8 modes on `a_to_a` and `mulmod_63_bits` with `--inprocess`.
+- Verified mode routing for `BlockBuilding` and `BlockBuildingMainState`.
+- Verified NewPayload breakdown output behavior (file output, console suppression policy).
 
 ## Documentation
 
 #### Requires documentation update
 
-- [ ] Yes
-- [x] No
+- [x] Yes
+- [ ] No
 
 #### Requires explanation in Release Notes
 
@@ -293,35 +200,5 @@ Benchmarks are self-verifying:
 
 ## Remarks
 
-- The gas-benchmarks genesis file (~53MB) is stored in Git LFS. Clear error messages guide users through setup if LFS or the submodule is missing.
-- BDN config uses `MediumRun` with 1 launch and 10 iterations per scenario.
-- Results JSON is exported to `BenchmarkDotNet.Artifacts/` for automated comparison scripts.
-- All block-level modes use `ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing` to skip post-processing validation and allow re-processing the same block across iterations.
-- State is reverted between iterations by disposing the WorldState scope and re-opening at the pre-block header.
-- NewPayload mode includes a Stopwatch-based timing breakdown (printed in GlobalCleanup) showing how time is split between JSON parse, payload deserialize, TryGetBlock, sender recovery, and block processing.
-
-## Update (2026-02-17)
-
-Added NewPayloadMeasured mode (`--mode=NewPayloadMeasured`) and reran a single snapshot across all modes with:
-`--inprocess --warmupCount 10 --iterationCount 10 --launchCount 1`
-
-Scenario filters:
-- `a_to_a`: `*balance_0-case_id_a_to_a*`
-- `selfbalance`: `*contract_balance_0*`
-
-| Scenario | Mode | Mean | MGas/s | Allocated |
-|------|------|------:|------:|------:|
-| a_to_a | EVM | 11.20 ms | 8931.08 | 17.88 MB |
-| a_to_a | BlockOne | 30.05 ms | 3327.42 | 34.02 MB |
-| a_to_a | Block | 36.42 ms | 2745.38 | 53.11 MB |
-| a_to_a | NewPayload | 105.5 ms | 948.06 | 70.18 MB |
-| a_to_a | NewPayloadMeasured | 98.67 ms | 1013.44 | 70.07 MB |
-| selfbalance | EVM | 284.0 ms | 352.09 | 9.33 MB |
-| selfbalance | BlockOne | 272.9 ms | 366.40 | 9.49 MB |
-| selfbalance | Block | 274.8 ms | 363.96 | 9.50 MB |
-| selfbalance | NewPayload | 268.3 ms | 372.76 | 9.52 MB |
-| selfbalance | NewPayloadMeasured | 254.2 ms | 393.42 | 9.51 MB |
-
-Artifacts:
-- Summary CSV: `BenchmarkDotNet.Artifacts/results/mode-comparison-final-20260217-010906.csv`
-- Breakdown index: `BenchmarkDotNet.Artifacts/results/newpayload-breakdown-files-final-20260217-010906.csv`
+- Benchmark harness remains self-verifying on warmup for block-level correctness checks where applicable.
+- New documentation replaces legacy ASCII diagrams with Mermaid for PR readability.

@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -29,6 +31,7 @@ public class GasBlockOneBenchmarks
     private Block _testBlock;
     private BlockHeader _preBlockHeader;
     private IReleaseSpec _spec;
+    private ProcessingOptions _processingOptions;
 
     [ParamsSource(nameof(GetTestCases))]
     public GasPayloadBenchmarks.TestCase Scenario { get; set; }
@@ -53,7 +56,13 @@ public class GasBlockOneBenchmarks
 
         BlockBenchmarkHelper.ExecuteSetupPayload(_state, txProcessor, _preBlockHeader, Scenario, pragueSpec);
 
-        _blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(specProvider, txProcessor, _state);
+        ReceiptConfig receiptConfig = new();
+        IReceiptStorage receiptStorage = receiptConfig.StoreReceipts ? new InMemoryReceiptStorage() : NullReceiptStorage.Instance;
+        _processingOptions = receiptConfig.StoreReceipts
+            ? ProcessingOptions.StoreReceipts
+            : ProcessingOptions.None;
+
+        _blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(specProvider, txProcessor, _state, receiptStorage);
         _testBlock = PayloadLoader.LoadBlock(Scenario.FilePath);
 
         // Warm up and verify correctness
@@ -61,7 +70,7 @@ public class GasBlockOneBenchmarks
         {
             (Block processedBlock, _) = _blockProcessor.ProcessOne(
                 _testBlock,
-                ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
+                _processingOptions,
                 NullBlockTracer.Instance, _spec, default);
             _state.CommitTree(_preBlockHeader.Number + 1);
             PayloadLoader.VerifyProcessedBlock(processedBlock, Scenario.ToString(), Scenario.FilePath);
@@ -74,7 +83,7 @@ public class GasBlockOneBenchmarks
         using IDisposable scope = _state.BeginScope(_preBlockHeader);
         _blockProcessor.ProcessOne(
             _testBlock,
-            ProcessingOptions.NoValidation | ProcessingOptions.ForceProcessing,
+            _processingOptions,
             NullBlockTracer.Instance, _spec, default);
         _state.CommitTree(_preBlockHeader.Number + 1);
     }
@@ -85,5 +94,6 @@ public class GasBlockOneBenchmarks
         _state = null;
         _blockProcessor = null;
         _testBlock = null;
+        _processingOptions = ProcessingOptions.None;
     }
 }
