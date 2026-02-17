@@ -469,16 +469,7 @@ public class TransactionProcessorTests
         estimate.Should().Be(54225);
         Assert.That(err, Is.Null);
 
-        CallOutputTracer outputTracer = new();
-        tx.GasLimit = estimate;
-        var blkCtx2 = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
-        _transactionProcessor.CallAndRestore(tx, blkCtx2, outputTracer);
-        outputTracer.StatusCode.Should().Be(StatusCode.Success);
-
-        outputTracer = new CallOutputTracer();
-        tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
-        _transactionProcessor.CallAndRestore(tx, blkCtx2, outputTracer);
-        outputTracer.StatusCode.Should().Be(StatusCode.Failure);
+        ConfirmEnoughEstimate(tx, block, estimate);
     }
 
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
