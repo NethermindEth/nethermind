@@ -195,7 +195,7 @@ namespace Nethermind.Consensus.Processing
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
 
-                Console.WriteLine("[parallel] completed executing transaction with bal index {index}");
+                Console.WriteLine($"[parallel] completed executing transaction with bal index {index + 1}");
             }
 
             [DoesNotReturn, StackTraceHidden]
