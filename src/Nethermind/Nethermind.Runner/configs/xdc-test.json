@@ -21,8 +21,14 @@
     "PivotTotalDifficulty": "9000",
     "VerifyTrieOnStateSyncFinished": true
   },
+  "Mining": {
+    "Enabled": true
+  },
   "JsonRpc": {
     "Enabled": true
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 50000000
   },
   "Merge": {
     "Enabled": false
