@@ -31,6 +31,7 @@
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
+    <File Path="../../cspell.json" />
     <File Path="../../Directory.Packages.props" />
     <File Path="../../nuget.config" />
     <File Path="Directory.Build.targets" />

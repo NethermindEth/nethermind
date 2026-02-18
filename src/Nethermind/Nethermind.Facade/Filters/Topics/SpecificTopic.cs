@@ -11,6 +11,9 @@ namespace Nethermind.Blockchain.Filters.Topics
         private readonly Hash256 _topic;
         private Bloom.BloomExtract _bloomExtract;
 
+        public Hash256 Topic => _topic;
+        public override bool AcceptsAnyBlock => false;
+
         public SpecificTopic(Hash256 topic)
         {
             _topic = topic;

@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -177,6 +178,7 @@ public class MainPruningTrieStoreFactory
         IFinalizedStateProvider finalizedStateProvider,
         IBlockTree blockTree,
         IDbConfig dbConfig,
+        ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
         ILogManager logManager
     )
@@ -187,6 +189,9 @@ public class MainPruningTrieStoreFactory
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < syncConfig.SnapServingMaxDepth)
         {
+            // use PruningBoundary for log-index MaxReorgDepth before it's overwritten
+            logIndexConfig.MaxReorgDepth ??= pruningConfig.PruningBoundary;
+
             if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than {syncConfig.SnapServingMaxDepth}. Setting to {syncConfig.SnapServingMaxDepth}.");
             pruningConfig.PruningBoundary = syncConfig.SnapServingMaxDepth;
         }
