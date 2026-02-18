@@ -39,7 +39,7 @@ namespace Nethermind.Network.Rlpx
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
-                int totalPayloadOffset = MaxFrameSize * i;
+                int totalPayloadOffset = i == 0 ? packetTypeSize : MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
                 output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
