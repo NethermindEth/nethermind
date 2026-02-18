@@ -17,6 +17,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Benchmark;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -33,6 +34,15 @@ namespace Nethermind.Evm.Benchmark.GasBenchmarks;
 /// </summary>
 internal static class BlockBenchmarkHelper
 {
+    public static BlocksConfig CreateBenchmarkBlocksConfig()
+    {
+        return new BlocksConfig
+        {
+            // Keep this disabled in benchmarks to avoid hiding precompile-specific deltas.
+            CachePrecompilesOnBlockProcessing = false
+        };
+    }
+
     private sealed class WorldStateReaderAdapter(IWorldState worldState) : IStateReader
     {
         public bool TryGetAccount(BlockHeader baseBlock, Address address, out AccountStruct account)
@@ -69,11 +79,33 @@ internal static class BlockBenchmarkHelper
         public bool CachePrecompiles { get; } = cachePrecompiles;
     }
 
+    public readonly struct TransactionProcessingContext(
+        IWorldState state,
+        IDisposable stateScope,
+        ITransactionProcessor transactionProcessor)
+    {
+        public IWorldState State { get; } = state;
+        public IDisposable StateScope { get; } = stateScope;
+        public ITransactionProcessor TransactionProcessor { get; } = transactionProcessor;
+    }
+
+    public static TransactionProcessingContext CreateTransactionProcessingContext(
+        ISpecProvider specProvider,
+        IReleaseSpec spec)
+    {
+        PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, spec);
+        IWorldState state = PayloadLoader.CreateWorldState();
+        IDisposable stateScope = state.BeginScope(CreateGenesisHeader());
+        ITransactionProcessor transactionProcessor = CreateTransactionProcessor(state, new TestBlockhashProvider(), specProvider);
+        return new TransactionProcessingContext(state, stateScope, transactionProcessor);
+    }
+
     public static BranchProcessingContext CreateBranchProcessingContext(
         ISpecProvider specProvider,
-        IBlockhashProvider blockhashProvider)
+        IBlockhashProvider blockhashProvider,
+        IBlocksConfig blocksConfig = null)
     {
-        IBlocksConfig blocksConfig = new BlocksConfig();
+        blocksConfig ??= CreateBenchmarkBlocksConfig();
         if (!blocksConfig.PreWarmStateOnBlockProcessing)
         {
             return new BranchProcessingContext(
@@ -210,16 +242,35 @@ internal static class BlockBenchmarkHelper
             new WithdrawalProcessor(state, LimboLogs.Instance),
             new ExecutionRequestsProcessor(txProcessor));
 
+    public static BranchProcessor CreateBranchProcessor(
+        BlockProcessor blockProcessor,
+        ISpecProvider specProvider,
+        IWorldState state,
+        ITransactionProcessor txProcessor,
+        IBlockhashProvider blockhashProvider,
+        IBlockCachePreWarmer preWarmer)
+    {
+        return new BranchProcessor(
+            blockProcessor,
+            specProvider,
+            state,
+            new BeaconBlockRootHandler(txProcessor, state),
+            blockhashProvider,
+            LimboLogs.Instance,
+            preWarmer);
+    }
+
     public static void ExecuteSetupPayload(
         IWorldState state, ITransactionProcessor txProcessor,
         BlockHeader preBlockHeader, GasPayloadBenchmarks.TestCase scenario,
         IReleaseSpec spec)
     {
-        string setupFile = GasPayloadBenchmarks.FindSetupFile(scenario.FileName);
-        if (setupFile is null) return;
+        if (!TryLoadSetupPayload(scenario, out BlockHeader setupHeader, out Transaction[] setupTxs))
+        {
+            return;
+        }
 
         using IDisposable setupScope = state.BeginScope(preBlockHeader);
-        (BlockHeader setupHeader, Transaction[] setupTxs) = PayloadLoader.LoadPayload(setupFile);
         txProcessor.SetBlockExecutionContext(setupHeader);
         for (int i = 0; i < setupTxs.Length; i++)
         {
@@ -228,5 +279,41 @@ internal static class BlockBenchmarkHelper
         state.Commit(spec);
         state.CommitTree(preBlockHeader.Number);
         preBlockHeader.StateRoot = state.StateRoot;
+    }
+
+    public static void ExecuteSetupPayload(
+        IWorldState state,
+        ITransactionProcessor txProcessor,
+        GasPayloadBenchmarks.TestCase scenario,
+        IReleaseSpec spec)
+    {
+        if (!TryLoadSetupPayload(scenario, out BlockHeader setupHeader, out Transaction[] setupTxs))
+        {
+            return;
+        }
+
+        txProcessor.SetBlockExecutionContext(setupHeader);
+        for (int i = 0; i < setupTxs.Length; i++)
+        {
+            txProcessor.Execute(setupTxs[i], NullTxTracer.Instance);
+        }
+        state.Commit(spec);
+    }
+
+    private static bool TryLoadSetupPayload(
+        GasPayloadBenchmarks.TestCase scenario,
+        out BlockHeader setupHeader,
+        out Transaction[] setupTxs)
+    {
+        string setupFile = GasPayloadBenchmarks.FindSetupFile(scenario.FileName);
+        if (setupFile is null)
+        {
+            setupHeader = null!;
+            setupTxs = null!;
+            return false;
+        }
+
+        (setupHeader, setupTxs) = PayloadLoader.LoadPayload(setupFile);
+        return true;
     }
 }

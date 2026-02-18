@@ -10,13 +10,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Benchmark mode (Block or EVM)'
+        description: 'Benchmark mode'
         required: false
         default: 'Block'
         type: choice
         options:
+          - EVMExecute
+          - EVMBuildUp
+          - BlockOne
           - Block
-          - EVM
+          - BlockBuilding
+          - BlockBuildingMainState
+          - NewPayload
+          - NewPayloadMeasured
       filter:
         description: 'BDN filter pattern (optional, e.g. *MULMOD*)'
         required: false
@@ -91,7 +97,7 @@ jobs:
             ARGS="$ARGS --filter $FILTER"
           fi
 
-          dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release --no-build -- $ARGS
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll $ARGS
 
       - name: Upload results
         if: always()

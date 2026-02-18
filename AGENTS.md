@@ -123,6 +123,16 @@ See [global.json](./global.json) for the required .NET SDK version.
 
 The [Nethermind.Evm.Benchmark](./src/Nethermind/Nethermind.Evm.Benchmark/) project includes BenchmarkDotNet benchmarks that replay real `engine_newPayloadV4` payload files from the [gas-benchmarks](https://github.com/NethermindEth/gas-benchmarks) submodule. It is the primary tool for validating performance impact of EVM, block processing, block building, and newPayload path changes.
 
+### Agent fast path (read this first)
+
+For optimization work, do not recursively scan the whole repository first. Start from changed projects and map them to benchmark modes from this section, then run targeted scenarios.
+
+- `Nethermind.Evm` / `Nethermind.Evm.Precompiles`: start with `EVMExecute`, then `EVMBuildUp`, then one block-level mode (`BlockOne` or `Block`)
+- `Nethermind.Blockchain` / `Nethermind.State` / `Nethermind.Trie`: start with `BlockOne`, `Block`, then `NewPayload`
+- `Nethermind.Merge.Plugin`: start with `NewPayload` and `NewPayloadMeasured`
+
+When iterating on code, avoid `dotnet run` loops. Build once, run the benchmark executable directly.
+
 **When to use:** After any change to the following projects, run the relevant gas benchmarks to verify there is no throughput regression:
 - [Nethermind.Evm](./src/Nethermind/Nethermind.Evm/) - opcode implementations, `VirtualMachine`, instruction handling
 - [Nethermind.Evm.Precompiles](./src/Nethermind/Nethermind.Evm.Precompiles/) - precompiled contracts
@@ -168,27 +178,43 @@ Use `--mode=<ModeName>` to select one path. Do not use legacy `--mode=EVM`.
 ### Running benchmarks
 
 ```bash
-# List all benchmark scenarios
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --list flat --filter "*Gas*"
+# Build once (incremental: only affected projects are rebuilt)
+dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release --no-restore
+
+# Use the benchmark executable directly (no rebuild)
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=EVMExecute --filter "*MULMOD*"
+
+# Quick scenario listing (without BenchmarkDotNet class tree noise)
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --list-scenarios --filter "*extcode*"
 
 # Run one mode + one scenario pattern
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=EVMExecute --filter "*MULMOD*"
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=Block --filter "*a_to_a*"
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=NewPayloadMeasured --filter "*a_to_a*"
-
-# Run from pre-built executable (no build at all)
-dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release
-./src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark --inprocess --mode=EVMExecute --filter "*MULMOD*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=EVMExecute --filter "*MULMOD*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=Block --filter "*a_to_a*"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=NewPayloadMeasured --filter "*a_to_a*"
 
 # Run all 8 modes for the same scenario (PowerShell)
 $modes = @('EVMExecute','EVMBuildUp','BlockOne','Block','BlockBuilding','BlockBuildingMainState','NewPayload','NewPayloadMeasured')
 foreach ($mode in $modes) {
-  dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --inprocess --mode=$mode --filter "*a_to_a*"
+  dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --inprocess --mode=$mode --filter "*a_to_a*"
 }
 
 # Quick diagnostic mode (single payload, no BDN harness, debuggable)
-dotnet run --project src/Nethermind/Nethermind.Evm.Benchmark -c Release -- --diag "opcode_MULMOD-mod_bits_63"
+dotnet src/Nethermind/artifacts/bin/Nethermind.Evm.Benchmark/release/Nethermind.Evm.Benchmark.dll --diag "opcode_MULMOD-mod_bits_63"
 ```
+
+### Benchmark invariants
+
+- `BlocksConfig.CachePrecompilesOnBlockProcessing` is forced to `false` in benchmark setup. Do not override it in benchmark runs.
+- Always compare baseline and candidate with identical benchmark arguments (`mode`, `filter`, warmup/iteration/launch counts).
+
+### Faster rebuild loop
+
+- Use project-level builds, not solution-wide builds:
+  ```bash
+  dotnet build src/Nethermind/Nethermind.Evm.Benchmark -c Release --no-restore
+  ```
+- .NET incremental build already rebuilds only affected projects and dependencies.
+- If only benchmark arguments changed, skip build and rerun the executable.
 
 ### Reading results
 
@@ -215,3 +241,41 @@ For `NewPayload` and `NewPayloadMeasured`, timing breakdown reports are emitted 
 To run only scenarios related to your change, use `--filter` with a pattern matching opcode or scenario name. Use `--list flat --filter "*Gas*"` to discover exact names.
 
 Test scenarios are auto-discovered from `tools/gas-benchmarks/eest_tests/testing/`. New tests added to the gas-benchmarks submodule appear automatically after `git submodule update --remote tools/gas-benchmarks`.
+
+### CI-first test flow
+
+When changes are ready for validation:
+
+1. Push branch.
+2. Trigger full tests on GitHub Actions (`nethermind-tests.yml`) for that branch.
+3. Wait for failures, then run only failing tests locally using precise filters.
+4. Apply fix, commit, push.
+5. Re-run `nethermind-tests.yml` and confirm green.
+
+If GitHub CLI is available:
+
+```bash
+gh workflow run nethermind-tests.yml --ref <branch>
+gh run list --workflow nethermind-tests.yml --branch <branch> --limit 1
+gh run watch <run-id>
+```
+
+For benchmark-tool changes, also run the benchmark workflow (`gas-benchmarks-bdn.yml`) in `workflow_dispatch` mode with relevant `mode` + `filter`.
+
+### Setup/DI guidance for benchmark code
+
+Keep benchmark setup coherent and DI-driven:
+
+- Prefer shared setup helpers in `BlockBenchmarkHelper` over per-benchmark ad-hoc wiring.
+- Reuse existing modules/components where possible, and inject only the minimal overrides required by benchmark scenarios.
+- Avoid duplicating setup graphs across benchmark classes.
+- Keep constructor-sensitive wiring centralized in `src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks/BlockBenchmarkHelper.cs`.
+- Gas benchmark classes should not directly instantiate `EthereumTransactionProcessor`, `BranchProcessor`, or `BlockProcessor`.
+
+Quick maintenance check:
+
+```bash
+rg --line-number "new EthereumTransactionProcessor|new BranchProcessor|new BlockProcessor|new BeaconBlockRootHandler" src/Nethermind/Nethermind.Evm.Benchmark/GasBenchmarks
+```
+
+Expected: constructor hits only in `BlockBenchmarkHelper.cs`.

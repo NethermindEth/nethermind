@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Visitors;
@@ -126,13 +125,12 @@ public class GasNewPayloadBenchmarks
             _state,
             receiptStorage);
 
-        _branchProcessor = new BranchProcessor(
+        _branchProcessor = BlockBenchmarkHelper.CreateBranchProcessor(
             blockProcessor,
             _specProvider,
             _state,
-            new BeaconBlockRootHandler(_timedTransactionProcessor, _state),
+            _timedTransactionProcessor,
             blockhashProvider,
-            LimboLogs.Instance,
             _preWarmer);
 
         string rawJson = PayloadLoader.ReadRawJson(Scenario.FilePath);

@@ -8,13 +8,10 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Blockchain;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
@@ -50,42 +47,12 @@ public class GasPayloadBenchmarks
         IReleaseSpec pragueSpec = Prague.Instance;
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
 
-        // Load genesis state once (shared across all test cases)
-        PayloadLoader.EnsureGenesisInitialized(s_genesisPath, pragueSpec);
+        BlockBenchmarkHelper.TransactionProcessingContext context = BlockBenchmarkHelper.CreateTransactionProcessingContext(specProvider, pragueSpec);
+        _state = context.State;
+        _stateScope = context.StateScope;
+        _txProcessor = context.TransactionProcessor;
 
-        // Create a fresh WorldState and open scope at genesis
-        _state = PayloadLoader.CreateWorldState();
-        BlockHeader genesisBlock = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 0, 0, 0, Array.Empty<byte>())
-        {
-            StateRoot = PayloadLoader.GenesisStateRoot
-        };
-        _stateScope = _state.BeginScope(genesisBlock);
-
-        // Set up EVM infrastructure
-        TestBlockhashProvider blockhashProvider = new();
-        EthereumCodeInfoRepository codeInfoRepo = new(_state);
-        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, LimboLogs.Instance);
-
-        _txProcessor = new EthereumTransactionProcessor(
-            BlobBaseFeeCalculator.Instance,
-            specProvider,
-            _state,
-            vm,
-            codeInfoRepo,
-            LimboLogs.Instance);
-
-        // Execute setup payload if one exists for this scenario
-        string setupFile = FindSetupFile(Scenario.FileName);
-        if (setupFile is not null)
-        {
-            (BlockHeader setupHeader, Transaction[] setupTxs) = PayloadLoader.LoadPayload(setupFile);
-            _txProcessor.SetBlockExecutionContext(setupHeader);
-            for (int i = 0; i < setupTxs.Length; i++)
-            {
-                _txProcessor.Execute(setupTxs[i], NullTxTracer.Instance);
-            }
-            _state.Commit(pragueSpec);
-        }
+        BlockBenchmarkHelper.ExecuteSetupPayload(_state, _txProcessor, Scenario, pragueSpec);
 
         // Parse the test payload
         (BlockHeader header, Transaction[] txs) = PayloadLoader.LoadPayload(Scenario.FilePath);

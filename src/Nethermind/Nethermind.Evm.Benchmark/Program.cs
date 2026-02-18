@@ -19,6 +19,11 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
+if (TryListScenarios(args))
+{
+    return;
+}
+
 if (args.Length > 0 && args[0] == "--diag")
 {
     string pattern = args.Length > 1 ? args[1] : "*";
@@ -112,8 +117,10 @@ static (string ClassFilter, bool? BuildBlocksOnMainState) ResolveModeDefinition(
 {
     switch (modeValue.ToUpperInvariant())
     {
+        case "EVM":
         case "EVMEXECUTE":
             return ("*GasPayloadExecuteBenchmarks*", null);
+        case "BUILDUP":
         case "EVMBUILDUP":
             return ("*GasPayloadBenchmarks*", null);
         case "BLOCKBUILDING":
@@ -131,6 +138,71 @@ static (string ClassFilter, bool? BuildBlocksOnMainState) ResolveModeDefinition(
         default:
             throw new ArgumentException($"Unknown --mode value: '{modeValue}'. Expected 'EVMExecute', 'EVMBuildUp', 'BlockBuilding', 'BlockBuildingMainState', 'BlockOne', 'Block', 'NewPayload', or 'NewPayloadMeasured'.");
     }
+}
+
+static bool TryListScenarios(string[] args)
+{
+    int listIndex = -1;
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--list-scenarios", StringComparison.OrdinalIgnoreCase))
+        {
+            listIndex = i;
+            break;
+        }
+    }
+
+    if (listIndex < 0)
+    {
+        return false;
+    }
+
+    string filter = "*";
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i].StartsWith("--filter=", StringComparison.OrdinalIgnoreCase)
+            || args[i].StartsWith("--filter:", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(args[i], "--filter", StringComparison.OrdinalIgnoreCase))
+        {
+            (filter, _) = GetOptionValue(args, i, "--filter");
+            break;
+        }
+    }
+
+    Console.WriteLine("Index\tFamily\tScenario\tFile");
+    int index = 0;
+    foreach (GasPayloadBenchmarks.TestCase testCase in GasPayloadBenchmarks.GetTestCases())
+    {
+        if (!MatchesScenarioFilter(testCase, filter))
+        {
+            continue;
+        }
+
+        index++;
+        string family = Path.GetFileName(Path.GetDirectoryName(testCase.FilePath) ?? string.Empty);
+        Console.WriteLine($"{index}\t{family}\t{testCase.DisplayName}\t{testCase.FileName}");
+    }
+
+    Console.WriteLine($"Total scenarios: {index}");
+    return true;
+}
+
+static bool MatchesScenarioFilter(GasPayloadBenchmarks.TestCase testCase, string filter)
+{
+    if (string.IsNullOrWhiteSpace(filter) || filter == "*")
+    {
+        return true;
+    }
+
+    string token = filter.Replace("*", string.Empty, StringComparison.Ordinal).Trim();
+    if (token.Length == 0)
+    {
+        return true;
+    }
+
+    return testCase.DisplayName.Contains(token, StringComparison.OrdinalIgnoreCase)
+        || testCase.FileName.Contains(token, StringComparison.OrdinalIgnoreCase)
+        || testCase.FilePath.Contains(token, StringComparison.OrdinalIgnoreCase);
 }
 
 static string[] ApplyModeFilter(string[] args)
@@ -267,16 +339,10 @@ static void RunDiagnostic(string pattern)
     }
 
     TestBlockhashProvider blockhashProvider = new();
-    EthereumCodeInfoRepository codeInfoRepo = new(state);
-    EthereumVirtualMachine vm = new(blockhashProvider, specProvider, LimboLogs.Instance);
-
-    ITransactionProcessor txProcessor = new EthereumTransactionProcessor(
-        BlobBaseFeeCalculator.Instance,
-        specProvider,
+    ITransactionProcessor txProcessor = BlockBenchmarkHelper.CreateTransactionProcessor(
         state,
-        vm,
-        codeInfoRepo,
-        LimboLogs.Instance);
+        blockhashProvider,
+        specProvider);
 
     string setupFile = GasPayloadBenchmarks.FindSetupFile(Path.GetFileName(matchedFile));
     if (setupFile is not null)

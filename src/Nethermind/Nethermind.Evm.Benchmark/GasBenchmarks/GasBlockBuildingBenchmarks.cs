@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Visitors;
@@ -61,22 +60,25 @@ public class GasBlockBuildingBenchmarks
     {
         IReleaseSpec pragueSpec = Prague.Instance;
         ISpecProvider specProvider = new SingleReleaseSpecProvider(pragueSpec, 1, 1);
+        BlocksConfig blocksConfig = BlockBenchmarkHelper.CreateBenchmarkBlocksConfig();
 
         PayloadLoader.EnsureGenesisInitialized(GasPayloadBenchmarks.s_genesisPath, pragueSpec);
 
-        TestBlockhashProvider blockhashProvider = new();
-        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(specProvider, blockhashProvider);
-        _state = branchProcessingContext.State;
-        _preWarmer = branchProcessingContext.PreWarmer;
-        _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
-        _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
-
-        IBlocksConfig blocksConfig = new BlocksConfig();
         string buildOnMainStateValue = Environment.GetEnvironmentVariable(BuildBlocksOnMainStateEnvVar);
         if (!string.IsNullOrWhiteSpace(buildOnMainStateValue) && bool.TryParse(buildOnMainStateValue, out bool buildOnMainState))
         {
             blocksConfig.BuildBlocksOnMainState = buildOnMainState;
         }
+
+        TestBlockhashProvider blockhashProvider = new();
+        BlockBenchmarkHelper.BranchProcessingContext branchProcessingContext = BlockBenchmarkHelper.CreateBranchProcessingContext(
+            specProvider,
+            blockhashProvider,
+            blocksConfig);
+        _state = branchProcessingContext.State;
+        _preWarmer = branchProcessingContext.PreWarmer;
+        _preWarmerLifetime = branchProcessingContext.PreWarmerLifetime;
+        _preBlockHeader = BlockBenchmarkHelper.CreateGenesisHeader();
 
         _processingOptions = BlockBenchmarkHelper.GetBlockBuildingProcessingOptions(blocksConfig);
 
@@ -104,13 +106,12 @@ public class GasBlockBuildingBenchmarks
         _chainParentHeader.StateRoot = _preBlockHeader.StateRoot;
 
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockBuildingProcessor(specProvider, txProcessor, _state);
-        _branchProcessor = new BranchProcessor(
+        _branchProcessor = BlockBenchmarkHelper.CreateBranchProcessor(
             blockProcessor,
             specProvider,
             _state,
-            new BeaconBlockRootHandler(txProcessor, _state),
+            txProcessor,
             blockhashProvider,
-            LimboLogs.Instance,
             _preWarmer);
 
         BlockchainProcessor blockchainProcessor = new(

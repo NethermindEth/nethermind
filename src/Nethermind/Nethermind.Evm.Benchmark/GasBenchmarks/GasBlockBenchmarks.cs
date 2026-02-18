@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
@@ -15,7 +14,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
@@ -73,10 +71,13 @@ public class GasBlockBenchmarks
         BlockProcessor blockProcessor = BlockBenchmarkHelper.CreateBlockProcessor(
             specProvider, txProcessor, _state, receiptStorage);
 
-        _branchProcessor = new BranchProcessor(
-            blockProcessor, specProvider, _state,
-            new BeaconBlockRootHandler(txProcessor, _state),
-            blockhashProvider, LimboLogs.Instance, _preWarmer);
+        _branchProcessor = BlockBenchmarkHelper.CreateBranchProcessor(
+            blockProcessor,
+            specProvider,
+            _state,
+            txProcessor,
+            blockhashProvider,
+            _preWarmer);
 
         _blocksToProcess = [PayloadLoader.LoadBlock(Scenario.FilePath)];
 
