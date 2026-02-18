@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Attributes;
 using Nethermind.Serialization.Rlp;
+using System;
+using System.Threading;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -29,17 +29,15 @@ namespace Nethermind.Network.Rlpx
 
             int totalPayloadSize = input.ReadableBytes;
 
-            Rlp.ValueDecoderContext decoderContext = new(input.AsSpan());
+            Span<byte> data = input.AsSpan();
+            Rlp.ValueDecoderContext decoderContext = new(data);
             int packetTypeSize = decoderContext.PeekNextRlpLength();
             ReadOnlySpan<byte> packetType = decoderContext.PeekNextItem();
-            input.SkipBytes(packetTypeSize);
-
-            output.WriteBytes(packetType);
 
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
-                int totalPayloadOffset = MaxFrameSize * i;
+                int totalPayloadOffset = i == 0 ? packetTypeSize : MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
                 output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
