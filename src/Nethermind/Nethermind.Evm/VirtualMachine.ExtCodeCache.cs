@@ -38,28 +38,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal uint GetExtCodeSizeCached(Address address, IReleaseSpec spec)
-    {
-        if (_maxExtCodeCacheEntries == 0)
-        {
-            CodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
-            return uncachedCodeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)uncachedCodeInfo.CodeSpan.Length;
-        }
-
-        _extCodeCache ??= new Dictionary<AddressAsKey, ExtCodeCacheEntry>(8);
-        AddressAsKey key = address;
-
-        ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (_extCodeCache.TryGetValue(key, out ExtCodeCacheEntry entry) && entry.CodeHash == codeHash)
-        {
-            return entry.CodeSize;
-        }
-
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, in codeHash, spec);
-        uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
-
-        StoreCacheEntry(key, codeHash, codeSize, codeInfo);
-        return codeSize;
-    }
+        => ResolveExtCodeCacheEntry(address, spec).CodeSize;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ResetExtCodeCache()
@@ -81,48 +60,59 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal CodeInfo GetExtCodeInfoCached(Address address, IReleaseSpec spec)
+        => ResolveExtCodeCacheEntry(address, spec).CodeInfo;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ExtCodeCacheEntry ResolveExtCodeCacheEntry(Address address, IReleaseSpec spec)
     {
         if (_maxExtCodeCacheEntries == 0)
         {
             CodeInfo uncachedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
-            return uncachedCodeInfo;
+            return CreateExtCodeCacheEntry(default, uncachedCodeInfo);
         }
 
         _extCodeCache ??= new Dictionary<AddressAsKey, ExtCodeCacheEntry>(8);
         AddressAsKey key = address;
 
         ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (_extCodeCache.TryGetValue(key, out ExtCodeCacheEntry entry)
-            && entry.CodeHash == codeHash
-            && entry.CodeInfo is not null)
+        if (_extCodeCache.TryGetValue(key, out ExtCodeCacheEntry entry) && entry.CodeHash == codeHash)
         {
-            return entry.CodeInfo;
+            return entry;
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(address, in codeHash, spec);
-        uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
-        StoreCacheEntry(key, codeHash, codeSize, codeInfo);
-        return codeInfo;
+        ExtCodeCacheEntry refreshedEntry = CreateExtCodeCacheEntry(in codeHash, codeInfo);
+        StoreCacheEntry(key, in refreshedEntry);
+        return refreshedEntry;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void StoreCacheEntry(AddressAsKey key, in ValueHash256 codeHash, uint codeSize, CodeInfo? codeInfo)
+    private static ExtCodeCacheEntry CreateExtCodeCacheEntry(in ValueHash256 codeHash, CodeInfo codeInfo)
+    {
+        uint codeSize = codeInfo is EofCodeInfo ? (uint)EofValidator.MAGIC.Length : (uint)codeInfo.CodeSpan.Length;
+        return new ExtCodeCacheEntry(codeHash, codeSize, codeInfo);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void StoreCacheEntry(AddressAsKey key, in ExtCodeCacheEntry entry)
     {
         if (_maxExtCodeCacheEntries == 0)
         {
             return;
         }
 
+        Dictionary<AddressAsKey, ExtCodeCacheEntry> extCodeCache = _extCodeCache!;
+
         // Under high-cardinality workloads, clearing the whole dictionary causes avoidable churn.
         // Once capacity is reached, keep current hot set and skip admitting new keys.
         // Still allow updating existing keys so hot entries can be refreshed.
-        if (_extCodeCache!.Count >= _maxExtCodeCacheEntries && !_extCodeCache.ContainsKey(key))
+        if (extCodeCache.Count >= _maxExtCodeCacheEntries && !extCodeCache.ContainsKey(key))
         {
             return;
         }
 
-        _extCodeCache[key] = new ExtCodeCacheEntry(codeHash, codeSize, codeInfo);
+        extCodeCache[key] = entry;
     }
 
-    private readonly record struct ExtCodeCacheEntry(ValueHash256 CodeHash, uint CodeSize, CodeInfo? CodeInfo);
+    private readonly record struct ExtCodeCacheEntry(ValueHash256 CodeHash, uint CodeSize, CodeInfo CodeInfo);
 }

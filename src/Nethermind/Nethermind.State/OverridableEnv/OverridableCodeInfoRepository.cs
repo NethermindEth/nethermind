@@ -21,15 +21,18 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
-
-        if (_codeOverrides.TryGetValue(codeSource, out var result))
+        if (TryGetPrecompileOverride(codeSource, out CodeInfo precompileCodeInfo))
         {
-            return !result.codeInfo.IsEmpty &&
-                   ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegationAddress) &&
+            return precompileCodeInfo;
+        }
+
+        if (TryGetCodeOverride(codeSource, out var overrideInfo))
+        {
+            return !overrideInfo.codeInfo.IsEmpty &&
+                   ICodeInfoRepository.TryGetDelegatedAddress(overrideInfo.codeInfo.CodeSpan, out delegationAddress) &&
                    followDelegation
                 ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _)
-                : result.codeInfo;
+                : overrideInfo.codeInfo;
         }
 
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
@@ -37,14 +40,14 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, in ValueHash256 codeHash, IReleaseSpec vmSpec)
     {
-        if (_precompileOverrides.TryGetValue(codeSource, out var precompile))
+        if (TryGetPrecompileOverride(codeSource, out CodeInfo precompileCodeInfo))
         {
-            return precompile.codeInfo;
+            return precompileCodeInfo;
         }
 
-        if (_codeOverrides.TryGetValue(codeSource, out var result))
+        if (TryGetCodeOverride(codeSource, out var overrideInfo))
         {
-            return result.codeInfo;
+            return overrideInfo.codeInfo;
         }
 
         return codeInfoRepository.GetCachedCodeInfo(codeSource, in codeHash, vmSpec);
@@ -83,6 +86,21 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
         ? result.codeHash
         : codeInfoRepository.GetExecutableCodeHash(address, spec);
+
+    private bool TryGetPrecompileOverride(Address codeSource, [NotNullWhen(true)] out CodeInfo? precompileCodeInfo)
+    {
+        if (_precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address _) precompileOverride))
+        {
+            precompileCodeInfo = precompileOverride.codeInfo;
+            return true;
+        }
+
+        precompileCodeInfo = null;
+        return false;
+    }
+
+    private bool TryGetCodeOverride(Address codeSource, out (CodeInfo codeInfo, ValueHash256 codeHash) codeOverride)
+        => _codeOverrides.TryGetValue(codeSource, out codeOverride);
 
     public void ResetOverrides()
     {
