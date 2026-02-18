@@ -52,7 +52,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     private class Snapshot(IDictionary<TKey, TestMemDb> columns) : IColumnDbSnapshot<TKey>
     {
-public IReadOnlyKeyValueStore GetColumn(TKey key) => columns[key];
+        public IReadOnlyKeyValueStore GetColumn(TKey key) => columns[key];
 
         public void Dispose() { }
     }

@@ -121,11 +121,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             ClearReadOnlyBundleCache();
         }
 
-        if (stateId.BlockNumber % _compactSize == 0)
-        {
-            // Trigger persistence job.
-            await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
-        }
+        // Trigger persistence job.
+        await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)

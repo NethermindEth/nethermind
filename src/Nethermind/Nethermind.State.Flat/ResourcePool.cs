@@ -28,10 +28,18 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
         // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
         { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
 
-        // Compacter is the large compacted snapshot. The pool usage is hard to predict during forward sync as the persistence
-        // may lag behind block processing and vice versa.
-        { Usage.Compactor, new ResourcePoolCategory(Usage.Compactor, 4, 1) },
-        { Usage.MidCompactor, new ResourcePoolCategory(Usage.MidCompactor, 2, 1) },
+        // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
+        { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
+        { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
+        { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
+        { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
+        { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
+        { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
+        { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
+        { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
+        { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1) },
+        { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
+        { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
     };
 
     public SnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
@@ -41,6 +49,22 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
     public TransientResource GetCachedResource(Usage usage) => _categories[usage].GetCachedResource();
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
+
+    public static Usage CompactUsage(int compactSize) => compactSize switch
+    {
+        <= 2 => Usage.Compact2,
+        4 => Usage.Compact4,
+        8 => Usage.Compact8,
+        16 => Usage.Compact16,
+        32 => Usage.Compact32,
+        64 => Usage.Compact64,
+        128 => Usage.Compact128,
+        256 => Usage.Compact256,
+        512 => Usage.Compact512,
+        1024 => Usage.Compact1024,
+        >= 2048 => Usage.Compact2048,
+        _ => throw new ArgumentOutOfRangeException(nameof(compactSize))
+    };
 
     public Snapshot CreateSnapshot(in StateId from, in StateId to, Usage usage) =>
         new(
@@ -55,8 +79,17 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
         MainBlockProcessing,
         PostMainBlockProcessing,
         ReadOnlyProcessingEnv,
-        MidCompactor,
-        Compactor,
+        Compact2,
+        Compact4,
+        Compact8,
+        Compact16,
+        Compact32,
+        Compact64,
+        Compact128,
+        Compact256,
+        Compact512,
+        Compact1024,
+        Compact2048,
     }
 
     // Using stack for better cpu cache effectiveness

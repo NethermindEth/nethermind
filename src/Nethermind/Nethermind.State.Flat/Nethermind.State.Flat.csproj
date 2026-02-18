@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Collections.Pooled" />
     <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 

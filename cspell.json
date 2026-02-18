@@ -350,7 +350,7 @@
     "hostnames",
     "hotstuff",
     "hyperthreading",
-"HUGEPAGE",
+    "HUGEPAGE",
     "idiv",
     "idxs",
     "iface",
