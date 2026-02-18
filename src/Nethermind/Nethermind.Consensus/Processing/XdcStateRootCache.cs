@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Anil Chinchawale
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Static cache mapping block number → our computed state root for XDC chains.
+/// Persistent cache mapping block number → our computed state root for XDC chains.
 /// XDC state roots diverge from geth at checkpoint blocks (every 900 blocks starting at 1800).
 /// Since all subsequent blocks inherit the diverged state, every block from 1800 onwards
 /// has a different state root than what geth computes.
@@ -20,12 +23,30 @@ namespace Nethermind.Consensus.Processing;
 /// The remoteToLocal mapping allows any code that asks "do we have state for root X?"
 /// (where X is geth's root from stored headers) to be redirected to our local root Y.
 /// This prevents MissingTrieNodeException when loading state for subsequent blocks.
+///
+/// PERSISTENCE: The latest mapping (last block's local+remote roots) is saved to disk
+/// every 100 blocks. On restart, it loads the saved mapping so the cache isn't empty.
 /// </summary>
 public static class XdcStateRootCache
 {
     private static readonly ConcurrentDictionary<long, Hash256> _computedStateRoots = new();
     private static readonly ConcurrentDictionary<Hash256, Hash256> _remoteToLocal = new();
     private static readonly ConcurrentDictionary<long, Hash256> _remoteRootsByBlock = new();
+
+    private static string? _persistPath;
+    private static long _lastPersistedBlock;
+    private const int PersistEveryNBlocks = 100;
+    private static readonly object _persistLock = new();
+    private static bool _loaded;
+
+    /// <summary>
+    /// Set the path for persistence file. Call once during startup.
+    /// </summary>
+    public static void SetPersistPath(string dataDir)
+    {
+        _persistPath = Path.Combine(dataDir, "xdc-state-root-cache.json");
+        LoadFromDisk();
+    }
 
     /// <summary>
     /// Store the computed state root for a given block number, with the remote (geth) root for reverse lookup.
@@ -50,6 +71,12 @@ public static class XdcStateRootCache
                 _remoteToLocal.TryRemove(oldRemote, out _);
             }
         }
+
+        // Persist to disk periodically
+        if (blockNumber - _lastPersistedBlock >= PersistEveryNBlocks)
+        {
+            PersistToDisk(blockNumber, localStateRoot, remoteStateRoot);
+        }
     }
 
     /// <summary>
@@ -61,8 +88,6 @@ public static class XdcStateRootCache
 
     /// <summary>
     /// Given a remote (geth) state root, find the locally-computed state root.
-    /// This is the key fix: when Nethermind tries to load state for a stored header's root,
-    /// it can be redirected to our local root that actually exists in the trie.
     /// </summary>
     public static Hash256? FindLocalRootForRemote(Hash256 remoteRoot) =>
         _remoteToLocal.TryGetValue(remoteRoot, out var localRoot) ? localRoot : null;
@@ -73,18 +98,13 @@ public static class XdcStateRootCache
     /// </summary>
     public static Hash256 ResolveRoot(Hash256 root)
     {
-        // Try remote→local mapping first
         if (_remoteToLocal.TryGetValue(root, out var localRoot))
             return localRoot;
-
-        // Otherwise return as-is (might be local already)
         return root;
     }
 
     /// <summary>
     /// Get the latest cached block number and its computed root.
-    /// Used for recovery after restart — if cache is empty but we need to find
-    /// a valid state root to start from.
     /// </summary>
     public static (long blockNumber, Hash256 root)? GetLatestCachedRoot()
     {
@@ -97,4 +117,66 @@ public static class XdcStateRootCache
     /// Number of cached entries.
     /// </summary>
     public static int Count => _computedStateRoots.Count;
+
+    private static void PersistToDisk(long blockNumber, Hash256 localRoot, Hash256? remoteRoot)
+    {
+        if (_persistPath is null) return;
+
+        lock (_persistLock)
+        {
+            try
+            {
+                var data = new CacheEntry
+                {
+                    BlockNumber = blockNumber,
+                    LocalRoot = localRoot.ToString(),
+                    RemoteRoot = remoteRoot?.ToString()
+                };
+                var json = JsonSerializer.Serialize(data);
+                File.WriteAllText(_persistPath, json);
+                _lastPersistedBlock = blockNumber;
+            }
+            catch
+            {
+                // Don't crash on persist failure
+            }
+        }
+    }
+
+    private static void LoadFromDisk()
+    {
+        if (_loaded || _persistPath is null || !File.Exists(_persistPath)) return;
+        _loaded = true;
+
+        try
+        {
+            var json = File.ReadAllText(_persistPath);
+            var data = JsonSerializer.Deserialize<CacheEntry>(json);
+            if (data is null || data.LocalRoot is null) return;
+
+            var localRoot = new Hash256(data.LocalRoot);
+            _computedStateRoots[data.BlockNumber] = localRoot;
+
+            if (data.RemoteRoot is not null)
+            {
+                var remoteRoot = new Hash256(data.RemoteRoot);
+                _remoteToLocal[remoteRoot] = localRoot;
+                _remoteRootsByBlock[data.BlockNumber] = remoteRoot;
+            }
+
+            _lastPersistedBlock = data.BlockNumber;
+            Console.WriteLine($"XdcStateRootCache: Loaded from disk — block {data.BlockNumber}, local={data.LocalRoot?[..18]}...");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"XdcStateRootCache: Failed to load from disk: {ex.Message}");
+        }
+    }
+
+    private class CacheEntry
+    {
+        public long BlockNumber { get; set; }
+        public string? LocalRoot { get; set; }
+        public string? RemoteRoot { get; set; }
+    }
 }

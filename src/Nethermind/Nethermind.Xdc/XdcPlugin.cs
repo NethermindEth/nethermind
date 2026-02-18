@@ -16,6 +16,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using System;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Xdc;
 
@@ -50,6 +51,13 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         if (Enabled)
         {
+            // Initialize persistent state root cache for XDC
+            var initConfig = nethermindApi.Config<IInitConfig>();
+            var dataDir = initConfig?.BaseDbPath ?? "xdc";
+            XdcStateRootCache.SetPersistPath(dataDir);
+            if (_logger is { IsInfo: true } cacheLogger)
+                cacheLogger.Info($"XdcStateRootCache persistence initialized at {dataDir}");
+
             // Register XDC header/block decoders globally so all P2P message serializers
             // (BlockHeadersMessage, NewBlockMessage, etc.) decode XDC block headers
             // with the extra Validator/Validators/Penalties fields
