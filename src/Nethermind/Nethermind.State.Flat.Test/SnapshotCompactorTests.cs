@@ -297,7 +297,7 @@ public class SnapshotCompactorTests
         Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact8));
     }
 
-[Test]
+    [Test]
     public void Debug_AssembleSnapshotsUntil_Works()
     {
         BuildSnapshotChain(0, 4);
@@ -449,7 +449,7 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(0));
     }
 
-[Test]
+    [Test]
     public void DoCompactSnapshot_ValidChain_CreatesCompactedSnapshot()
     {
         // Build chain of 15 snapshots (0->1, 1->2, ..., 14->15)
