@@ -56,7 +56,6 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         return InternalGetCachedCode(_worldState, in codeHash, vmSpec);
     }
-
     private CodeInfo InternalGetCachedCode(Address codeSource, IReleaseSpec vmSpec)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
