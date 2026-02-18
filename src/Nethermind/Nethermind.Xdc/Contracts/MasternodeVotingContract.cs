@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
 
