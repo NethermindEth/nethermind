@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -18,10 +17,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 
 public class TransactionReceiptsSubscription : Subscription
 {
+    private static readonly TxGasInfo _emptyGasInfo = new();
+
     private readonly IReceiptMonitor _receiptMonitor;
     private readonly IBlockTree _blockTree;
-    private readonly TransactionHashesFilter? _filter;
-    private readonly HashSet<Hash256>? _filterHashes;
+    private readonly HashSet<ValueHash256>? _filterHashes;
 
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -37,20 +37,16 @@ public class TransactionReceiptsSubscription : Subscription
 
         _receiptMonitor = receiptCanonicalityMonitor;
         _blockTree = blockTree;
-        _filter = filter;
         _logger = logManager.GetClassLogger();
 
-        // Validate max 200 hashes
-        if (filter?.TransactionHashes is not null && filter.TransactionHashes.Length > 200)
+        // Validate max 200 hashes (defense in depth, needed for tests that bypass ReadJson)
+        if (filter?.TransactionHashes is not null && filter.TransactionHashes.Count > 200)
         {
             throw new ArgumentException("Cannot subscribe to more than 200 transaction hashes at once.");
         }
 
-        // Create HashSet for faster lookup
-        if (filter?.TransactionHashes is not null && filter.TransactionHashes.Length > 0)
-        {
-            _filterHashes = new HashSet<Hash256>(filter.TransactionHashes);
-        }
+        // Use the HashSet directly - no conversion needed
+        _filterHashes = filter?.TransactionHashes;
 
         _receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
@@ -84,7 +80,7 @@ public class TransactionReceiptsSubscription : Subscription
             TxReceipt receipt = e.TxReceipts[i];
 
             // Apply filter if set
-            if (_filterHashes is not null && !_filterHashes.Contains(receipt.TxHash!))
+            if (_filterHashes?.Contains((ValueHash256)receipt.TxHash!) == false)
             {
                 // Not in filter, skip but still count logs
                 cumulativeLogIndex += receipt.Logs?.Length ?? 0;
@@ -93,12 +89,11 @@ public class TransactionReceiptsSubscription : Subscription
 
             // Create receipt for RPC
             // Using basic TxGasInfo with null values since tests don't check gas info
-            TxGasInfo gasInfo = new TxGasInfo();
             ReceiptForRpc receiptForRpc = new ReceiptForRpc(
                 receipt.TxHash!,
                 receipt,
                 e.BlockHeader.Timestamp,
-                gasInfo,
+                _emptyGasInfo,
                 cumulativeLogIndex
             );
 

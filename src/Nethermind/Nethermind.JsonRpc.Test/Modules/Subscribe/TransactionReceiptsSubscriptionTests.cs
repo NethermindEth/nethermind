@@ -21,7 +21,8 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 {
-    [Parallelizable(ParallelScope.None)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+    [Parallelizable(ParallelScope.All)]
     public class TransactionReceiptsSubscriptionTests
     {
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
@@ -108,9 +109,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         public void TransactionReceiptsSubscription_with_too_many_hashes_fails()
         {
             // Create more than 200 hashes
-            Hash256[] tooManyHashes = Enumerable.Range(0, 201)
-                .Select(_ => Keccak.Compute("test" + Guid.NewGuid()))
-                .ToArray();
+            HashSet<ValueHash256> tooManyHashes = Enumerable.Range(0, 201)
+                .Select(_ => (ValueHash256)Keccak.Compute("test" + Guid.NewGuid()))
+                .ToHashSet();
 
             TransactionHashesFilter filter = new()
             {
@@ -132,9 +133,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         public void TransactionReceiptsSubscription_with_exactly_200_hashes_succeeds()
         {
             // Create exactly 200 hashes (boundary test for the limit)
-            Hash256[] exactly200Hashes = Enumerable.Range(0, 200)
-                .Select(_ => Keccak.Compute("test" + Guid.NewGuid()))
-                .ToArray();
+            HashSet<ValueHash256> exactly200Hashes = Enumerable.Range(0, 200)
+                .Select(_ => (ValueHash256)Keccak.Compute("test" + Guid.NewGuid()))
+                .ToHashSet();
 
             TransactionHashesFilter filter = new()
             {
@@ -188,7 +189,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = [TestItem.KeccakA]
+                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA }
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -214,7 +215,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = [TestItem.KeccakA, TestItem.KeccakC]
+                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA, TestItem.KeccakC }
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -243,7 +244,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = [TestItem.KeccakD, TestItem.KeccakE]
+                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakD, TestItem.KeccakE }
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -265,7 +266,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = [TestItem.KeccakA, TestItem.KeccakD]
+                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA, TestItem.KeccakD }
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
