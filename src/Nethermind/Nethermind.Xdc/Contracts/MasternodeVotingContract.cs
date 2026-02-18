@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -64,6 +65,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
             throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
         return new Address(result.AsSpan().Slice(32 - Address.Size));
     }
+
 
     public Address[] GetCandidates(BlockHeader blockHeader)
     {

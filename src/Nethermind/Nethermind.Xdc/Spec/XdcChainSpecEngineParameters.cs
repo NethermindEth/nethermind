@@ -44,7 +44,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             CheckConfig(_v2Configs);
         }
     }
-
+    public long? TipTrc21Fee { get; set; }
     public long TIP2019Block { get; set; }
     public long MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
@@ -69,6 +69,11 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
     }
 
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        if (TipTrc21Fee is not null)
+            blockNumbers.Add(TipTrc21Fee.Value);
+    }
 }
 
 public sealed class V2ConfigParams
