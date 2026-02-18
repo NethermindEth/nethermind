@@ -27,12 +27,12 @@ namespace Nethermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
+            int totalPayloadSize = input.ReadableBytes;
+
             Rlp.ValueDecoderContext decoderContext = new(input.AsSpan());
             int packetTypeSize = decoderContext.PeekNextRlpLength();
-            var packetType = decoderContext.PeekNextItem();
+            ReadOnlySpan<byte> packetType = decoderContext.PeekNextItem();
             input.SkipBytes(packetTypeSize);
-
-            int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
