@@ -378,67 +378,38 @@ internal static partial class EvmInstructions
             bool gasOverflow = (ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue;
             long precompileGasCost = baseGasCost + dataGasCost;
 
-            if (transferValue.IsZero)
+            Snapshot snapshot = default;
+            bool hasSnapshot = false;
+            if (!transferValue.IsZero)
             {
-                // Zero-value: check gas before any state changes to avoid snapshot.
-                // On OOG all forwarded gas is consumed (no refund), matching normal CALL semantics.
-                if (gasOverflow || precompileGasCost > gasLimitUl)
-                {
-                    return ReturnFailedPrecompileCall(vm, ref stack);
-                }
-
-                // Run precompile before touching account so failure needs no rollback.
-                Result<byte[]> output;
-                if (!TryRunPrecompile(vm, precompile, inputData, spec, out output))
-                {
-                    return ReturnFailedPrecompileCall(vm, ref stack);
-                }
-
-                if (!output)
-                {
-                    // Precompile execution failed: all forwarded gas consumed.
-                    return ReturnFailedPrecompileCall(vm, ref stack);
-                }
-
-                EvmExceptionType precompileResult = HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
-                    in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
-                if (precompileResult == EvmExceptionType.None)
-                {
-                    state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
-                }
-
-                return precompileResult;
-            }
-            else
-            {
-                // Non-zero value: need snapshot for potential rollback.
-                Snapshot snapshot = state.TakeSnapshot();
+                hasSnapshot = true;
+                snapshot = state.TakeSnapshot();
                 state.SubtractFromBalance(caller, in transferValue, spec);
                 state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
-
-                // On OOG all forwarded gas is consumed (no refund), matching normal CALL semantics.
-                if (gasOverflow || precompileGasCost > gasLimitUl)
-                {
-                    state.Restore(snapshot);
-                    return ReturnFailedPrecompileCall(vm, ref stack);
-                }
-
-                Result<byte[]> output;
-                if (!TryRunPrecompile(vm, precompile, inputData, spec, out output))
-                {
-                    state.Restore(snapshot);
-                    return ReturnFailedPrecompileCall(vm, ref stack);
-                }
-
-                if (!output)
-                {
-                    state.Restore(snapshot);
-                    return ReturnFailedPrecompileCall(vm, ref stack);
-                }
-
-                return HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
-                    in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
             }
+
+            // On OOG all forwarded gas is consumed (no refund), matching normal CALL semantics.
+            if (gasOverflow || precompileGasCost > gasLimitUl)
+            {
+                return ReturnFailedPrecompileCallAndRestore(vm, ref stack, state, hasSnapshot, in snapshot);
+            }
+
+            Result<byte[]> output;
+            if (!TryRunPrecompile(vm, precompile, inputData, spec, out output) || !output)
+            {
+                return ReturnFailedPrecompileCallAndRestore(vm, ref stack, state, hasSnapshot, in snapshot);
+            }
+
+            EvmExceptionType precompileResult = HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
+                in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
+
+            // Mirror the non-fast path touch behavior for zero-value precompile calls.
+            if (precompileResult == EvmExceptionType.None && transferValue.IsZero)
+            {
+                state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+            }
+
+            return precompileResult;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -484,6 +455,22 @@ internal static partial class EvmInstructions
             stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
             vm.ReturnData = null;
             return EvmExceptionType.None;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static EvmExceptionType ReturnFailedPrecompileCallAndRestore(
+            VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
+            IWorldState state,
+            bool hasSnapshot,
+            in Snapshot snapshot)
+        {
+            if (hasSnapshot)
+            {
+                state.Restore(snapshot);
+            }
+
+            return ReturnFailedPrecompileCall(vm, ref stack);
         }
 
         static EvmExceptionType HandlePrecompileSuccess(
