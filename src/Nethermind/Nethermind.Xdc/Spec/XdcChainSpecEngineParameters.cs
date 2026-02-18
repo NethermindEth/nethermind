@@ -29,7 +29,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address TradingStateAddressBinary { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
-
+    public Address RelayerRegistrationSMC { get; set; }
+    public Address TRC21IssuerSMC { get; set; }
 
     private List<V2ConfigParams> _v2Configs = new();
     public List<V2ConfigParams> V2Configs

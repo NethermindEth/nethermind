@@ -27,6 +27,8 @@ using Nethermind.Api.Steps;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Xdc.RPC;
 
 namespace Nethermind.Xdc;
 
@@ -98,6 +100,8 @@ public class XdcModule : Module
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
             ;
     }
 

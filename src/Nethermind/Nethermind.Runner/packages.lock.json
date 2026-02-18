@@ -1189,6 +1189,7 @@
         "dependencies": {
           "Nethermind.Api": "[1.37.0-unstable, )",
           "Nethermind.Consensus": "[1.37.0-unstable, )",
+          "Nethermind.Consensus.Clique": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Init": "[1.37.0-unstable, )"
         }
