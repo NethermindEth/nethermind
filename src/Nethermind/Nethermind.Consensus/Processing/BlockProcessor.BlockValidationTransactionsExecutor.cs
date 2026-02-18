@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -71,6 +72,8 @@ namespace Nethermind.Consensus.Processing
                     const int GasValidationChunkSize = 8;
                     Task validatorTask = Task.Run(() =>
                     {
+                        Console.WriteLine("[parallel] running gas validation");
+
                         long totalGas = 0;
                         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
                         {
@@ -186,9 +189,13 @@ namespace Nethermind.Consensus.Processing
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions)
             {
+                Console.WriteLine("[parallel] started executing transaction with bal index {index}");
+
                 currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+
+                Console.WriteLine("[parallel] completed executing transaction with bal index {index}");
             }
 
             [DoesNotReturn, StackTraceHidden]

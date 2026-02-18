@@ -149,30 +149,41 @@ public partial class BlockProcessor
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        Task<TxReceipt[]> txTask;
+        // Task<TxReceipt[]> txTask;
         
-        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
-        {
-            txTask = Task.Run(() =>
-            {
-                try
-                {
-                    return _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-                }
-                catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
-                {
-                    throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
-                }
-            });
+        // if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
+        // {
+        //     txTask = Task.Run(() =>
+        //     {
+        //         try
+        //         {
+        //             return _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        //         }
+        //         catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+        //         {
+        //             throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+        //         }
+        //     });
 
-            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
-        }
-        else
-        {
-            txTask = Task.FromResult(_blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token));
-        }
+        //     _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
+        // }
+        // else
+        // {
+        //     txTask = Task.FromResult(_blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token));
+        // }
 
-        TxReceipt[] receipts = await txTask;
+        // TxReceipt[] receipts = await txTask;
+
+        _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
+        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+        {
+            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+        }
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -225,8 +236,8 @@ public partial class BlockProcessor
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
 
 
-                string y = $"Generated block access list:\n{block.GeneratedBlockAccessList}";
-                Console.WriteLine(y);
+                // string y = $"Generated block access list:\n{block.GeneratedBlockAccessList}";
+                // Console.WriteLine(y);
             }
         }
 

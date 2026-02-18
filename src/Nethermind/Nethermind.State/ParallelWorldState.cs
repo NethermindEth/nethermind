@@ -98,6 +98,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot)
     {
+        Console.WriteLine("[parallel] starting state change application");
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
             if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
@@ -141,6 +142,8 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         {
             _innerWorldState.RecalculateStateRoot();
         }
+
+        Console.WriteLine("[parallel] completed state change application");
     }
 
     public void GenerateBlockAccessList()
