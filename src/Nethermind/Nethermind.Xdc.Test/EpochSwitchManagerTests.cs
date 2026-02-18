@@ -597,6 +597,30 @@ internal class EpochSwitchManagerTests
         Assert.That(result?.BlockNumber, Is.EqualTo(expectedBlockNumber));
     }
 
+    [Test]
+    public void GetTimeoutCertificateEpochInfo_ShouldReturnEpochSwitchInfoForEpochContainingTcRound()
+    {
+        var epochLength = 5;
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = epochLength,
+            SwitchBlock = 0,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 20);
+
+        var headBlock = new Block(chainHead);
+        _tree.Head.Returns(headBlock);
+
+        // TC round 12 is within epoch that started at round 10
+        var timeoutCertificate = new TimeoutCertificate(12, [], 0);
+        EpochSwitchInfo? result = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
+        result.Should().NotBeNull();
+        result!.EpochSwitchBlockInfo.Round.Should().Be(10);
+    }
+
     private XdcBlockHeader GetChainOfBlocks(IBlockTree tree, ISnapshotManager snapManager, IXdcReleaseSpec spec, int length, int startRound = 0)
     {
         int i = startRound;
