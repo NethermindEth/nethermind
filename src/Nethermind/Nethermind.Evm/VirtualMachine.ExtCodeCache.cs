@@ -114,8 +114,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         // Under high-cardinality workloads, clearing the whole dictionary causes avoidable churn.
-        // Once capacity is reached, keep current hot set and skip admitting new entries.
-        if (_extCodeCache!.Count >= _maxExtCodeCacheEntries)
+        // Once capacity is reached, keep current hot set and skip admitting new keys.
+        // Still allow updating existing keys so hot entries can be refreshed.
+        if (_extCodeCache!.Count >= _maxExtCodeCacheEntries && !_extCodeCache.ContainsKey(key))
         {
             return;
         }
