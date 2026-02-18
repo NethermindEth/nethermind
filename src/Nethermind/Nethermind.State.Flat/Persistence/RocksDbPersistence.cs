@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
-    private const long MinWriteBufferSize = 4L * 1024 * 1024;   // 4 MB floor
+    private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
     private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
