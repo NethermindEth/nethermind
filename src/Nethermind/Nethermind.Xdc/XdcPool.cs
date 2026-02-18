@@ -25,8 +25,10 @@ public class XdcPool<T> where T : IXdcPoolItem
                 list = new ArrayPoolList<T>(128);
                 _items[key] = list;
             }
-            if (!list.Contains(item))
+
+            if (!list.Contains(item, XdcPoolItemKeyComparer<T>.Instance))
                 list.Add(item);
+
             return list.Count;
         }
     }
@@ -76,4 +78,24 @@ public class XdcPool<T> where T : IXdcPoolItem
 public interface IXdcPoolItem
 {
     (ulong Round, Hash256 hash) PoolKey();
+}
+
+public class XdcPoolItemKeyComparer<T> : IEqualityComparer<T> where T : IXdcPoolItem
+{
+    public static readonly XdcPoolItemKeyComparer<T> Instance = new();
+
+    private XdcPoolItemKeyComparer() { }
+
+    public bool Equals(T? x, T? y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (x is null || y is null) return false;
+
+        return x.PoolKey().Equals(y.PoolKey());
+    }
+
+    public int GetHashCode(T obj)
+    {
+        return obj.PoolKey().GetHashCode();
+    }
 }
