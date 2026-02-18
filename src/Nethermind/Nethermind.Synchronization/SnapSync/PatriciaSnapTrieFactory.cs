@@ -15,16 +15,14 @@ public class PatriciaSnapTrieFactory(INodeStorage nodeStorage, ILogManager logMa
     public ISnapTree CreateStateTree()
     {
         var adapter = new SnapUpperBoundAdapter(_stateTrieStore);
-        // return new PatriciaSnapStateTree(new StateTree(adapter, logManager), adapter);
-        return new PatriciaSnapStateTree(new StateTree(_stateTrieStore, logManager), adapter);
+        return new PatriciaSnapStateTree(new StateTree(adapter, logManager), adapter);
     }
 
     public ISnapTree CreateStorageTree(in ValueHash256 accountPath)
     {
         var storageTrieStore = new RawScopedTrieStore(nodeStorage, accountPath.ToCommitment());
         var adapter = new SnapUpperBoundAdapter(storageTrieStore);
-        // return new PatriciaSnapStorageTree(new StorageTree(adapter, logManager), adapter);
-        return new PatriciaSnapStorageTree(new StorageTree(storageTrieStore, logManager), adapter);
+        return new PatriciaSnapStorageTree(new StorageTree(adapter, logManager), adapter);
     }
 
 }
