@@ -12,6 +12,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
+    private readonly WriteBufferAdjuster _adjuster = new(db);
     public void Flush() => db.Flush();
 
     public IPersistence.IPersistenceReader CreateReader()
@@ -63,13 +64,18 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
+        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
+        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
+        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
+        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateNodes),
-            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
-            batch.GetColumnBatch(FlatDbColumns.FallbackNodes),
+            stateTopNodesBatch,
+            stateNodesBatch,
+            storageNodesBatch,
+            fallbackNodesBatch,
             flags);
 
         StateId toCopy = to;
@@ -77,8 +83,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
                 new BaseFlatPersistence.WriteBatch(
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
-                    batch.GetColumnBatch(FlatDbColumns.StateNodes),
-                    batch.GetColumnBatch(FlatDbColumns.StorageNodes),
+                    stateNodesBatch,
+                    storageNodesBatch,
                     flags
                 )
             ),
@@ -88,6 +94,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                 RocksDbPersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
+                _adjuster.OnBatchDisposed();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
                     db.Flush(onlyWal: true);

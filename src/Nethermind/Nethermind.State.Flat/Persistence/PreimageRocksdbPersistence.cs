@@ -24,6 +24,7 @@ namespace Nethermind.State.Flat.Persistence;
 public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+    private readonly WriteBufferAdjuster _adjuster = new(db);
 
     public void Flush() => db.Flush();
 
@@ -95,11 +96,18 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
+        IWriteOnlyKeyValueStore accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
+        IWriteOnlyKeyValueStore storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
+        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
+        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
+        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
+        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+
         FakeHashWriter<BaseFlatPersistence.WriteBatch> flatWriter = new(
             new BaseFlatPersistence.WriteBatch(
                 ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
-                batch.GetColumnBatch(FlatDbColumns.Account),
-                batch.GetColumnBatch(FlatDbColumns.Storage),
+                accountBatch,
+                storageBatch,
                 flags
             )
         );
@@ -107,10 +115,10 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateNodes),
-            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
-            batch.GetColumnBatch(FlatDbColumns.FallbackNodes),
+            stateTopNodesBatch,
+            stateNodesBatch,
+            storageNodesBatch,
+            fallbackNodesBatch,
             flags);
 
         StateId toCopy = to;
@@ -122,6 +130,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
+                _adjuster.OnBatchDisposed();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
                     db.Flush(onlyWal: true);
