@@ -49,7 +49,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 
     public override void Encode(RlpStream stream, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetLength(item, rlpBehaviors));
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
 
         stream.Encode(item.BlockId);
         stream.Encode(item.L2BlockHash);
@@ -93,6 +93,11 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 
     public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {
+        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    }
+
+    private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
+    {
         int buildPayloadLength = 0;
         if (item.BuildPayloadArgsId is not null || item.IsForcedInclusion || item.Signature is not null)
         {
@@ -107,14 +112,12 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
             isForcedInclusionLength = Rlp.LengthOf(item.IsForcedInclusion);
         }
 
-        return Rlp.LengthOfSequence(
-            Rlp.LengthOf(item.BlockId)
+        return Rlp.LengthOf(item.BlockId)
             + Rlp.LengthOf(item.L2BlockHash)
             + Rlp.LengthOf(item.L1BlockHeight ?? 0)
             + Rlp.LengthOf(item.L1BlockHash)
             + buildPayloadLength
             + isForcedInclusionLength
-            + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0))
-        );
+            + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0));
     }
 }
