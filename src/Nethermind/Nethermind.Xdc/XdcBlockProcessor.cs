@@ -146,15 +146,22 @@ internal class XdcBlockProcessor : BlockProcessor
 
     protected override void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
-        var originalRoot = suggestedBlock.Header.StateRoot;
+        // Save the remote (geth) state root before base validation may change it
+        var remoteRoot = suggestedBlock.Header.StateRoot;
         
         base.ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         
-        // XDC: Cache our computed state root so BeginScope can use it
+        // XDC: Cache our computed state root with remote→local mapping.
+        // This allows HasStateForBlock and BeginScope to find our local trie
+        // when looking up a stored header's (geth) state root.
         bool isXdc = _specProvider.ChainId == 50 || _specProvider.ChainId == 51;
-        if (isXdc && originalRoot != suggestedBlock.Header.StateRoot)
+        if (isXdc)
         {
-            XdcStateRootCache.SetComputedStateRoot(suggestedBlock.Number, suggestedBlock.Header.StateRoot!);
+            var localRoot = block.Header.StateRoot;
+            if (localRoot is not null)
+            {
+                XdcStateRootCache.SetComputedStateRoot(suggestedBlock.Number, localRoot, remoteRoot);
+            }
         }
     }
 }

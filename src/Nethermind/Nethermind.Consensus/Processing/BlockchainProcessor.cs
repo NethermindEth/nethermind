@@ -642,7 +642,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (!firstBlock.IsGenesis)
             {
                 BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
-                // XDC: Override parent state root with our computed root and skip HasStateForBlock
+                // XDC: Override parent state root with our computed root and skip HasStateForBlock.
+                // Three resolution strategies:
+                // 1. Direct block number lookup (fastest, works within same session)
+                // 2. Remote→local mapping (works if we've seen the remote root before)
+                // 3. Skip HasStateForBlock entirely for XDC (safety net)
                 bool isXdc = _blockTree.ChainId == 50 || _blockTree.ChainId == 51;
                 if (isXdc)
                 {
@@ -650,6 +654,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     if (parentComputedRoot is not null)
                     {
                         parentOfFirstBlock.StateRoot = parentComputedRoot;
+                    }
+                    else if (parentOfFirstBlock.StateRoot is not null)
+                    {
+                        // Try remote→local fallback
+                        var resolvedRoot = XdcStateRootCache.ResolveRoot(parentOfFirstBlock.StateRoot);
+                        if (resolvedRoot != parentOfFirstBlock.StateRoot)
+                        {
+                            parentOfFirstBlock.StateRoot = resolvedRoot;
+                        }
+                        // If neither lookup found a cached root, the trie store might still have it
+                        // (e.g. first batch after genesis, or blocks before first divergence).
+                        // HasStateForBlock is skipped below, so processing will attempt anyway.
                     }
                 }
                 if (!isXdc && !_stateReader.HasStateForBlock(parentOfFirstBlock))
@@ -774,6 +790,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (computedRoot is not null)
             {
                 branchingPoint.StateRoot = computedRoot;
+            }
+            else if (branchingPoint.StateRoot is not null)
+            {
+                var resolvedRoot = XdcStateRootCache.ResolveRoot(branchingPoint.StateRoot);
+                if (resolvedRoot != branchingPoint.StateRoot)
+                {
+                    branchingPoint.StateRoot = resolvedRoot;
+                }
             }
         }
 
