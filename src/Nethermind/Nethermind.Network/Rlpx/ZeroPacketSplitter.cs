@@ -34,6 +34,8 @@ namespace Nethermind.Network.Rlpx
             ReadOnlySpan<byte> packetType = decoderContext.PeekNextItem();
             input.SkipBytes(packetTypeSize);
 
+            output.WriteBytes(packetType);
+
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
@@ -96,24 +98,11 @@ namespace Nethermind.Network.Rlpx
                     output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 
-                int framePacketTypeSize = 0;
-                if (i == 0)
-                {
-                    /*33 or 33-34*/
-                    framePacketTypeSize = WritePacketType(packetType, output);
-                }
-
                 /*message*/
-                input.ReadBytes(output, framePayloadSize - packetTypeSize);
+                input.ReadBytes(output, framePayloadSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
             }
-        }
-
-        private static int WritePacketType(ReadOnlySpan<byte> packetType, IByteBuffer output)
-        {
-            output.WriteBytes(packetType);
-            return 2;
         }
     }
 }
