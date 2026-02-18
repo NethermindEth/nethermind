@@ -174,7 +174,10 @@ public partial class BlockProcessor
 
         // TxReceipt[] receipts = await txTask;
 
-        _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
+        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
+        {
+            _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot);
+        }
         TxReceipt[] receipts;
         try
         {
