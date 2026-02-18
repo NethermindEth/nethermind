@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -157,7 +158,7 @@ public class SnapshotCompactor : ISnapshotCompactor
         // Slots and Selfdestruct
         compactTask.Add(Task.Run(() =>
         {
-            HashSet<Address> addressToClear = new();
+            using PooledSet<Address> addressToClear = new();
 
             for (int i = 0; i < snapshots.Count; i++)
             {
@@ -207,7 +208,7 @@ public class SnapshotCompactor : ISnapshotCompactor
         // Storage tries
         compactTask.Add(Task.Run(() =>
         {
-            HashSet<Hash256AsKey> addressHashToClear = new();
+            using PooledSet<Hash256AsKey> addressHashToClear = new();
 
             for (int i = 0; i < snapshots.Count; i++)
             {
