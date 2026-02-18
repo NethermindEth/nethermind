@@ -23,6 +23,7 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
     public static Address Address { get; } = Address.FromNumber(0x11);
 
     public static string Name => "BLS12_MAP_FP2_TO_G2";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 23800L;
 

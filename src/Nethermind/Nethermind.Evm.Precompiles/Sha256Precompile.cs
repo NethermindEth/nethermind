@@ -19,6 +19,7 @@ public class Sha256Precompile : IPrecompile<Sha256Precompile>
     public static Address Address { get; } = Address.FromNumber(2);
 
     public static string Name => "SHA256";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 60L;
 

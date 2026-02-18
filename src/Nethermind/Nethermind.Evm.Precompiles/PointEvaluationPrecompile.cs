@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using CkzgLib;
 using Nethermind.Core;
@@ -16,14 +15,12 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
     public static readonly PointEvaluationPrecompile Instance = new();
 
-    private static readonly byte[] PointEvaluationSuccessfulResponse =
-        ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian()
-        .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
-        .ToArray();
+    private static readonly byte[] PointEvaluationSuccessfulResponse = CreatePointEvaluationSuccessfulResponse();
 
     public static Address Address { get; } = Address.FromNumber(0x0a);
 
     public static string Name => "KZG_POINT_EVALUATION";
+    public bool SupportsFastPath => true;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
@@ -57,5 +54,13 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
         return IsValid(inputData)
             ? PointEvaluationSuccessfulResponse
             : Errors.Failed;
+    }
+
+    private static byte[] CreatePointEvaluationSuccessfulResponse()
+    {
+        byte[] response = new byte[64];
+        ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian().CopyTo(response.AsSpan(0, 32));
+        KzgPolynomialCommitments.BlsModulus.ToBigEndian().CopyTo(response.AsSpan(32, 32));
+        return response;
     }
 }
