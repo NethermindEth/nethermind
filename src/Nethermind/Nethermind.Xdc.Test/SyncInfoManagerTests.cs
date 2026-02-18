@@ -3,6 +3,7 @@
 
 using Autofac.Core;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Xdc.Errors;
@@ -19,7 +20,7 @@ namespace Nethermind.Xdc.Test;
 internal class SyncInfoManagerTests
 {
     private SyncInfoManager _syncInfoManager;
-    private XdcContext _context;
+    private XdcConsensusContext _context;
     private IQuorumCertificateManager _quorumCertificateManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
 
@@ -29,11 +30,11 @@ internal class SyncInfoManagerTests
     [SetUp]
     public void Setup()
     {
-        _context = new XdcContext();
+        _context = new XdcConsensusContext();
         _logger = TestLogManager.Instance.GetLogger(nameof(SyncInfoManagerTests));
         _quorumCertificateManager = NSubstitute.Substitute.For<IQuorumCertificateManager>();
         _timeoutCertificateManager = NSubstitute.Substitute.For<ITimeoutCertificateManager>();
-        _syncInfoManager = new SyncInfoManager(_context, _quorumCertificateManager, _timeoutCertificateManager, _logger);
+        _syncInfoManager = new SyncInfoManager(_context, _quorumCertificateManager, _timeoutCertificateManager);
     }
 
     [Test]
@@ -88,7 +89,7 @@ internal class SyncInfoManagerTests
     [Test]
     public void ProcessSyncInfo_ThrowsWhenQcManagerFails()
     {
-        Exception expectedException = new CertificateValidationException(CertificateType.QuorumCertificate, CertificateValidationFailure.InvalidRound);
+        Exception expectedException = new BlockchainException("Bad qc");
 
         // Arrange
         var qc = new QuorumCertificate(new BlockRoundInfo(TestItem.KeccakA, 1, 1), [TestItem.RandomSignatureA], 1);
@@ -108,7 +109,7 @@ internal class SyncInfoManagerTests
     [Test]
     public void ProcessSyncInfo_ThrowsWhenTcManagerFails()
     {
-        Exception expectedException = new CertificateValidationException(CertificateType.TimeoutCertificate, CertificateValidationFailure.InvalidRound);
+        Exception expectedException = new BlockchainException("Bad tc");
 
         // Arrange
         var qc = new QuorumCertificate(new BlockRoundInfo(TestItem.KeccakA, 1, 1), [TestItem.RandomSignatureA], 1);
