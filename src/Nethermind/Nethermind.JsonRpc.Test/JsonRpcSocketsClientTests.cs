@@ -308,6 +308,151 @@ public class JsonRpcSocketsClientTests
             }
         }
 
+        [Test]
+        public async Task Can_process_complete_message_without_delimiter()
+        {
+            CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+            using TempPath tmpPath = TempPath.GetTempFile();
+
+            UnixDomainSocketEndPoint endPoint = new(tmpPath.Path);
+            using Socket socketListener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            socketListener.Bind(endPoint);
+            socketListener.Listen(0);
+
+            using Socket sendSocket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await sendSocket.ConnectAsync(endPoint);
+
+            int processedRequests = 0;
+            int processedRequestSize = 0;
+
+            IJsonRpcProcessor jsonRpcProcessor = Substitute.For<IJsonRpcProcessor>();
+            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo callInfo)
+            {
+                PipeReader reader = callInfo.ArgAt<PipeReader>(0);
+                ReadResult readResult = await reader.ReadToEndAsync();
+                ReadOnlySequence<byte> buffer = readResult.Buffer;
+                processedRequestSize = (int)buffer.Length;
+                Interlocked.Increment(ref processedRequests);
+                reader.AdvanceTo(buffer.Start, buffer.End);
+                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+            }
+
+            jsonRpcProcessor
+                .ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>())
+                .Returns(ResponseFunc);
+
+            Task receiver = Task.Run(async () =>
+            {
+                Socket socket = await socketListener.AcceptAsync(cts.Token);
+                using IpcSocketMessageStream stream = new(socket);
+                using JsonRpcSocketsClient<IpcSocketMessageStream> client = new(
+                    clientName: "TestClient",
+                    stream: stream,
+                    endpointType: RpcEndpoint.IPC,
+                    jsonRpcProcessor: jsonRpcProcessor,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                    jsonSerializer: new EthereumJsonSerializer()
+                );
+
+                await client.ReceiveLoopAsync(cts.Token);
+            });
+
+            using IpcSocketMessageStream sendStream = new(sendSocket);
+            string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}";
+            byte[] requestBytes = Encoding.UTF8.GetBytes(request);
+
+            await sendStream.WriteAsync(requestBytes, cts.Token);
+
+            Assert.That(() => processedRequests, Is.EqualTo(1).After(5000, 10));
+            processedRequestSize.Should().Be(requestBytes.Length);
+
+            sendSocket.Shutdown(SocketShutdown.Send);
+            try
+            {
+                await receiver;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (IOException)
+            {
+                // Reset due to closed from other side.
+            }
+        }
+
+        [Test]
+        public async Task Can_process_multiple_complete_messages_without_delimiter()
+        {
+            CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+            using TempPath tmpPath = TempPath.GetTempFile();
+
+            UnixDomainSocketEndPoint endPoint = new(tmpPath.Path);
+            using Socket socketListener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            socketListener.Bind(endPoint);
+            socketListener.Listen(0);
+
+            using Socket sendSocket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await sendSocket.ConnectAsync(endPoint);
+
+            int processedRequests = 0;
+            List<string> processedPayloads = [];
+
+            IJsonRpcProcessor jsonRpcProcessor = Substitute.For<IJsonRpcProcessor>();
+            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo callInfo)
+            {
+                PipeReader reader = callInfo.ArgAt<PipeReader>(0);
+                ReadResult readResult = await reader.ReadToEndAsync();
+                ReadOnlySequence<byte> buffer = readResult.Buffer;
+                processedPayloads.Add(Encoding.UTF8.GetString(buffer.ToArray()));
+                Interlocked.Increment(ref processedRequests);
+                reader.AdvanceTo(buffer.Start, buffer.End);
+                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+            }
+
+            jsonRpcProcessor
+                .ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>())
+                .Returns(ResponseFunc);
+
+            Task receiver = Task.Run(async () =>
+            {
+                Socket socket = await socketListener.AcceptAsync(cts.Token);
+                using IpcSocketMessageStream stream = new(socket);
+                using JsonRpcSocketsClient<IpcSocketMessageStream> client = new(
+                    clientName: "TestClient",
+                    stream: stream,
+                    endpointType: RpcEndpoint.IPC,
+                    jsonRpcProcessor: jsonRpcProcessor,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                    jsonSerializer: new EthereumJsonSerializer()
+                );
+
+                await client.ReceiveLoopAsync(cts.Token);
+            });
+
+            using IpcSocketMessageStream sendStream = new(sendSocket);
+            string request1 = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}";
+            string request2 = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}";
+            byte[] combinedRequests = Encoding.UTF8.GetBytes(request1 + request2);
+
+            await sendStream.WriteAsync(combinedRequests, cts.Token);
+
+            Assert.That(() => processedRequests, Is.EqualTo(2).After(5000, 10));
+            processedPayloads.Should().Equal(request1, request2);
+
+            sendSocket.Shutdown(SocketShutdown.Send);
+            try
+            {
+                await receiver;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (IOException)
+            {
+                // Reset due to closed from other side.
+            }
+        }
+
         [TestCase(10)]
         [TestCase(63)]
         [TestCase(1024)]
