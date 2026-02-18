@@ -276,7 +276,7 @@ public class DbConfig : IDbConfig
 
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
-public string LogIndexStorageDbRocksDbOptions { get; set; } = "";
+    public string LogIndexStorageDbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
     public string LogIndexStorageMetaDbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; } = "";

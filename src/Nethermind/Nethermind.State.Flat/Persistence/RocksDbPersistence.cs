@@ -12,6 +12,7 @@ namespace Nethermind.State.Flat.Persistence;
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+    private readonly WriteBufferAdjuster _adjuster = new(db);
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -81,13 +82,20 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
+        IWriteOnlyKeyValueStore accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
+        IWriteOnlyKeyValueStore storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
+        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
+        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
+        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
+        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
-            batch.GetColumnBatch(FlatDbColumns.StateNodes),
-            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
-            batch.GetColumnBatch(FlatDbColumns.FallbackNodes),
+            stateTopNodesBatch,
+            stateNodesBatch,
+            storageNodesBatch,
+            fallbackNodesBatch,
             flags);
 
         StateId toCopy = to;
@@ -96,8 +104,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
                 new BaseFlatPersistence.WriteBatch(
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
-                    batch.GetColumnBatch(FlatDbColumns.Account),
-                    batch.GetColumnBatch(FlatDbColumns.Storage),
+                    accountBatch,
+                    storageBatch,
                     flags
                 )
             ),
@@ -107,6 +115,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                 SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
+                _adjuster.OnBatchDisposed();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
                     db.Flush(onlyWal: true);
@@ -114,4 +123,5 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             })
         );
     }
+
 }

@@ -103,7 +103,7 @@ public interface IDbConfig : IConfig
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
-string LogIndexStorageDbRocksDbOptions { get; set; }
+    string LogIndexStorageDbRocksDbOptions { get; set; }
     string LogIndexStorageDbAdditionalRocksDbOptions { get; set; }
     string LogIndexStorageMetaDbRocksDbOptions { get; set; }
     string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; }

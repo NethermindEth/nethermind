@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,7 @@ namespace Nethermind.State.Flat;
 public class SnapshotCompactor : ISnapshotCompactor
 {
     private readonly int _compactSize;
-    private readonly int _midCompactSize;
+    private readonly int _minCompactSize;
     private readonly ILogger _logger;
     private readonly IResourcePool _resourcePool;
     private readonly ISnapshotRepository _snapshotRepository;
@@ -26,12 +27,17 @@ public class SnapshotCompactor : ISnapshotCompactor
         ISnapshotRepository snapshotRepository,
         ILogManager logManager)
     {
-        if (config.CompactSize % config.MidCompactSize != 0) throw new ArgumentException("Compact size must be divisible by mid compact size");
+        if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
+            throw new ArgumentException("Compact size must be a power of 2");
+        if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
+            throw new ArgumentException("Min compact size must be a power of 2");
+        if (config.MinCompactSize > config.CompactSize)
+            throw new ArgumentException("Min compact size must be <= compact size");
 
         _resourcePool = resourcePool;
         _snapshotRepository = snapshotRepository;
         _compactSize = config.CompactSize;
-        _midCompactSize = config.MidCompactSize;
+        _minCompactSize = Math.Max(config.MinCompactSize, 2);
         _logger = logManager.GetClassLogger<SnapshotCompactor>();
     }
 
@@ -55,7 +61,7 @@ public class SnapshotCompactor : ISnapshotCompactor
                     {
                         Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
                     }
-                    else if (stateId1.BlockNumber % _midCompactSize == 0)
+                    else
                     {
                         Metrics.MidCompactTime.Observe(Stopwatch.GetTimestamp() - sw);
                     }
@@ -79,13 +85,13 @@ public class SnapshotCompactor : ISnapshotCompactor
         long blockNumber = snapshot.To.BlockNumber;
         if (blockNumber == 0) return SnapshotPooledList.Empty();
 
-        bool isFullCompaction = blockNumber % _compactSize == 0;
-        bool isMidCompaction = !isFullCompaction && blockNumber % _midCompactSize == 0;
-        if (!isFullCompaction && !isMidCompaction) return SnapshotPooledList.Empty();
+        int compactSize = (int)Math.Min(blockNumber & -blockNumber, _compactSize);
+        if (compactSize < _minCompactSize) return SnapshotPooledList.Empty();
+        bool isFullCompaction = compactSize == _compactSize;
 
-        if (isMidCompaction)
+        if (!isFullCompaction)
         {
-            // Save memory by removing the compacted state from previous mid compaction
+            // Save memory by removing the compacted state from previous compaction
             foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
             {
                 if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
@@ -94,10 +100,6 @@ public class SnapshotCompactor : ISnapshotCompactor
             }
         }
 
-        // So the compact size change if its midCompact or fullCompact. The reason being mid-compaction is much smaller
-        // and therefore faster and use less memory however, it increases the average snapshot count per bundle.
-        // Hard to know if it's better or not now.
-        int compactSize = isMidCompaction ? _midCompactSize : _compactSize;
         long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
 
@@ -131,9 +133,8 @@ public class SnapshotCompactor : ISnapshotCompactor
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        ResourcePool.Usage usage = (to.BlockNumber % _compactSize == 0)
-            ? ResourcePool.Usage.Compactor
-            : ResourcePool.Usage.MidCompactor;
+        int compactSize = (int)Math.Min(to.BlockNumber & -to.BlockNumber, _compactSize);
+        ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
         ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
@@ -142,56 +143,101 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
-        HashSet<Address> addressToClear = new();
-        HashSet<Hash256AsKey> addressHashToClear = new();
+        using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(4);
 
-        for (int i = 0; i < snapshots.Count; i++)
+        // Accounts
+        compactTask.Add(Task.Run(() =>
         {
-            Snapshot knownState = snapshots[i];
-            accounts.AddOrUpdateRange(knownState.Accounts);
-
-            addressToClear.Clear();
-            addressHashToClear.Clear();
-
-            foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+            for (int i = 0; i < snapshots.Count; i++)
             {
-                if (isNewAccount)
-                {
-                    // Note, if it's already false, we should not set it to true, hence the TryAdd
-                    selfDestructedStorageAddresses.TryAdd(address, true);
-                }
-                else
-                {
-                    selfDestructedStorageAddresses[address] = false;
-                    addressToClear.Add(address);
-                    addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
-                }
+                Snapshot knownState = snapshots[i];
+                accounts.AddOrUpdateRange(knownState.Accounts);
             }
+        }));
 
-            if (addressToClear.Count > 0)
+        // Slots and Selfdestruct
+        compactTask.Add(Task.Run(() =>
+        {
+            using PooledSet<Address> addressToClear = new();
+
+            for (int i = 0; i < snapshots.Count; i++)
             {
-                // Clear
-                foreach (((AddressAsKey Address, UInt256) key, SlotValue? _) in storages)
+                Snapshot knownState = snapshots[i];
+                addressToClear.Clear();
+
+                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
-                    if (addressToClear.Contains(key.Address))
+                    if (isNewAccount)
                     {
-                        storages.Remove(key, out _);
+                        // Note, if it's already false, we should not set it to true, hence the TryAdd
+                        selfDestructedStorageAddresses.TryAdd(address, true);
+                    }
+                    else
+                    {
+                        selfDestructedStorageAddresses[address] = false;
+                        addressToClear.Add(address);
                     }
                 }
 
-                foreach (((Hash256AsKey Hash, TreePath) key, TrieNode _) in storageNodes)
+                if (addressToClear.Count > 0)
                 {
-                    if (addressHashToClear.Contains(key.Hash))
+                    // Clear
+                    foreach (((AddressAsKey Address, UInt256) key, SlotValue? _) in storages)
                     {
-                        storageNodes.Remove(key, out _);
+                        if (addressToClear.Contains(key.Address))
+                        {
+                            storages.Remove(key, out _);
+                        }
                     }
                 }
-            }
 
-            storages.AddOrUpdateRange(knownState.Storages);
-            stateNodes.AddOrUpdateRange(knownState.StateNodes);
-            storageNodes.AddOrUpdateRange(knownState.StorageNodes);
-        }
+                storages.AddOrUpdateRange(knownState.Storages);
+            }
+        }));
+
+        // State tries
+        compactTask.Add(Task.Run(() =>
+        {
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                Snapshot knownState = snapshots[i];
+                stateNodes.AddOrUpdateRange(knownState.StateNodes);
+            }
+        }));
+
+        // Storage tries
+        compactTask.Add(Task.Run(() =>
+        {
+            using PooledSet<Hash256AsKey> addressHashToClear = new();
+
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                Snapshot knownState = snapshots[i];
+
+                addressHashToClear.Clear();
+                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                {
+                    if (!isNewAccount) addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
+                }
+
+                if (addressHashToClear.Count > 0)
+                {
+                    // Clear
+                    foreach (((Hash256AsKey Address, TreePath) key, TrieNode? _) in storageNodes)
+                    {
+                        if (addressHashToClear.Contains(key.Address))
+                        {
+                            storageNodes.Remove(key, out _);
+                        }
+                    }
+
+                }
+
+                storageNodes.AddOrUpdateRange(knownState.StorageNodes);
+            }
+        }));
+
+        Task.WaitAll(compactTask.AsSpan());
 
         return snapshot;
     }

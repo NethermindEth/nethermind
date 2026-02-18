@@ -15,7 +15,7 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStateRlp(path, hash, flags);
 
-public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");
+    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
         address is null
