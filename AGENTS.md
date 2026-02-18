@@ -34,6 +34,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - **NEVER suggest using LINQ (`.Select()`, `.Where()`, `.Any()`, etc.) when a simple `foreach` or `for` loop would work.** LINQ has overhead and is less readable for simple iterations. Use LINQ only for complex queries where the declarative syntax significantly improves clarity.
 - Keep changes minimal and focused: do not rename variables, reformat surrounding code, or refactor unrelated logic as part of a fix. Touch only what is necessary to solve the problem.
 - Follow DRY: after making changes, review the result for duplicated logic. Extract repeated blocks (roughly 5+ lines) into shared methods, but do not over-extract trivial one-liners into their own methods.
+- For EVM hot-path optimizations, prioritize maintainability and single-source-of-truth flow first; use `IFlag` specialization (e.g., `TFast : IFlag`) when it meaningfully reduces duplication and complexity, but do not force one exact pattern.
 - In generic types, move methods that do not depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type.
 - Do not use the `#region` and `#endregion` pragmas
 - Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
