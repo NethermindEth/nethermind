@@ -16,6 +16,8 @@ namespace Nethermind.Evm;
 
 internal static partial class EvmInstructions
 {
+    private static readonly Address RipemdPrecompileAddress = Address.FromNumber(3);
+
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
     /// Each implementation specifies whether the call is static and what its execution type is.
@@ -186,6 +188,7 @@ internal static partial class EvmInstructions
         // frame overhead is negligible.
         if (codeInfo.IsPrecompile
             && codeInfo.Precompile!.SupportsFastPath
+            && codeSource != RipemdPrecompileAddress
             && !TTracingInst.IsActive
             && !vm.TxTracer.IsTracingActions)
         {
@@ -413,9 +416,6 @@ internal static partial class EvmInstructions
                     return EvmExceptionType.None;
                 }
 
-                // Touch the account only on success (EIP-161 semantics).
-                state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
-
                 return HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
                     in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
             }
@@ -479,10 +479,10 @@ internal static partial class EvmInstructions
 
             if (!outputLength.IsZero)
             {
-                int outLen = (int)outputLength.u0;
-                ReadOnlySpan<byte> src = returnBytes;
-                ZeroPaddedSpan outputSpan = src.SliceWithZeroPadding(0, outLen);
-                if (!vm.VmState.Memory.TrySave(in outputOffset, outputSpan))
+                int outputLengthAsInt = outputLength > int.MaxValue ? int.MaxValue : (int)outputLength;
+                int bytesToCopy = Math.Min(returnBytes.Length, outputLengthAsInt);
+                if (bytesToCopy > 0 &&
+                    !vm.VmState.Memory.TrySave(in outputOffset, returnBytes.AsSpan(0, bytesToCopy)))
                     return EvmExceptionType.OutOfGas;
             }
 
