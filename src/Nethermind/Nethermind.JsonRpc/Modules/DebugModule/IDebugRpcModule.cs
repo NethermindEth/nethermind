@@ -125,6 +125,6 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
-    [JsonRpcMethod(Description = "Reprocess the existing block whose parameters are specified by blockParameter and return the generated execution witness")]
+    [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
 }
