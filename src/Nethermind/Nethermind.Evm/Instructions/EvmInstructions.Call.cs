@@ -181,130 +181,156 @@ internal static partial class EvmInstructions
         // Retrieve code information for the call (O(1) for precompiles, cached for contracts).
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
-        // Fast-path for lightweight precompile calls: skip frame creation and state snapshot.
-        // Only precompiles with trivial computation (e.g. identity) benefit — for heavyweight
-        // precompiles (ecrecover, modexp, bn254, etc.) computation dominates and the
-        // frame overhead is negligible.
-        if (codeInfo.IsPrecompile
+        bool useFastPrecompile = codeInfo.IsPrecompile
             && codeInfo.Precompile!.SupportsFastPath
             && !TTracingInst.IsActive
-            && !vm.TxTracer.IsTracingActions)
+            && !vm.TxTracer.IsTracingActions;
+
+        return useFastPrecompile
+            ? ExecuteCallCore<OnFlag>(vm, state, ref gas, ref stack, spec, env, codeInfo, codeInfo.Precompile,
+                in gasLimit, in transferValue, in callValue, caller, target, codeSource, in dataOffset, in dataLength,
+                in outputOffset, in outputLength)
+            : ExecuteCallCore<OffFlag>(vm, state, ref gas, ref stack, spec, env, codeInfo, null,
+                in gasLimit, in transferValue, in callValue, caller, target, codeSource, in dataOffset, in dataLength,
+                in outputOffset, in outputLength);
+
+        static EvmExceptionType ExecuteCallCore<TFastPrecompile>(
+            VirtualMachine<TGasPolicy> vm,
+            IWorldState state,
+            ref TGasPolicy gas,
+            ref EvmStack stack,
+            IReleaseSpec spec,
+            in ExecutionEnvironment env,
+            CodeInfo codeInfo,
+            IPrecompile? precompile,
+            in UInt256 gasLimit,
+            in UInt256 transferValue,
+            in UInt256 callValue,
+            Address caller,
+            Address target,
+            Address codeSource,
+            in UInt256 dataOffset,
+            in UInt256 dataLength,
+            in UInt256 outputOffset,
+            in UInt256 outputLength)
+            where TFastPrecompile : struct, IFlag
         {
-            return FastPrecompileCall(vm, state, ref gas, ref stack, in gasLimit,
-                in transferValue, caller, target, codeInfo.Precompile,
-                in dataOffset, in dataLength, in outputOffset, in outputLength, spec);
-        }
-
-        // If contract is large, charge for access
-        if (spec.IsEip7907Enabled)
-        {
-            uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
-                goto OutOfGas;
-        }
-
-        // Get remaining gas for 63/64 calculation
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // Apply the 63/64 gas rule if enabled.
-        if (spec.Use63Over64Rule)
-        {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
-        }
-
-        // If gasLimit exceeds the host's representable range, treat as out-of-gas.
-        if (gasLimit >= long.MaxValue) goto OutOfGas;
-
-        long gasLimitUl = (long)gasLimit;
-        if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
-
-        // Add call stipend if value is being transferred.
-        if (!transferValue.IsZero)
-        {
-            if (vm.TxTracer.IsTracingRefunds)
-                vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-            gasLimitUl += GasCostOf.CallStipend;
-        }
-
-        // Check call depth and balance of the caller.
-        if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
-        {
-            // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero<TTracingInst>();
-
-            // Optionally report memory changes for refund tracing.
-            if (vm.TxTracer.IsTracingRefunds)
+            // If contract is large, charge for access.
+            if (!TFastPrecompile.IsActive && spec.IsEip7907Enabled)
             {
-                // Specific to Parity tracing: inspect 32 bytes from data offset.
-                ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
+                uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
+                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
+                    return EvmExceptionType.OutOfGas;
             }
 
-            if (TTracingInst.IsActive)
+            // Get remaining gas for 63/64 calculation.
+            long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+            UInt256 effectiveGasLimit = gasLimit;
+
+            // Apply the 63/64 gas rule if enabled.
+            if (spec.Use63Over64Rule)
             {
-                vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
-                vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                effectiveGasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), effectiveGasLimit);
             }
 
-            // Refund the remaining gas to the caller.
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            if (TTracingInst.IsActive)
+            // If gas limit exceeds the host's representable range, treat as out-of-gas.
+            if (effectiveGasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
+
+            long gasLimitUl = (long)effectiveGasLimit;
+            if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) return EvmExceptionType.OutOfGas;
+
+            // Add call stipend if value is being transferred.
+            if (!transferValue.IsZero)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
+                if (vm.TxTracer.IsTracingRefunds)
+                    vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+                gasLimitUl += GasCostOf.CallStipend;
             }
+
+            // Check call depth and balance of the caller.
+            if (env.CallDepth >= MaxCallDepth ||
+                (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            {
+                // If the call cannot proceed, return an empty response and push zero on the stack.
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                stack.PushZero<TTracingInst>();
+
+                // Optionally report memory changes for refund tracing.
+                if (vm.TxTracer.IsTracingRefunds)
+                {
+                    // Specific to Parity tracing: inspect 32 bytes from data offset.
+                    ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
+                    vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
+                }
+
+                if (TTracingInst.IsActive)
+                {
+                    vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
+                    vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                }
+
+                // Refund the remaining gas to the caller.
+                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+                if (TTracingInst.IsActive)
+                {
+                    vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
+                }
+                return EvmExceptionType.None;
+            }
+
+            if (TFastPrecompile.IsActive)
+            {
+                return FastPrecompileCall(vm, state, ref gas, ref stack, gasLimitUl,
+                    in transferValue, caller, target, precompile!,
+                    in dataOffset, in dataLength, in outputOffset, in outputLength, spec);
+            }
+
+            // Take a snapshot of the state for potential rollback.
+            Snapshot snapshot = state.TakeSnapshot();
+            // Subtract the transfer value from the caller's balance.
+            state.SubtractFromBalance(caller, in transferValue, spec);
+
+            // Fast-path for calls to externally owned accounts (non-contracts).
+            if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+            {
+                vm.ReturnDataBuffer = default;
+                stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+                return FastCall(vm, spec, in transferValue, target);
+            }
+
+            // Load call data from memory.
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> callData))
+                return EvmExceptionType.OutOfGas;
+
+            // Construct the execution environment for the call.
+            ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+                codeInfo: codeInfo,
+                executingAccount: target,
+                caller: caller,
+                codeSource: codeSource,
+                callDepth: env.CallDepth + 1,
+                transferValue: in transferValue,
+                value: in callValue,
+                inputData: in callData);
+
+            // Output offset is inconsequential when output length is 0.
+            UInt256 outputDestination = outputLength == 0 ? UInt256.Zero : outputOffset;
+
+            // Rent a new call frame for executing the call.
+            vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+                gas: TGasPolicy.FromLong(gasLimitUl),
+                outputDestination: outputDestination.ToLong(),
+                outputLength: outputLength.ToLong(),
+                executionType: TOpCall.ExecutionType,
+                isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
+                isCreateOnPreExistingAccount: false,
+                env: callEnv,
+                stateForAccessLists: in vm.VmState.AccessTracker,
+                snapshot: in snapshot);
+
             return EvmExceptionType.None;
         }
-
-        // Take a snapshot of the state for potential rollback.
-        Snapshot snapshot = state.TakeSnapshot();
-        // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
-
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
-        {
-            vm.ReturnDataBuffer = default;
-            stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            return FastCall(vm, spec, in transferValue, target);
-        }
-
-        // Load call data from memory.
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            goto OutOfGas;
-        // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
-            executingAccount: target,
-            caller: caller,
-            codeSource: codeSource,
-            callDepth: env.CallDepth + 1,
-            transferValue: in transferValue,
-            value: in callValue,
-            inputData: in callData);
-
-        // Normalize output offset if output length is zero.
-        if (outputLength == 0)
-        {
-            // Output offset is inconsequential when output length is 0.
-            outputOffset = 0;
-        }
-
-        // Rent a new call frame for executing the call.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(gasLimitUl),
-            outputDestination: outputOffset.ToLong(),
-            outputLength: outputLength.ToLong(),
-            executionType: TOpCall.ExecutionType,
-            isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: false,
-            env: callEnv,
-            stateForAccessLists: in vm.VmState.AccessTracker,
-            snapshot: in snapshot);
-
-        return EvmExceptionType.None;
 
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
@@ -325,7 +351,7 @@ internal static partial class EvmInstructions
             IWorldState state,
             ref TGasPolicy gas,
             ref EvmStack stack,
-            in UInt256 gasLimit,
+            long gasLimitUl,
             in UInt256 transferValue,
             Address caller,
             Address target,
@@ -336,38 +362,6 @@ internal static partial class EvmInstructions
             in UInt256 outputLength,
             IReleaseSpec spec)
         {
-            // Compute effective gas limit (63/64 rule).
-            long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-            UInt256 effectiveGasLimit = gasLimit;
-            if (spec.Use63Over64Rule)
-            {
-                effectiveGasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), effectiveGasLimit);
-            }
-
-            if (effectiveGasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
-
-            long gasLimitUl = (long)effectiveGasLimit;
-            if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) return EvmExceptionType.OutOfGas;
-
-            // Add call stipend for value transfers.
-            if (!transferValue.IsZero)
-            {
-                if (vm.TxTracer.IsTracingRefunds)
-                    vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-                gasLimitUl += GasCostOf.CallStipend;
-            }
-
-            // Check call depth and caller balance.
-            ExecutionEnvironment env = vm.VmState.Env;
-            if (env.CallDepth >= MaxCallDepth ||
-                (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
-            {
-                vm.ReturnDataBuffer = Array.Empty<byte>();
-                stack.PushZero<TTracingInst>();
-                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-                return EvmExceptionType.None;
-            }
-
             // Load input from caller's memory (not a state change — safe before snapshot decision).
             if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> inputData))
                 return EvmExceptionType.OutOfGas;
