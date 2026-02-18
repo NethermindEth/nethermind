@@ -170,7 +170,8 @@ static string[] ApplyChunkFilter(string[] args)
     int chunkIndex = -1;
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i].StartsWith("--chunk", StringComparison.OrdinalIgnoreCase)
+        if (args[i].StartsWith("--chunk=", StringComparison.OrdinalIgnoreCase)
+            || args[i].StartsWith("--chunk:", StringComparison.OrdinalIgnoreCase)
             || string.Equals(args[i], "--chunk", StringComparison.OrdinalIgnoreCase))
         {
             chunkIndex = i;
