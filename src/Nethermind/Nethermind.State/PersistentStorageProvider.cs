@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,7 +20,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -454,7 +452,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class PerContractState : IReturnable
     {
-        private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
         private readonly DefaultableDictionary BlockChange = new();

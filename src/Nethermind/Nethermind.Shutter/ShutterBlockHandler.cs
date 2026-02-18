@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;

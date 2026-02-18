@@ -10,8 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using FastEnumUtility;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
-
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.EvmObjectFormat.Handlers;

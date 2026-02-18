@@ -20,7 +20,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -1055,8 +1054,7 @@ public partial class EngineModuleTests
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
             Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
-            Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
-            LimboLogs.Instance);
+            Substitute.For<ISyncFeed<SnapSyncBatch?>>());
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,

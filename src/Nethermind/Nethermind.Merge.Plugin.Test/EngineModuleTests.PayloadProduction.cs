@@ -24,7 +24,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
