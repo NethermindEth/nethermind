@@ -27,9 +27,11 @@ namespace Nethermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
-            int packetType = input.ReadByte();
+            Rlp.ValueDecoderContext decoderContext = new(input.AsSpan());
+            int packetTypeSize = decoderContext.PeekNextRlpLength();
+            var packetType = decoderContext.PeekNextItem();
+            input.SkipBytes(packetTypeSize);
 
-            int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
@@ -102,28 +104,15 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 /*message*/
-                input.ReadBytes(output, framePayloadSize - framePacketTypeSize);
+                input.ReadBytes(output, framePayloadSize - packetTypeSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
             }
         }
 
-        private static int WritePacketType(int packetType, IByteBuffer output)
+        private static int WritePacketType(ReadOnlySpan<byte> packetType, IByteBuffer output)
         {
-            if (packetType == 0)
-            {
-                output.WriteByte(128);
-                return 1;
-            }
-
-            if (packetType < 128)
-            {
-                output.WriteByte(packetType);
-                return 1;
-            }
-
-            output.WriteByte(129);
-            output.WriteByte(packetType);
+            output.WriteBytes(packetType);
             return 2;
         }
     }
