@@ -387,20 +387,6 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (child is TrieNode childNode)
             {
-                /*
-                if (childNode.FullRlp.Length < 32)
-                {
-                    TreePath childPath = nodePath.Append(childIndex);
-                    TreePath fullPath = childPath.Append(childNode.Key);
-                    if (fullPath.Path < startPath)
-                    {
-                        // When a branch have an inline leaf whose full path is < startPath,
-                        // we cannot mark it as persisted and cause the branch proof to be persisted. This is because
-                        // we dont know if the inline leaf is part of a different storage root or not.
-                        return false;
-                    }
-                }
-                */
                 return childNode.IsBoundaryProofNode == false;
             }
 
