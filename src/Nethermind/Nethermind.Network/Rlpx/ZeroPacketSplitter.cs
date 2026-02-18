@@ -27,10 +27,14 @@ namespace Nethermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
-            int packetType = input.ReadByte();
+            int totalPayloadSize = input.ReadableBytes;
 
-            int packetTypeSize = packetType >= 128 ? 2 : 1;
-            int totalPayloadSize = packetTypeSize + input.ReadableBytes;
+            Rlp.ValueDecoderContext decoderContext = new(input.AsSpan());
+            int packetTypeSize = decoderContext.PeekNextRlpLength();
+            ReadOnlySpan<byte> packetType = decoderContext.PeekNextItem();
+            input.SkipBytes(packetTypeSize);
+
+            output.WriteBytes(packetType);
 
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
@@ -94,37 +98,11 @@ namespace Nethermind.Network.Rlpx
                     output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 
-                int framePacketTypeSize = 0;
-                if (i == 0)
-                {
-                    /*33 or 33-34*/
-                    framePacketTypeSize = WritePacketType(packetType, output);
-                }
-
                 /*message*/
-                input.ReadBytes(output, framePayloadSize - framePacketTypeSize);
+                input.ReadBytes(output, framePayloadSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
             }
-        }
-
-        private static int WritePacketType(int packetType, IByteBuffer output)
-        {
-            if (packetType == 0)
-            {
-                output.WriteByte(128);
-                return 1;
-            }
-
-            if (packetType < 128)
-            {
-                output.WriteByte(packetType);
-                return 1;
-            }
-
-            output.WriteByte(129);
-            output.WriteByte(packetType);
-            return 2;
         }
     }
 }
