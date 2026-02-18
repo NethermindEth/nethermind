@@ -32,6 +32,30 @@ public class BlockFinderExtensionsTests
         blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be((UInt256?)UInt256.One);
     }
 
+    [TestCase(BlockParameterType.Latest, "latest")]
+    [TestCase(BlockParameterType.Earliest, "earliest")]
+    [TestCase(BlockParameterType.Pending, "pending")]
+    [TestCase(BlockParameterType.Finalized, "finalized")]
+    [TestCase(BlockParameterType.Safe, "safe")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void BlockParameter_ToString_ReturnsLowercaseTypeName(BlockParameterType type, string expected)
+    {
+        new BlockParameter(type).ToString().Should().Be(expected);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockParameter_ToString_ReturnsBlockNumber()
+    {
+        new BlockParameter(12345L).ToString().Should().Be("12345");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockParameter_ToString_ReturnsBlockHash()
+    {
+        var hash = TestItem.KeccakA;
+        new BlockParameter(hash).ToString().Should().Be(hash.ToString());
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void SearchForBlock_WhenBlockIsPruned_IncludesBlockNumberInError()
     {

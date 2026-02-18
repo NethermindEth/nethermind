@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>($"{blockParameter} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
@@ -73,14 +73,14 @@ namespace Nethermind.JsonRpc.Modules
                 if (blockFinder.IsBlockPruned(blockParameter))
                 {
                     return new SearchResult<Block>(
-                        $"pruned history unavailable for block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()}",
+                        $"pruned history unavailable for block {blockParameter}",
                         ErrorCodes.PrunedHistoryUnavailable);
                 }
 
                 if (!allowNulls)
                 {
                     return new SearchResult<Block>(
-                        $"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found",
+                        $"block {blockParameter} could not be found",
                         ErrorCodes.ResourceNotFound);
                 }
             }
