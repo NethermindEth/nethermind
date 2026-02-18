@@ -11,11 +11,8 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
-    private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
-
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
-    private readonly Dictionary<FlatDbColumns, long> _lastWriteBufferSize = new();
+    private readonly WriteBufferAdjuster _adjuster = new(db);
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -85,21 +82,12 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
-        bool shouldCount = !flags.HasFlag(WriteFlags.DisableWAL);
-
-        CountingWriteBatch? accountCounter = shouldCount ? new(batch.GetColumnBatch(FlatDbColumns.Account)) : null;
-        CountingWriteBatch? storageCounter = shouldCount ? new(batch.GetColumnBatch(FlatDbColumns.Storage)) : null;
-        CountingWriteBatch? stateTopNodesCounter = shouldCount ? new(batch.GetColumnBatch(FlatDbColumns.StateTopNodes)) : null;
-        CountingWriteBatch? stateNodesCounter = shouldCount ? new(batch.GetColumnBatch(FlatDbColumns.StateNodes)) : null;
-        CountingWriteBatch? storageNodesCounter = shouldCount ? new(batch.GetColumnBatch(FlatDbColumns.StorageNodes)) : null;
-        CountingWriteBatch? fallbackNodesCounter = shouldCount ? new(batch.GetColumnBatch(FlatDbColumns.FallbackNodes)) : null;
-
-        IWriteOnlyKeyValueStore accountBatch = accountCounter ?? batch.GetColumnBatch(FlatDbColumns.Account);
-        IWriteOnlyKeyValueStore storageBatch = storageCounter ?? batch.GetColumnBatch(FlatDbColumns.Storage);
-        IWriteOnlyKeyValueStore stateTopNodesBatch = stateTopNodesCounter ?? batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
-        IWriteOnlyKeyValueStore stateNodesBatch = stateNodesCounter ?? batch.GetColumnBatch(FlatDbColumns.StateNodes);
-        IWriteOnlyKeyValueStore storageNodesBatch = storageNodesCounter ?? batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-        IWriteOnlyKeyValueStore fallbackNodesBatch = fallbackNodesCounter ?? batch.GetColumnBatch(FlatDbColumns.FallbackNodes);
+        IWriteOnlyKeyValueStore accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
+        IWriteOnlyKeyValueStore storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
+        IWriteOnlyKeyValueStore stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
+        IWriteOnlyKeyValueStore stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
+        IWriteOnlyKeyValueStore storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
+        IWriteOnlyKeyValueStore fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
@@ -127,60 +115,13 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                 SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 batch.Dispose();
                 dbSnap.Dispose();
-                if (shouldCount)
+                _adjuster.OnBatchDisposed();
+                if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
-                    AdjustWriteBuffer(FlatDbColumns.Account, accountCounter!.BytesWritten);
-                    AdjustWriteBuffer(FlatDbColumns.Storage, storageCounter!.BytesWritten);
-                    AdjustWriteBuffer(FlatDbColumns.StateTopNodes, stateTopNodesCounter!.BytesWritten);
-                    AdjustWriteBuffer(FlatDbColumns.StateNodes, stateNodesCounter!.BytesWritten);
-                    AdjustWriteBuffer(FlatDbColumns.StorageNodes, storageNodesCounter!.BytesWritten);
-                    AdjustWriteBuffer(FlatDbColumns.FallbackNodes, fallbackNodesCounter!.BytesWritten);
                     db.Flush(onlyWal: true);
                 }
             })
         );
     }
 
-    private void AdjustWriteBuffer(FlatDbColumns column, long bytesWritten)
-    {
-        if (bytesWritten == 0) return;
-        long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize);
-        if (_lastWriteBufferSize.TryGetValue(column, out long lastSize)
-            && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
-            return;
-        _lastWriteBufferSize[column] = target;
-        db.GetColumnDb(column).SetWriteBuffer(target);
-    }
-
-    private class CountingWriteBatch(IWriteBatch inner) : IWriteBatch
-    {
-        public long BytesWritten { get; private set; }
-
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            BytesWritten += key.Length + (value?.Length ?? 0);
-            inner.Set(key, value, flags);
-        }
-
-        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            BytesWritten += key.Length + value.Length;
-            inner.PutSpan(key, value, flags);
-        }
-
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            BytesWritten += key.Length;
-            inner.Remove(key);
-        }
-
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            BytesWritten += key.Length + value.Length;
-            inner.Merge(key, value, flags);
-        }
-
-        public void Clear() => inner.Clear();
-        public void Dispose() => inner.Dispose();
-    }
 }
