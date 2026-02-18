@@ -90,9 +90,4 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 
     public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
-
-    public TrieNode GetOrAddMainThreadStateNode(in TreePath path, TrieNode value)
-    {
-        throw new NotImplementedException();
-    }
 }
