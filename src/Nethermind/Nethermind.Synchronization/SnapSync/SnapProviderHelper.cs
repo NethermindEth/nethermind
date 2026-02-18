@@ -387,6 +387,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (child is TrieNode childNode)
             {
+                /*
                 if (childNode.FullRlp.Length < 32)
                 {
                     TreePath childPath = nodePath.Append(childIndex);
@@ -399,6 +400,7 @@ namespace Nethermind.Synchronization.SnapSync
                         return false;
                     }
                 }
+                */
                 return childNode.IsBoundaryProofNode == false;
             }
 
