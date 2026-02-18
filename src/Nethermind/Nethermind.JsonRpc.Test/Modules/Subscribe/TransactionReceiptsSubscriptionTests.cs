@@ -105,52 +105,32 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             return jsonRpcResults;
         }
 
-        [Test]
-        public void TransactionReceiptsSubscription_with_too_many_hashes_fails()
+        [TestCase(200, false, TestName = "Exactly 200 hashes succeeds")]
+        [TestCase(201, true, TestName = "More than 200 hashes fails")]
+        public void TransactionReceiptsSubscription_hash_count_limit(int hashCount, bool shouldThrow)
         {
-            // Create more than 200 hashes
-            HashSet<ValueHash256> tooManyHashes = Enumerable.Range(0, 201)
+            HashSet<ValueHash256> hashes = Enumerable.Range(0, hashCount)
                 .Select(_ => (ValueHash256)Keccak.Compute("test" + Guid.NewGuid()))
                 .ToHashSet();
 
-            TransactionHashesFilter filter = new()
+            TransactionHashesFilter filter = new() { TransactionHashes = hashes };
+
+            if (shouldThrow)
             {
-                TransactionHashes = tooManyHashes
-            };
+                Action act = () => new TransactionReceiptsSubscription(
+                    _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
-            Action act = () => new TransactionReceiptsSubscription(
-                _jsonRpcDuplexClient,
-                _receiptCanonicalityMonitor,
-                _blockTree,
-                _logManager,
-                filter);
-
-            act.Should().Throw<ArgumentException>()
-                .WithMessage("*cannot subscribe to more than 200 transaction hashes*");
-        }
-
-        [Test]
-        public void TransactionReceiptsSubscription_with_exactly_200_hashes_succeeds()
-        {
-            // Create exactly 200 hashes (boundary test for the limit)
-            HashSet<ValueHash256> exactly200Hashes = Enumerable.Range(0, 200)
-                .Select(_ => (ValueHash256)Keccak.Compute("test" + Guid.NewGuid()))
-                .ToHashSet();
-
-            TransactionHashesFilter filter = new()
+                act.Should().Throw<ArgumentException>()
+                    .WithMessage("*cannot subscribe to more than 200 transaction hashes*");
+            }
+            else
             {
-                TransactionHashes = exactly200Hashes
-            };
+                TransactionReceiptsSubscription subscription = new(
+                    _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _logManager, filter);
 
-            TransactionReceiptsSubscription subscription = new(
-                _jsonRpcDuplexClient,
-                _receiptCanonicalityMonitor,
-                _blockTree,
-                _logManager,
-                filter);
-
-            subscription.Should().NotBeNull();
-            subscription.Id.Should().StartWith("0x");
+                subscription.Should().NotBeNull();
+                subscription.Id.Should().StartWith("0x");
+            }
         }
 
         [Test]
