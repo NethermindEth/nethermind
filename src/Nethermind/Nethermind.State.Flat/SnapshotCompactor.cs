@@ -142,9 +142,6 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
-        HashSet<Address> addressToClear = new();
-        HashSet<Hash256AsKey> addressHashToClear = new();
-
         using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(4);
 
         // Accounts
@@ -160,11 +157,12 @@ public class SnapshotCompactor : ISnapshotCompactor
         // Slots and Selfdestruct
         compactTask.Add(Task.Run(() =>
         {
+            HashSet<Address> addressToClear = new();
+
             for (int i = 0; i < snapshots.Count; i++)
             {
                 Snapshot knownState = snapshots[i];
                 addressToClear.Clear();
-                addressHashToClear.Clear();
 
                 foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
                 {
@@ -177,7 +175,6 @@ public class SnapshotCompactor : ISnapshotCompactor
                     {
                         selfDestructedStorageAddresses[address] = false;
                         addressToClear.Add(address);
-                        addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
                     }
                 }
 
@@ -210,11 +207,31 @@ public class SnapshotCompactor : ISnapshotCompactor
         // Storage tries
         compactTask.Add(Task.Run(() =>
         {
+            HashSet<Hash256AsKey> addressHashToClear = new();
+
             for (int i = 0; i < snapshots.Count; i++)
             {
-                // Its fine to not check for selfdestruct here. The trie is traversed so it will skip orphaned node.
-                // plus selfdestruct does not work anymore.
                 Snapshot knownState = snapshots[i];
+
+                addressHashToClear.Clear();
+                foreach ((AddressAsKey address, var isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                {
+                    if (!isNewAccount) addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
+                }
+
+                if (addressHashToClear.Count > 0)
+                {
+                    // Clear
+                    foreach (((Hash256AsKey Address, TreePath) key, TrieNode? _) in storageNodes)
+                    {
+                        if (addressHashToClear.Contains(key.Address))
+                        {
+                            storageNodes.Remove(key, out _);
+                        }
+                    }
+
+                }
+
                 storageNodes.AddOrUpdateRange(knownState.StorageNodes);
             }
         }));
