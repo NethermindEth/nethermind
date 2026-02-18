@@ -43,7 +43,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ResetExtCodeCache()
     {
-        // Cache is keyed by code hash to remain correct when code changes mid-transaction.
+        // Cache is keyed by address, with code hash validation to remain correct when code changes mid-transaction.
         _extCodeCache?.Clear();
     }
 
