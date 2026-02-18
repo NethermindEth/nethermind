@@ -48,7 +48,6 @@ public class SupportsCachingTests
     {
         yield return new TestCaseData(IdentityPrecompile.Instance).SetName(nameof(IdentityPrecompile));
         yield return new TestCaseData(Sha256Precompile.Instance).SetName(nameof(Sha256Precompile));
-        yield return new TestCaseData(Ripemd160Precompile.Instance).SetName(nameof(Ripemd160Precompile));
         yield return new TestCaseData(BN254AddPrecompile.Instance).SetName(nameof(BN254AddPrecompile));
         yield return new TestCaseData(BN254MulPrecompile.Instance).SetName(nameof(BN254MulPrecompile));
         yield return new TestCaseData(BN254PairingPrecompile.Instance).SetName(nameof(BN254PairingPrecompile));
@@ -77,5 +76,11 @@ public class SupportsCachingTests
     public void EcRecoverPrecompile_SupportsFastPath_ReturnsFalse()
     {
         Assert.That(EcRecoverPrecompile.Instance.SupportsFastPath, Is.False);
+    }
+
+    [Test]
+    public void Ripemd160Precompile_SupportsFastPath_ReturnsFalse()
+    {
+        Assert.That(Ripemd160Precompile.Instance.SupportsFastPath, Is.False);
     }
 }

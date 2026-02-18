@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -16,8 +17,6 @@ namespace Nethermind.Evm;
 
 internal static partial class EvmInstructions
 {
-    private static readonly Address RipemdPrecompileAddress = Address.FromNumber(3);
-
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
     /// Each implementation specifies whether the call is static and what its execution type is.
@@ -188,7 +187,6 @@ internal static partial class EvmInstructions
         // frame overhead is negligible.
         if (codeInfo.IsPrecompile
             && codeInfo.Precompile!.SupportsFastPath
-            && codeSource != RipemdPrecompileAddress
             && !TTracingInst.IsActive
             && !vm.TxTracer.IsTracingActions)
         {
@@ -386,38 +384,30 @@ internal static partial class EvmInstructions
                 // On OOG all forwarded gas is consumed (no refund), matching normal CALL semantics.
                 if (gasOverflow || precompileGasCost > gasLimitUl)
                 {
-                    vm.ReturnDataBuffer = Array.Empty<byte>();
-                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    vm.ReturnData = null;
-                    return EvmExceptionType.None;
+                    return ReturnFailedPrecompileCall(vm, ref stack);
                 }
 
                 // Run precompile before touching account so failure needs no rollback.
                 Result<byte[]> output;
-                try
+                if (!TryRunPrecompile(vm, precompile, inputData, spec, out output))
                 {
-                    output = precompile.Run(inputData, spec);
-                }
-                catch
-                {
-                    // Precompile threw: all forwarded gas consumed, call fails.
-                    vm.ReturnDataBuffer = Array.Empty<byte>();
-                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    vm.ReturnData = null;
-                    return EvmExceptionType.None;
+                    return ReturnFailedPrecompileCall(vm, ref stack);
                 }
 
                 if (!output)
                 {
                     // Precompile execution failed: all forwarded gas consumed.
-                    vm.ReturnDataBuffer = Array.Empty<byte>();
-                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    vm.ReturnData = null;
-                    return EvmExceptionType.None;
+                    return ReturnFailedPrecompileCall(vm, ref stack);
                 }
 
-                return HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
+                EvmExceptionType precompileResult = HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
                     in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
+                if (precompileResult == EvmExceptionType.None)
+                {
+                    state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
+                }
+
+                return precompileResult;
             }
             else
             {
@@ -430,38 +420,70 @@ internal static partial class EvmInstructions
                 if (gasOverflow || precompileGasCost > gasLimitUl)
                 {
                     state.Restore(snapshot);
-                    vm.ReturnDataBuffer = Array.Empty<byte>();
-                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    vm.ReturnData = null;
-                    return EvmExceptionType.None;
+                    return ReturnFailedPrecompileCall(vm, ref stack);
                 }
 
                 Result<byte[]> output;
-                try
-                {
-                    output = precompile.Run(inputData, spec);
-                }
-                catch
+                if (!TryRunPrecompile(vm, precompile, inputData, spec, out output))
                 {
                     state.Restore(snapshot);
-                    vm.ReturnDataBuffer = Array.Empty<byte>();
-                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    vm.ReturnData = null;
-                    return EvmExceptionType.None;
+                    return ReturnFailedPrecompileCall(vm, ref stack);
                 }
 
                 if (!output)
                 {
                     state.Restore(snapshot);
-                    vm.ReturnDataBuffer = Array.Empty<byte>();
-                    stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
-                    vm.ReturnData = null;
-                    return EvmExceptionType.None;
+                    return ReturnFailedPrecompileCall(vm, ref stack);
                 }
 
                 return HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
                     in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool TryRunPrecompile(
+            VirtualMachine<TGasPolicy> vm,
+            IPrecompile precompile,
+            ReadOnlyMemory<byte> inputData,
+            IReleaseSpec spec,
+            out Result<byte[]> output)
+        {
+            try
+            {
+                output = precompile.Run(inputData, spec);
+                return true;
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+            {
+                if (vm.Logger.IsError)
+                {
+                    vm.Logger.Error(
+                        $"Failed to load one of the dependencies of {precompile.GetType()} precompile",
+                        exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+                }
+                Environment.Exit(ExitCodes.MissingPrecompile);
+                throw; // Unreachable
+            }
+            catch (Exception exception)
+            {
+                if (vm.Logger.IsError)
+                {
+                    vm.Logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+                }
+
+                output = default;
+                return false;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static EvmExceptionType ReturnFailedPrecompileCall(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
+        {
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            stack.PushBytes<TTracingInst>(StatusCode.FailureBytes.Span);
+            vm.ReturnData = null;
+            return EvmExceptionType.None;
         }
 
         static EvmExceptionType HandlePrecompileSuccess(

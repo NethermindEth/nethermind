@@ -25,7 +25,7 @@ public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     public static Address Address { get; } = Address.FromNumber(3);
 
     public static string Name => "RIPEMD160";
-    public bool SupportsFastPath => true;
+    public bool SupportsFastPath => false;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 
