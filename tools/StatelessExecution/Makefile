@@ -9,8 +9,7 @@ zisk_sim: build-tool-local build-zisk-sim execute-zisk-sim execute-zisk-qemu
 zisk: build-tool-local build-zisk execute-zisk
 
 build-tool-local:
-	rm -rf nethermind; \
-	dotnet build -c release '-p:EnableZkvm=true' .
+	dotnet build -c release -p:EnableZkvm=true
 
 run-docker:
 	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk  /bin/bash
@@ -24,23 +23,23 @@ build-zisk:
 		--nostdlibrefs \
 		--no-stacktrace-data \
 		--no-globalization \
-		-r nethermind/Microsoft.Extensions.ObjectPool.dll \
-		-r nethermind/Nethermind.Abi.dll \
-		-r nethermind/Nethermind.Blockchain.dll \
-		-r nethermind/Nethermind.Consensus.dll \
-		-r nethermind/Nethermind.Core.dll \
-		-r nethermind/Nethermind.Crypto.dll \
-		-r nethermind/Nethermind.Db.dll \
-		-r nethermind/Nethermind.Evm.dll \
-		-r nethermind/Nethermind.Evm.Precompiles.dll \
-		-r nethermind/Nethermind.Facade.dll \
-		-r nethermind/Nethermind.Int256.dll \
-		-r nethermind/Nethermind.Logging.dll \
-		-r nethermind/Nethermind.Serialization.Rlp.dll \
-		-r nethermind/Nethermind.Specs.dll \
-		-r nethermind/Nethermind.State.dll \
-		-r nethermind/Nethermind.Trie.dll \
-		-r nethermind/Nethermind.TxPool.dll \
+		-r /nethermind/bin/Microsoft.Extensions.ObjectPool.dll \
+		-r /nethermind/bin/Nethermind.Abi.dll \
+		-r /nethermind/bin/Nethermind.Blockchain.dll \
+		-r /nethermind/bin/Nethermind.Consensus.dll \
+		-r /nethermind/bin/Nethermind.Core.dll \
+		-r /nethermind/bin/Nethermind.Crypto.dll \
+		-r /nethermind/bin/Nethermind.Db.dll \
+		-r /nethermind/bin/Nethermind.Evm.dll \
+		-r /nethermind/bin/Nethermind.Evm.Precompiles.dll \
+		-r /nethermind/bin/Nethermind.Facade.dll \
+		-r /nethermind/bin/Nethermind.Int256.dll \
+		-r /nethermind/bin/Nethermind.Logging.dll \
+		-r /nethermind/bin/Nethermind.Serialization.Rlp.dll \
+		-r /nethermind/bin/Nethermind.Specs.dll \
+		-r /nethermind/bin/Nethermind.State.dll \
+		-r /nethermind/bin/Nethermind.Trie.dll \
+		-r /nethermind/bin/Nethermind.TxPool.dll \
 		-r {std}/Microsoft.Win32.Primitives.dll \
 		-r {std}/netstandard.dll \
 		-r {std}/System.Collections.Concurrent.dll \
@@ -68,16 +67,16 @@ build-zisk:
 		-r {std}/System.Threading.ThreadPool.dll \
 		-r {std}/System.Diagnostics.StackTrace.dll \
 		-r {std}/System.Reflection.Metadata.dll \
-		-r nethermind/BouncyCastle.Cryptography.dll \
-		-r nethermind/Nethermind.Crypto.Bls.dll \
-		-r nethermind/Nethermind.Crypto.SecP256k1.dll \
-		-r nethermind/Nethermind.Crypto.SecP256r1.dll \
-		-r nethermind/NonBlocking.dll \
-		-r nethermind/FastEnum.Core.dll \
-		-r nethermind/Nethermind.GmpBindings.dll \
-		-r nethermind/Nethermind.MclBindings.dll \
-		-r nethermind/Ckzg.Bindings.dll \
-		--stdlib dotnet --verbose ./Program.cs
+		-r /nethermind/bin/BouncyCastle.Cryptography.dll \
+		-r /nethermind/bin/Nethermind.Crypto.Bls.dll \
+		-r /nethermind/bin/Nethermind.Crypto.SecP256k1.dll \
+		-r /nethermind/bin/Nethermind.Crypto.SecP256r1.dll \
+		-r /nethermind/bin/NonBlocking.dll \
+		-r /nethermind/bin/FastEnum.Core.dll \
+		-r /nethermind/bin/Nethermind.GmpBindings.dll \
+		-r /nethermind/bin/Nethermind.MclBindings.dll \
+		-r /nethermind/bin/Ckzg.Bindings.dll \
+		--stdlib dotnet --verbose /nethermind/src/Program.cs
 
 build-zisk-sim:
 	rm -f Program; \
@@ -86,23 +85,23 @@ build-zisk-sim:
 		--nostdlibrefs \
 		--no-stacktrace-data \
 		--no-globalization \
-		-r nethermind/Microsoft.Extensions.ObjectPool.dll \
-		-r nethermind/Nethermind.Abi.dll \
-		-r nethermind/Nethermind.Blockchain.dll \
-		-r nethermind/Nethermind.Consensus.dll \
-		-r nethermind/Nethermind.Core.dll \
-		-r nethermind/Nethermind.Crypto.dll \
-		-r nethermind/Nethermind.Db.dll \
-		-r nethermind/Nethermind.Evm.dll \
-		-r nethermind/Nethermind.Evm.Precompiles.dll \
-		-r nethermind/Nethermind.Facade.dll \
-		-r nethermind/Nethermind.Int256.dll \
-		-r nethermind/Nethermind.Logging.dll \
-		-r nethermind/Nethermind.Serialization.Rlp.dll \
-		-r nethermind/Nethermind.Specs.dll \
-		-r nethermind/Nethermind.State.dll \
-		-r nethermind/Nethermind.Trie.dll \
-		-r nethermind/Nethermind.TxPool.dll \
+		-r /nethermind/bin/Microsoft.Extensions.ObjectPool.dll \
+		-r /nethermind/bin/Nethermind.Abi.dll \
+		-r /nethermind/bin/Nethermind.Blockchain.dll \
+		-r /nethermind/bin/Nethermind.Consensus.dll \
+		-r /nethermind/bin/Nethermind.Core.dll \
+		-r /nethermind/bin/Nethermind.Crypto.dll \
+		-r /nethermind/bin/Nethermind.Db.dll \
+		-r /nethermind/bin/Nethermind.Evm.dll \
+		-r /nethermind/bin/Nethermind.Evm.Precompiles.dll \
+		-r /nethermind/bin/Nethermind.Facade.dll \
+		-r /nethermind/bin/Nethermind.Int256.dll \
+		-r /nethermind/bin/Nethermind.Logging.dll \
+		-r /nethermind/bin/Nethermind.Serialization.Rlp.dll \
+		-r /nethermind/bin/Nethermind.Specs.dll \
+		-r /nethermind/bin/Nethermind.State.dll \
+		-r /nethermind/bin/Nethermind.Trie.dll \
+		-r /nethermind/bin/Nethermind.TxPool.dll \
 		-r {std}/Microsoft.Win32.Primitives.dll \
 		-r {std}/netstandard.dll \
 		-r {std}/System.Collections.Concurrent.dll \
@@ -130,15 +129,15 @@ build-zisk-sim:
 		-r {std}/System.Threading.ThreadPool.dll \
 		-r {std}/System.Diagnostics.StackTrace.dll \
 		-r {std}/System.Reflection.Metadata.dll \
-		-r nethermind/BouncyCastle.Cryptography.dll \
-		-r nethermind/Nethermind.Crypto.Bls.dll \
-		-r nethermind/Nethermind.Crypto.SecP256k1.dll \
-		-r nethermind/Nethermind.Crypto.SecP256r1.dll \
-		-r nethermind/NonBlocking.dll \
-		-r nethermind/FastEnum.Core.dll \
-		-r nethermind/Nethermind.GmpBindings.dll \
-		-r nethermind/Nethermind.MclBindings.dll \
-		-r nethermind/Ckzg.Bindings.dll \
+		-r /nethermind/bin/BouncyCastle.Cryptography.dll \
+		-r /nethermind/bin/Nethermind.Crypto.Bls.dll \
+		-r /nethermind/bin/Nethermind.Crypto.SecP256k1.dll \
+		-r /nethermind/bin/Nethermind.Crypto.SecP256r1.dll \
+		-r /nethermind/bin/NonBlocking.dll \
+		-r /nethermind/bin/FastEnum.Core.dll \
+		-r /nethermind/bin/Nethermind.GmpBindings.dll \
+		-r /nethermind/bin/Nethermind.MclBindings.dll \
+		-r /nethermind/bin/Ckzg.Bindings.dll \
 		--stdlib dotnet --verbose ./Program.cs
 
 execute-zisk-sim:

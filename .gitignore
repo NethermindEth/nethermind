@@ -449,7 +449,3 @@ FodyWeavers.xsd
 ## Nethermind
 keystore/
 /.githooks
-
-#ZKVM
-/tools/StatelessExecution/nethermind/**
-/tools/StatelessExecution/Program*

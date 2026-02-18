@@ -1,6 +1,3 @@
-FROM maximmenshikov/bflat-riscv64-zk-test6
+FROM maximmenshikov/bflat-riscv64-zk-test6:latest
 
-COPY nethermind /nethermind/
-
-RUN apt-get update -y
-RUN apt-get install -y strace gdb file
+RUN apt-get update && apt-get install -y --no-install-recommends strace gdb file
