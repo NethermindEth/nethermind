@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,6 +11,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -223,6 +225,86 @@ public class JsonRpcSocketsClientTests
             catch (IOException)
             {
                 // Reset due to closed from other side
+            }
+        }
+
+        [Test]
+        public async Task Does_not_process_partial_message_without_delimiter()
+        {
+            CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+            using TempPath tmpPath = TempPath.GetTempFile();
+
+            UnixDomainSocketEndPoint endPoint = new(tmpPath.Path);
+            using Socket socketListener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            socketListener.Bind(endPoint);
+            socketListener.Listen(0);
+
+            using Socket sendSocket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await sendSocket.ConnectAsync(endPoint);
+
+            int processedRequests = 0;
+            int processedRequestSize = 0;
+
+            IJsonRpcProcessor jsonRpcProcessor = Substitute.For<IJsonRpcProcessor>();
+            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo callInfo)
+            {
+                PipeReader reader = callInfo.ArgAt<PipeReader>(0);
+                ReadResult readResult = await reader.ReadToEndAsync();
+                ReadOnlySequence<byte> buffer = readResult.Buffer;
+                processedRequestSize = (int)buffer.Length;
+                Interlocked.Increment(ref processedRequests);
+                reader.AdvanceTo(buffer.Start, buffer.End);
+                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+            }
+
+            jsonRpcProcessor
+                .ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>())
+                .Returns(ResponseFunc);
+
+            Task receiver = Task.Run(async () =>
+            {
+                Socket socket = await socketListener.AcceptAsync(cts.Token);
+                using IpcSocketMessageStream stream = new(socket);
+                using JsonRpcSocketsClient<IpcSocketMessageStream> client = new(
+                    clientName: "TestClient",
+                    stream: stream,
+                    endpointType: RpcEndpoint.IPC,
+                    jsonRpcProcessor: jsonRpcProcessor,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                    jsonSerializer: new EthereumJsonSerializer()
+                );
+
+                await client.ReceiveLoopAsync(cts.Token);
+            });
+
+            using IpcSocketMessageStream sendStream = new(sendSocket);
+            string requestPayload = new('a', 300_000);
+            string request = $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV4\",\"params\":[\"{requestPayload}\"]}}";
+            byte[] requestBytes = Encoding.UTF8.GetBytes(request);
+            byte[] firstChunk = [requestBytes[0]];
+
+            await sendStream.WriteAsync(firstChunk, cts.Token);
+            await Task.Delay(100, cts.Token);
+
+            processedRequests.Should().Be(0);
+
+            await sendStream.WriteAsync(requestBytes.AsMemory(1), cts.Token);
+            await sendStream.WriteEndOfMessageAsync();
+
+            Assert.That(() => processedRequests, Is.EqualTo(1).After(5000, 10));
+            processedRequestSize.Should().Be(requestBytes.Length);
+
+            sendSocket.Shutdown(SocketShutdown.Send);
+            try
+            {
+                await receiver;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (IOException)
+            {
+                // Reset due to closed from other side.
             }
         }
 

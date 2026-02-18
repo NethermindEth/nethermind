@@ -66,7 +66,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         }
         else
         {
-            endOfMessage = delimiter != -1 || Socket.Available == 0;
+            endOfMessage = delimiter != -1;
             _bufferedDataLength = 0;
         }
 
