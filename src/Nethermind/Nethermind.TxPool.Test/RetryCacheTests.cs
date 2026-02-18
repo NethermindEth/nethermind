@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,7 +44,7 @@ public class RetryCacheTests
     private CancellationTokenSource _cancellationTokenSource;
     private RetryCache<ResourceRequestMessage, int> _cache;
 
-    private readonly int Timeout = 10000;
+    private readonly int Timeout = 5000;
 
     [SetUp]
     public void Setup()
@@ -128,6 +129,7 @@ public class RetryCacheTests
     [Test]
     public async Task Clear_cache_after_timeout()
     {
+        Stopwatch sw = Stopwatch.StartNew();
         Parallel.For(0, 100, (i) =>
         {
             Parallel.For(0, 100, (j) =>
@@ -135,8 +137,22 @@ public class RetryCacheTests
                 _cache.Announced(i, new TestHandler());
             });
         });
+        var el = sw.Elapsed;
 
         await Task.Delay(Timeout * 2, _cancellationTokenSource.Token);
+
+        Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+    }
+
+    [Test]
+    public async Task Announced_1000ParallelRequests_AfterTimeout_CacheIsClean()
+    {
+        Parallel.For(0, 1000, (i) =>
+        {
+            _cache.Announced(i, new TestHandler());
+        });
+
+        await Task.Delay(Timeout, _cancellationTokenSource.Token);
 
         Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
     }

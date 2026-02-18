@@ -194,6 +194,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (newTxHashes.Count <= MaxNumberOfTxsInOneMsg)
             {
+                if (Logger.IsWarn)
+                {
+                    foreach (Hash256 hash in newTxHashes)
+                    {
+                        Logger.Warn($"Requesting tx by hash from peer after hash announcement: txHash={hash}, {GetPeerLogContext()}");
+                    }
+                }
+
                 Send(TMessage.New(newTxHashes));
             }
             else
@@ -206,6 +214,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                         ArrayPoolList<Hash256> hashesToRequest = new(end - start);
                         hashesToRequest.AddRange(newTxHashes.AsSpan()[start..end]);
+
+                        if (Logger.IsWarn)
+                        {
+                            foreach (Hash256 hash in hashesToRequest)
+                            {
+                                Logger.Warn($"Requesting tx by hash from peer after hash announcement: txHash={hash}, {GetPeerLogContext()}");
+                            }
+                        }
 
                         Send(TMessage.New(hashesToRequest));
                     }
@@ -229,8 +245,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 Hash256 hash = hashes[i];
                 if (!_txPool.IsKnown(hash))
                 {
-                    if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
+                    AnnounceResult announceResult = _txPool.NotifyAboutTx(hash, this);
+
+                    if (announceResult is AnnounceResult.RequestRequired)
                     {
+                        if (Logger.IsWarn)
+                        {
+                            Logger.Warn($"New tx hash appeared in retry cache from peer: txHash={hash}, {GetPeerLogContext()}");
+                        }
+
                         discoveredTxHashesAndSizes.Add(hash);
                     }
                 }

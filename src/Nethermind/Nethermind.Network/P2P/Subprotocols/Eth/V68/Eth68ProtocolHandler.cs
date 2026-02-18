@@ -139,6 +139,14 @@ public class Eth68ProtocolHandler(ISession session,
 
             if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
             {
+                if (Logger.IsWarn)
+                {
+                    foreach (Hash256 requestedHash in hashesToRequest)
+                    {
+                        Logger.Warn($"Requesting tx by hash from peer after hash announcement: txHash={requestedHash}, {GetPeerLogContext()}");
+                    }
+                }
+
                 Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
                 hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
                 packetSizeLeft = TransactionsMessage.MaxPacketSize;
@@ -155,6 +163,14 @@ public class Eth68ProtocolHandler(ISession session,
 
         if (hashesToRequest.Count is not 0)
         {
+            if (Logger.IsWarn)
+            {
+                foreach (Hash256 hash in hashesToRequest)
+                {
+                    Logger.Warn($"Requesting tx by hash from peer after hash announcement: txHash={hash}, {GetPeerLogContext()}");
+                }
+            }
+
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
         }
         else
@@ -171,8 +187,14 @@ public class Eth68ProtocolHandler(ISession session,
             Hash256 hash = hashes[i];
             if (!_txPool.IsKnown(hash))
             {
-                if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
+                AnnounceResult announceResult = _txPool.NotifyAboutTx(hash, this);
+                if (announceResult is AnnounceResult.RequestRequired)
                 {
+                    if (Logger.IsWarn)
+                    {
+                        Logger.Warn($"New tx hash appeared in retry cache from peer: txHash={hash}, {GetPeerLogContext()}");
+                    }
+
                     discoveredTxHashesAndSizes.Add(i);
                 }
             }

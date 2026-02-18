@@ -284,8 +284,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
+
+            bool wasRequestedByHash = false;
             if (tx.Hash is not null)
             {
+                wasRequestedByHash = NotifiedTransactions.Get(tx.Hash);
                 NotifiedTransactions.Set(tx.Hash);
             }
 
@@ -293,10 +296,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
 
+            if (wasRequestedByHash && tx.Hash is not null && Logger.IsWarn)
+            {
+                Logger.Warn($"TX returned by peer for announced hash: txHash={tx.Hash}, accepted={accepted}, {GetPeerLogContext()}");
+            }
+
             void Log(Transaction tx, in AcceptTxResult accepted)
             {
                 Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
+        }
+
+        protected string GetPeerLogContext()
+        {
+            string peerIp = Node?.Host ?? Session?.RemoteHost ?? "unknown";
+            string peerNodeId = Node is null ? "unknown" : Node.Id.ToString(false);
+            string clientType = Node?.ClientType.ToString() ?? "Unknown";
+            string clientId = Node?.ClientId ?? "unknown";
+            return $"peerIp={peerIp}, peerNodeId={peerNodeId}, clientType={clientType}, clientId={clientId}";
         }
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
