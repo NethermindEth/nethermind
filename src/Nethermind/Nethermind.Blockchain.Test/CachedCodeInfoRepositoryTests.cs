@@ -149,6 +149,36 @@ public class CachedCodeInfoRepositoryTests
         cache.Count.Should().Be(1);
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void CachedPrecompile_PreservesSupportsFastPathFlag(bool supportsFastPath)
+    {
+        // Arrange
+        TestPrecompile cachingPrecompile = new(supportsCaching: true, supportsFastPath: supportsFastPath);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(cachingPrecompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        // Act
+        CachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        // Assert
+        codeInfo.Precompile.Should().NotBeSameAs(cachingPrecompile);
+        codeInfo.Precompile!.SupportsCaching.Should().BeTrue();
+        codeInfo.Precompile.SupportsFastPath.Should().Be(supportsFastPath);
+    }
+
     [Test]
     public void NonCachingPrecompile_DoesNotCacheResults()
     {
@@ -417,9 +447,14 @@ public class CachedCodeInfoRepositoryTests
         cache.Count.Should().Be(0); // Key difference from Sha256 test
     }
 
-    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
+    private class TestPrecompile(
+        bool supportsCaching,
+        bool supportsFastPath = false,
+        Action? onRun = null,
+        byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;
+        public bool SupportsFastPath => supportsFastPath;
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
