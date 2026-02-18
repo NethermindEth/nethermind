@@ -24,6 +24,7 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -286,9 +287,11 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        var adapter = new SnapUpperBoundAdapter(new RawScopedTrieStore(new TestMemDb()));
+        TestMemDb db = new TestMemDb();
+        NodeStorage nodeStorage = new NodeStorage(db);
+        var adapter = new SnapUpperBoundAdapter(new RawScopedTrieStore(nodeStorage));
         StateTree stree = new StateTree(adapter, LimboLogs.Instance);
-        var factory = new TestSnapTrieFactory(() => new PatriciaSnapStateTree(stree, adapter));
+        var factory = new TestSnapTrieFactory(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
         SnapProviderHelper.AddAccountRange(
                 factory,
                 0,
