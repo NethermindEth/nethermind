@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -651,5 +655,210 @@ namespace Nethermind.Evm.Test
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertStorage((UInt256)0, (UInt256)7);
         }
+
+        // ===== Fast-path vs non-fast-path parity tests =====
+        //
+        // These tests ensure the fast precompile path (used when IsTracingActions=false)
+        // and the normal frame-based path (used when IsTracingActions=true) produce
+        // identical results: same gas consumption, same return data, and same status code.
+
+        /// <summary>
+        /// Builds bytecode that calls a precompile and stores diagnostic values in storage:
+        ///   slot 0: CALL result + 100
+        ///   slot 1: RETURNDATASIZE + 100
+        ///   slot 2: GAS before call - GAS after call (net gas consumed by the call)
+        /// </summary>
+        private static byte[] BuildPrecompileParityCode(Address precompileAddress, long forwardedGas, byte[] input)
+        {
+            Prepare code = Prepare.EvmCode;
+            if (input.Length > 0)
+                code.StoreDataInMemory(0, input);
+
+            // GAS before call
+            code.Op(Instruction.GAS);
+
+            // CALL precompile
+            code.PushData(0)                      // retSize
+                .PushData(0)                       // retOffset
+                .PushData(input.Length)             // argsSize
+                .PushData(0)                       // argsOffset
+                .PushData(0)                       // value
+                .PushData(precompileAddress)
+                .PushData(forwardedGas)
+                .Op(Instruction.CALL);
+
+            // stack: [gasBefore, callResult]
+
+            // Store CALL result + 100 in slot 0
+            code.PushData(100).Op(Instruction.ADD)
+                .PushData(0).Op(Instruction.SSTORE);
+
+            // GAS after call; compute gasBefore - gasAfter
+            code.Op(Instruction.GAS)
+                .Op(Instruction.SWAP1)  // stack: [gasAfter, gasBefore]
+                .Op(Instruction.SUB)    // gasBefore - gasAfter
+                .PushData(2).Op(Instruction.SSTORE);
+
+            // Store RETURNDATASIZE + 100 in slot 1
+            code.Op(Instruction.RETURNDATASIZE)
+                .PushData(100).Op(Instruction.ADD)
+                .PushData(1).Op(Instruction.SSTORE);
+
+            return code.Done;
+        }
+
+        /// <summary>
+        /// Executes the same precompile call under both tracing modes:
+        /// - Non-fast path: default tracer (IsTracingActions=true)
+        /// - Fast path: tracer with IsTracingActions=false
+        /// Asserts gas usage, return data size, and status code are identical.
+        /// </summary>
+        private void AssertFastPathParity(Address precompileAddress, long forwardedGas, byte[] input, long txGasLimit = 200000L)
+        {
+            byte[] code = BuildPrecompileParityCode(precompileAddress, forwardedGas, input);
+
+            // Run 1: non-fast path (IsTracingActions=true via default tracer)
+            TestAllTracerWithOutput nonFastResult = Execute(Activation, txGasLimit, code);
+
+            byte[] slot0NonFast = TestState.Get(new StorageCell(Recipient, 0)).ToArray();
+            byte[] slot1NonFast = TestState.Get(new StorageCell(Recipient, 1)).ToArray();
+            byte[] slot2NonFast = TestState.Get(new StorageCell(Recipient, 2)).ToArray();
+            long gasNonFast = nonFastResult.GasSpent;
+            byte statusNonFast = nonFastResult.StatusCode;
+
+            // Reset state for second run
+            TearDown();
+            Setup();
+
+            // Run 2: fast path (IsTracingActions=false)
+            (Block block, Transaction transaction) = PrepareTx(Activation, txGasLimit, code);
+            FastPathTracerWithOutput fastResult = new();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), fastResult);
+
+            byte[] slot0Fast = TestState.Get(new StorageCell(Recipient, 0)).ToArray();
+            byte[] slot1Fast = TestState.Get(new StorageCell(Recipient, 1)).ToArray();
+            byte[] slot2Fast = TestState.Get(new StorageCell(Recipient, 2)).ToArray();
+
+            // Assert parity
+            Assert.Multiple(() =>
+            {
+                Assert.That(statusNonFast, Is.EqualTo(StatusCode.Success), "non-fast path should succeed");
+                Assert.That(fastResult.StatusCode, Is.EqualTo(statusNonFast), "status code mismatch between fast and non-fast paths");
+                Assert.That(slot0Fast, Is.EqualTo(slot0NonFast), "CALL result mismatch (slot 0)");
+                Assert.That(slot1Fast, Is.EqualTo(slot1NonFast), "RETURNDATASIZE mismatch (slot 1)");
+                Assert.That(slot2Fast, Is.EqualTo(slot2NonFast), "gas consumed by CALL mismatch (slot 2)");
+                Assert.That(fastResult.GasSpent, Is.EqualTo(gasNonFast), "total transaction gas mismatch");
+            });
+        }
+
+        private static IEnumerable<TestCaseData> PrecompileParityCases()
+        {
+            // Identity
+            yield return new TestCaseData(IdentityPrecompile.Address, 50000L, Array.Empty<byte>())
+                .SetName("identity_empty_input");
+            byte[] sequentialInput = new byte[32];
+            for (int i = 0; i < 32; i++) sequentialInput[i] = (byte)(i + 1);
+            yield return new TestCaseData(IdentityPrecompile.Address, 50000L, sequentialInput)
+                .SetName("identity_32_bytes");
+            yield return new TestCaseData(IdentityPrecompile.Address, 10L, new byte[32])
+                .SetName("identity_insufficient_gas");
+
+            // SHA-256
+            yield return new TestCaseData(Sha256Precompile.Address, 50000L, new byte[32])
+                .SetName("sha256_32_bytes");
+            yield return new TestCaseData(Sha256Precompile.Address, 10L, new byte[32])
+                .SetName("sha256_insufficient_gas");
+
+            // ModExp: base=2, exp=3, mod=5
+            byte[] modExpInput = new byte[99];
+            modExpInput[31] = 1; modExpInput[63] = 1; modExpInput[95] = 1;
+            modExpInput[96] = 2; modExpInput[97] = 3; modExpInput[98] = 5;
+            yield return new TestCaseData(ModExpPrecompile.Address, 50000L, modExpInput)
+                .SetName("modexp");
+
+            // BN254
+            yield return new TestCaseData(BN254AddPrecompile.Address, 50000L, new byte[128])
+                .SetName("bn254add");
+            yield return new TestCaseData(BN254AddPrecompile.Address, 10L, new byte[128])
+                .SetName("bn254add_insufficient_gas");
+            yield return new TestCaseData(BN254MulPrecompile.Address, 50000L, new byte[96])
+                .SetName("bn254mul");
+            yield return new TestCaseData(BN254PairingPrecompile.Address, 50000L, Array.Empty<byte>())
+                .SetName("bn254pairing_empty_input");
+
+            // Blake2f: rounds=1, final=1
+            byte[] blake2fValid = new byte[213];
+            blake2fValid[3] = 1; blake2fValid[212] = 1;
+            yield return new TestCaseData(Blake2FPrecompile.Address, 50000L, blake2fValid)
+                .SetName("blake2f");
+
+            // Blake2f with invalid final flag
+            byte[] blake2fInvalid = new byte[213];
+            blake2fInvalid[3] = 1; blake2fInvalid[212] = 2;
+            yield return new TestCaseData(Blake2FPrecompile.Address, 50000L, blake2fInvalid)
+                .SetName("blake2f_invalid_input");
+
+            // BLS
+            yield return new TestCaseData(G1AddPrecompile.Address, 50000L, new byte[256])
+                .SetName("bls_g1add");
+            yield return new TestCaseData(G2AddPrecompile.Address, 50000L, new byte[512])
+                .SetName("bls_g2add");
+        }
+
+        [TestCaseSource(nameof(PrecompileParityCases))]
+        public void Fast_path_precompile_parity(Address precompileAddress, long forwardedGas, byte[] input)
+        {
+            AssertFastPathParity(precompileAddress, forwardedGas, input);
+        }
+
+        [Test]
+        public void Fast_path_parity_delegatecall_to_identity()
+        {
+            byte[] input = new byte[32];
+            for (int i = 0; i < 32; i++) input[i] = (byte)(i + 1);
+
+            // Build code that uses DELEGATECALL to identity precompile.
+            byte[] codeNonFast = Prepare.EvmCode
+                .StoreDataInMemory(0, input)
+                .DynamicCallWithInput(Instruction.DELEGATECALL, IdentityPrecompile.Address, 50000L, input)
+                .PushData(100).Op(Instruction.ADD)
+                .PushData(0).Op(Instruction.SSTORE)
+                .Op(Instruction.RETURNDATASIZE)
+                .PushData(100).Op(Instruction.ADD)
+                .PushData(1).Op(Instruction.SSTORE)
+                .Done;
+
+            // Run non-fast path
+            TestAllTracerWithOutput nonFastResult = Execute(Activation, 200000L, codeNonFast);
+            byte[] slot0NonFast = TestState.Get(new StorageCell(Recipient, 0)).ToArray();
+            byte[] slot1NonFast = TestState.Get(new StorageCell(Recipient, 1)).ToArray();
+
+            TearDown();
+            Setup();
+
+            // Run fast path with same code
+            (Block block, Transaction transaction) = PrepareTx(Activation, 200000L, codeNonFast);
+            FastPathTracerWithOutput fastResult = new();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), fastResult);
+            byte[] slot0Fast = TestState.Get(new StorageCell(Recipient, 0)).ToArray();
+            byte[] slot1Fast = TestState.Get(new StorageCell(Recipient, 1)).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fastResult.StatusCode, Is.EqualTo(nonFastResult.StatusCode), "status code mismatch");
+                Assert.That(slot0Fast, Is.EqualTo(slot0NonFast), "CALL result mismatch (slot 0)");
+                Assert.That(slot1Fast, Is.EqualTo(slot1NonFast), "RETURNDATASIZE mismatch (slot 1)");
+                Assert.That(fastResult.GasSpent, Is.EqualTo(nonFastResult.GasSpent), "gas mismatch");
+            });
+        }
+    }
+
+    /// <summary>
+    /// Tracer identical to <see cref="TestAllTracerWithOutput"/> but with
+    /// <see cref="IsTracingActions"/> disabled, allowing the precompile fast path to activate.
+    /// </summary>
+    internal class FastPathTracerWithOutput : TestAllTracerWithOutput
+    {
+        public override bool IsTracingActions => false;
     }
 }

@@ -15,6 +15,17 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
+/// <summary>
+/// Groups memory offset/length pairs for CALL input and output to reduce parameter count.
+/// </summary>
+internal readonly struct CallMemoryParams(UInt256 dataOffset, UInt256 dataLength, UInt256 outputOffset, UInt256 outputLength)
+{
+    public readonly UInt256 DataOffset = dataOffset;
+    public readonly UInt256 DataLength = dataLength;
+    public readonly UInt256 OutputOffset = outputOffset;
+    public readonly UInt256 OutputLength = outputLength;
+}
+
 internal static partial class EvmInstructions
 {
     /// <summary>
@@ -186,13 +197,17 @@ internal static partial class EvmInstructions
             && !TTracingInst.IsActive
             && !vm.TxTracer.IsTracingActions;
 
+        CallMemoryParams mem = new(dataOffset, dataLength, outputOffset, outputLength);
+
+        // Safe for all call types (CALL, CALLCODE, DELEGATECALL, STATICCALL):
+        // precompiles are pure functions that don't access contract storage,
+        // so caller/target distinction is only relevant for balance transfers,
+        // which are handled identically in both paths.
         return useFastPrecompile
             ? ExecuteCallCore<OnFlag>(vm, state, ref gas, ref stack, spec, env, codeInfo, codeInfo.Precompile,
-                in gasLimit, in transferValue, in callValue, caller, target, codeSource, in dataOffset, in dataLength,
-                in outputOffset, in outputLength)
+                in gasLimit, in transferValue, in callValue, caller, target, codeSource, in mem)
             : ExecuteCallCore<OffFlag>(vm, state, ref gas, ref stack, spec, env, codeInfo, null,
-                in gasLimit, in transferValue, in callValue, caller, target, codeSource, in dataOffset, in dataLength,
-                in outputOffset, in outputLength);
+                in gasLimit, in transferValue, in callValue, caller, target, codeSource, in mem);
 
         static EvmExceptionType ExecuteCallCore<TFastPrecompile>(
             VirtualMachine<TGasPolicy> vm,
@@ -209,10 +224,7 @@ internal static partial class EvmInstructions
             Address caller,
             Address target,
             Address codeSource,
-            in UInt256 dataOffset,
-            in UInt256 dataLength,
-            in UInt256 outputOffset,
-            in UInt256 outputLength)
+            in CallMemoryParams mem)
             where TFastPrecompile : struct, IFlag
         {
             // If contract is large, charge for access.
@@ -259,8 +271,8 @@ internal static partial class EvmInstructions
                 if (vm.TxTracer.IsTracingRefunds)
                 {
                     // Specific to Parity tracing: inspect 32 bytes from data offset.
-                    ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                    vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
+                    ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in mem.DataOffset, 32);
+                    vm.TxTracer.ReportMemoryChange(mem.DataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
                 }
 
                 if (TTracingInst.IsActive)
@@ -282,7 +294,7 @@ internal static partial class EvmInstructions
             {
                 return FastPrecompileCall(vm, state, ref gas, ref stack, gasLimitUl,
                     in transferValue, caller, target, precompile!,
-                    in dataOffset, in dataLength, in outputOffset, in outputLength, spec);
+                    in mem, spec);
             }
 
             // Take a snapshot of the state for potential rollback.
@@ -300,7 +312,7 @@ internal static partial class EvmInstructions
             }
 
             // Load call data from memory.
-            if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> callData))
+            if (!vm.VmState.Memory.TryLoad(in mem.DataOffset, in mem.DataLength, out ReadOnlyMemory<byte> callData))
                 return EvmExceptionType.OutOfGas;
 
             // Construct the execution environment for the call.
@@ -315,13 +327,13 @@ internal static partial class EvmInstructions
                 inputData: in callData);
 
             // Output offset is inconsequential when output length is 0.
-            UInt256 outputDestination = outputLength == 0 ? UInt256.Zero : outputOffset;
+            UInt256 outputDestination = mem.OutputLength == 0 ? UInt256.Zero : mem.OutputOffset;
 
             // Rent a new call frame for executing the call.
             vm.ReturnData = VmState<TGasPolicy>.RentFrame(
                 gas: TGasPolicy.FromLong(gasLimitUl),
                 outputDestination: outputDestination.ToLong(),
-                outputLength: outputLength.ToLong(),
+                outputLength: mem.OutputLength.ToLong(),
                 executionType: TOpCall.ExecutionType,
                 isStatic: TOpCall.IsStatic || vm.VmState.IsStatic,
                 isCreateOnPreExistingAccount: false,
@@ -356,21 +368,18 @@ internal static partial class EvmInstructions
             Address caller,
             Address target,
             IPrecompile precompile,
-            in UInt256 dataOffset,
-            in UInt256 dataLength,
-            in UInt256 outputOffset,
-            in UInt256 outputLength,
+            in CallMemoryParams mem,
             IReleaseSpec spec)
         {
             // Load input from caller's memory (not a state change — safe before snapshot decision).
-            if (!vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> inputData))
+            if (!vm.VmState.Memory.TryLoad(in mem.DataOffset, in mem.DataLength, out ReadOnlyMemory<byte> inputData))
                 return EvmExceptionType.OutOfGas;
 
-            // Calculate precompile gas cost.
+            // Calculate precompile gas cost; clamp to MaxValue on overflow so the OOG check below is clean.
             long baseGasCost = precompile.BaseGasCost(spec);
             long dataGasCost = precompile.DataGasCost(inputData, spec);
             bool gasOverflow = (ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue;
-            long precompileGasCost = baseGasCost + dataGasCost;
+            long precompileGasCost = gasOverflow ? long.MaxValue : baseGasCost + dataGasCost;
 
             Snapshot snapshot = default;
             bool hasSnapshot = false;
@@ -395,9 +404,10 @@ internal static partial class EvmInstructions
             }
 
             EvmExceptionType precompileResult = HandlePrecompileSuccess(vm, ref gas, ref stack, output.Data,
-                in outputOffset, in outputLength, gasLimitUl, precompileGasCost);
+                in mem.OutputOffset, in mem.OutputLength, gasLimitUl, precompileGasCost);
 
-            // Mirror the non-fast path touch behavior for zero-value precompile calls.
+            // Mirror the non-fast path touch behavior for zero-value precompile calls
+            // (see RunPrecompile in VirtualMachine.cs — keep in sync).
             if (precompileResult == EvmExceptionType.None && transferValue.IsZero)
             {
                 state.AddToBalanceAndCreateIfNotExists(target, in transferValue, spec);
@@ -442,7 +452,7 @@ internal static partial class EvmInstructions
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType ReturnFailedPrecompileCall(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -451,7 +461,7 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType ReturnFailedPrecompileCallAndRestore(
             VirtualMachine<TGasPolicy> vm,
             ref EvmStack stack,
@@ -482,8 +492,8 @@ internal static partial class EvmInstructions
 
             if (!outputLength.IsZero)
             {
-                int outputLengthAsInt = outputLength > int.MaxValue ? int.MaxValue : (int)outputLength;
-                int bytesToCopy = Math.Min(returnBytes.Length, outputLengthAsInt);
+                // outputLength fits in int: UpdateMemoryCost would have OOG'd otherwise.
+                int bytesToCopy = Math.Min(returnBytes.Length, (int)outputLength);
                 if (bytesToCopy > 0 &&
                     !vm.VmState.Memory.TrySave(in outputOffset, returnBytes.AsSpan(0, bytesToCopy)))
                     return EvmExceptionType.OutOfGas;
