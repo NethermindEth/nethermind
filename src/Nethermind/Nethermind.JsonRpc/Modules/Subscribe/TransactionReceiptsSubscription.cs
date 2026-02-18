@@ -39,13 +39,12 @@ public class TransactionReceiptsSubscription : Subscription
         _blockTree = blockTree;
         _logger = logManager.GetClassLogger();
 
-        // Validate max 200 hashes (defense in depth, needed for tests that bypass ReadJson)
+        // Validate max 200 hashes
         if (filter?.TransactionHashes is not null && filter.TransactionHashes.Count > 200)
         {
             throw new ArgumentException("Cannot subscribe to more than 200 transaction hashes at once.");
         }
 
-        // Use the HashSet directly - no conversion needed
         _filterHashes = filter?.TransactionHashes;
 
         _receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
