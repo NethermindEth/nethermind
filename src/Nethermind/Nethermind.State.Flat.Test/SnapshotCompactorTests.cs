@@ -240,6 +240,39 @@ public class SnapshotCompactorTests
     }
 
     [Test]
+    public void CompactSnapshotBundle_SelfDestructedAddress_RemovesStorageAndNodes()
+    {
+        Address address = new Address("0x1111111111111111111111111111111111111111");
+        UInt256 storageIndex = new UInt256(1);
+        TreePath storagePath = TreePath.FromHexString("1234");
+        Hash256 storageHash = Keccak.Zero;
+        SlotValue slotValue = new SlotValue(new byte[32]);
+
+        StateId from0 = new StateId(0, Keccak.Zero);
+        StateId to0 = new StateId(1, Keccak.Zero);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snapshot0.Content.Accounts[address] = new Account(1, 100);
+        snapshot0.Content.Storages[(address, storageIndex)] = slotValue;
+        snapshot0.Content.StorageNodes[(address.ToAccountPath.ToCommitment(), storagePath)] = new TrieNode(NodeType.Leaf, storageHash);
+
+        StateId from1 = new StateId(1, Keccak.Zero);
+        StateId to1 = new StateId(2, Keccak.Zero);
+        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snapshot1.Content.SelfDestructedStorageAddresses[address] = false;
+
+        SnapshotPooledList snapshots = new SnapshotPooledList(2);
+        snapshots.Add(snapshot0);
+        snapshots.Add(snapshot1);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
+
+        // Self-destructed address should be tracked, and its storage cleared
+        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
+        Assert.That(compacted.StoragesCount, Is.EqualTo(0));
+        Assert.That(compacted.StorageNodesCount, Is.EqualTo(0));
+    }
+
+    [Test]
     public void CompactSnapshotBundle_NewAccountSelfDestruct_MarkedAsTrue()
     {
         Address address = new Address("0x1111111111111111111111111111111111111111");
