@@ -73,16 +73,7 @@ namespace Nethermind.Db
                 return;
             }
 
-            bool setValue = true;
-            if (_cacheSpan.TryGetValue(key, out var existingValue))
-            {
-                if (Bytes.AreEqual(existingValue, value))
-                {
-                    setValue = false;
-                }
-            }
-
-            if (setValue)
+            if (!_cacheSpan.TryGetValue(key, out var existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
