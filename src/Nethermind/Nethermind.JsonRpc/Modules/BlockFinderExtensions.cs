@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules
                 if (!allowNulls)
                 {
                     return new SearchResult<Block>(
-                        $"block {blockParameter} could not be found",
+                        $"Block {blockParameter} could not be found",
                         ErrorCodes.ResourceNotFound);
                 }
             }
